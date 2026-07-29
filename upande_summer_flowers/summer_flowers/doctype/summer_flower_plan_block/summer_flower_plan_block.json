@@ -1,0 +1,178 @@
+{
+ "actions": [],
+ "allow_bulk_edit": 1,
+ "allow_rename": 1,
+ "creation": "2026-07-29 14:10:06.728047",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "is_new_planting",
+  "block",
+  "existing_planting",
+  "beds",
+  "plants",
+  "sticking_year",
+  "sticking_week",
+  "planting_year",
+  "planting_week",
+  "planting_date",
+  "pinch_date",
+  "first_harvest_year",
+  "first_harvest_week",
+  "harvest_week_family",
+  "gross_area_ha",
+  "lifetime_stems",
+  "below_minimum",
+  "planting_in_past",
+  "notes"
+ ],
+ "fields": [
+  {
+   "columns": 1,
+   "fieldname": "is_new_planting",
+   "fieldtype": "Check",
+   "in_list_view": 1,
+   "label": "New"
+  },
+  {
+   "columns": 2,
+   "fieldname": "block",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "label": "Block",
+   "options": "Summer Flower Block"
+  },
+  {
+   "columns": 2,
+   "fieldname": "existing_planting",
+   "fieldtype": "Link",
+   "label": "Existing Planting",
+   "options": "Summer Flower Planting"
+  },
+  {
+   "columns": 1,
+   "fieldname": "beds",
+   "fieldtype": "Int",
+   "in_list_view": 1,
+   "label": "Beds"
+  },
+  {
+   "columns": 1,
+   "fieldname": "plants",
+   "fieldtype": "Int",
+   "in_list_view": 1,
+   "label": "Plants",
+   "read_only": 1
+  },
+  {
+   "columns": 1,
+   "fieldname": "sticking_year",
+   "fieldtype": "Int",
+   "label": "Sticking Year"
+  },
+  {
+   "columns": 1,
+   "fieldname": "sticking_week",
+   "fieldtype": "Int",
+   "in_list_view": 1,
+   "label": "Stick Wk"
+  },
+  {
+   "columns": 1,
+   "fieldname": "planting_year",
+   "fieldtype": "Int",
+   "label": "Planting Year"
+  },
+  {
+   "columns": 1,
+   "fieldname": "planting_week",
+   "fieldtype": "Int",
+   "in_list_view": 1,
+   "label": "Plant Wk"
+  },
+  {
+   "columns": 2,
+   "fieldname": "planting_date",
+   "fieldtype": "Date",
+   "label": "Planting Date",
+   "read_only": 1
+  },
+  {
+   "columns": 2,
+   "fieldname": "pinch_date",
+   "fieldtype": "Date",
+   "label": "Pinch Date",
+   "read_only": 1
+  },
+  {
+   "fieldname": "first_harvest_year",
+   "fieldtype": "Int",
+   "label": "First Harvest Year",
+   "read_only": 1
+  },
+  {
+   "columns": 1,
+   "fieldname": "first_harvest_week",
+   "fieldtype": "Int",
+   "in_list_view": 1,
+   "label": "First Harvest Wk",
+   "read_only": 1
+  },
+  {
+   "columns": 2,
+   "fieldname": "harvest_week_family",
+   "fieldtype": "Data",
+   "label": "Harvest Weeks",
+   "read_only": 1
+  },
+  {
+   "fieldname": "gross_area_ha",
+   "fieldtype": "Float",
+   "label": "Gross ha",
+   "precision": "5",
+   "read_only": 1
+  },
+  {
+   "fieldname": "lifetime_stems",
+   "fieldtype": "Int",
+   "label": "Lifetime Stems",
+   "read_only": 1
+  },
+  {
+   "description": "Beds required fall under the protocol's minimum planting size.",
+   "fieldname": "below_minimum",
+   "fieldtype": "Check",
+   "label": "Below Min Block",
+   "read_only": 1
+  },
+  {
+   "description": "The planting week needed to serve this demand has already gone.",
+   "fieldname": "planting_in_past",
+   "fieldtype": "Check",
+   "label": "Planting Week Passed",
+   "read_only": 1
+  },
+  {
+   "fieldname": "notes",
+   "fieldtype": "Small Text",
+   "label": "Notes"
+  }
+ ],
+ "grid_page_length": 50,
+ "index_web_pages_for_search": 1,
+ "istable": 1,
+ "links": [],
+ "modified": "2026-07-29 14:10:06.728047",
+ "modified_by": "Administrator",
+ "module": "Summer Flowers",
+ "name": "Summer Flower Plan Block",
+ "owner": "Administrator",
+ "permissions": [],
+ "row_format": "Dynamic",
+ "rows_threshold_for_grid_search": 20,
+ "sort_field": "creation",
+ "sort_order": "DESC",
+ "states": [],
+ "track_changes": 1
+}

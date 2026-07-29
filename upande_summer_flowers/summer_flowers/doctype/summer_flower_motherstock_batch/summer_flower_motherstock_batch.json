@@ -1,0 +1,439 @@
+{
+ "actions": [],
+ "allow_bulk_edit": 1,
+ "allow_rename": 1,
+ "autoname": "naming_series:",
+ "creation": "2026-07-29 14:16:12.288856",
+ "description": "One motherstock generation: TC order through build-up to a 52-week cutting run, then renewal.",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "details_tab",
+  "identification_section",
+  "naming_series",
+  "variety",
+  "farm",
+  "protocol",
+  "cb_ident",
+  "production_plan",
+  "company",
+  "batch_status",
+  "generation",
+  "requirement_section",
+  "peak_weekly_cuttings",
+  "sticking_spread_weeks",
+  "cb_req",
+  "effective_peak_cuttings",
+  "apply_losses",
+  "sizing_section",
+  "mother_plants",
+  "pots_required",
+  "cb_size",
+  "bench_sqm",
+  "peak_bench_sqm",
+  "tc_section",
+  "build_up_cycles",
+  "multiplication_factor",
+  "cb_tc",
+  "tc_plants_required",
+  "lead_time_weeks",
+  "total_lead_time_weeks",
+  "schedule_section",
+  "first_sticking_date",
+  "max_pc_date",
+  "tc_on_farm_date",
+  "cb_sched",
+  "tc_order_date",
+  "expiry_date",
+  "renewal_tc_order_date",
+  "schedule_note_section",
+  "schedule_warning",
+  "cost_section",
+  "currency",
+  "tc_stage",
+  "rate_per_plantlet",
+  "cb_cost",
+  "tc_cost",
+  "holding_cost",
+  "total_cost",
+  "buildup_tab",
+  "buildup_section",
+  "build_up_steps"
+ ],
+ "fields": [
+  {
+   "fieldname": "details_tab",
+   "fieldtype": "Tab Break",
+   "label": "Details"
+  },
+  {
+   "fieldname": "identification_section",
+   "fieldtype": "Section Break"
+  },
+  {
+   "default": "SFMS-.YYYY.-.#####",
+   "fieldname": "naming_series",
+   "fieldtype": "Select",
+   "hidden": 1,
+   "label": "Naming Series",
+   "no_copy": 1,
+   "options": "SFMS-.YYYY.-.#####",
+   "print_hide": 1
+  },
+  {
+   "fieldname": "variety",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Variety",
+   "options": "Item",
+   "reqd": 1
+  },
+  {
+   "fieldname": "farm",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Farm",
+   "options": "Farm",
+   "reqd": 1
+  },
+  {
+   "fieldname": "protocol",
+   "fieldtype": "Link",
+   "label": "Protocol",
+   "options": "Summer Flower Protocol",
+   "reqd": 1
+  },
+  {
+   "fieldname": "cb_ident",
+   "fieldtype": "Column Break"
+  },
+  {
+   "description": "Optional. Pulls the peak sticking week straight off the plan.",
+   "fieldname": "production_plan",
+   "fieldtype": "Link",
+   "label": "Production Plan",
+   "options": "Summer Flower Production Plan"
+  },
+  {
+   "fieldname": "company",
+   "fieldtype": "Link",
+   "label": "Company",
+   "options": "Company"
+  },
+  {
+   "default": "Planned",
+   "fieldname": "batch_status",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Status",
+   "options": "Planned\nTC Ordered\nEstablishing\nMultiplying\nProductive\nExpired"
+  },
+  {
+   "default": "1",
+   "description": "Which motherstock generation this is for the variety at this farm.",
+   "fieldname": "generation",
+   "fieldtype": "Int",
+   "label": "Generation"
+  },
+  {
+   "description": "Motherstock is sized by the largest single sticking week, never the annual total \u2014 cuttings cannot be banked.",
+   "fieldname": "requirement_section",
+   "fieldtype": "Section Break",
+   "label": "Requirement"
+  },
+  {
+   "description": "Largest number of cuttings that must be stuck in one week.",
+   "fieldname": "peak_weekly_cuttings",
+   "fieldtype": "Int",
+   "in_list_view": 1,
+   "label": "Peak Weekly Cuttings",
+   "reqd": 1
+  },
+  {
+   "default": "1",
+   "description": "Spreading the stick over more weeks divides the motherstock, the bench and the TC order by the same factor \u2014 at the cost of smearing the harvest across that many weeks.",
+   "fieldname": "sticking_spread_weeks",
+   "fieldtype": "Int",
+   "label": "Sticking Spread Weeks"
+  },
+  {
+   "fieldname": "cb_req",
+   "fieldtype": "Column Break"
+  },
+  {
+   "description": "Peak after applying the spread.",
+   "fieldname": "effective_peak_cuttings",
+   "fieldtype": "Int",
+   "label": "Effective Peak Cuttings",
+   "read_only": 1
+  },
+  {
+   "default": "1",
+   "description": "Uplift the requirement by the protocol's rooting and field establishment losses.",
+   "fieldname": "apply_losses",
+   "fieldtype": "Check",
+   "label": "Apply Losses"
+  },
+  {
+   "fieldname": "sizing_section",
+   "fieldtype": "Section Break",
+   "label": "Sizing"
+  },
+  {
+   "fieldname": "mother_plants",
+   "fieldtype": "Int",
+   "in_list_view": 1,
+   "label": "Mother Plants",
+   "read_only": 1
+  },
+  {
+   "fieldname": "pots_required",
+   "fieldtype": "Int",
+   "label": "Pots Required",
+   "read_only": 1
+  },
+  {
+   "fieldname": "cb_size",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "bench_sqm",
+   "fieldtype": "Float",
+   "label": "Bench (m\u00b2)",
+   "precision": "1",
+   "read_only": 1
+  },
+  {
+   "description": "During renewal the outgoing and incoming generations share the bench. This is what must actually be available.",
+   "fieldname": "peak_bench_sqm",
+   "fieldtype": "Float",
+   "label": "Peak Bench incl. Overlap (m\u00b2)",
+   "precision": "1",
+   "read_only": 1
+  },
+  {
+   "fieldname": "tc_section",
+   "fieldtype": "Section Break",
+   "label": "TC Order"
+  },
+  {
+   "default": "4",
+   "description": "Cycles of on-farm multiplication. Fewer cycles means a bigger TC order but a much shorter lead time.",
+   "fieldname": "build_up_cycles",
+   "fieldtype": "Int",
+   "label": "Build Up Cycles",
+   "reqd": 1
+  },
+  {
+   "fieldname": "multiplication_factor",
+   "fieldtype": "Float",
+   "label": "Multiplication Factor",
+   "precision": "2",
+   "read_only": 1
+  },
+  {
+   "fieldname": "cb_tc",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "tc_plants_required",
+   "fieldtype": "Int",
+   "in_list_view": 1,
+   "label": "Tc Plants Required",
+   "read_only": 1
+  },
+  {
+   "fieldname": "lead_time_weeks",
+   "fieldtype": "Int",
+   "label": "On-farm Lead Time (weeks)",
+   "read_only": 1
+  },
+  {
+   "fieldname": "total_lead_time_weeks",
+   "fieldtype": "Int",
+   "label": "Total Lead Time incl. Lab (weeks)",
+   "read_only": 1
+  },
+  {
+   "fieldname": "schedule_section",
+   "fieldtype": "Section Break",
+   "label": "Schedule"
+  },
+  {
+   "description": "The week the first cuttings must be stuck. Everything else is derived backwards from here.",
+   "fieldname": "first_sticking_date",
+   "fieldtype": "Date",
+   "label": "First Sticking Date",
+   "reqd": 1
+  },
+  {
+   "fieldname": "max_pc_date",
+   "fieldtype": "Date",
+   "label": "Motherstock Productive By",
+   "read_only": 1
+  },
+  {
+   "fieldname": "tc_on_farm_date",
+   "fieldtype": "Date",
+   "label": "TC Must Be On Farm By",
+   "read_only": 1
+  },
+  {
+   "fieldname": "cb_sched",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "tc_order_date",
+   "fieldtype": "Date",
+   "label": "Place TC Order By",
+   "read_only": 1
+  },
+  {
+   "fieldname": "expiry_date",
+   "fieldtype": "Date",
+   "label": "Motherstock Expires",
+   "read_only": 1
+  },
+  {
+   "fieldname": "renewal_tc_order_date",
+   "fieldtype": "Date",
+   "label": "Next TC Order By",
+   "read_only": 1
+  },
+  {
+   "fieldname": "schedule_note_section",
+   "fieldtype": "Section Break"
+  },
+  {
+   "fieldname": "schedule_warning",
+   "fieldtype": "Small Text",
+   "label": "Warnings",
+   "read_only": 1
+  },
+  {
+   "fieldname": "cost_section",
+   "fieldtype": "Section Break",
+   "label": "Cost"
+  },
+  {
+   "fieldname": "currency",
+   "fieldtype": "Link",
+   "label": "Currency",
+   "options": "Currency"
+  },
+  {
+   "default": "Stage 4",
+   "fieldname": "tc_stage",
+   "fieldtype": "Select",
+   "label": "Tc Stage",
+   "options": "Stage 4\nStage 3"
+  },
+  {
+   "description": "Left blank, this is looked up from the price bands in Summer Flower Settings.",
+   "fieldname": "rate_per_plantlet",
+   "fieldtype": "Currency",
+   "label": "Rate Per Plantlet",
+   "options": "currency"
+  },
+  {
+   "fieldname": "cb_cost",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "tc_cost",
+   "fieldtype": "Currency",
+   "label": "Tc Cost",
+   "options": "currency",
+   "read_only": 1
+  },
+  {
+   "description": "Pot holding across the motherstock's life.",
+   "fieldname": "holding_cost",
+   "fieldtype": "Currency",
+   "label": "Holding Cost",
+   "options": "currency",
+   "read_only": 1
+  },
+  {
+   "fieldname": "total_cost",
+   "fieldtype": "Currency",
+   "label": "Total Cost",
+   "options": "currency",
+   "read_only": 1
+  },
+  {
+   "fieldname": "buildup_tab",
+   "fieldtype": "Tab Break",
+   "label": "Build-up"
+  },
+  {
+   "fieldname": "buildup_section",
+   "fieldtype": "Section Break"
+  },
+  {
+   "fieldname": "build_up_steps",
+   "fieldtype": "Table",
+   "label": "Build Up Steps",
+   "options": "Summer Flower Motherstock Cycle"
+  }
+ ],
+ "grid_page_length": 50,
+ "index_web_pages_for_search": 1,
+ "links": [],
+ "modified": "2026-07-29 14:16:12.288856",
+ "modified_by": "Administrator",
+ "module": "Summer Flowers",
+ "name": "Summer Flower Motherstock Batch",
+ "naming_rule": "By \"Naming Series\" field",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Agriculture Manager",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Agriculture User",
+   "share": 1,
+   "write": 1
+  }
+ ],
+ "row_format": "Dynamic",
+ "rows_threshold_for_grid_search": 20,
+ "search_fields": "variety,farm,batch_status",
+ "sort_field": "creation",
+ "sort_order": "DESC",
+ "states": [],
+ "title_field": "variety",
+ "track_changes": 1
+}

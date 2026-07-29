@@ -1,0 +1,112 @@
+{
+ "actions": [],
+ "allow_bulk_edit": 1,
+ "allow_rename": 1,
+ "creation": "2026-07-29 14:16:11.398351",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "defaults_section",
+  "default_price_per_stem",
+  "pot_holding_rate_per_month",
+  "cb_def",
+  "hardening_rate",
+  "lab_turnaround_weeks",
+  "bands_section",
+  "tc_price_bands"
+ ],
+ "fields": [
+  {
+   "fieldname": "defaults_section",
+   "fieldtype": "Section Break",
+   "label": "Defaults"
+  },
+  {
+   "fieldname": "default_price_per_stem",
+   "fieldtype": "Currency",
+   "label": "Default Price Per Stem"
+  },
+  {
+   "description": "Charge per motherstock pot per month.",
+   "fieldname": "pot_holding_rate_per_month",
+   "fieldtype": "Currency",
+   "label": "Pot Holding Rate Per Month"
+  },
+  {
+   "fieldname": "cb_def",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "hardening_rate",
+   "fieldtype": "Currency",
+   "label": "Hardening Rate"
+  },
+  {
+   "default": "20",
+   "description": "Plantech's own order-to-delivery time. The protocol lead time covers on-farm establishment only, so this is added on top to get the order date.",
+   "fieldname": "lab_turnaround_weeks",
+   "fieldtype": "Int",
+   "label": "Lab Turnaround Weeks"
+  },
+  {
+   "description": "Plantech multiplication bands. Rates are per plantlet.",
+   "fieldname": "bands_section",
+   "fieldtype": "Section Break",
+   "label": "TC Price Bands"
+  },
+  {
+   "fieldname": "tc_price_bands",
+   "fieldtype": "Table",
+   "label": "Tc Price Bands",
+   "options": "Summer Flower TC Price Band"
+  }
+ ],
+ "grid_page_length": 50,
+ "index_web_pages_for_search": 1,
+ "issingle": 1,
+ "links": [],
+ "modified": "2026-07-29 14:16:11.398351",
+ "modified_by": "Administrator",
+ "module": "Summer Flowers",
+ "name": "Summer Flower Settings",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "print": 1,
+   "read": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "print": 1,
+   "read": 1,
+   "role": "Agriculture Manager",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "print": 1,
+   "read": 1,
+   "role": "Agriculture User",
+   "share": 1,
+   "write": 1
+  }
+ ],
+ "row_format": "Dynamic",
+ "rows_threshold_for_grid_search": 20,
+ "sort_field": "creation",
+ "sort_order": "DESC",
+ "states": [],
+ "track_changes": 1
+}

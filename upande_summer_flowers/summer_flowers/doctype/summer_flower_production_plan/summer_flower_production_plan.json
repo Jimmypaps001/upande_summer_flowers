@@ -1,0 +1,436 @@
+{
+ "actions": [],
+ "allow_bulk_edit": 1,
+ "allow_rename": 1,
+ "autoname": "naming_series:",
+ "creation": "2026-07-29 14:10:07.673389",
+ "description": "Weekly production plan built from a market demand register using the farm's protocol. On approval it produces a budget with monthly distributions.",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "details_tab",
+  "identification_section",
+  "naming_series",
+  "market_demand",
+  "variety",
+  "farm",
+  "protocol",
+  "cb_ident",
+  "company",
+  "currency",
+  "price_per_stem",
+  "workflow_state",
+  "status",
+  "period_section",
+  "from_year",
+  "from_week",
+  "cb_period",
+  "to_year",
+  "to_week",
+  "weeks_covered",
+  "outcome_section",
+  "total_production_stems",
+  "total_demand_stems",
+  "cb_outcome",
+  "total_variance_stems",
+  "coverage_pct",
+  "outcome2_section",
+  "weeks_in_deficit",
+  "worst_weekly_deficit",
+  "cb_outcome2",
+  "average_area_ha",
+  "stems_per_ha_year",
+  "planting_totals_section",
+  "new_beds_required",
+  "new_plants_required",
+  "cb_plant",
+  "peak_weekly_sticking",
+  "peak_sticking_week",
+  "budget_link_section",
+  "budget",
+  "weeks_tab",
+  "weeks_section",
+  "plan_weeks",
+  "months_tab",
+  "months_section",
+  "plan_months",
+  "blocks_tab",
+  "blocks_section",
+  "plan_blocks",
+  "amend_section",
+  "amended_from"
+ ],
+ "fields": [
+  {
+   "fieldname": "details_tab",
+   "fieldtype": "Tab Break",
+   "label": "Details"
+  },
+  {
+   "fieldname": "identification_section",
+   "fieldtype": "Section Break"
+  },
+  {
+   "default": "SFPP-.YYYY.-.#####",
+   "fieldname": "naming_series",
+   "fieldtype": "Select",
+   "hidden": 1,
+   "label": "Naming Series",
+   "no_copy": 1,
+   "options": "SFPP-.YYYY.-.#####",
+   "print_hide": 1
+  },
+  {
+   "fieldname": "market_demand",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Market Demand",
+   "options": "Summer Flower Market Demand",
+   "reqd": 1
+  },
+  {
+   "fieldname": "variety",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "label": "Variety",
+   "options": "Item",
+   "read_only": 1
+  },
+  {
+   "fieldname": "farm",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Farm",
+   "options": "Farm",
+   "read_only": 1
+  },
+  {
+   "fieldname": "protocol",
+   "fieldtype": "Link",
+   "label": "Protocol",
+   "options": "Summer Flower Protocol",
+   "read_only": 1
+  },
+  {
+   "fieldname": "cb_ident",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "company",
+   "fieldtype": "Link",
+   "label": "Company",
+   "options": "Company"
+  },
+  {
+   "fieldname": "currency",
+   "fieldtype": "Link",
+   "label": "Currency",
+   "options": "Currency"
+  },
+  {
+   "fieldname": "price_per_stem",
+   "fieldtype": "Currency",
+   "label": "Price Per Stem",
+   "options": "currency"
+  },
+  {
+   "fieldname": "workflow_state",
+   "fieldtype": "Link",
+   "hidden": 1,
+   "in_standard_filter": 1,
+   "label": "Workflow State",
+   "no_copy": 1,
+   "options": "Workflow State",
+   "read_only": 1
+  },
+  {
+   "default": "Draft",
+   "fieldname": "status",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Status",
+   "options": "Draft\nPending Approval\nApproved\nRejected",
+   "read_only": 1
+  },
+  {
+   "fieldname": "period_section",
+   "fieldtype": "Section Break",
+   "label": "Plan Period"
+  },
+  {
+   "fieldname": "from_year",
+   "fieldtype": "Int",
+   "label": "From Year",
+   "reqd": 1
+  },
+  {
+   "fieldname": "from_week",
+   "fieldtype": "Int",
+   "label": "From Week",
+   "reqd": 1
+  },
+  {
+   "fieldname": "cb_period",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "to_year",
+   "fieldtype": "Int",
+   "label": "To Year",
+   "read_only": 1
+  },
+  {
+   "fieldname": "to_week",
+   "fieldtype": "Int",
+   "label": "To Week",
+   "read_only": 1
+  },
+  {
+   "default": "156",
+   "description": "156 weeks is the 3-year rolling horizon.",
+   "fieldname": "weeks_covered",
+   "fieldtype": "Int",
+   "label": "Weeks Covered",
+   "reqd": 1
+  },
+  {
+   "fieldname": "outcome_section",
+   "fieldtype": "Section Break",
+   "label": "Outcome"
+  },
+  {
+   "fieldname": "total_production_stems",
+   "fieldtype": "Int",
+   "label": "Production (stems)",
+   "read_only": 1
+  },
+  {
+   "fieldname": "total_demand_stems",
+   "fieldtype": "Int",
+   "label": "Demand (stems)",
+   "read_only": 1
+  },
+  {
+   "fieldname": "cb_outcome",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "total_variance_stems",
+   "fieldtype": "Int",
+   "label": "Variance (stems)",
+   "read_only": 1
+  },
+  {
+   "fieldname": "coverage_pct",
+   "fieldtype": "Percent",
+   "label": "Demand Coverage %",
+   "read_only": 1
+  },
+  {
+   "fieldname": "outcome2_section",
+   "fieldtype": "Section Break"
+  },
+  {
+   "fieldname": "weeks_in_deficit",
+   "fieldtype": "Int",
+   "label": "Weeks In Deficit",
+   "read_only": 1
+  },
+  {
+   "fieldname": "worst_weekly_deficit",
+   "fieldtype": "Int",
+   "label": "Worst Weekly Deficit",
+   "read_only": 1
+  },
+  {
+   "fieldname": "cb_outcome2",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "average_area_ha",
+   "fieldtype": "Float",
+   "label": "Average Area (ha)",
+   "precision": "4",
+   "read_only": 1
+  },
+  {
+   "fieldname": "stems_per_ha_year",
+   "fieldtype": "Float",
+   "label": "Stems Per Ha Year",
+   "precision": "0",
+   "read_only": 1
+  },
+  {
+   "fieldname": "planting_totals_section",
+   "fieldtype": "Section Break",
+   "label": "Planting Requirement"
+  },
+  {
+   "fieldname": "new_beds_required",
+   "fieldtype": "Int",
+   "label": "New Beds Required",
+   "read_only": 1
+  },
+  {
+   "fieldname": "new_plants_required",
+   "fieldtype": "Int",
+   "label": "New Plants Required",
+   "read_only": 1
+  },
+  {
+   "fieldname": "cb_plant",
+   "fieldtype": "Column Break"
+  },
+  {
+   "description": "Largest single sticking week. This \u2014 not the annual total \u2014 sizes the motherstock.",
+   "fieldname": "peak_weekly_sticking",
+   "fieldtype": "Int",
+   "label": "Peak Weekly Sticking",
+   "read_only": 1
+  },
+  {
+   "fieldname": "peak_sticking_week",
+   "fieldtype": "Data",
+   "label": "Peak Sticking Week",
+   "read_only": 1
+  },
+  {
+   "fieldname": "budget_link_section",
+   "fieldtype": "Section Break",
+   "label": "Budget"
+  },
+  {
+   "fieldname": "budget",
+   "fieldtype": "Link",
+   "label": "Budget",
+   "no_copy": 1,
+   "options": "Summer Flower Budget",
+   "read_only": 1
+  },
+  {
+   "fieldname": "weeks_tab",
+   "fieldtype": "Tab Break",
+   "label": "Weekly"
+  },
+  {
+   "fieldname": "weeks_section",
+   "fieldtype": "Section Break"
+  },
+  {
+   "fieldname": "plan_weeks",
+   "fieldtype": "Table",
+   "label": "Plan Weeks",
+   "options": "Summer Flower Plan Week"
+  },
+  {
+   "fieldname": "months_tab",
+   "fieldtype": "Tab Break",
+   "label": "Monthly"
+  },
+  {
+   "description": "Monthly figures are the reliable view. Weekly variance swings hard because a whole block flushes in one week.",
+   "fieldname": "months_section",
+   "fieldtype": "Section Break"
+  },
+  {
+   "fieldname": "plan_months",
+   "fieldtype": "Table",
+   "label": "Plan Months",
+   "options": "Summer Flower Plan Month"
+  },
+  {
+   "fieldname": "blocks_tab",
+   "fieldtype": "Tab Break",
+   "label": "Plantings"
+  },
+  {
+   "fieldname": "blocks_section",
+   "fieldtype": "Section Break"
+  },
+  {
+   "fieldname": "plan_blocks",
+   "fieldtype": "Table",
+   "label": "Plan Blocks",
+   "options": "Summer Flower Plan Block"
+  },
+  {
+   "fieldname": "amend_section",
+   "fieldtype": "Section Break"
+  },
+  {
+   "fieldname": "amended_from",
+   "fieldtype": "Link",
+   "label": "Amended From",
+   "no_copy": 1,
+   "options": "Summer Flower Production Plan",
+   "print_hide": 1,
+   "read_only": 1
+  }
+ ],
+ "grid_page_length": 50,
+ "index_web_pages_for_search": 1,
+ "is_submittable": 1,
+ "links": [],
+ "modified": "2026-07-29 14:10:07.673389",
+ "modified_by": "Administrator",
+ "module": "Summer Flowers",
+ "name": "Summer Flower Production Plan",
+ "naming_rule": "By \"Naming Series\" field",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "amend": 1,
+   "cancel": 1,
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "submit": 1,
+   "write": 1
+  },
+  {
+   "amend": 1,
+   "cancel": 1,
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Agriculture Manager",
+   "share": 1,
+   "submit": 1,
+   "write": 1
+  },
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Agriculture User",
+   "share": 1,
+   "write": 1
+  }
+ ],
+ "row_format": "Dynamic",
+ "rows_threshold_for_grid_search": 20,
+ "search_fields": "variety,farm,market_demand",
+ "sort_field": "creation",
+ "sort_order": "DESC",
+ "states": [],
+ "title_field": "variety",
+ "track_changes": 1
+}

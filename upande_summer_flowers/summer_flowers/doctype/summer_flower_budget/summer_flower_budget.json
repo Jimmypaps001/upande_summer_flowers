@@ -1,0 +1,265 @@
+{
+ "actions": [],
+ "allow_bulk_edit": 1,
+ "allow_rename": 1,
+ "autoname": "naming_series:",
+ "creation": "2026-07-29 14:13:05.472911",
+ "description": "Monthly stem and value budget derived from an approved production plan. Also writes an ERPNext Monthly Distribution and Budget per fiscal year.",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "details_tab",
+  "identification_section",
+  "naming_series",
+  "production_plan",
+  "market_demand",
+  "variety",
+  "cb_ident",
+  "farm",
+  "company",
+  "currency",
+  "budget_status",
+  "valuation_section",
+  "price_per_stem",
+  "total_stems",
+  "cb_val",
+  "total_value",
+  "months_covered",
+  "accounts_section",
+  "budget_account",
+  "cb_acc",
+  "cost_center",
+  "months_tab",
+  "months_section",
+  "budget_months",
+  "fy_tab",
+  "fy_section",
+  "fiscal_years"
+ ],
+ "fields": [
+  {
+   "fieldname": "details_tab",
+   "fieldtype": "Tab Break",
+   "label": "Details"
+  },
+  {
+   "fieldname": "identification_section",
+   "fieldtype": "Section Break"
+  },
+  {
+   "default": "SFB-.YYYY.-.#####",
+   "fieldname": "naming_series",
+   "fieldtype": "Select",
+   "hidden": 1,
+   "label": "Naming Series",
+   "no_copy": 1,
+   "options": "SFB-.YYYY.-.#####",
+   "print_hide": 1
+  },
+  {
+   "fieldname": "production_plan",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "label": "Production Plan",
+   "options": "Summer Flower Production Plan",
+   "read_only": 1,
+   "reqd": 1
+  },
+  {
+   "fieldname": "market_demand",
+   "fieldtype": "Link",
+   "label": "Market Demand",
+   "options": "Summer Flower Market Demand",
+   "read_only": 1
+  },
+  {
+   "fieldname": "variety",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "label": "Variety",
+   "options": "Item",
+   "read_only": 1
+  },
+  {
+   "fieldname": "cb_ident",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "farm",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Farm",
+   "options": "Farm",
+   "read_only": 1
+  },
+  {
+   "fieldname": "company",
+   "fieldtype": "Link",
+   "label": "Company",
+   "options": "Company",
+   "reqd": 1
+  },
+  {
+   "fieldname": "currency",
+   "fieldtype": "Link",
+   "label": "Currency",
+   "options": "Currency"
+  },
+  {
+   "default": "Draft",
+   "fieldname": "budget_status",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Status",
+   "options": "Draft\nPosted to Accounts",
+   "read_only": 1
+  },
+  {
+   "fieldname": "valuation_section",
+   "fieldtype": "Section Break",
+   "label": "Valuation"
+  },
+  {
+   "fieldname": "price_per_stem",
+   "fieldtype": "Currency",
+   "label": "Price Per Stem",
+   "options": "currency",
+   "reqd": 1
+  },
+  {
+   "fieldname": "total_stems",
+   "fieldtype": "Int",
+   "label": "Total Stems",
+   "read_only": 1
+  },
+  {
+   "fieldname": "cb_val",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "total_value",
+   "fieldtype": "Currency",
+   "label": "Total Value",
+   "options": "currency",
+   "read_only": 1
+  },
+  {
+   "fieldname": "months_covered",
+   "fieldtype": "Int",
+   "label": "Months Covered",
+   "read_only": 1
+  },
+  {
+   "description": "Used when writing the ERPNext Budget. This site budgets against Farm, so the farm above is carried through.",
+   "fieldname": "accounts_section",
+   "fieldtype": "Section Break",
+   "label": "Accounts Posting"
+  },
+  {
+   "description": "Income account the stem revenue budget is booked against.",
+   "fieldname": "budget_account",
+   "fieldtype": "Link",
+   "label": "Budget Account",
+   "options": "Account"
+  },
+  {
+   "fieldname": "cb_acc",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "cost_center",
+   "fieldtype": "Link",
+   "label": "Cost Center",
+   "options": "Cost Center"
+  },
+  {
+   "fieldname": "months_tab",
+   "fieldtype": "Tab Break",
+   "label": "Monthly Distribution"
+  },
+  {
+   "fieldname": "months_section",
+   "fieldtype": "Section Break"
+  },
+  {
+   "fieldname": "budget_months",
+   "fieldtype": "Table",
+   "label": "Budget Months",
+   "options": "Summer Flower Budget Month"
+  },
+  {
+   "fieldname": "fy_tab",
+   "fieldtype": "Tab Break",
+   "label": "Fiscal Years"
+  },
+  {
+   "description": "One ERPNext Monthly Distribution and Budget is written per fiscal year the plan spans.",
+   "fieldname": "fy_section",
+   "fieldtype": "Section Break"
+  },
+  {
+   "fieldname": "fiscal_years",
+   "fieldtype": "Table",
+   "label": "Fiscal Years",
+   "options": "Summer Flower Budget Fiscal Year"
+  }
+ ],
+ "grid_page_length": 50,
+ "index_web_pages_for_search": 1,
+ "links": [],
+ "modified": "2026-07-29 14:13:05.472911",
+ "modified_by": "Administrator",
+ "module": "Summer Flowers",
+ "name": "Summer Flower Budget",
+ "naming_rule": "By \"Naming Series\" field",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Agriculture Manager",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Agriculture User",
+   "share": 1,
+   "write": 1
+  }
+ ],
+ "row_format": "Dynamic",
+ "rows_threshold_for_grid_search": 20,
+ "search_fields": "variety,farm,production_plan",
+ "sort_field": "creation",
+ "sort_order": "DESC",
+ "states": [],
+ "title_field": "variety",
+ "track_changes": 1
+}

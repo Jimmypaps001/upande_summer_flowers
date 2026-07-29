@@ -1,0 +1,302 @@
+{
+ "actions": [],
+ "allow_bulk_edit": 1,
+ "allow_rename": 1,
+ "autoname": "format:{block}-{planting_year}-W{planting_week}",
+ "creation": "2026-07-29 14:08:17.977526",
+ "description": "One planting standing on a block. Drives what is currently on the ground and what it will flush.",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "details_tab",
+  "identification_section",
+  "block",
+  "farm",
+  "variety",
+  "cb_ident",
+  "protocol",
+  "planting_status",
+  "company",
+  "size_section",
+  "beds",
+  "plants",
+  "cb_size",
+  "gross_area_ha",
+  "net_area_sqm",
+  "dates_section",
+  "planting_date",
+  "planting_year",
+  "planting_week",
+  "cb_dates",
+  "sticking_date",
+  "pinch_date",
+  "planned_uproot_date",
+  "actual_uproot_date",
+  "harvest_section",
+  "first_harvest_year",
+  "first_harvest_week",
+  "cb_harv",
+  "harvest_week_family",
+  "lifetime_stems",
+  "flush_tab",
+  "flush_section",
+  "flush_projection"
+ ],
+ "fields": [
+  {
+   "fieldname": "details_tab",
+   "fieldtype": "Tab Break",
+   "label": "Details"
+  },
+  {
+   "fieldname": "identification_section",
+   "fieldtype": "Section Break"
+  },
+  {
+   "fieldname": "block",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "label": "Block",
+   "options": "Summer Flower Block",
+   "reqd": 1
+  },
+  {
+   "fetch_from": "block.farm",
+   "fieldname": "farm",
+   "fieldtype": "Link",
+   "in_standard_filter": 1,
+   "label": "Farm",
+   "options": "Farm",
+   "read_only": 1
+  },
+  {
+   "fieldname": "variety",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Variety",
+   "options": "Item",
+   "reqd": 1
+  },
+  {
+   "fieldname": "cb_ident",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "protocol",
+   "fieldtype": "Link",
+   "label": "Protocol",
+   "options": "Summer Flower Protocol",
+   "reqd": 1
+  },
+  {
+   "default": "Planned",
+   "fieldname": "planting_status",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Status",
+   "options": "Planned\nStuck\nPlanted\nProducing\nUprooted"
+  },
+  {
+   "fieldname": "company",
+   "fieldtype": "Link",
+   "label": "Company",
+   "options": "Company"
+  },
+  {
+   "fieldname": "size_section",
+   "fieldtype": "Section Break",
+   "label": "Size"
+  },
+  {
+   "fieldname": "beds",
+   "fieldtype": "Int",
+   "in_list_view": 1,
+   "label": "Beds",
+   "reqd": 1
+  },
+  {
+   "fieldname": "plants",
+   "fieldtype": "Int",
+   "in_list_view": 1,
+   "label": "Plants",
+   "read_only": 1
+  },
+  {
+   "fieldname": "cb_size",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "gross_area_ha",
+   "fieldtype": "Float",
+   "label": "Gross Area (ha)",
+   "precision": "5",
+   "read_only": 1
+  },
+  {
+   "fieldname": "net_area_sqm",
+   "fieldtype": "Float",
+   "label": "Net Area (m\u00b2)",
+   "precision": "1",
+   "read_only": 1
+  },
+  {
+   "fieldname": "dates_section",
+   "fieldtype": "Section Break",
+   "label": "Dates"
+  },
+  {
+   "fieldname": "planting_date",
+   "fieldtype": "Date",
+   "in_list_view": 1,
+   "label": "Planting Date",
+   "reqd": 1
+  },
+  {
+   "fieldname": "planting_year",
+   "fieldtype": "Int",
+   "label": "Planting Year",
+   "read_only": 1
+  },
+  {
+   "fieldname": "planting_week",
+   "fieldtype": "Int",
+   "label": "Planting Week",
+   "read_only": 1
+  },
+  {
+   "fieldname": "cb_dates",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "sticking_date",
+   "fieldtype": "Date",
+   "label": "Sticking Date",
+   "read_only": 1
+  },
+  {
+   "fieldname": "pinch_date",
+   "fieldtype": "Date",
+   "label": "Pinch Date",
+   "read_only": 1
+  },
+  {
+   "fieldname": "planned_uproot_date",
+   "fieldtype": "Date",
+   "label": "Planned Uproot Date",
+   "read_only": 1
+  },
+  {
+   "description": "Set this to end the planting early; coverage and projections stop here.",
+   "fieldname": "actual_uproot_date",
+   "fieldtype": "Date",
+   "label": "Actual Uproot Date"
+  },
+  {
+   "fieldname": "harvest_section",
+   "fieldtype": "Section Break",
+   "label": "Harvest Pattern"
+  },
+  {
+   "fieldname": "first_harvest_year",
+   "fieldtype": "Int",
+   "label": "First Harvest Year",
+   "read_only": 1
+  },
+  {
+   "fieldname": "first_harvest_week",
+   "fieldtype": "Int",
+   "label": "First Harvest Week",
+   "read_only": 1
+  },
+  {
+   "fieldname": "cb_harv",
+   "fieldtype": "Column Break"
+  },
+  {
+   "description": "The weeks of the year this planting harvests in, every year, until it is uprooted.",
+   "fieldname": "harvest_week_family",
+   "fieldtype": "Data",
+   "label": "Harvest Week Family",
+   "read_only": 1
+  },
+  {
+   "fieldname": "lifetime_stems",
+   "fieldtype": "Int",
+   "label": "Lifetime Stems",
+   "read_only": 1
+  },
+  {
+   "fieldname": "flush_tab",
+   "fieldtype": "Tab Break",
+   "label": "Projected Flushes"
+  },
+  {
+   "fieldname": "flush_section",
+   "fieldtype": "Section Break"
+  },
+  {
+   "fieldname": "flush_projection",
+   "fieldtype": "Table",
+   "label": "Flush Projection",
+   "options": "Summer Flower Planting Flush"
+  }
+ ],
+ "grid_page_length": 50,
+ "index_web_pages_for_search": 1,
+ "links": [],
+ "modified": "2026-07-29 14:08:17.977526",
+ "modified_by": "Administrator",
+ "module": "Summer Flowers",
+ "name": "Summer Flower Planting",
+ "naming_rule": "Expression (old style)",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Agriculture Manager",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Agriculture User",
+   "share": 1,
+   "write": 1
+  }
+ ],
+ "row_format": "Dynamic",
+ "rows_threshold_for_grid_search": 20,
+ "search_fields": "block,variety,planting_date",
+ "sort_field": "planting_date",
+ "sort_order": "DESC",
+ "states": [],
+ "title_field": "variety",
+ "track_changes": 1
+}

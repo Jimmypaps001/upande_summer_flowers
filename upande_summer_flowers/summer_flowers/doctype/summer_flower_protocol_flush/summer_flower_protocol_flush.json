@@ -1,0 +1,76 @@
+{
+ "actions": [],
+ "allow_bulk_edit": 1,
+ "allow_rename": 1,
+ "creation": "2026-07-29 14:00:51.740144",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "flush_number",
+  "weeks_from_pinch",
+  "stems_per_plant",
+  "weeks_from_planting",
+  "harvest_week_of_year"
+ ],
+ "fields": [
+  {
+   "columns": 1,
+   "fieldname": "flush_number",
+   "fieldtype": "Int",
+   "in_list_view": 1,
+   "label": "Flush Number",
+   "reqd": 1
+  },
+  {
+   "columns": 2,
+   "description": "Weeks after pinching that this flush is harvested",
+   "fieldname": "weeks_from_pinch",
+   "fieldtype": "Int",
+   "in_list_view": 1,
+   "label": "Weeks From Pinch",
+   "reqd": 1
+  },
+  {
+   "columns": 2,
+   "fieldname": "stems_per_plant",
+   "fieldtype": "Float",
+   "in_list_view": 1,
+   "label": "Stems Per Plant",
+   "precision": "3",
+   "reqd": 1
+  },
+  {
+   "columns": 2,
+   "fieldname": "weeks_from_planting",
+   "fieldtype": "Int",
+   "in_list_view": 1,
+   "label": "Weeks From Planting",
+   "read_only": 1
+  },
+  {
+   "columns": 2,
+   "description": "Week of year this flush lands on, relative to the planting week",
+   "fieldname": "harvest_week_of_year",
+   "fieldtype": "Data",
+   "label": "Harvest Week (rel.)",
+   "read_only": 1
+  }
+ ],
+ "grid_page_length": 50,
+ "index_web_pages_for_search": 1,
+ "istable": 1,
+ "links": [],
+ "modified": "2026-07-29 14:00:51.740144",
+ "modified_by": "Administrator",
+ "module": "Summer Flowers",
+ "name": "Summer Flower Protocol Flush",
+ "owner": "Administrator",
+ "permissions": [],
+ "row_format": "Dynamic",
+ "rows_threshold_for_grid_search": 20,
+ "sort_field": "creation",
+ "sort_order": "DESC",
+ "states": [],
+ "track_changes": 1
+}

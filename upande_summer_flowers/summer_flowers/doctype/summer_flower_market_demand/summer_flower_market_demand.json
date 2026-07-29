@@ -1,0 +1,285 @@
+{
+ "actions": [],
+ "allow_bulk_edit": 1,
+ "allow_rename": 1,
+ "autoname": "format:{variety}-{farm}",
+ "creation": "2026-07-29 14:05:07.451190",
+ "description": "Living weekly demand register for one variety at one farm. Extended progressively so the horizon always reaches the target years ahead.",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "details_tab",
+  "identification_section",
+  "variety",
+  "farm",
+  "protocol",
+  "cb_ident",
+  "company",
+  "currency",
+  "price_per_stem",
+  "horizon_section",
+  "target_years_ahead",
+  "horizon_start",
+  "horizon_end",
+  "cb_horizon",
+  "weeks_covered",
+  "weeks_ahead_of_today",
+  "horizon_gap_weeks",
+  "horizon_status",
+  "totals_section",
+  "total_demand_stems",
+  "firm_demand_stems",
+  "cb_totals",
+  "peak_weekly_demand",
+  "average_weekly_demand",
+  "weeks_tab",
+  "weeks_section",
+  "demand_weeks",
+  "grades_tab",
+  "grade_section",
+  "demand_grades",
+  "grade_total_pct"
+ ],
+ "fields": [
+  {
+   "fieldname": "details_tab",
+   "fieldtype": "Tab Break",
+   "label": "Details"
+  },
+  {
+   "fieldname": "identification_section",
+   "fieldtype": "Section Break"
+  },
+  {
+   "fieldname": "variety",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Variety",
+   "options": "Item",
+   "reqd": 1
+  },
+  {
+   "fieldname": "farm",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Farm",
+   "options": "Farm",
+   "reqd": 1
+  },
+  {
+   "description": "Supplies the flush curve and geometry used to plan against this demand.",
+   "fieldname": "protocol",
+   "fieldtype": "Link",
+   "label": "Protocol",
+   "options": "Summer Flower Protocol",
+   "reqd": 1
+  },
+  {
+   "fieldname": "cb_ident",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "company",
+   "fieldtype": "Link",
+   "label": "Company",
+   "options": "Company"
+  },
+  {
+   "fieldname": "currency",
+   "fieldtype": "Link",
+   "label": "Currency",
+   "options": "Currency"
+  },
+  {
+   "description": "Used to value the budget produced from the approved plan.",
+   "fieldname": "price_per_stem",
+   "fieldtype": "Currency",
+   "label": "Price Per Stem",
+   "options": "currency"
+  },
+  {
+   "fieldname": "horizon_section",
+   "fieldtype": "Section Break",
+   "label": "Rolling Horizon"
+  },
+  {
+   "default": "3",
+   "description": "Demand is entered progressively; the horizon should always reach this many years beyond today.",
+   "fieldname": "target_years_ahead",
+   "fieldtype": "Int",
+   "label": "Target Years Ahead",
+   "reqd": 1
+  },
+  {
+   "fieldname": "horizon_start",
+   "fieldtype": "Data",
+   "label": "Horizon Start",
+   "read_only": 1
+  },
+  {
+   "fieldname": "horizon_end",
+   "fieldtype": "Data",
+   "label": "Horizon End",
+   "read_only": 1
+  },
+  {
+   "fieldname": "cb_horizon",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "weeks_covered",
+   "fieldtype": "Int",
+   "label": "Weeks Covered",
+   "read_only": 1
+  },
+  {
+   "fieldname": "weeks_ahead_of_today",
+   "fieldtype": "Int",
+   "label": "Weeks Ahead Of Today",
+   "read_only": 1
+  },
+  {
+   "description": "Weeks still to be added to reach the target. Zero means the register is far enough ahead.",
+   "fieldname": "horizon_gap_weeks",
+   "fieldtype": "Int",
+   "label": "Horizon Shortfall (weeks)",
+   "read_only": 1
+  },
+  {
+   "fieldname": "horizon_status",
+   "fieldtype": "Data",
+   "label": "Status",
+   "read_only": 1
+  },
+  {
+   "fieldname": "totals_section",
+   "fieldtype": "Section Break",
+   "label": "Totals"
+  },
+  {
+   "fieldname": "total_demand_stems",
+   "fieldtype": "Int",
+   "label": "Total Demand (stems)",
+   "read_only": 1
+  },
+  {
+   "fieldname": "firm_demand_stems",
+   "fieldtype": "Int",
+   "label": "Firm Demand (stems)",
+   "read_only": 1
+  },
+  {
+   "fieldname": "cb_totals",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "peak_weekly_demand",
+   "fieldtype": "Int",
+   "label": "Peak Weekly Demand",
+   "read_only": 1
+  },
+  {
+   "fieldname": "average_weekly_demand",
+   "fieldtype": "Float",
+   "label": "Average Weekly Demand",
+   "precision": "0",
+   "read_only": 1
+  },
+  {
+   "fieldname": "weeks_tab",
+   "fieldtype": "Tab Break",
+   "label": "Demand Weeks"
+  },
+  {
+   "fieldname": "weeks_section",
+   "fieldtype": "Section Break"
+  },
+  {
+   "fieldname": "demand_weeks",
+   "fieldtype": "Table",
+   "label": "Demand Weeks",
+   "options": "Summer Flower Demand Week"
+  },
+  {
+   "fieldname": "grades_tab",
+   "fieldtype": "Tab Break",
+   "label": "Grade Split"
+  },
+  {
+   "description": "How the customer wants the stems graded. May differ from what the crop actually produces -- the plan reports both.",
+   "fieldname": "grade_section",
+   "fieldtype": "Section Break",
+   "label": "Demand Grade Split"
+  },
+  {
+   "fieldname": "demand_grades",
+   "fieldtype": "Table",
+   "label": "Demand Grades",
+   "options": "Summer Flower Demand Grade"
+  },
+  {
+   "fieldname": "grade_total_pct",
+   "fieldtype": "Percent",
+   "label": "Total %",
+   "read_only": 1
+  }
+ ],
+ "grid_page_length": 50,
+ "index_web_pages_for_search": 1,
+ "links": [],
+ "modified": "2026-07-29 14:05:07.451190",
+ "modified_by": "Administrator",
+ "module": "Summer Flowers",
+ "name": "Summer Flower Market Demand",
+ "naming_rule": "Expression (old style)",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Agriculture Manager",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Agriculture User",
+   "share": 1,
+   "write": 1
+  }
+ ],
+ "row_format": "Dynamic",
+ "rows_threshold_for_grid_search": 20,
+ "search_fields": "variety,farm",
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": [],
+ "title_field": "variety",
+ "track_changes": 1
+}

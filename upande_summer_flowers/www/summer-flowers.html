@@ -1,0 +1,591 @@
+{% extends "templates/web.html" %}
+
+{% block title %}{{ _("Summer Flowers") }}{% endblock %}
+
+{% block page_content %}
+<div class="sf-root viz-root" id="sf-root">
+
+  <header class="sf-head">
+    <h1>{{ _("Summer Flowers") }}</h1>
+    <p class="sf-sub">{{ _("Demand horizon, production plan, blocks on the ground and motherstock scheduling.") }}</p>
+  </header>
+
+  <!-- filters: one row above the charts -->
+  <div class="sf-filters" role="group" aria-label="{{ _('Filters') }}">
+    <label>{{ _("Farm") }}
+      <select id="f-farm"><option value="">{{ _("All farms") }}</option></select>
+    </label>
+    <label>{{ _("Variety") }}
+      <select id="f-variety"><option value="">{{ _("All varieties") }}</option></select>
+    </label>
+    <span class="sf-asof" id="asof"></span>
+  </div>
+
+  <div id="sf-body" hidden>
+
+    <!-- headline numbers -->
+    <section class="sf-tiles" id="tiles" aria-label="{{ _('Key figures') }}"></section>
+
+    <!-- monthly production vs demand -->
+    <section class="sf-card">
+      <div class="sf-card-head">
+        <div>
+          <h2>{{ _("Monthly production vs demand") }}</h2>
+          <p class="sf-note" id="chart-sub"></p>
+        </div>
+        <div class="sf-toggle" role="group" aria-label="{{ _('View as') }}">
+          <button type="button" id="btn-chart" class="is-on" aria-pressed="true">{{ _("Chart") }}</button>
+          <button type="button" id="btn-table" aria-pressed="false">{{ _("Table") }}</button>
+        </div>
+      </div>
+
+      <div class="sf-legend" id="legend">
+        <span class="sf-key"><i class="sw" style="background:var(--series-1)"></i>{{ _("Production") }}</span>
+        <span class="sf-key"><i class="sw" style="background:var(--series-2)"></i>{{ _("Demand") }}</span>
+      </div>
+
+      <div class="sf-chart-wrap">
+        <div id="chart" class="sf-chart"></div>
+        <div id="chart-table" hidden></div>
+      </div>
+      <p class="sf-note">{{ _("Monthly is the reliable view. Weekly variance swings hard because a whole block flushes in a single week.") }}</p>
+    </section>
+
+    <div class="sf-two">
+      <!-- block coverage -->
+      <section class="sf-card">
+        <div class="sf-card-head"><h2>{{ _("Block coverage") }}</h2></div>
+        <div id="coverage"></div>
+      </section>
+
+      <!-- motherstock -->
+      <section class="sf-card">
+        <div class="sf-card-head"><h2>{{ _("Motherstock") }}</h2></div>
+        <div id="motherstock"></div>
+      </section>
+    </div>
+
+    <!-- on the ground -->
+    <section class="sf-card">
+      <div class="sf-card-head"><h2>{{ _("On the ground") }}</h2></div>
+      <div id="onground" class="sf-scroll"></div>
+    </section>
+
+    <!-- protocols -->
+    <section class="sf-card">
+      <div class="sf-card-head">
+        <div>
+          <h2>{{ _("Protocols by farm") }}</h2>
+          <p class="sf-note">{{ _("The same variety carries different parameters per farm, because climate changes the flush curve.") }}</p>
+        </div>
+      </div>
+      <div id="protocols" class="sf-scroll"></div>
+    </section>
+
+    <!-- plans -->
+    <section class="sf-card">
+      <div class="sf-card-head"><h2>{{ _("Production plans") }}</h2></div>
+      <div id="plans" class="sf-scroll"></div>
+    </section>
+  </div>
+
+  <p id="sf-loading" class="sf-note">{{ _("Loading…") }}</p>
+  <div id="sf-tip" class="sf-tip" hidden></div>
+</div>
+
+<style>
+/* ---- palette: roles only, so light/dark swaps in one place -------------- */
+.sf-root.viz-root {
+  color-scheme: light;
+  --surface-1: #fcfcfb;
+  --surface-2: #f4f4f1;
+  --text-primary: #0b0b0b;
+  --text-secondary: #52514e;
+  --text-muted: #898781;
+  --gridline: #e1e0d9;
+  --baseline: #c3c2b7;
+  --border: rgba(11, 11, 11, 0.10);
+  --series-1: #2a78d6;   /* production */
+  --series-2: #eb6834;   /* demand */
+  --seq-400: #3987e5;    /* coverage bars: one hue, light -> dark */
+  --seq-200: #9ec5f4;
+  --good: #0ca30c;
+  --warning: #fab219;
+  --serious: #ec835a;
+  --critical: #d03b3b;
+}
+@media (prefers-color-scheme: dark) {
+  :root:where(:not([data-theme="light"])) .sf-root.viz-root {
+    color-scheme: dark;
+    --surface-1: #1a1a19;
+    --surface-2: #232322;
+    --text-primary: #ffffff;
+    --text-secondary: #c3c2b7;
+    --text-muted: #898781;
+    --gridline: #2c2c2a;
+    --baseline: #383835;
+    --border: rgba(255, 255, 255, 0.10);
+    --series-1: #3987e5;
+    --series-2: #d95926;
+    --seq-400: #3987e5;
+    --seq-200: #184f95;
+  }
+}
+:root[data-theme="dark"] .sf-root.viz-root {
+  color-scheme: dark;
+  --surface-1: #1a1a19;
+  --surface-2: #232322;
+  --text-primary: #ffffff;
+  --text-secondary: #c3c2b7;
+  --text-muted: #898781;
+  --gridline: #2c2c2a;
+  --baseline: #383835;
+  --border: rgba(255, 255, 255, 0.10);
+  --series-1: #3987e5;
+  --series-2: #d95926;
+  --seq-400: #3987e5;
+  --seq-200: #184f95;
+}
+
+.sf-root { max-width: 1180px; margin: 0 auto; padding: 8px 0 64px;
+           color: var(--text-primary); }
+.sf-head h1 { font-size: 1.7rem; margin: 0 0 4px; letter-spacing: -0.4px; }
+.sf-sub { color: var(--text-secondary); margin: 0 0 20px; font-size: 0.9rem; }
+
+.sf-filters { display: flex; flex-wrap: wrap; gap: 14px; align-items: flex-end;
+              padding: 12px 14px; margin-bottom: 18px; background: var(--surface-2);
+              border: 1px solid var(--border); border-radius: 8px; }
+.sf-filters label { display: flex; flex-direction: column; gap: 4px;
+                    font-size: 0.72rem; text-transform: uppercase;
+                    letter-spacing: 0.6px; color: var(--text-muted); margin: 0; }
+.sf-filters select { min-width: 190px; padding: 6px 8px; font-size: 0.88rem;
+                     border: 1px solid var(--border); border-radius: 6px;
+                     background: var(--surface-1); color: var(--text-primary); }
+.sf-asof { margin-left: auto; font-size: 0.78rem; color: var(--text-muted); }
+
+.sf-tiles { display: grid; gap: 12px; margin-bottom: 18px;
+            grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); }
+.sf-tile { padding: 14px 16px; background: var(--surface-2);
+           border: 1px solid var(--border); border-radius: 8px; }
+.sf-tile .k { font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.7px;
+              color: var(--text-muted); margin-bottom: 6px; }
+.sf-tile .v { font-size: 1.5rem; font-weight: 600; line-height: 1.1;
+              font-variant-numeric: tabular-nums; }
+.sf-tile .m { font-size: 0.76rem; color: var(--text-secondary); margin-top: 4px; }
+
+.sf-card { background: var(--surface-1); border: 1px solid var(--border);
+           border-radius: 10px; padding: 16px 18px; margin-bottom: 18px; }
+.sf-card-head { display: flex; justify-content: space-between; align-items: flex-start;
+                gap: 12px; margin-bottom: 10px; }
+.sf-card-head h2 { font-size: 1rem; margin: 0; font-weight: 600; }
+.sf-note { font-size: 0.76rem; color: var(--text-secondary); margin: 6px 0 0; }
+.sf-two { display: grid; gap: 18px; grid-template-columns: 1fr 1fr; }
+@media (max-width: 860px) { .sf-two { grid-template-columns: 1fr; } }
+
+.sf-toggle { display: inline-flex; border: 1px solid var(--border);
+             border-radius: 6px; overflow: hidden; flex: none; }
+.sf-toggle button { border: 0; background: var(--surface-1); padding: 5px 12px;
+                    font-size: 0.78rem; color: var(--text-secondary); cursor: pointer; }
+.sf-toggle button.is-on { background: var(--seq-400); color: #fff; }
+
+.sf-legend { display: flex; gap: 16px; margin-bottom: 8px; }
+.sf-key { display: inline-flex; align-items: center; gap: 6px;
+          font-size: 0.78rem; color: var(--text-secondary); }
+.sf-key .sw { width: 10px; height: 10px; border-radius: 2px; display: inline-block; }
+
+.sf-chart-wrap { overflow-x: auto; }
+.sf-chart svg { display: block; }
+.sf-chart .grid line { stroke: var(--gridline); stroke-width: 1; }
+.sf-chart .baseline { stroke: var(--baseline); stroke-width: 1; }
+.sf-chart text { fill: var(--text-muted); font-size: 10px; }
+.sf-chart .bar { cursor: pointer; }
+.sf-chart .bar:hover { opacity: 0.82; }
+
+table.sf-t { width: 100%; border-collapse: collapse; font-size: 0.8rem; }
+table.sf-t th { text-align: left; font-size: 0.68rem; text-transform: uppercase;
+                letter-spacing: 0.5px; color: var(--text-muted);
+                border-bottom: 1px solid var(--baseline); padding: 6px 8px;
+                white-space: nowrap; }
+table.sf-t td { padding: 6px 8px; border-bottom: 1px solid var(--gridline);
+                vertical-align: middle; }
+table.sf-t td.n { text-align: right; font-variant-numeric: tabular-nums;
+                  white-space: nowrap; }
+.sf-scroll { overflow-x: auto; }
+
+.cov-row { display: grid; grid-template-columns: 130px 1fr 96px; gap: 10px;
+           align-items: center; padding: 5px 0; }
+.cov-name { font-size: 0.8rem; overflow: hidden; text-overflow: ellipsis;
+            white-space: nowrap; }
+.cov-track { height: 12px; background: var(--surface-2); border-radius: 4px;
+             overflow: hidden; }
+.cov-fill { height: 100%; background: var(--seq-400); border-radius: 0 4px 4px 0; }
+.cov-val { font-size: 0.78rem; color: var(--text-secondary); text-align: right;
+           font-variant-numeric: tabular-nums; }
+
+.pill { display: inline-flex; align-items: center; gap: 5px; padding: 2px 8px;
+        border-radius: 999px; font-size: 0.72rem; font-weight: 500;
+        border: 1px solid var(--border); white-space: nowrap; }
+.pill .dot { width: 7px; height: 7px; border-radius: 50%; }
+
+.sf-tip { position: fixed; z-index: 60; pointer-events: none; padding: 7px 10px;
+          background: var(--text-primary); color: var(--surface-1);
+          border-radius: 6px; font-size: 0.75rem; line-height: 1.45;
+          box-shadow: 0 3px 12px rgba(0,0,0,0.18); max-width: 240px; }
+.sf-tip b { font-weight: 600; }
+.sf-empty { color: var(--text-muted); font-size: 0.82rem; padding: 10px 0; }
+</style>
+
+<script>
+(function () {
+  "use strict";
+
+  const $ = (id) => document.getElementById(id);
+  const nf = new Intl.NumberFormat();
+  const num = (v) => nf.format(Math.round(v || 0));
+  const esc = (s) =>
+    String(s == null ? "" : s).replace(/[&<>"']/g, (c) =>
+      ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c])
+    );
+
+  const M = "upande_summer_flowers.summer_flowers.api.";
+  const call = (method, args) =>
+    frappe.call({ method: M + method, args: args || {} }).then((r) => r.message);
+
+  const state = { farm: "", variety: "" };
+
+  // ---- status pills: colour is never the only cue, a label always rides along
+  const STATUS = {
+    Planned: "--text-muted", "TC Ordered": "--warning", Establishing: "--warning",
+    Multiplying: "--serious", Productive: "--good", Expired: "--critical",
+    Draft: "--text-muted", "Pending Approval": "--warning",
+    Approved: "--good", Rejected: "--critical",
+  };
+  const pill = (label) =>
+    `<span class="pill"><i class="dot" style="background:var(${
+      STATUS[label] || "--text-muted"
+    })"></i>${esc(label || "—")}</span>`;
+
+  // ---------------------------------------------------------------- tooltip
+  const tip = $("sf-tip");
+  function showTip(html, ev) {
+    tip.innerHTML = html;
+    tip.hidden = false;
+    const r = tip.getBoundingClientRect();
+    let x = ev.clientX + 14;
+    let y = ev.clientY - r.height - 10;
+    if (x + r.width > window.innerWidth - 8) x = ev.clientX - r.width - 14;
+    if (y < 8) y = ev.clientY + 16;
+    tip.style.left = x + "px";
+    tip.style.top = y + "px";
+  }
+  const hideTip = () => { tip.hidden = true; };
+
+  // ------------------------------------------------------------------ chart
+  function drawBars(el, months) {
+    if (!months.length) {
+      el.innerHTML = '<p class="sf-empty">No monthly rows yet.</p>';
+      return;
+    }
+
+    const GAP = 2;                     // surface gap between adjacent bars
+    const bw = 11;                     // thin marks
+    const group = bw * 2 + GAP;
+    const step = group + 14;
+    const padL = 54, padR = 12, padT = 12, padB = 34;
+    const h = 240;
+    const plotH = h - padT - padB;
+    const w = Math.max(560, padL + padR + months.length * step);
+    const max = Math.max(...months.flatMap((m) => [m.production, m.demand]), 1);
+
+    // ~5 rounded ticks
+    const mag = Math.pow(10, Math.floor(Math.log10(max)));
+    const tickStep = Math.ceil(max / 4 / mag) * mag;
+    const top = Math.ceil(max / tickStep) * tickStep;
+    const ticks = [];
+    for (let v = 0; v <= top; v += tickStep) ticks.push(v);
+
+    const y = (v) => padT + plotH - (v / top) * plotH;
+    const R = 4;                       // rounded data-end, anchored to baseline
+
+    // Bars are drawn as paths so only the data-end is rounded.
+    function bar(x, v, fill, label, meta) {
+      const bh = Math.max(0, plotH - (y(v) - padT));
+      if (bh <= 0) return "";
+      const r = Math.min(R, bh);
+      const y0 = y(v);
+      const d = `M${x},${padT + plotH} V${y0 + r} Q${x},${y0} ${x + r},${y0}
+                 H${x + bw - r} Q${x + bw},${y0} ${x + bw},${y0 + r}
+                 V${padT + plotH} Z`;
+      return `<path class="bar" d="${d}" fill="${fill}" data-tip="${esc(meta)}"><title>${esc(label)}</title></path>`;
+    }
+
+    let svg = `<svg viewBox="0 0 ${w} ${h}" width="${w}" height="${h}" role="img"
+      aria-label="Monthly production versus demand">`;
+    svg += '<g class="grid">';
+    ticks.forEach((t) => {
+      svg += `<line x1="${padL}" x2="${w - padR}" y1="${y(t)}" y2="${y(t)}"/>`;
+      svg += `<text x="${padL - 8}" y="${y(t) + 3}" text-anchor="end">${num(t)}</text>`;
+    });
+    svg += "</g>";
+
+    months.forEach((m, i) => {
+      const x = padL + i * step + 7;
+      svg += bar(x, m.production, "var(--series-1)", `${m.label} production ${num(m.production)}`,
+        `<b>${esc(m.label)}</b><br>Production ${num(m.production)}<br>Demand ${num(m.demand)}<br>Variance ${m.variance > 0 ? "+" : ""}${num(m.variance)}`);
+      svg += bar(x + bw + GAP, m.demand, "var(--series-2)", `${m.label} demand ${num(m.demand)}`,
+        `<b>${esc(m.label)}</b><br>Production ${num(m.production)}<br>Demand ${num(m.demand)}<br>Variance ${m.variance > 0 ? "+" : ""}${num(m.variance)}`);
+      // label every other month so ticks never collide
+      if (months.length <= 18 || i % 2 === 0) {
+        svg += `<text x="${x + bw + GAP / 2}" y="${h - padB + 14}" text-anchor="middle">${esc(m.label)}</text>`;
+      }
+    });
+
+    svg += `<line class="baseline" x1="${padL}" x2="${w - padR}" y1="${padT + plotH}" y2="${padT + plotH}"/>`;
+    svg += "</svg>";
+    el.innerHTML = svg;
+
+    el.querySelectorAll(".bar").forEach((b) => {
+      b.addEventListener("mousemove", (ev) => showTip(b.dataset.tip, ev));
+      b.addEventListener("mouseleave", hideTip);
+    });
+  }
+
+  function monthTable(months) {
+    if (!months.length) return '<p class="sf-empty">No monthly rows yet.</p>';
+    return (
+      '<table class="sf-t"><thead><tr><th>Month</th><th class="n">Production</th>' +
+      '<th class="n">Demand</th><th class="n">Variance</th></tr></thead><tbody>' +
+      months.map((m) =>
+        `<tr><td>${esc(m.label)}</td><td class="n">${num(m.production)}</td>` +
+        `<td class="n">${num(m.demand)}</td><td class="n">${m.variance > 0 ? "+" : ""}${num(m.variance)}</td></tr>`
+      ).join("") +
+      "</tbody></table>"
+    );
+  }
+
+  // ------------------------------------------------------------------ tiles
+  function renderTiles(ov) {
+    const d = ov.demands[0];
+    const p = ov.plans.find((x) => x.docstatus < 2) || ov.plans[0];
+    const t = [];
+
+    if (d) {
+      const short = (d.horizon_gap_weeks || 0) > 0;
+      t.push({
+        k: "Demand horizon",
+        v: d.horizon_end || "—",
+        m: short
+          ? `Short by ${d.horizon_gap_weeks} wks of ${d.target_years_ahead}-yr target`
+          : `${d.weeks_ahead_of_today} weeks ahead`,
+        c: short ? "--warning" : "--good",
+      });
+    }
+    if (p) {
+      t.push({
+        k: "Demand coverage",
+        v: (p.coverage_pct || 0).toFixed(1) + "%",
+        m: `${num(p.total_production_stems)} vs ${num(p.total_demand_stems)} stems`,
+        c: (p.coverage_pct || 0) >= 100 ? "--good" : "--serious",
+      });
+      t.push({
+        k: "Weeks in deficit",
+        v: num(p.weeks_in_deficit),
+        m: p.worst_weekly_deficit ? `Worst ${num(p.worst_weekly_deficit)} stems` : "None",
+        c: p.weeks_in_deficit ? "--serious" : "--good",
+      });
+      t.push({
+        k: "Peak sticking week",
+        v: num(p.peak_weekly_sticking),
+        m: (p.peak_sticking_week || "—") + " — sizes the motherstock",
+      });
+    }
+    const ms = ov.motherstock.filter((b) => b.renewal_overdue).length;
+    if (ov.motherstock.length) {
+      t.push({
+        k: "Motherstock batches",
+        v: num(ov.motherstock.length),
+        m: ms ? `${ms} renewal order(s) overdue` : "Renewals on schedule",
+        c: ms ? "--critical" : "--good",
+      });
+    }
+
+    $("tiles").innerHTML = t.length
+      ? t.map((x) =>
+          `<div class="sf-tile"><div class="k">${esc(x.k)}</div>` +
+          `<div class="v"${x.c ? ` style="color:var(${x.c})"` : ""}>${esc(x.v)}</div>` +
+          `<div class="m">${esc(x.m)}</div></div>`
+        ).join("")
+      : '<p class="sf-empty">No demand or plans yet for this selection.</p>';
+  }
+
+  // --------------------------------------------------------------- sections
+  function renderCoverage(res) {
+    const { blocks, totals } = res;
+    if (!blocks.length) {
+      $("coverage").innerHTML = '<p class="sf-empty">No blocks registered.</p>';
+      return;
+    }
+    $("coverage").innerHTML =
+      `<p class="sf-note" style="margin-bottom:10px">${num(totals.occupied)} of ${num(totals.beds)} beds planted · ` +
+      `${totals.coverage_pct.toFixed(1)}% · ${num(totals.plants)} plants · ${totals.area_ha.toFixed(3)} ha</p>` +
+      blocks.map((b) => {
+        const pct = Math.min(100, b.coverage_pct || 0);
+        return `<div class="cov-row"><div class="cov-name" title="${esc(b.name)}">${esc(b.block_code)}</div>` +
+          `<div class="cov-track"><div class="cov-fill" style="width:${pct}%"></div></div>` +
+          `<div class="cov-val">${pct.toFixed(0)}% · ${num(b.beds_occupied)}/${num(b.total_beds)}</div></div>`;
+      }).join("");
+  }
+
+  function renderMotherstock(rows) {
+    if (!rows.length) {
+      $("motherstock").innerHTML = '<p class="sf-empty">No motherstock batches.</p>';
+      return;
+    }
+    $("motherstock").innerHTML =
+      '<div class="sf-scroll"><table class="sf-t"><thead><tr><th>Batch</th><th>Status</th>' +
+      '<th class="n">Mothers</th><th class="n">Bench m²</th><th class="n">TC</th>' +
+      '<th>Next TC order</th></tr></thead><tbody>' +
+      rows.map((b) => {
+        const late = b.renewal_overdue;
+        return `<tr><td>${esc(b.variety)}<br><span class="sf-note">${esc(b.farm)}</span></td>` +
+          `<td>${pill(b.batch_status)}</td>` +
+          `<td class="n">${num(b.mother_plants)}</td>` +
+          `<td class="n">${(b.peak_bench_sqm || 0).toFixed(1)}</td>` +
+          `<td class="n">${num(b.tc_plants_required)}</td>` +
+          `<td${late ? ' style="color:var(--critical)"' : ""}>${esc(b.renewal_tc_order_date || "—")}` +
+          `${late ? " ⚠ overdue" : b.days_to_renewal != null ? `<br><span class="sf-note">in ${b.days_to_renewal} days</span>` : ""}</td></tr>`;
+      }).join("") + "</tbody></table></div>";
+  }
+
+  function renderOnGround(rows) {
+    if (!rows.length) {
+      $("onground").innerHTML = '<p class="sf-empty">Nothing recorded on the ground.</p>';
+      return;
+    }
+    $("onground").innerHTML =
+      '<table class="sf-t"><thead><tr><th>Block</th><th>Variety</th><th>Status</th>' +
+      '<th class="n">Beds</th><th class="n">Plants</th><th>Planted</th>' +
+      '<th>Harvest weeks</th><th class="n">Wks left</th></tr></thead><tbody>' +
+      rows.map((r) =>
+        `<tr><td>${esc(r.block)}</td><td>${esc(r.variety)}</td>` +
+        `<td>${pill(r.planting_status)}</td><td class="n">${num(r.beds)}</td>` +
+        `<td class="n">${num(r.plants)}</td>` +
+        `<td>${esc(r.planting_date)}<br><span class="sf-note">${r.planting_year}-W${String(r.planting_week).padStart(2, "0")}</span></td>` +
+        `<td>${esc(r.harvest_week_family || "—")}</td>` +
+        `<td class="n">${num(r.weeks_remaining)}</td></tr>`
+      ).join("") + "</tbody></table>";
+  }
+
+  function renderProtocols(rows) {
+    if (!rows.length) {
+      $("protocols").innerHTML = '<p class="sf-empty">No protocols defined.</p>';
+      return;
+    }
+    $("protocols").innerHTML =
+      '<table class="sf-t"><thead><tr><th>Variety</th><th>Farm</th>' +
+      '<th class="n">Pl/m²</th><th class="n">Pinch wk</th><th class="n">Flush int.</th>' +
+      '<th class="n">Flushes</th><th class="n">Wks in ground</th>' +
+      '<th class="n">Stems/plant</th><th class="n">Stems/ha/yr</th>' +
+      '<th class="n">Harvest wks/yr</th><th class="n">Lead time</th></tr></thead><tbody>' +
+      rows.map((r) =>
+        `<tr><td>${esc(r.variety)}</td><td>${esc(r.farm)}</td>` +
+        `<td class="n">${num(r.plants_per_sqm_net)}</td>` +
+        `<td class="n">${num(r.weeks_to_pinch)}</td>` +
+        `<td class="n">${num(r.flush_interval_weeks)}</td>` +
+        `<td class="n">${num(r.total_flushes)}</td>` +
+        `<td class="n">${num(r.total_weeks_in_ground)}</td>` +
+        `<td class="n">${(r.total_stems_per_plant_life || 0).toFixed(1)}</td>` +
+        `<td class="n">${num(r.stems_per_ha_year)}</td>` +
+        `<td class="n">${num(r.harvest_weeks_per_year)}</td>` +
+        `<td class="n">${num(r.lead_time_weeks)}w</td></tr>`
+      ).join("") + "</tbody></table>";
+  }
+
+  function renderPlans(rows) {
+    if (!rows.length) {
+      $("plans").innerHTML = '<p class="sf-empty">No production plans yet.</p>';
+      return;
+    }
+    $("plans").innerHTML =
+      '<table class="sf-t"><thead><tr><th>Plan</th><th>Variety</th><th>State</th>' +
+      '<th>Period</th><th class="n">Production</th><th class="n">Demand</th>' +
+      '<th class="n">Coverage</th><th class="n">New beds</th><th>Budget</th></tr></thead><tbody>' +
+      rows.map((p) =>
+        `<tr><td><a href="/app/summer-flower-production-plan/${encodeURIComponent(p.name)}">${esc(p.name)}</a></td>` +
+        `<td>${esc(p.variety)}<br><span class="sf-note">${esc(p.farm)}</span></td>` +
+        `<td>${pill(p.workflow_state || p.status)}</td>` +
+        `<td>${p.from_year}-W${String(p.from_week).padStart(2, "0")} → ${p.to_year}-W${String(p.to_week).padStart(2, "0")}</td>` +
+        `<td class="n">${num(p.total_production_stems)}</td>` +
+        `<td class="n">${num(p.total_demand_stems)}</td>` +
+        `<td class="n">${(p.coverage_pct || 0).toFixed(1)}%</td>` +
+        `<td class="n">${num(p.new_beds_required)}</td>` +
+        `<td>${p.budget ? `<a href="/app/summer-flower-budget/${encodeURIComponent(p.budget)}">${esc(p.budget)}</a>` : "—"}</td></tr>`
+      ).join("") + "</tbody></table>";
+  }
+
+  // ------------------------------------------------------------------- load
+  let months = [];
+
+  function load() {
+    const a = { farm: state.farm, variety: state.variety };
+    return Promise.all([
+      call("overview", a),
+      call("monthly_series", a),
+      call("block_coverage", { farm: state.farm }),
+      call("on_ground", a),
+      call("protocol_comparison", { variety: state.variety }),
+    ]).then(([ov, ms, cov, og, pr]) => {
+      $("sf-loading").hidden = true;
+      $("sf-body").hidden = false;
+      $("asof").textContent = `As of ${ov.today.date} · ${ov.today.year}-W${String(ov.today.week).padStart(2, "0")}`;
+
+      renderTiles(ov);
+      months = ms.months || [];
+      $("chart-sub").textContent = ms.plan
+        ? `${ms.plan} · ${ms.variety} at ${ms.farm} · ${ms.status}`
+        : "No plan for this selection.";
+      drawBars($("chart"), months);
+      $("chart-table").innerHTML = monthTable(months);
+      renderCoverage(cov);
+      renderMotherstock(ov.motherstock);
+      renderOnGround(og);
+      renderProtocols(pr);
+      renderPlans(ov.plans);
+    }).catch((e) => {
+      $("sf-loading").hidden = false;
+      $("sf-loading").textContent = "Could not load dashboard: " + (e.message || e);
+      console.error(e);
+    });
+  }
+
+  // view toggle -- the table view is the accessibility fallback
+  $("btn-chart").addEventListener("click", () => {
+    $("chart").hidden = false; $("chart-table").hidden = true; $("legend").hidden = false;
+    $("btn-chart").classList.add("is-on"); $("btn-chart").setAttribute("aria-pressed", "true");
+    $("btn-table").classList.remove("is-on"); $("btn-table").setAttribute("aria-pressed", "false");
+  });
+  $("btn-table").addEventListener("click", () => {
+    $("chart").hidden = true; $("chart-table").hidden = false; $("legend").hidden = true;
+    $("btn-table").classList.add("is-on"); $("btn-table").setAttribute("aria-pressed", "true");
+    $("btn-chart").classList.remove("is-on"); $("btn-chart").setAttribute("aria-pressed", "false");
+  });
+
+  let rt;
+  window.addEventListener("resize", () => {
+    clearTimeout(rt);
+    rt = setTimeout(() => { if (!$("chart").hidden) drawBars($("chart"), months); }, 180);
+  });
+
+  frappe.ready(() => {
+    call("filters").then((f) => {
+      const farm = $("f-farm"), variety = $("f-variety");
+      (f.farms || []).forEach((x) => farm.add(new Option(x, x)));
+      (f.varieties || []).forEach((x) => variety.add(new Option(x, x)));
+      farm.addEventListener("change", () => { state.farm = farm.value; load(); });
+      variety.addEventListener("change", () => { state.variety = variety.value; load(); });
+      return load();
+    });
+  });
+})();
+</script>
+{% endblock %}
