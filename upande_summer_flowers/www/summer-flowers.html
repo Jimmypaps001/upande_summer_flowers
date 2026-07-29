@@ -248,8 +248,36 @@ table.sf-t td.n { text-align: right; font-variant-numeric: tabular-nums;
     );
 
   const M = "upande_summer_flowers.summer_flowers.api.";
+
+  // frappe.call's promise does not reliably reject when the server raises, which
+  // leaves the page sitting on "Loading..." forever. Wrap it so it always settles.
   const call = (method, args) =>
-    frappe.call({ method: M + method, args: args || {} }).then((r) => r.message);
+    new Promise((resolve, reject) => {
+      let done = false;
+      const finish = (fn, v) => {
+        if (!done) { done = true; fn(v); }
+      };
+      setTimeout(
+        () => finish(reject, new Error("Timed out calling " + method)),
+        30000
+      );
+      try {
+        frappe.call({
+          method: M + method,
+          args: args || {},
+          callback: (r) => finish(resolve, r && r.message),
+          error: (r) => {
+            const msg =
+              (r && r.responseJSON && (r.responseJSON.exc_type || r.responseJSON.message)) ||
+              (r && r.statusText) ||
+              "request failed";
+            finish(reject, new Error(method + ": " + msg));
+          },
+        });
+      } catch (e) {
+        finish(reject, e);
+      }
+    });
 
   const state = { farm: "", variety: "" };
 
@@ -553,7 +581,10 @@ table.sf-t td.n { text-align: right; font-variant-numeric: tabular-nums;
       renderPlans(ov.plans);
     }).catch((e) => {
       $("sf-loading").hidden = false;
-      $("sf-loading").textContent = "Could not load dashboard: " + (e.message || e);
+      $("sf-loading").innerHTML =
+        '<span style="color:var(--critical)">' +
+        esc("Could not load dashboard: " + (e.message || e)) +
+        "</span>";
       console.error(e);
     });
   }
@@ -577,6 +608,13 @@ table.sf-t td.n { text-align: right; font-variant-numeric: tabular-nums;
   });
 
   frappe.ready(() => {
+    // A signed-out visitor would otherwise watch every call fail in turn.
+    if (frappe.session && frappe.session.user === "Guest") {
+      window.location.href =
+        "/login?redirect-to=" + encodeURIComponent(window.location.pathname);
+      return;
+    }
+
     call("filters").then((f) => {
       const farm = $("f-farm"), variety = $("f-variety");
       (f.farms || []).forEach((x) => farm.add(new Option(x, x)));
