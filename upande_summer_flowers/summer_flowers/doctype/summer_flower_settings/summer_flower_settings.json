@@ -14,7 +14,9 @@
   "hardening_rate",
   "lab_turnaround_weeks",
   "bands_section",
-  "tc_price_bands"
+  "tc_price_bands",
+  "bench_section",
+  "max_bench_sqm"
  ],
  "fields": [
   {
@@ -60,13 +62,25 @@
    "fieldtype": "Table",
    "label": "Tc Price Bands",
    "options": "Summer Flower TC Price Band"
+  },
+  {
+   "fieldname": "bench_section",
+   "fieldtype": "Section Break",
+   "label": "Propagation Bench"
+  },
+  {
+   "description": "Physical ceiling on the motherstock pool. Without it, diverting cuttings every week compounds without bound.",
+   "fieldname": "max_bench_sqm",
+   "fieldtype": "Float",
+   "label": "Available Bench (m\u00b2)",
+   "precision": "1"
   }
  ],
  "grid_page_length": 50,
  "index_web_pages_for_search": 1,
  "issingle": 1,
  "links": [],
- "modified": "2026-07-29 14:16:11.398351",
+ "modified": "2026-07-31 00:32:27.168867",
  "modified_by": "Administrator",
  "module": "Summer Flowers",
  "name": "Summer Flower Settings",

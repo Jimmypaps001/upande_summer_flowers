@@ -128,6 +128,16 @@ class CropProtocolVersion(Document):
 			(self.weeks_on_tray or 0) + (self.weeks_on_pot or 0)
 			+ (self.weeks_to_max_pc or 0) + (self.hardening_weeks or 0)
 		)
+		# What a cutting actually needs to become a productive mother: tray, pot,
+		# then the ramp to full capacity. Hardening is not in here -- it belongs to
+		# the cutting-to-harvest path, where the cutting goes to the field instead.
+		self.ms_establishment_weeks = (
+			(self.weeks_on_tray or 0) + (self.weeks_on_pot or 0) + (self.ramp_weeks or 0)
+		)
+		self.cutting_to_harvest_weeks = (
+			(self.hardening_weeks or 0) + (self.weeks_to_pinch or 0)
+			+ (self.flush_interval_weeks or 0)
+		)
 		self.plants_per_sqm_bench = (self.pots_per_sqm or 0) * (self.plants_per_pot or 0)
 
 		cycles = self.max_multiplication_cycles or 0

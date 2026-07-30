@@ -104,7 +104,12 @@
   "cb_loss",
   "cuttings_per_plant_required",
   "reject_section",
-  "cutting_reject_pct"
+  "cutting_reject_pct",
+  "supplier_lead_weeks",
+  "ramp_weeks",
+  "ramp_profile",
+  "ms_establishment_weeks",
+  "cutting_to_harvest_weeks"
  ],
  "fields": [
   {
@@ -680,12 +685,47 @@
    "fieldname": "cutting_reject_pct",
    "fieldtype": "Percent",
    "label": "Cutting reject %"
+  },
+  {
+   "default": "40",
+   "description": "Order to delivery at the TC lab. Distinct from on-farm establishment.",
+   "fieldname": "supplier_lead_weeks",
+   "fieldtype": "Int",
+   "label": "Supplier Lead (weeks)"
+  },
+  {
+   "default": "4",
+   "description": "Weeks a new motherstock takes to reach full cutting capacity.",
+   "fieldname": "ramp_weeks",
+   "fieldtype": "Int",
+   "label": "Ramp Weeks"
+  },
+  {
+   "default": "25,50,75,100",
+   "description": "Capacity per ramp week, comma separated. The last value holds for the rest of the life.",
+   "fieldname": "ramp_profile",
+   "fieldtype": "Data",
+   "label": "Ramp Profile (%)"
+  },
+  {
+   "description": "Tray + pot + ramp. What a cutting needs to become a productive mother; hardening belongs to the cutting-to-harvest path.",
+   "fieldname": "ms_establishment_weeks",
+   "fieldtype": "Int",
+   "label": "MS Establishment (weeks)",
+   "read_only": 1
+  },
+  {
+   "description": "Hardening + pinch + first flush.",
+   "fieldname": "cutting_to_harvest_weeks",
+   "fieldtype": "Int",
+   "label": "Cutting to Harvest (weeks)",
+   "read_only": 1
   }
  ],
  "grid_page_length": 50,
  "index_web_pages_for_search": 1,
  "links": [],
- "modified": "2026-07-30 14:48:53.032639",
+ "modified": "2026-07-31 00:29:56.221073",
  "modified_by": "Administrator",
  "module": "Summer Flowers",
  "name": "Crop Protocol Version",
