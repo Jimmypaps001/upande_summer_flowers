@@ -5,5 +5,5 @@
 from frappe.model.document import Document
 
 
-class SummerFlowerPlantingFlush(Document):
+class PlantingCalendarFlush(Document):
 	pass

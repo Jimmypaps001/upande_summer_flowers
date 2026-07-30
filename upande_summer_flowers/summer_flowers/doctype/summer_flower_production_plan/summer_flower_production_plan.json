@@ -111,7 +111,7 @@
    "fieldname": "protocol",
    "fieldtype": "Link",
    "label": "Protocol",
-   "options": "Summer Flower Protocol",
+   "options": "Crop Protocol Version",
    "read_only": 1
   },
   {
@@ -375,7 +375,7 @@
  "index_web_pages_for_search": 1,
  "is_submittable": 1,
  "links": [],
- "modified": "2026-07-29 14:10:07.673389",
+ "modified": "2026-07-30 22:41:32.407948",
  "modified_by": "Administrator",
  "module": "Summer Flowers",
  "name": "Summer Flower Production Plan",

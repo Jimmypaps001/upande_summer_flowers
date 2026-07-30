@@ -1,0 +1,120 @@
+{
+ "custom_fields": [
+  {
+   "description": "Injected by Upande Summer Flowers.",
+   "dt": "Block",
+   "fieldname": "custom_summer_flowers_section",
+   "fieldtype": "Section Break",
+   "insert_after": "custom_active",
+   "label": "Capacity & Coverage",
+   "module": "Summer Flowers"
+  },
+  {
+   "description": "Gross area of the block in hectares. May change over time; each change is recorded in the history below.",
+   "dt": "Block",
+   "fieldname": "custom_gross_area_ha",
+   "fieldtype": "Float",
+   "insert_after": "custom_summer_flowers_section",
+   "label": "Gross Area (ha)",
+   "module": "Summer Flowers",
+   "precision": "5"
+  },
+  {
+   "dt": "Block",
+   "fieldname": "custom_total_beds",
+   "fieldtype": "Int",
+   "insert_after": "custom_gross_area_ha",
+   "label": "Total Beds",
+   "module": "Summer Flowers"
+  },
+  {
+   "default": "0",
+   "description": "Blocks marked here appear in summer flower planning and coverage.",
+   "dt": "Block",
+   "fieldname": "custom_is_summer_flower_block",
+   "fieldtype": "Check",
+   "insert_after": "custom_total_beds",
+   "label": "Is Summer Flower Block",
+   "module": "Summer Flowers"
+  },
+  {
+   "dt": "Block",
+   "fieldname": "custom_cb_sf_block",
+   "fieldtype": "Column Break",
+   "insert_after": "custom_is_summer_flower_block",
+   "module": "Summer Flowers"
+  },
+  {
+   "description": "Beds under an approved or planted Planting Calendar today.",
+   "dt": "Block",
+   "fieldname": "custom_beds_occupied",
+   "fieldtype": "Int",
+   "insert_after": "custom_cb_sf_block",
+   "label": "Beds Occupied",
+   "module": "Summer Flowers",
+   "read_only": 1
+  },
+  {
+   "dt": "Block",
+   "fieldname": "custom_beds_free",
+   "fieldtype": "Int",
+   "insert_after": "custom_beds_occupied",
+   "label": "Beds Free",
+   "module": "Summer Flowers",
+   "read_only": 1
+  },
+  {
+   "dt": "Block",
+   "fieldname": "custom_coverage_pct",
+   "fieldtype": "Percent",
+   "insert_after": "custom_beds_free",
+   "label": "Coverage %",
+   "module": "Summer Flowers",
+   "read_only": 1
+  },
+  {
+   "dt": "Block",
+   "fieldname": "custom_plants_standing",
+   "fieldtype": "Int",
+   "insert_after": "custom_coverage_pct",
+   "label": "Plants Standing",
+   "module": "Summer Flowers",
+   "read_only": 1
+  },
+  {
+   "description": "The planting currently occupying this block. A block holds one planting at a time.",
+   "dt": "Block",
+   "fieldname": "custom_current_planting",
+   "fieldtype": "Link",
+   "insert_after": "custom_plants_standing",
+   "label": "Current Planting",
+   "module": "Summer Flowers",
+   "options": "Planting Calendar",
+   "read_only": 1
+  },
+  {
+   "collapsible": 1,
+   "description": "Gross area can change over time. Each revision is kept so historical area is auditable.",
+   "dt": "Block",
+   "fieldname": "custom_area_history_section",
+   "fieldtype": "Section Break",
+   "insert_after": "custom_current_planting",
+   "label": "Gross Area History",
+   "module": "Summer Flowers"
+  },
+  {
+   "dt": "Block",
+   "fieldname": "custom_area_history",
+   "fieldtype": "Table",
+   "insert_after": "custom_area_history_section",
+   "label": "Area History",
+   "module": "Summer Flowers",
+   "options": "Block Area Revision"
+  }
+ ],
+ "custom_perms": [],
+ "doctype": "Block",
+ "links": [],
+ "property_setters": [],
+ "sync_on_migrate": 1
+}

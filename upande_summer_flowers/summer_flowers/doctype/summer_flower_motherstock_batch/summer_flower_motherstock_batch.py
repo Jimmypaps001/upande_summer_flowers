@@ -13,7 +13,7 @@ from upande_summer_flowers.summer_flowers.planning import iso_year_week
 
 class SummerFlowerMotherstockBatch(Document):
 	def validate(self):
-		self.protocol_doc = frappe.get_cached_doc("Summer Flower Protocol", self.protocol)
+		self.protocol_doc = frappe.get_cached_doc("Crop Protocol Version", self.protocol)
 		self.pull_peak_from_plan()
 		self.size_requirement()
 		self.size_tc_order()
@@ -208,7 +208,7 @@ def cycle_options(protocol, mother_plants, stage="Stage 4", year=None):
 	Band boundaries mean more cycles is not always cheaper: a smaller order can fall
 	into a dearer band and cost more than a larger one.
 	"""
-	p = frappe.get_cached_doc("Summer Flower Protocol", protocol)
+	p = frappe.get_cached_doc("Crop Protocol Version", protocol)
 	mother_plants = frappe.utils.cint(mother_plants)
 	year = frappe.utils.cint(year) or getdate(nowdate()).year
 

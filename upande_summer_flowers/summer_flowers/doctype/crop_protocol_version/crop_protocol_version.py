@@ -167,6 +167,57 @@ class CropProtocolVersion(Document):
 		survival = rooting * field
 		self.cuttings_per_plant_required = (1 / survival) if survival else 1
 
+	# ------------------------------------------------------------------ helpers
+	def flush_offsets(self):
+		"""[(weeks after planting the harvest lands, stems per plant), ...]
+
+		Includes the calendar rounding allowance, so offsets are usable directly
+		against a Monday-based planning grid.
+		"""
+		rounding = self.calendar_rounding_weeks or 0
+		return [
+			(
+				(self.weeks_to_pinch or 0) + (r.weeks_from_pinch or 0) + rounding,
+				r.stems_per_plant or 0,
+			)
+			for r in sorted(self.flush_schedule, key=lambda r: r.flush_number or 0)
+		]
+
+	def stems_per_plant_at(self, weeks_after_planting):
+		for offset, stems in self.flush_offsets():
+			if offset == weeks_after_planting:
+				return stems
+		return 0
+
+	def beds_for_stems(self, stems, flush_index=1):
+		offsets = self.flush_offsets()
+		if not offsets or flush_index > len(offsets):
+			return 0
+		stems_per_plant = offsets[flush_index - 1][1]
+		if not stems_per_plant or not self.plants_per_bed:
+			return 0
+		return math.ceil((stems / stems_per_plant) / self.plants_per_bed)
+
+	def harvest_week_family(self, planting_week):
+		"""The weeks of the year a planting will harvest in, for its whole life."""
+		interval = self.flush_interval_weeks or 0
+		if not interval:
+			return []
+		first = planting_week + (self.first_harvest_offset_weeks or 0)
+		count = self.harvest_weeks_per_year or 0
+		return sorted({((first + interval * k - 1) % WEEKS_PER_YEAR) + 1 for k in range(count)})
+
+	def cuttings_for_plants(self, plants):
+		"""Cuttings to stick for a target number of standing plants.
+
+		Applies rooting and field losses, then the cutting reject rate on top.
+		"""
+		needed = plants * (self.cuttings_per_plant_required or 1)
+		reject = (self.cutting_reject_pct or 0) / 100
+		if reject and reject < 1:
+			needed = needed / (1 - reject)
+		return int(math.ceil(needed))
+
 	# ------------------------------------------------------------- versioning
 	def refresh_current_flag(self):
 		"""Exactly one Active version per (protocol, farm) is current."""

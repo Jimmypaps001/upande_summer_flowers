@@ -2,22 +2,25 @@
  "actions": [],
  "allow_bulk_edit": 1,
  "allow_rename": 1,
- "autoname": "format:{block}-{planting_year}-W{planting_week}",
- "creation": "2026-07-29 14:08:17.977526",
- "description": "One planting standing on a block. Drives what is currently on the ground and what it will flush.",
+ "autoname": "naming_series:",
+ "creation": "2026-07-30 22:37:32.644982",
+ "description": "One planting on one block. Requires Farm Manager approval before execution, then becomes a Crop Cycle. Two plantings cannot occupy the same block at the same time.",
  "doctype": "DocType",
  "editable_grid": 1,
  "engine": "InnoDB",
  "field_order": [
   "details_tab",
   "identification_section",
+  "naming_series",
   "block",
   "farm",
-  "variety",
+  "greenhouse",
   "cb_ident",
-  "protocol",
-  "planting_status",
+  "variety",
+  "crop_protocol_version",
   "company",
+  "workflow_state",
+  "calendar_status",
   "size_section",
   "beds",
   "plants",
@@ -33,12 +36,24 @@
   "pinch_date",
   "planned_uproot_date",
   "actual_uproot_date",
-  "harvest_section",
-  "first_harvest_year",
-  "first_harvest_week",
-  "cb_harv",
+  "source_section",
+  "seedling_source",
+  "supplier",
+  "purchase_order",
+  "cb_source",
+  "propagation_batch",
+  "yield_section",
+  "expected_stems_life",
+  "actual_stems_harvested",
+  "cb_yield",
+  "stems_variance",
   "harvest_week_family",
-  "lifetime_stems",
+  "approval_section",
+  "approved_by",
+  "cb_appr",
+  "approved_on",
+  "cycle_section",
+  "crop_cycle",
   "flush_tab",
   "flush_section",
   "flush_projection"
@@ -54,11 +69,22 @@
    "fieldtype": "Section Break"
   },
   {
+   "default": "PLC-.YYYY.-.#####",
+   "fieldname": "naming_series",
+   "fieldtype": "Select",
+   "hidden": 1,
+   "label": "Naming Series",
+   "no_copy": 1,
+   "options": "PLC-.YYYY.-.#####",
+   "print_hide": 1
+  },
+  {
    "fieldname": "block",
    "fieldtype": "Link",
    "in_list_view": 1,
+   "in_standard_filter": 1,
    "label": "Block",
-   "options": "Summer Flower Block",
+   "options": "Block",
    "reqd": 1
   },
   {
@@ -71,6 +97,18 @@
    "read_only": 1
   },
   {
+   "fetch_from": "block.greenhouse",
+   "fieldname": "greenhouse",
+   "fieldtype": "Link",
+   "label": "Greenhouse",
+   "options": "Warehouse",
+   "read_only": 1
+  },
+  {
+   "fieldname": "cb_ident",
+   "fieldtype": "Column Break"
+  },
+  {
    "fieldname": "variety",
    "fieldtype": "Link",
    "in_list_view": 1,
@@ -80,30 +118,38 @@
    "reqd": 1
   },
   {
-   "fieldname": "cb_ident",
-   "fieldtype": "Column Break"
-  },
-  {
-   "fieldname": "protocol",
+   "description": "Resolved from the planting date. This is the parameter set the resulting crop cycle runs under.",
+   "fieldname": "crop_protocol_version",
    "fieldtype": "Link",
-   "label": "Protocol",
-   "options": "Summer Flower Protocol",
+   "label": "Crop Protocol Version",
+   "options": "Crop Protocol Version",
    "reqd": 1
-  },
-  {
-   "default": "Planned",
-   "fieldname": "planting_status",
-   "fieldtype": "Select",
-   "in_list_view": 1,
-   "in_standard_filter": 1,
-   "label": "Status",
-   "options": "Planned\nStuck\nPlanted\nProducing\nUprooted"
   },
   {
    "fieldname": "company",
    "fieldtype": "Link",
    "label": "Company",
    "options": "Company"
+  },
+  {
+   "fieldname": "workflow_state",
+   "fieldtype": "Link",
+   "hidden": 1,
+   "in_standard_filter": 1,
+   "label": "Workflow State",
+   "no_copy": 1,
+   "options": "Workflow State",
+   "read_only": 1
+  },
+  {
+   "default": "Draft",
+   "fieldname": "calendar_status",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Status",
+   "options": "Draft\nPending Approval\nApproved\nPlanted\nUprooted\nCancelled",
+   "read_only": 1
   },
   {
    "fieldname": "size_section",
@@ -145,7 +191,7 @@
   {
    "fieldname": "dates_section",
    "fieldtype": "Section Break",
-   "label": "Dates"
+   "label": "Timeline"
   },
   {
    "fieldname": "planting_date",
@@ -189,31 +235,74 @@
    "read_only": 1
   },
   {
-   "description": "Set this to end the planting early; coverage and projections stop here.",
+   "description": "Ends the planting early or late; frees the block from this date.",
    "fieldname": "actual_uproot_date",
    "fieldtype": "Date",
    "label": "Actual Uproot Date"
   },
   {
-   "fieldname": "harvest_section",
+   "fieldname": "source_section",
    "fieldtype": "Section Break",
-   "label": "Harvest Pattern"
+   "label": "Seedling Source"
   },
   {
-   "fieldname": "first_harvest_year",
-   "fieldtype": "Int",
-   "label": "First Harvest Year",
-   "read_only": 1
+   "fieldname": "seedling_source",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "label": "Seedling Source",
+   "options": "\nPurchased from Breeder\nIn-house Propagation"
   },
   {
-   "fieldname": "first_harvest_week",
-   "fieldtype": "Int",
-   "label": "First Harvest Week",
-   "read_only": 1
+   "depends_on": "eval:doc.seedling_source=='Purchased from Breeder'",
+   "fieldname": "supplier",
+   "fieldtype": "Link",
+   "label": "Supplier",
+   "options": "Supplier"
   },
   {
-   "fieldname": "cb_harv",
+   "depends_on": "eval:doc.seedling_source=='Purchased from Breeder'",
+   "fieldname": "purchase_order",
+   "fieldtype": "Link",
+   "label": "Purchase Order",
+   "options": "Purchase Order"
+  },
+  {
+   "fieldname": "cb_source",
    "fieldtype": "Column Break"
+  },
+  {
+   "depends_on": "eval:doc.seedling_source=='In-house Propagation'",
+   "fieldname": "propagation_batch",
+   "fieldtype": "Link",
+   "label": "Propagation Batch",
+   "options": "Propagation Batch"
+  },
+  {
+   "fieldname": "yield_section",
+   "fieldtype": "Section Break",
+   "label": "Expected vs Actual"
+  },
+  {
+   "fieldname": "expected_stems_life",
+   "fieldtype": "Int",
+   "label": "Expected Stems (life)",
+   "read_only": 1
+  },
+  {
+   "fieldname": "actual_stems_harvested",
+   "fieldtype": "Int",
+   "label": "Actual Stems Harvested",
+   "read_only": 1
+  },
+  {
+   "fieldname": "cb_yield",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "stems_variance",
+   "fieldtype": "Int",
+   "label": "Stems Variance",
+   "read_only": 1
   },
   {
    "description": "The weeks of the year this planting harvests in, every year, until it is uprooted.",
@@ -223,9 +312,37 @@
    "read_only": 1
   },
   {
-   "fieldname": "lifetime_stems",
-   "fieldtype": "Int",
-   "label": "Lifetime Stems",
+   "fieldname": "approval_section",
+   "fieldtype": "Section Break",
+   "label": "Approval"
+  },
+  {
+   "fieldname": "approved_by",
+   "fieldtype": "Link",
+   "label": "Approved By",
+   "options": "User",
+   "read_only": 1
+  },
+  {
+   "fieldname": "cb_appr",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "approved_on",
+   "fieldtype": "Datetime",
+   "label": "Approved On",
+   "read_only": 1
+  },
+  {
+   "fieldname": "cycle_section",
+   "fieldtype": "Section Break"
+  },
+  {
+   "description": "Created or linked when the calendar is approved.",
+   "fieldname": "crop_cycle",
+   "fieldtype": "Link",
+   "label": "Crop Cycle",
+   "options": "Crop Cycle",
    "read_only": 1
   },
   {
@@ -241,17 +358,17 @@
    "fieldname": "flush_projection",
    "fieldtype": "Table",
    "label": "Flush Projection",
-   "options": "Summer Flower Planting Flush"
+   "options": "Planting Calendar Flush"
   }
  ],
  "grid_page_length": 50,
  "index_web_pages_for_search": 1,
  "links": [],
- "modified": "2026-07-29 14:08:17.977526",
+ "modified": "2026-07-30 22:37:32.644982",
  "modified_by": "Administrator",
  "module": "Summer Flowers",
- "name": "Summer Flower Planting",
- "naming_rule": "Expression (old style)",
+ "name": "Planting Calendar",
+ "naming_rule": "By \"Naming Series\" field",
  "owner": "Administrator",
  "permissions": [
   {

@@ -10,7 +10,8 @@ from frappe import _
 from frappe.model.document import Document
 from frappe.utils import getdate, nowdate
 
-from upande_summer_flowers.summer_flowers.doctype.summer_flower_planting.summer_flower_planting import (
+from upande_summer_flowers.summer_flowers.doctype.planting_calendar.planting_calendar import (
+	production_by_week,
 	standing_plantings,
 )
 from upande_summer_flowers.summer_flowers.planning import (
@@ -177,19 +178,23 @@ class SummerFlowerProductionPlan(Document):
 				continue
 
 			doc = frappe.get_doc({
-				"doctype": "Summer Flower Planting",
+				"doctype": "Planting Calendar",
 				"block": row.block,
 				"variety": self.variety,
-				"protocol": self.protocol,
+				"crop_protocol_version": self.protocol,
 				"company": self.company,
 				"beds": row.beds,
 				"planting_date": row.planting_date,
-				"planting_status": "Planned",
+				"calendar_status": "Draft",
+				"workflow_state": "Draft",
 			})
 			try:
 				doc.insert()
-			except frappe.DuplicateEntryError:
-				skipped.append(_("row {0}: planting already exists").format(row.idx))
+			except frappe.ValidationError as e:
+				# Most often the block is already occupied for that window.
+				skipped.append(_("row {0}: {1}").format(
+					row.idx, frappe.utils.strip_html(str(e))[:120]
+				))
 				continue
 			row.db_set("existing_planting", doc.name)
 			created.append(doc.name)
@@ -239,7 +244,7 @@ def _populate(plan):
 	count towards those weeks and we do not plant for them twice.
 	"""
 	demand = frappe.get_doc("Summer Flower Market Demand", plan.market_demand)
-	protocol = frappe.get_cached_doc("Summer Flower Protocol", plan.protocol)
+	protocol = frappe.get_cached_doc("Crop Protocol Version", plan.protocol)
 
 	grid = week_sequence(plan.from_year, plan.from_week, plan.weeks_covered)
 	index = {(y, w): i for i, (y, w, _d) in enumerate(grid)}
@@ -259,7 +264,7 @@ def _populate(plan):
 	plan.plan_blocks = []
 	for planting in standing_plantings(plan.farm, plan.variety):
 		hit = False
-		for (y, w), stems in planting.production_by_week().items():
+		for (y, w), stems in production_by_week(planting).items():
 			if (y, w) in index:
 				production[(y, w)] += stems
 				contributors[(y, w)].append(f"{planting.block} ({planting.beds}b)")
@@ -385,20 +390,35 @@ def _populate(plan):
 
 
 def _free_bed_pool(farm):
-	"""Blocks at this farm with spare beds, most spare first."""
+	"""Summer flower blocks at this farm with spare beds, most spare first.
+
+	A block holds one planting at a time, so a block already carrying a standing
+	planting offers nothing regardless of how many beds are notionally free.
+	"""
 	rows = frappe.get_all(
-		"Summer Flower Block",
-		filters={"farm": farm, "block_status": "Active"},
-		fields=["name", "beds_free"],
-		order_by="beds_free desc",
+		"Block",
+		filters={"farm": farm, "custom_is_summer_flower_block": 1},
+		fields=["name", "custom_total_beds", "custom_current_planting"],
+		order_by="custom_total_beds desc",
 	)
-	return [[r.name, r.beds_free or 0] for r in rows]
+	return [
+		[r.name, r.custom_total_beds or 0]
+		for r in rows
+		if not r.custom_current_planting
+	]
 
 
 def _take_beds(pool, beds):
-	"""Allocate `beds` to the first block with room. Returns (block, note)."""
-	for entry in pool:
+	"""Allocate a whole block to this planting. Returns (block, note).
+
+	Because a block holds one planting at a time, the block leaves the pool once
+	taken rather than being topped up to capacity. A planting need not fill the
+	block.
+	"""
+	for i, entry in enumerate(pool):
 		if entry[1] >= beds:
-			entry[1] -= beds
+			pool.pop(i)
 			return entry[0], None
-	return None, _("No block at this farm has {0} free beds — allocate manually.").format(beds)
+	return None, _(
+		"No unoccupied block at this farm has {0} beds — allocate manually."
+	).format(beds)

@@ -21,8 +21,8 @@ def filters():
 	"""Farms and varieties that actually have Summer Flowers data."""
 	_guard()
 	protocols = frappe.get_all(
-		"Summer Flower Protocol",
-		filters={"protocol_status": "Active"},
+		"Crop Protocol Version",
+		filters={"version_status": "Active"},
 		fields=["name", "variety", "farm"],
 		order_by="farm asc, variety asc",
 	)
@@ -137,23 +137,41 @@ def monthly_series(plan=None, farm=None, variety=None):
 def block_coverage(farm=None):
 	"""Block register with occupancy, plus what is standing on each."""
 	_guard()
-	f = {"block_status": "Active"}
+	f = {"custom_is_summer_flower_block": 1}
 	if farm:
 		f["farm"] = farm
-	blocks = frappe.get_all(
-		"Summer Flower Block",
+	rows = frappe.get_all(
+		"Block",
 		filters=f,
-		fields=["name", "block_code", "farm", "gross_area_ha", "total_beds",
-		        "beds_occupied", "beds_free", "coverage_pct", "plants_standing",
-		        "current_varieties"],
-		order_by="farm asc, block_code asc",
+		fields=["name", "block", "farm", "greenhouse", "custom_gross_area_ha",
+		        "custom_total_beds", "custom_beds_occupied", "custom_beds_free",
+		        "custom_coverage_pct", "custom_plants_standing",
+		        "custom_current_planting"],
+		order_by="farm asc, block asc",
 	)
+	# Flatten the injected custom_ prefix so the dashboard stays agnostic to it.
+	blocks = [
+		{
+			"name": r.name,
+			"block_code": r.block,
+			"farm": r.farm,
+			"greenhouse": r.greenhouse,
+			"gross_area_ha": flt(r.custom_gross_area_ha),
+			"total_beds": r.custom_total_beds or 0,
+			"beds_occupied": r.custom_beds_occupied or 0,
+			"beds_free": r.custom_beds_free or 0,
+			"coverage_pct": flt(r.custom_coverage_pct),
+			"plants_standing": r.custom_plants_standing or 0,
+			"current_varieties": r.custom_current_planting,
+		}
+		for r in rows
+	]
 	totals = {
 		"blocks": len(blocks),
-		"beds": sum(b.total_beds or 0 for b in blocks),
-		"occupied": sum(b.beds_occupied or 0 for b in blocks),
-		"area_ha": sum(flt(b.gross_area_ha) for b in blocks),
-		"plants": sum(b.plants_standing or 0 for b in blocks),
+		"beds": sum(b["total_beds"] for b in blocks),
+		"occupied": sum(b["beds_occupied"] for b in blocks),
+		"area_ha": sum(b["gross_area_ha"] for b in blocks),
+		"plants": sum(b["plants_standing"] for b in blocks),
 	}
 	totals["coverage_pct"] = (
 		totals["occupied"] / totals["beds"] * 100 if totals["beds"] else 0
@@ -165,19 +183,19 @@ def block_coverage(farm=None):
 def on_ground(farm=None, variety=None):
 	"""Plantings currently standing, with their harvest weeks."""
 	_guard()
-	f = {"planting_status": ["!=", "Uprooted"]}
+	f = {"calendar_status": ["not in", ("Cancelled", "Uprooted")]}
 	if farm:
 		f["farm"] = farm
 	if variety:
 		f["variety"] = variety
 	rows = frappe.get_all(
-		"Summer Flower Planting",
+		"Planting Calendar",
 		filters=f,
 		fields=["name", "block", "farm", "variety", "beds", "plants",
 		        "gross_area_ha", "planting_date", "planting_year", "planting_week",
-		        "planned_uproot_date", "actual_uproot_date", "planting_status",
-		        "harvest_week_family", "first_harvest_year", "first_harvest_week",
-		        "lifetime_stems"],
+		        "planned_uproot_date", "actual_uproot_date", "calendar_status",
+		        "harvest_week_family", "expected_stems_life", "actual_stems_harvested",
+		        "seedling_source", "crop_cycle"],
 		order_by="planting_date desc",
 	)
 	today = getdate(nowdate())
@@ -191,11 +209,11 @@ def on_ground(farm=None, variety=None):
 def protocol_comparison(variety=None):
 	"""Same variety across farms, so climate differences are visible side by side."""
 	_guard()
-	f = {"protocol_status": "Active"}
+	f = {"version_status": "Active"}
 	if variety:
 		f["variety"] = variety
 	return frappe.get_all(
-		"Summer Flower Protocol",
+		"Crop Protocol Version",
 		filters=f,
 		fields=["name", "variety", "farm", "plants_per_sqm_net", "weeks_to_pinch",
 		        "flush_interval_weeks", "total_flushes", "total_weeks_in_ground",

@@ -74,7 +74,7 @@
    "fieldname": "protocol",
    "fieldtype": "Link",
    "label": "Protocol",
-   "options": "Summer Flower Protocol",
+   "options": "Crop Protocol Version",
    "reqd": 1
   },
   {
@@ -230,7 +230,7 @@
  "grid_page_length": 50,
  "index_web_pages_for_search": 1,
  "links": [],
- "modified": "2026-07-29 14:05:07.451190",
+ "modified": "2026-07-30 22:41:32.093488",
  "modified_by": "Administrator",
  "module": "Summer Flowers",
  "name": "Summer Flower Market Demand",
