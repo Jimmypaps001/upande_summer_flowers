@@ -42,16 +42,20 @@ fixtures = [
 	},
 ]
 
-# Each item in the list will be shown as an app in the apps page
-# add_to_apps_screen = [
-# 	{
-# 		"name": "upande_summer_flowers",
-# 		"logo": "/assets/upande_summer_flowers/logo.png",
-# 		"title": "Upande Summer Flowers",
-# 		"route": "/upande_summer_flowers",
-# 		"has_permission": "upande_summer_flowers.api.permission.has_app_permission"
-# 	}
-# ]
+# Shown on the /apps screen. The mark is an SVG so it stays sharp from 16px up and
+# needs no external request, which the dashboards' CSP would block anyway.
+add_to_apps_screen = [
+	{
+		"name": "upande_summer_flowers",
+		"logo": "/assets/upande_summer_flowers/images/summer_flowers.svg",
+		"title": "Summer Flowers",
+		"route": "/summer-flowers-planning",
+	}
+]
+
+# Setting app_logo_url would replace the navbar mark for the WHOLE site, not just
+# this module, so it is deliberately left alone on a multi-module bench.
+# app_logo_url = "/assets/upande_summer_flowers/images/summer_flowers.svg"
 
 # Includes in <head>
 # ------------------

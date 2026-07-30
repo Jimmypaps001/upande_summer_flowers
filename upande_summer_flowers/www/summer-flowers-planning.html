@@ -6,7 +6,7 @@
 <div class="pl-root viz-root" id="pl-root">
 
   <header class="pl-head">
-    <h1>{{ _("Summer Flowers — Planning") }}</h1>
+    <h1><img class="pl-logo" src="/assets/upande_summer_flowers/images/summer_flowers.svg" alt="" width="34" height="34">{{ _("Summer Flowers — Planning") }}</h1>
     <p class="pl-sub">{{ _("Demand against planned production, and how many tissue-culture plantlets that implies.") }}</p>
   </header>
 
@@ -162,7 +162,8 @@
 }
 
 .pl-root{max-width:1220px;margin:0 auto;padding:8px 0 64px;color:var(--text-primary)}
-.pl-head h1{font-size:1.7rem;margin:0 0 4px;letter-spacing:-.4px}
+.pl-head h1{font-size:1.7rem;margin:0 0 4px;letter-spacing:-.4px;display:flex;align-items:center;gap:11px}
+.pl-logo{flex:none;display:block}
 .pl-sub{color:var(--text-secondary);margin:0 0 20px;font-size:.9rem}
 .pl-filters{display:flex;flex-wrap:wrap;gap:14px;align-items:flex-end;padding:12px 14px;
   margin-bottom:18px;background:var(--surface-2);border:1px solid var(--border);border-radius:8px}

@@ -6,7 +6,7 @@
 <div class="sf-root viz-root" id="sf-root">
 
   <header class="sf-head">
-    <h1>{{ _("Summer Flowers") }}</h1>
+    <h1><img class="sf-logo" src="/assets/upande_summer_flowers/images/summer_flowers.svg" alt="" width="34" height="34">{{ _("Summer Flowers") }}</h1>
     <p class="sf-sub">{{ _("Demand horizon, production plan, blocks on the ground and motherstock scheduling.") }}</p>
   </header>
 
@@ -149,7 +149,9 @@
 
 .sf-root { max-width: 1180px; margin: 0 auto; padding: 8px 0 64px;
            color: var(--text-primary); }
-.sf-head h1 { font-size: 1.7rem; margin: 0 0 4px; letter-spacing: -0.4px; }
+.sf-head h1 { font-size: 1.7rem; margin: 0 0 4px; letter-spacing: -0.4px;
+              display: flex; align-items: center; gap: 11px; }
+.sf-logo { flex: none; display: block; }
 .sf-sub { color: var(--text-secondary); margin: 0 0 20px; font-size: 0.9rem; }
 
 .sf-filters { display: flex; flex-wrap: wrap; gap: 14px; align-items: flex-end;

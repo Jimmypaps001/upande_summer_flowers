@@ -1,0 +1,49 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64"
+     role="img" aria-labelledby="sfTitle">
+  <title id="sfTitle">Summer Flowers</title>
+  <g transform="translate(32 32)">
+    <!-- lower ring, darker and rotated half a step for depth -->
+    <ellipse cx="0" cy="-12.0" rx="3.1" ry="12.5" fill="#c8497a" opacity="0.95" transform="rotate(12.86)"/>
+    <ellipse cx="0" cy="-12.0" rx="3.1" ry="12.5" fill="#c8497a" opacity="0.95" transform="rotate(38.57)"/>
+    <ellipse cx="0" cy="-12.0" rx="3.1" ry="12.5" fill="#c8497a" opacity="0.95" transform="rotate(64.29)"/>
+    <ellipse cx="0" cy="-12.0" rx="3.1" ry="12.5" fill="#c8497a" opacity="0.95" transform="rotate(90)"/>
+    <ellipse cx="0" cy="-12.0" rx="3.1" ry="12.5" fill="#c8497a" opacity="0.95" transform="rotate(115.7)"/>
+    <ellipse cx="0" cy="-12.0" rx="3.1" ry="12.5" fill="#c8497a" opacity="0.95" transform="rotate(141.4)"/>
+    <ellipse cx="0" cy="-12.0" rx="3.1" ry="12.5" fill="#c8497a" opacity="0.95" transform="rotate(167.1)"/>
+    <ellipse cx="0" cy="-12.0" rx="3.1" ry="12.5" fill="#c8497a" opacity="0.95" transform="rotate(192.9)"/>
+    <ellipse cx="0" cy="-12.0" rx="3.1" ry="12.5" fill="#c8497a" opacity="0.95" transform="rotate(218.6)"/>
+    <ellipse cx="0" cy="-12.0" rx="3.1" ry="12.5" fill="#c8497a" opacity="0.95" transform="rotate(244.3)"/>
+    <ellipse cx="0" cy="-12.0" rx="3.1" ry="12.5" fill="#c8497a" opacity="0.95" transform="rotate(270)"/>
+    <ellipse cx="0" cy="-12.0" rx="3.1" ry="12.5" fill="#c8497a" opacity="0.95" transform="rotate(295.7)"/>
+    <ellipse cx="0" cy="-12.0" rx="3.1" ry="12.5" fill="#c8497a" opacity="0.95" transform="rotate(321.4)"/>
+    <ellipse cx="0" cy="-12.0" rx="3.1" ry="12.5" fill="#c8497a" opacity="0.95" transform="rotate(347.1)"/>
+    <!-- upper ring -->
+    <ellipse cx="0" cy="-13.0" rx="3.4" ry="13.5" fill="#e87ba4" transform="rotate(0)"/>
+    <ellipse cx="0" cy="-13.0" rx="3.4" ry="13.5" fill="#e87ba4" transform="rotate(25.71)"/>
+    <ellipse cx="0" cy="-13.0" rx="3.4" ry="13.5" fill="#e87ba4" transform="rotate(51.43)"/>
+    <ellipse cx="0" cy="-13.0" rx="3.4" ry="13.5" fill="#e87ba4" transform="rotate(77.14)"/>
+    <ellipse cx="0" cy="-13.0" rx="3.4" ry="13.5" fill="#e87ba4" transform="rotate(102.9)"/>
+    <ellipse cx="0" cy="-13.0" rx="3.4" ry="13.5" fill="#e87ba4" transform="rotate(128.6)"/>
+    <ellipse cx="0" cy="-13.0" rx="3.4" ry="13.5" fill="#e87ba4" transform="rotate(154.3)"/>
+    <ellipse cx="0" cy="-13.0" rx="3.4" ry="13.5" fill="#e87ba4" transform="rotate(180)"/>
+    <ellipse cx="0" cy="-13.0" rx="3.4" ry="13.5" fill="#e87ba4" transform="rotate(205.7)"/>
+    <ellipse cx="0" cy="-13.0" rx="3.4" ry="13.5" fill="#e87ba4" transform="rotate(231.4)"/>
+    <ellipse cx="0" cy="-13.0" rx="3.4" ry="13.5" fill="#e87ba4" transform="rotate(257.1)"/>
+    <ellipse cx="0" cy="-13.0" rx="3.4" ry="13.5" fill="#e87ba4" transform="rotate(282.9)"/>
+    <ellipse cx="0" cy="-13.0" rx="3.4" ry="13.5" fill="#e87ba4" transform="rotate(308.6)"/>
+    <ellipse cx="0" cy="-13.0" rx="3.4" ry="13.5" fill="#e87ba4" transform="rotate(334.3)"/>
+    <!-- disc florets -->
+    <circle r="8.4" fill="#eda100"/>
+    <circle r="8.4" fill="none" stroke="#c98500" stroke-width="1.1"/>
+    <g fill="#c98500" opacity="0.55">
+    <ellipse cx="0" cy="-4.3" rx="1.05" ry="1.05" fill="#c98500" transform="rotate(0)"/>
+    <ellipse cx="0" cy="-4.3" rx="1.05" ry="1.05" fill="#c98500" transform="rotate(51.43)"/>
+    <ellipse cx="0" cy="-4.3" rx="1.05" ry="1.05" fill="#c98500" transform="rotate(102.9)"/>
+    <ellipse cx="0" cy="-4.3" rx="1.05" ry="1.05" fill="#c98500" transform="rotate(154.3)"/>
+    <ellipse cx="0" cy="-4.3" rx="1.05" ry="1.05" fill="#c98500" transform="rotate(205.7)"/>
+    <ellipse cx="0" cy="-4.3" rx="1.05" ry="1.05" fill="#c98500" transform="rotate(257.1)"/>
+    <ellipse cx="0" cy="-4.3" rx="1.05" ry="1.05" fill="#c98500" transform="rotate(308.6)"/>
+    </g>
+    <circle r="2.5" fill="#b06f00"/>
+  </g>
+</svg>
