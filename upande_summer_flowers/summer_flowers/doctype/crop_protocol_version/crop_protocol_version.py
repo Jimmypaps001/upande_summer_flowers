@@ -61,8 +61,13 @@ class CropProtocolVersion(Document):
 			)
 
 	def sync_status(self):
+		# Superseded is terminal and is set by the successor's activation, not by the
+		# workflow. Copying workflow_state over it resurrects a retired version --
+		# which left two versions Active at once and made resolve_version ambiguous.
+		if self.version_status == "Superseded":
+			return
 		if self.workflow_state and self.workflow_state in (
-			"Draft", "Pending Approval", "Active", "Superseded"
+			"Draft", "Pending Approval", "Active"
 		):
 			self.version_status = self.workflow_state
 
@@ -118,9 +123,26 @@ class CropProtocolVersion(Document):
 		years = (self.total_weeks_in_ground or 0) / WEEKS_PER_YEAR
 		self.flushes_per_year = (self.total_flushes / years) if years else 0
 
+		self.life_expectancy_years = years
+
+		# Plants per hectare is quoted on GROSS block area, not net bed area: 20/m²
+		# net over a 0.8 net:gross ratio is 16/m² gross, hence 160,000/ha. Using the
+		# net density here inflates every per-hectare figure by 25%.
 		plants_per_ha = (self.plants_per_sqm_gross or 0) * 10_000
 		self.stems_per_ha_life = (self.total_stems_per_plant_life or 0) * plants_per_ha
 		self.stems_per_ha_year = (self.stems_per_ha_life / years) if years else 0
+
+		# A target yield and a computed one rarely agree; show the gap instead of
+		# quietly preferring one.
+		if self.stated_yield_stems_per_ha and self.stems_per_ha_year:
+			self.yield_variance_pct = (
+				(self.stems_per_ha_year - self.stated_yield_stems_per_ha)
+				/ self.stated_yield_stems_per_ha * 100
+			)
+		else:
+			self.yield_variance_pct = 0
+
+		self.plants_per_block = (self.beds_per_block or 0) * (self.plants_per_bed or 0)
 
 	# --------------------------------------------------------------- motherstock
 	def set_motherstock(self):

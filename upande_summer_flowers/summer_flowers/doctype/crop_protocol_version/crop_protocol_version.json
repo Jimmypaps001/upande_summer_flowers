@@ -109,7 +109,14 @@
   "ramp_weeks",
   "ramp_profile",
   "ms_establishment_weeks",
-  "cutting_to_harvest_weeks"
+  "cutting_to_harvest_weeks",
+  "stated_yield_stems_per_ha",
+  "yield_variance_pct",
+  "life_expectancy_years",
+  "ready_cutting_price",
+  "weeks_to_max_production",
+  "plants_per_block",
+  "beds_per_block"
  ],
  "fields": [
   {
@@ -720,12 +727,55 @@
    "fieldtype": "Int",
    "label": "Cutting to Harvest (weeks)",
    "read_only": 1
+  },
+  {
+   "description": "The agronomist's target figure. Kept beside the computed one because the two rarely agree and the gap matters.",
+   "fieldname": "stated_yield_stems_per_ha",
+   "fieldtype": "Float",
+   "label": "Stated Yield (stems/ha/yr)",
+   "precision": "0"
+  },
+  {
+   "fieldname": "yield_variance_pct",
+   "fieldtype": "Percent",
+   "label": "Computed vs Stated",
+   "read_only": 1
+  },
+  {
+   "fieldname": "life_expectancy_years",
+   "fieldtype": "Float",
+   "label": "Life Expectancy (years)",
+   "precision": "2",
+   "read_only": 1
+  },
+  {
+   "fieldname": "ready_cutting_price",
+   "fieldtype": "Currency",
+   "label": "Ready Cutting Price"
+  },
+  {
+   "default": "20",
+   "fieldname": "weeks_to_max_production",
+   "fieldtype": "Int",
+   "label": "Weeks to Max Production"
+  },
+  {
+   "fieldname": "plants_per_block",
+   "fieldtype": "Int",
+   "label": "Plants per Block (max)",
+   "read_only": 1
+  },
+  {
+   "default": "40",
+   "fieldname": "beds_per_block",
+   "fieldtype": "Int",
+   "label": "Beds per Block"
   }
  ],
  "grid_page_length": 50,
  "index_web_pages_for_search": 1,
  "links": [],
- "modified": "2026-07-31 00:29:56.221073",
+ "modified": "2026-07-31 01:21:14.344677",
  "modified_by": "Administrator",
  "module": "Summer Flowers",
  "name": "Crop Protocol Version",

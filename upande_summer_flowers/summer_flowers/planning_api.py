@@ -498,6 +498,203 @@ def block_forecast(plan=None, variety=None, farm=None, blocks=None):
 	}
 
 
+EDITABLE_PROTOCOL_FIELDS = (
+	"plants_per_sqm_net", "net_gross_ratio", "plants_per_bed", "beds_per_block",
+	"min_planting_beds", "weeks_to_pinch", "flush_interval_weeks",
+	"sticking_to_planting_weeks", "calendar_rounding_weeks", "weeks_on_tray",
+	"weeks_on_pot", "weeks_to_max_pc", "hardening_weeks", "ramp_weeks",
+	"ramp_profile", "supplier_lead_weeks", "weeks_to_max_production",
+	"cuttings_per_plant_per_week", "plants_per_pot", "pots_per_sqm",
+	"max_multiplication_cycles", "multiplication_factor_per_cycle",
+	"cycle_time_weeks", "motherstock_life_weeks", "rooting_success_pct",
+	"field_establishment_pct", "cutting_reject_pct", "stated_yield_stems_per_ha",
+	"ready_cutting_price", "climate_note",
+)
+
+
+@frappe.whitelist()
+def protocol_detail(version=None, variety=None, farm=None):
+	"""The whole protocol sheet: inputs, derived values and the journey timelines."""
+	_guard()
+	if not version:
+		f = {"version_status": "Active"}
+		if variety:
+			f["variety"] = variety
+		if farm:
+			f["farm"] = farm
+		rows = frappe.get_all("Crop Protocol Version", filters=f, pluck="name",
+		                      order_by="version desc", limit=1)
+		if not rows:
+			return {"version": None}
+		version = rows[0]
+
+	v = frappe.get_doc("Crop Protocol Version", version)
+
+	flushes = []
+	cum = 0
+	rounding = v.calendar_rounding_weeks or 0
+	# Gross, not net: 20/m² net over a 0.8 net:gross ratio is 16/m² gross, hence
+	# 160,000/ha. Using net here inflates every per-hectare figure by 25%.
+	plants_per_ha = (v.plants_per_sqm_gross or 0) * 10_000
+	for r in sorted(v.flush_schedule, key=lambda r: r.flush_number or 0):
+		cum += r.stems_per_plant or 0
+		flushes.append({
+			"flush": r.flush_number,
+			"weeks_from_pinch": r.weeks_from_pinch,
+			"weeks_from_planting": (v.weeks_to_pinch or 0) + (r.weeks_from_pinch or 0),
+			"weeks_from_planting_gridded": (v.weeks_to_pinch or 0)
+			+ (r.weeks_from_pinch or 0) + rounding,
+			"stems_per_plant": flt(r.stems_per_plant),
+			"stems_per_ha": int(round(flt(r.stems_per_plant) * plants_per_ha)),
+			"cumulative_stems_per_plant": round(cum, 2),
+		})
+
+	# TC order through to the first harvest off those cuttings.
+	lead = v.supplier_lead_weeks or 0
+	estab = v.ms_establishment_weeks or 0
+	journey = [
+		{"week": 0, "label": "Place TC order", "note": None},
+		{"week": lead, "label": "TC arrives", "note": f"{lead}w supplier lead"},
+		{"week": lead + (v.weeks_on_tray or 0), "label": "Tray to pot",
+		 "note": f"{v.weeks_on_tray or 0}w tray"},
+		{"week": lead + (v.weeks_on_tray or 0) + (v.weeks_on_pot or 0),
+		 "label": "Pot ends, ramp begins", "note": f"{v.weeks_on_pot or 0}w pot"},
+		{"week": lead + estab, "label": "Motherstock ready",
+		 "note": f"{estab}w establishment, ramp {v.ramp_profile or ''}"},
+		{"week": lead + estab + (v.hardening_weeks or 0), "label": "Cutting to field",
+		 "note": f"{v.hardening_weeks or 0}w hardening"},
+		{"week": lead + estab + (v.hardening_weeks or 0) + (v.weeks_to_pinch or 0),
+		 "label": "Pinch", "note": f"{v.weeks_to_pinch or 0}w to pinch"},
+		{"week": lead + estab + (v.cutting_to_harvest_weeks or 0),
+		 "label": "First harvest",
+		 "note": f"{v.cutting_to_harvest_weeks or 0}w cutting to harvest"},
+	]
+
+	ramp = [
+		{"week": i + 1, "pct": int(round(x * 100))}
+		for i, x in enumerate(
+			__import__("upande_summer_flowers.summer_flowers.lifecycle_sim",
+			           fromlist=["parse_ramp"]).parse_ramp(v.ramp_profile, v.ramp_weeks))
+	]
+
+	sibling = frappe.get_all(
+		"Crop Protocol Version",
+		filters={"crop_protocol": v.crop_protocol, "farm": v.farm},
+		fields=["name", "version", "version_status", "effective_from", "effective_to",
+		        "is_current", "change_reason"],
+		order_by="version desc",
+	)
+
+	return {
+		"version": v.name,
+		"variety": v.variety,
+		"farm": v.farm,
+		"crop_protocol": v.crop_protocol,
+		"status": v.version_status,
+		"version_no": v.version,
+		"effective_from": str(v.effective_from) if v.effective_from else None,
+		"effective_to": str(v.effective_to) if v.effective_to else None,
+		"is_current": bool(v.is_current),
+		"change_reason": v.change_reason,
+		"editable": v.version_status == "Draft",
+		"climate_note": v.climate_note,
+		"fields": {k: v.get(k) for k in EDITABLE_PROTOCOL_FIELDS},
+		"derived": {
+			"sqm_net_per_bed": flt(v.sqm_net_per_bed),
+			"sqm_gross_per_bed": flt(v.sqm_gross_per_bed),
+			"plants_per_sqm_gross": flt(v.plants_per_sqm_gross),
+			"plants_per_ha": plants_per_ha,
+			"plants_per_block": v.plants_per_block or 0,
+			"min_planting_plants": v.min_planting_plants or 0,
+			"total_flushes": v.total_flushes or 0,
+			"total_stems_per_plant_life": flt(v.total_stems_per_plant_life),
+			"stems_per_ha_life": flt(v.stems_per_ha_life),
+			"stems_per_ha_year": flt(v.stems_per_ha_year),
+			"stated_yield_stems_per_ha": flt(v.stated_yield_stems_per_ha),
+			"yield_variance_pct": flt(v.yield_variance_pct),
+			"total_weeks_in_ground": v.total_weeks_in_ground or 0,
+			"life_expectancy_years": flt(v.life_expectancy_years),
+			"first_harvest_offset_weeks": v.first_harvest_offset_weeks or 0,
+			"harvest_weeks_per_year": v.harvest_weeks_per_year or 0,
+			"flushes_per_year": flt(v.flushes_per_year),
+			"establishment_weeks": v.establishment_weeks or 0,
+			"ms_establishment_weeks": v.ms_establishment_weeks or 0,
+			"cutting_to_harvest_weeks": v.cutting_to_harvest_weeks or 0,
+			"total_renewal_lead_weeks": lead + estab,
+			"plants_per_sqm_bench": flt(v.plants_per_sqm_bench),
+			"max_multiplication_factor": flt(v.max_multiplication_factor),
+			"lead_time_weeks": v.lead_time_weeks or 0,
+			"cuttings_per_plant_required": flt(v.cuttings_per_plant_required),
+			"grade_total_pct": flt(v.grade_total_pct),
+			"order_to_first_harvest_weeks": journey[-1]["week"],
+		},
+		"flushes": flushes,
+		"grades": [{"grade": g.grade, "pct": flt(g.allocation_pct),
+		            "price": flt(g.price_per_stem)} for g in v.grade_allocation],
+		"ramp": ramp,
+		"journey": journey,
+		"versions": sibling,
+	}
+
+
+@frappe.whitelist()
+def save_protocol(version, changes, flushes=None, grades=None, change_reason=None,
+                  effective_from=None):
+	"""Apply protocol edits, honouring the versioning rules.
+
+	A Draft is edited in place. An Active version is never edited: it is amended
+	into a new Draft, because crop cycles are pinned to the parameters they ran
+	under and rewriting those retrospectively would falsify their history.
+	"""
+	_guard()
+	if isinstance(changes, str):
+		changes = frappe.parse_json(changes or "{}")
+	if isinstance(flushes, str):
+		flushes = frappe.parse_json(flushes or "null")
+	if isinstance(grades, str):
+		grades = frappe.parse_json(grades or "null")
+
+	v = frappe.get_doc("Crop Protocol Version", version)
+	amended = False
+	if v.version_status != "Draft":
+		if not change_reason:
+			frappe.throw(
+				_("Version {0} is {1}. Editing it would rewrite the parameters existing "
+				  "cycles ran under, so a new version is created instead — which needs a "
+				  "change reason.").format(v.name, v.version_status),
+				title=_("Change reason required"),
+			)
+		v = frappe.get_doc("Crop Protocol Version",
+		                   v.create_amendment(change_reason, effective_from))
+		amended = True
+
+	for k, val in (changes or {}).items():
+		if k in EDITABLE_PROTOCOL_FIELDS:
+			v.set(k, val)
+
+	if flushes is not None:
+		v.flush_schedule = []
+		for i, f in enumerate(flushes, start=1):
+			v.append("flush_schedule", {
+				"flush_number": i,
+				"weeks_from_pinch": frappe.utils.cint(f.get("weeks_from_pinch")),
+				"stems_per_plant": flt(f.get("stems_per_plant")),
+			})
+	if grades is not None:
+		v.grade_allocation = []
+		for g in grades:
+			v.append("grade_allocation", {
+				"grade": g.get("grade"),
+				"allocation_pct": flt(g.get("pct")),
+				"price_per_stem": flt(g.get("price")),
+			})
+
+	v.flags.ignore_permissions = True
+	v.save()
+	return {"version": v.name, "amended": amended, "status": v.version_status,
+	        "detail": protocol_detail(v.name)}
+
+
 @frappe.whitelist()
 def beds_under_block(block=None, farm=None):
 	"""Every bed under a block, with what is standing on it."""

@@ -26,6 +26,7 @@
       <button role="tab" data-tab="demand" aria-selected="false">{{ _("Market Demand") }}</button>
       <button role="tab" data-tab="planting" aria-selected="false">{{ _("Planting Plan") }}</button>
       <button role="tab" data-tab="blocks" aria-selected="false">{{ _("Block Forecast") }}</button>
+      <button role="tab" data-tab="protocol" aria-selected="false">{{ _("Protocol") }}</button>
       <button role="tab" data-tab="motherstock" aria-selected="false">{{ _("Motherstock") }}</button>
       <button role="tab" data-tab="calendar" aria-selected="false">{{ _("Calendar") }}</button>
     </nav>
@@ -106,6 +107,82 @@
           <span class="pl-key"><i class="sw" style="background:var(--surface-2);border:1px solid var(--border)"></i>{{ _("Not producing") }}</span>
         </div>
         <div id="bf-body"></div>
+      </div>
+    </section>
+
+    <!-- ══ PROTOCOL ══ -->
+    <section class="pl-pane" data-pane="protocol">
+      <div class="pl-card">
+        <div class="pl-card-head">
+          <div><h2 id="pr-title">{{ _("Crop Protocol") }}</h2>
+               <p class="pl-note" id="pr-sub"></p></div>
+          <div style="display:flex;gap:8px;align-items:flex-end;flex-wrap:wrap">
+            <label class="pl-inline">{{ _("Version") }}<select id="pr-version"></select></label>
+            <button type="button" class="pl-btn" id="pr-edit">{{ _("Edit") }}</button>
+            <button type="button" class="pl-btn primary" id="pr-save" hidden>{{ _("Save") }}</button>
+            <button type="button" class="pl-btn" id="pr-cancel" hidden>{{ _("Cancel") }}</button>
+          </div>
+        </div>
+        <div id="pr-banner"></div>
+        <div class="pl-tiles" id="pr-tiles"></div>
+      </div>
+
+      <div class="pl-card">
+        <div class="pl-card-head"><h2>{{ _("Crop growth timeline — planting to uprooting") }}</h2></div>
+        <div id="pr-timeline" class="pl-tlstrip"></div>
+      </div>
+
+      <div class="pl-two">
+        <div class="pl-card">
+          <div class="pl-card-head"><h2>{{ _("Production parameters") }}</h2></div>
+          <div id="pr-prod"></div>
+        </div>
+        <div class="pl-card">
+          <div class="pl-card-head"><h2>{{ _("Planting density") }}</h2></div>
+          <div id="pr-density"></div>
+        </div>
+      </div>
+
+      <div class="pl-card">
+        <div class="pl-card-head">
+          <div><h2>{{ _("Flush harvest schedule") }}</h2>
+               <p class="pl-note">{{ _("Editing stems per plant or weeks from pinch changes every downstream figure.") }}</p></div>
+        </div>
+        <div id="pr-flushes" class="pl-scroll"></div>
+      </div>
+
+      <div class="pl-three">
+        <div class="pl-card">
+          <div class="pl-card-head"><h2>{{ _("TC establishment") }}</h2></div>
+          <div id="pr-estab"></div>
+          <h3>{{ _("Ramp to full capacity") }}</h3>
+          <div id="pr-ramp" class="pl-ramp"></div>
+        </div>
+        <div class="pl-card">
+          <div class="pl-card-head"><h2>{{ _("Motherstock lifecycle & renewal") }}</h2></div>
+          <div id="pr-ms"></div>
+          <div class="pl-callout" id="pr-deadline"></div>
+        </div>
+        <div class="pl-card">
+          <div class="pl-card-head"><h2>{{ _("Grades & losses") }}</h2></div>
+          <div id="pr-gradebar" class="pl-gradebar"></div>
+          <div id="pr-grades"></div>
+          <h3>{{ _("Losses") }}</h3>
+          <div id="pr-losses"></div>
+        </div>
+      </div>
+
+      <div class="pl-card">
+        <div class="pl-card-head">
+          <div><h2>{{ _("Full TC journey — order to first farm harvest") }}</h2>
+               <p class="pl-note" id="pr-journey-sub"></p></div>
+        </div>
+        <div id="pr-journey" class="pl-tlstrip"></div>
+      </div>
+
+      <div class="pl-card">
+        <div class="pl-card-head"><h2>{{ _("Version history") }}</h2></div>
+        <div id="pr-versions" class="pl-scroll"></div>
       </div>
     </section>
 
@@ -293,6 +370,49 @@ table.pl-t tr.zero td{color:var(--text-muted)}
 .pl-tip{position:fixed;z-index:60;pointer-events:none;padding:7px 10px;
   background:var(--text-primary);color:var(--surface-1);border-radius:6px;font-size:.75rem;
   line-height:1.45;box-shadow:0 3px 12px rgba(0,0,0,.18);max-width:260px}
+
+.pl-btn{border:1px solid var(--border);background:var(--surface-1);color:var(--text-primary);
+  padding:6px 14px;border-radius:6px;font-size:.8rem;cursor:pointer}
+.pl-btn:hover{background:var(--surface-2)}
+.pl-btn.primary{background:var(--seq-400);color:#fff;border-color:var(--seq-400)}
+.pl-two{display:grid;gap:16px;grid-template-columns:1fr 1fr}
+.pl-three{display:grid;gap:16px;grid-template-columns:repeat(auto-fit,minmax(280px,1fr))}
+@media(max-width:800px){.pl-two{grid-template-columns:1fr}}
+.prow{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:7px 0;
+  border-bottom:1px solid var(--gridline);font-size:.82rem}
+.prow:last-child{border:none}
+.pkey{color:var(--text-secondary);flex:1}
+.pval{font-weight:600;text-align:right;font-variant-numeric:tabular-nums}
+.pnote{font-size:.7rem;color:var(--text-muted);font-weight:400;margin-left:7px}
+.pin{width:92px;padding:3px 7px;border:1px solid var(--seq-400);border-radius:5px;
+  background:var(--surface-1);color:var(--text-primary);font-size:.82rem;font-weight:600;
+  text-align:right;font-variant-numeric:tabular-nums}
+.pin.wide{width:100%;text-align:left;font-weight:400}
+.pl-tlstrip{display:flex;overflow-x:auto;border-radius:8px;border:1px solid var(--border)}
+.tseg{flex:1 0 auto;min-width:78px;padding:11px 7px;text-align:center;color:#fff}
+.tseg .tw{font-size:1.05rem;font-weight:700;line-height:1}
+.tseg .tn{font-size:.61rem;font-weight:600;margin-top:3px;opacity:.92;letter-spacing:.3px}
+.tseg .ts{font-size:.57rem;opacity:.78;margin-top:1px}
+.tgap{flex:0 0 auto;min-width:52px;display:grid;place-items:center;background:var(--surface-2);
+  font-size:.6rem;font-weight:600;color:var(--text-secondary);text-align:center;padding:0 5px}
+.pl-ramp{display:grid;grid-template-columns:repeat(auto-fit,minmax(62px,1fr));gap:7px}
+.rcard{background:var(--surface-2);border:1px solid var(--border);border-radius:7px;
+  padding:8px 6px;text-align:center}
+.rcard .rw{font-size:.63rem;font-weight:600;color:var(--text-secondary)}
+.rcard .rv{font-size:1.15rem;font-weight:700;color:var(--seq-400);line-height:1.1;margin:2px 0 4px}
+.rcard .rb{height:6px;border-radius:3px;background:var(--seq-400)}
+.pl-gradebar{display:flex;height:34px;border-radius:7px;overflow:hidden;
+  border:1px solid var(--border);margin-bottom:10px}
+.gseg{display:grid;place-items:center;font-size:.68rem;font-weight:600;color:#fff;
+  line-height:1.25;text-align:center}
+.pl-callout{margin-top:10px;background:color-mix(in srgb,var(--warning) 12%,transparent);
+  border:1px solid color-mix(in srgb,var(--warning) 45%,transparent);border-radius:7px;
+  padding:9px 11px;font-size:.75rem;line-height:1.5}
+.pl-banner{border-radius:7px;padding:9px 12px;font-size:.78rem;margin-bottom:12px;
+  border:1px solid var(--border);line-height:1.5}
+.pl-banner.warn{background:color-mix(in srgb,var(--critical) 10%,transparent);
+  border-color:color-mix(in srgb,var(--critical) 40%,transparent)}
+.pl-banner.info{background:color-mix(in srgb,var(--seq-200) 26%,transparent)}
 .pl-empty{color:var(--text-muted);font-size:.82rem;padding:10px 0}
 .warn{color:var(--critical)}
 </style>
@@ -323,7 +443,7 @@ table.pl-t tr.zero td{color:var(--text-muted)}
   });
 
   const S = { variety: "", farm: "", version: null, grain: "month",
-              dv: null, deriv: null, pp: null, bf: null, cal: null, ls: null,
+              dv: null, deriv: null, pp: null, bf: null, cal: null, ls: null, pr: null,
               ppFilter: "all", dmFilter: "all", bfBlock: "", calYear: null };
 
   const KIND_COLOR = { stick: "--violet", plant: "--series-1", pinch: "--warning",
@@ -714,6 +834,303 @@ table.pl-t tr.zero td{color:var(--text-muted)}
     bindTips($("cal-body"));
   }
 
+
+  // ───────────────────────────────────────────────────── protocol tab
+  const PR_EDITS = {};          // staged field edits
+  const PR_FLUSH = { rows: null, dirty: false };
+  let prEditing = false;
+
+  const TSEG = ["#166534","#15803d","#2563eb","#0891b2","#7c3aed","#9333ea",
+                "#db2777","#ea580c","#ca8a04","#65a30d","#dc2626"];
+
+  function prow(key, val, note, edit) {
+    if (edit && prEditing) {
+      const t = edit.type || "number";
+      return `<div class="prow"><span class="pkey">${esc(key)}</span>` +
+        `<span class="pval"><input class="pin${t === "text" ? " wide" : ""}" type="${t}"` +
+        ` data-pf="${edit.field}" value="${esc(edit.value == null ? "" : edit.value)}"` +
+        `${edit.step ? ` step="${edit.step}"` : ""}>` +
+        (note ? `<span class="pnote">${esc(note)}</span>` : "") + "</span></div>";
+    }
+    return `<div class="prow"><span class="pkey">${esc(key)}</span>` +
+      `<span class="pval">${val}${note ? `<span class="pnote">${esc(note)}</span>` : ""}` +
+      "</span></div>";
+  }
+
+  function renderProtocol() {
+    const d = S.pr;
+    if (!d || !d.version) {
+      $("pr-tiles").innerHTML = '<p class="pl-empty">No protocol version in this scope.</p>';
+      return;
+    }
+    const F = d.fields, D = d.derived;
+    $("pr-title").textContent = `${d.variety} — Crop Protocol`;
+    $("pr-sub").textContent =
+      `${d.version} · v${d.version_no} ${d.status}` +
+      (d.is_current ? " (current)" : "") +
+      ` · ${d.farm} · effective ${d.effective_from || "—"} → ${d.effective_to || "open"}`;
+
+    // banner: what editing this version will actually do
+    let banner = "";
+    if (prEditing) {
+      banner = d.editable
+        ? `<div class="pl-banner info">Editing this Draft directly. Saving recomputes every derived figure.</div>`
+        : `<div class="pl-banner warn">This version is <b>${esc(d.status)}</b>. Cycles are pinned to the parameters they ran under, so saving does not overwrite it — a new version is created and needs a change reason.</div>`;
+    } else if (Math.abs(D.yield_variance_pct) > 1) {
+      banner = `<div class="pl-banner">Computed yield <b>${num(D.stems_per_ha_year)}</b> stems/ha/yr is ` +
+        `<b>${D.yield_variance_pct > 0 ? "+" : ""}${D.yield_variance_pct.toFixed(1)}%</b> against the stated ` +
+        `<b>${num(D.stated_yield_stems_per_ha)}</b>. Both are shown rather than one being preferred.</div>`;
+    }
+    $("pr-banner").innerHTML = banner;
+
+    $("pr-tiles").innerHTML = [
+      { k: "Variety", v: d.variety, m: "Summer flower" },
+      { k: "Life expectancy", v: D.life_expectancy_years.toFixed(2) + " yrs",
+        m: D.total_weeks_in_ground + " weeks in ground" },
+      { k: "Plants / ha", v: num(D.plants_per_ha),
+        m: `${F.plants_per_sqm_net}/m² net · ${D.plants_per_sqm_gross}/m² gross` },
+      { k: "Yield / ha / yr", v: num(D.stems_per_ha_year),
+        m: "stated " + num(D.stated_yield_stems_per_ha),
+        c: Math.abs(D.yield_variance_pct) > 1 ? "--serious" : "--good" },
+      { k: "Life stems / ha", v: num(D.stems_per_ha_life), m: "over the full life" },
+      { k: "Stems / plant life", v: D.total_stems_per_plant_life.toFixed(1),
+        m: `across ${D.total_flushes} flushes` },
+      { k: "Harvest weeks / yr", v: num(D.harvest_weeks_per_year),
+        m: `every ${F.flush_interval_weeks} weeks` },
+      { k: "Order → 1st harvest", v: D.order_to_first_harvest_weeks + "w",
+        m: "TC order to farm harvest" },
+    ].map(tile).join("");
+
+    // crop growth timeline
+    const segs = [{ w: 0, n: "PLANT", s: "cutting to ground" },
+      { w: F.weeks_to_pinch, n: "PINCH", s: "wk " + F.weeks_to_pinch }];
+    d.flushes.forEach((f) => segs.push({
+      w: f.weeks_from_planting, n: "F" + f.flush,
+      s: f.stems_per_plant + " st/pl" }));
+    segs.push({ w: D.total_weeks_in_ground, n: "UPROOT", s: "end of life" });
+    $("pr-timeline").innerHTML = segs.map((x, i) =>
+      `<div class="tseg" style="background:${TSEG[i % TSEG.length]}">` +
+      `<div class="tw">wk ${x.w}</div><div class="tn">${esc(x.n)}</div>` +
+      `<div class="ts">${esc(x.s)}</div></div>`).join("");
+
+    // production parameters
+    $("pr-prod").innerHTML =
+      prow("Weeks to pinch", F.weeks_to_pinch + " weeks", "from planting",
+        { field: "weeks_to_pinch", value: F.weeks_to_pinch }) +
+      prow("Flush interval", F.flush_interval_weeks + " weeks", "between flushes",
+        { field: "flush_interval_weeks", value: F.flush_interval_weeks }) +
+      prow("F1 from planting", d.flushes.length ? d.flushes[0].weeks_from_planting + " weeks" : "—",
+        `pinch(${F.weeks_to_pinch}) + F1(${F.flush_interval_weeks})`) +
+      prow("On the planning grid", D.first_harvest_offset_weeks + " weeks",
+        `+${F.calendar_rounding_weeks}w rounding`,
+        { field: "calendar_rounding_weeks", value: F.calendar_rounding_weeks }) +
+      prow("Total flushes", D.total_flushes + " flushes", "from the schedule below") +
+      prow("Total weeks in ground", D.total_weeks_in_ground + " weeks",
+        D.life_expectancy_years.toFixed(2) + " yrs") +
+      prow("Cuttings per plant per week", F.cuttings_per_plant_per_week, null,
+        { field: "cuttings_per_plant_per_week", value: F.cuttings_per_plant_per_week, step: "0.1" }) +
+      prow("Hardening", F.hardening_weeks + " weeks", "cutting to plantable",
+        { field: "hardening_weeks", value: F.hardening_weeks }) +
+      prow("Sticking to planting", F.sticking_to_planting_weeks + " weeks", null,
+        { field: "sticking_to_planting_weeks", value: F.sticking_to_planting_weeks }) +
+      prow("Cutting to harvest", D.cutting_to_harvest_weeks + " weeks",
+        `hard(${F.hardening_weeks}) + pinch(${F.weeks_to_pinch}) + F1(${F.flush_interval_weeks})`);
+
+    $("pr-density").innerHTML =
+      prow("Plants per m² (net)", F.plants_per_sqm_net + " pl/m²", "agronomic density",
+        { field: "plants_per_sqm_net", value: F.plants_per_sqm_net }) +
+      prow("Net : gross ratio", F.net_gross_ratio, "bed area ÷ block area",
+        { field: "net_gross_ratio", value: F.net_gross_ratio, step: "0.01" }) +
+      prow("Plants per m² (gross)", D.plants_per_sqm_gross + " pl/m²", "what /ha uses") +
+      prow("Plants per ha", num(D.plants_per_ha) + " pl/ha", "on gross area") +
+      prow("Plants per bed", num(F.plants_per_bed), null,
+        { field: "plants_per_bed", value: F.plants_per_bed }) +
+      prow("Beds per block", F.beds_per_block, null,
+        { field: "beds_per_block", value: F.beds_per_block }) +
+      prow("Plants per block", num(D.plants_per_block),
+        `${F.beds_per_block} × ${num(F.plants_per_bed)}`) +
+      prow("m² net per bed", D.sqm_net_per_bed.toFixed(1)) +
+      prow("m² gross per bed", D.sqm_gross_per_bed.toFixed(1)) +
+      prow("Minimum planting", F.min_planting_beds + " beds",
+        num(D.min_planting_plants) + " plants",
+        { field: "min_planting_beds", value: F.min_planting_beds }) +
+      prow("Pots per m²", F.pots_per_sqm, null,
+        { field: "pots_per_sqm", value: F.pots_per_sqm }) +
+      prow("Plants per pot", F.plants_per_pot, null,
+        { field: "plants_per_pot", value: F.plants_per_pot });
+
+    // flush schedule
+    const fr = PR_FLUSH.rows || d.flushes;
+    const maxSpp = Math.max(...fr.map((f) => f.stems_per_plant), 0.01);
+    $("pr-flushes").innerHTML =
+      '<table class="pl-t"><thead><tr><th>Flush</th><th class="n">From pinch</th>' +
+      '<th class="n">From planting</th><th class="n">Stems/plant</th>' +
+      '<th class="n">Stems/ha</th><th>Yield index</th></tr></thead><tbody>' +
+      fr.map((f, i) => {
+        const spp = prEditing
+          ? `<input class="pin" type="number" step="0.1" data-fl="${i}" data-fk="stems_per_plant" value="${f.stems_per_plant}">`
+          : `<b>${f.stems_per_plant}</b>`;
+        const wfp = prEditing
+          ? `<input class="pin" type="number" data-fl="${i}" data-fk="weeks_from_pinch" value="${f.weeks_from_pinch}">`
+          : f.weeks_from_pinch + "w";
+        return `<tr><td><span class="pill" style="background:${TSEG[(i + 2) % TSEG.length]};color:#fff;border:0">F${f.flush}</span></td>` +
+          `<td class="n">${wfp}</td><td class="n">wk ${f.weeks_from_planting}</td>` +
+          `<td class="n">${spp}</td><td class="n">${num(f.stems_per_ha)}</td>` +
+          `<td><div style="height:8px;border-radius:4px;background:${TSEG[(i + 2) % TSEG.length]};` +
+          `width:${Math.round(f.stems_per_plant / maxSpp * 100)}%"></div></td></tr>`;
+      }).join("") +
+      `<tr style="font-weight:600"><td colspan="3">TOTAL (${fr.length} flushes)</td>` +
+      `<td class="n">${fr.reduce((a, f) => a + f.stems_per_plant, 0).toFixed(1)}</td>` +
+      `<td class="n">${num(fr.reduce((a, f) => a + f.stems_per_ha, 0))}</td><td></td></tr>` +
+      "</tbody></table>";
+
+    // TC establishment + ramp
+    $("pr-estab").innerHTML =
+      prow("Weeks on tray", F.weeks_on_tray + " weeks", null,
+        { field: "weeks_on_tray", value: F.weeks_on_tray }) +
+      prow("Weeks on pot", F.weeks_on_pot + " weeks", null,
+        { field: "weeks_on_pot", value: F.weeks_on_pot }) +
+      prow("Ramp weeks", F.ramp_weeks + " weeks", "to full capacity",
+        { field: "ramp_weeks", value: F.ramp_weeks }) +
+      prow("Ramp profile", esc(F.ramp_profile || ""), "% per week",
+        { field: "ramp_profile", value: F.ramp_profile, type: "text" }) +
+      prow("MS establishment", D.ms_establishment_weeks + " weeks",
+        "tray + pot + ramp") +
+      prow("Plants per m² of bench", D.plants_per_sqm_bench,
+        `${F.pots_per_sqm} pots × ${F.plants_per_pot}`);
+    $("pr-ramp").innerHTML = d.ramp.map((r) =>
+      `<div class="rcard"><div class="rw">Week ${r.week}</div><div class="rv">${r.pct}%</div>` +
+      `<div class="rb" style="width:${r.pct}%"></div></div>`).join("");
+
+    // MS lifecycle
+    $("pr-ms").innerHTML =
+      prow("Productive life", F.motherstock_life_weeks + " weeks", "then renew",
+        { field: "motherstock_life_weeks", value: F.motherstock_life_weeks }) +
+      prow("Supplier lead", F.supplier_lead_weeks + " weeks", "order → delivery",
+        { field: "supplier_lead_weeks", value: F.supplier_lead_weeks }) +
+      prow("Establishment lead", D.ms_establishment_weeks + " weeks", "tray + pot + ramp") +
+      prow("Total renewal lead", "<b>" + D.total_renewal_lead_weeks + " weeks</b>",
+        `${F.supplier_lead_weeks} + ${D.ms_establishment_weeks}`) +
+      prow("Weeks to max production", F.weeks_to_max_production + " weeks", null,
+        { field: "weeks_to_max_production", value: F.weeks_to_max_production }) +
+      prow("Multiplication cycles", F.max_multiplication_cycles, "cap",
+        { field: "max_multiplication_cycles", value: F.max_multiplication_cycles }) +
+      prow("Multiplication factor", F.multiplication_factor_per_cycle + "×", null,
+        { field: "multiplication_factor_per_cycle", value: F.multiplication_factor_per_cycle, step: "0.1" }) +
+      prow("Cycle time", F.cycle_time_weeks + " weeks", null,
+        { field: "cycle_time_weeks", value: F.cycle_time_weeks });
+    $("pr-deadline").innerHTML =
+      `<b>Order deadline</b><br>Motherstock expiry − <b>${D.total_renewal_lead_weeks} weeks</b> ` +
+      `= the date the next TC order must be placed. ` +
+      `${F.supplier_lead_weeks}w supplier + ${D.ms_establishment_weeks}w establishment.`;
+
+    // grades
+    const gtot = d.grades.reduce((a, g) => a + g.pct, 0) || 1;
+    $("pr-gradebar").innerHTML = d.grades.map((g, i) =>
+      `<div class="gseg" style="width:${g.pct / gtot * 100}%;background:${TSEG[(i + 2) % TSEG.length]}">` +
+      `${esc(g.grade)}<br>${g.pct}%</div>`).join("");
+    $("pr-grades").innerHTML = d.grades.map((g) =>
+      prow(g.grade, g.pct + "%", g.price ? "at " + g.price : null)).join("") +
+      prow("Total", "<b>" + D.grade_total_pct + "%</b>",
+        Math.abs(D.grade_total_pct - 100) > 0.01 ? "does not sum to 100" : null);
+    $("pr-losses").innerHTML =
+      prow("Rooting success", F.rooting_success_pct + "%", null,
+        { field: "rooting_success_pct", value: F.rooting_success_pct }) +
+      prow("Field establishment", F.field_establishment_pct + "%", null,
+        { field: "field_establishment_pct", value: F.field_establishment_pct }) +
+      prow("Cutting reject", F.cutting_reject_pct + "%", null,
+        { field: "cutting_reject_pct", value: F.cutting_reject_pct }) +
+      prow("Cuttings per standing plant", D.cuttings_per_plant_required.toFixed(3),
+        "both loss layers") +
+      prow("Ready cutting price", F.ready_cutting_price, null,
+        { field: "ready_cutting_price", value: F.ready_cutting_price, step: "0.01" }) +
+      prow("Stated yield", num(F.stated_yield_stems_per_ha), "stems/ha/yr target",
+        { field: "stated_yield_stems_per_ha", value: F.stated_yield_stems_per_ha });
+
+    // TC journey
+    const jsegs = [];
+    d.journey.forEach((j, i) => {
+      if (i) jsegs.push(`<div class="tgap">${esc(d.journey[i].note || "")}</div>`);
+      jsegs.push(`<div class="tseg" style="background:${TSEG[i % TSEG.length]}">` +
+        `<div class="tw">wk ${j.week}</div><div class="tn">${esc(j.label)}</div></div>`);
+    });
+    $("pr-journey").innerHTML = jsegs.join("");
+    $("pr-journey-sub").textContent =
+      `Order to first farm harvest: ${D.order_to_first_harvest_weeks} weeks`;
+
+    $("pr-versions").innerHTML =
+      '<table class="pl-t"><thead><tr><th>Version</th><th>Status</th><th>Effective from</th>' +
+      '<th>Effective to</th><th>Current</th><th>Change reason</th></tr></thead><tbody>' +
+      d.versions.map((v) =>
+        `<tr><td>v${v.version}</td><td>${esc(v.version_status)}</td>` +
+        `<td>${esc(v.effective_from || "—")}</td><td>${esc(v.effective_to || "open")}</td>` +
+        `<td>${v.is_current ? "yes" : ""}</td>` +
+        `<td style="font-size:.72rem">${esc(v.change_reason || "")}</td></tr>`).join("") +
+      "</tbody></table>";
+
+    $("pr-edit").hidden = prEditing;
+    $("pr-save").hidden = !prEditing;
+    $("pr-cancel").hidden = !prEditing;
+  }
+
+  function prCollect() {
+    const changes = {};
+    document.querySelectorAll("[data-pf]").forEach((el) => {
+      changes[el.dataset.pf] = el.type === "number" ? Number(el.value) : el.value;
+    });
+    const flushes = [];
+    const src = PR_FLUSH.rows || (S.pr ? S.pr.flushes : []);
+    src.forEach((f, i) => flushes.push({
+      weeks_from_pinch: f.weeks_from_pinch, stems_per_plant: f.stems_per_plant }));
+    document.querySelectorAll("[data-fl]").forEach((el) => {
+      const i = +el.dataset.fl;
+      if (flushes[i]) flushes[i][el.dataset.fk] = Number(el.value);
+    });
+    return { changes, flushes };
+  }
+
+  function prSave() {
+    const { changes, flushes } = prCollect();
+    const d = S.pr;
+    const finish = (reason, eff) =>
+      call("save_protocol", {
+        version: d.version, changes: JSON.stringify(changes),
+        flushes: JSON.stringify(flushes),
+        grades: JSON.stringify(d.grades),
+        change_reason: reason || null, effective_from: eff || null,
+      }).then((r) => {
+        prEditing = false; PR_FLUSH.rows = null;
+        S.pr = r.detail;
+        renderProtocol();
+        frappe.show_alert({
+          message: r.amended
+            ? __("Created {0} as a new Draft — the approved version was left intact.", [r.version])
+            : __("Saved {0}.", [r.version]),
+          indicator: "green",
+        }, 7);
+        // Everything downstream reads the protocol, so refresh it.
+        loadScope();
+      }).catch((e) => frappe.msgprint({ title: __("Could not save"),
+        message: esc(e.message || e), indicator: "red" }));
+
+    if (d.editable) return finish();
+    const dlg = new frappe.ui.Dialog({
+      title: __("Amend protocol"),
+      fields: [
+        { fieldtype: "HTML", options:
+          `<p style="font-size:12px">Version <b>${esc(d.version)}</b> is <b>${esc(d.status)}</b>. ` +
+          `Crop cycles are pinned to the parameters they ran under, so this creates ` +
+          `<b>v${(d.version_no || 0) + 1}</b> as a Draft instead of overwriting it.</p>` },
+        { fieldname: "change_reason", label: __("Change reason"), fieldtype: "Small Text", reqd: 1 },
+        { fieldname: "effective_from", label: __("Effective from"), fieldtype: "Date",
+          reqd: 1, default: frappe.datetime.add_days(frappe.datetime.get_today(), 1) },
+      ],
+      primary_action_label: __("Create amendment"),
+      primary_action(v) { dlg.hide(); finish(v.change_reason, v.effective_from); },
+    });
+    dlg.show();
+  }
+
   function runLifecycle() {
     if (!S.version) return Promise.resolve();
     $("ls-prop-out").textContent = $("ls-prop").value + "%";
@@ -728,10 +1145,10 @@ table.pl-t tr.zero td{color:var(--text-muted)}
     const a = { variety: S.variety, farm: S.farm };
     return Promise.all([
       call("demand_vs_production", a), call("tc_derivation", a), call("planting_plan", a),
-      call("block_forecast", a), call("event_calendar", a),
-    ]).then(([dv, deriv, pp, bf, cal]) => {
+      call("block_forecast", a), call("event_calendar", a), call("protocol_detail", a),
+    ]).then(([dv, deriv, pp, bf, cal, pr]) => {
       S.dv = dv && dv.plan ? dv : null;
-      S.deriv = deriv; S.pp = pp; S.bf = bf; S.cal = cal;
+      S.deriv = deriv; S.pp = pp; S.bf = bf; S.cal = cal; S.pr = pr;
       if (deriv && deriv.version) { S.version = deriv.version; $("f-version").value = S.version; }
 
       const bsel = $("bf-block");
@@ -745,7 +1162,12 @@ table.pl-t tr.zero td{color:var(--text-muted)}
       S.calYear = cal.years && cal.years.length ? cal.years[0] : null;
 
       renderOverview(); renderDemand(); renderPlanting();
-      renderBlocks(); renderDerivation(); renderCalendar();
+      renderBlocks(); renderDerivation(); renderCalendar(); renderProtocol();
+      const pv = $("pr-version");
+      pv.innerHTML = "";
+      ((pr && pr.versions) || []).forEach((x) => pv.add(new Option(
+        `v${x.version} — ${x.version_status}`, x.name || "")));
+      if (pr && pr.version) pv.value = pr.version;
 
       if (!$("ls-qty").value) {
         $("ls-qty").value = Math.max(500,
@@ -808,6 +1230,15 @@ table.pl-t tr.zero td{color:var(--text-muted)}
         "ppFilter", renderPlanting);
 
       $("bf-block").addEventListener("change", (e) => { S.bfBlock = e.target.value; renderBlocks(); });
+      $("pr-edit").addEventListener("click", () => { prEditing = true; renderProtocol(); });
+      $("pr-cancel").addEventListener("click", () => {
+        prEditing = false; PR_FLUSH.rows = null; renderProtocol(); });
+      $("pr-save").addEventListener("click", prSave);
+      $("pr-version").addEventListener("change", (e) => {
+        if (!e.target.value) return;
+        call("protocol_detail", { version: e.target.value }).then((r) => {
+          S.pr = r; prEditing = false; PR_FLUSH.rows = null; renderProtocol(); });
+      });
       $("cal-year").addEventListener("change", (e) => { S.calYear = +e.target.value; renderCalendar(); });
       ["ls-qty", "ls-date", "ls-cycles", "ls-bench"].forEach((id) =>
         $(id).addEventListener("change", runLifecycle));
