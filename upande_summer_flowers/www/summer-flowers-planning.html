@@ -1,0 +1,602 @@
+{% extends "templates/web.html" %}
+
+{% block title %}{{ _("Summer Flowers — Planning") }}{% endblock %}
+
+{% block page_content %}
+<div class="pl-root viz-root" id="pl-root">
+
+  <header class="pl-head">
+    <h1>{{ _("Summer Flowers — Planning") }}</h1>
+    <p class="pl-sub">{{ _("Demand against planned production, and how many tissue-culture plantlets that implies.") }}</p>
+  </header>
+
+  <div class="pl-filters" role="group" aria-label="{{ _('Scope') }}">
+    <label>{{ _("Variety") }}<select id="f-variety"></select></label>
+    <label>{{ _("Farm") }}<select id="f-farm"></select></label>
+    <label>{{ _("Protocol version") }}<select id="f-version"></select></label>
+    <span class="pl-asof" id="asof"></span>
+  </div>
+
+  <p id="pl-loading" class="pl-note">{{ _("Loading…") }}</p>
+
+  <div id="pl-body" hidden>
+
+    <section class="pl-tiles" id="tiles" aria-label="{{ _('Headline') }}"></section>
+
+    <!-- 1. demand vs production -->
+    <section class="pl-card">
+      <div class="pl-card-head">
+        <div>
+          <h2>{{ _("Demand vs planned production") }}</h2>
+          <p class="pl-note" id="dv-sub"></p>
+        </div>
+        <div class="pl-toggle" role="group" aria-label="{{ _('Grain') }}">
+          <button type="button" id="g-month" class="is-on" aria-pressed="true">{{ _("Monthly") }}</button>
+          <button type="button" id="g-week" aria-pressed="false">{{ _("Weekly") }}</button>
+        </div>
+      </div>
+      <div class="pl-legend">
+        <span class="pl-key"><i class="sw" style="background:var(--series-1)"></i>{{ _("Production") }}</span>
+        <span class="pl-key"><i class="sw" style="background:var(--series-2)"></i>{{ _("Demand") }}</span>
+      </div>
+      <div class="pl-chart-wrap"><div id="dv-chart" class="pl-chart"></div></div>
+      <p class="pl-note">{{ _("Weekly swings hard because a whole block flushes in one week. Monthly is the reliable read.") }}</p>
+    </section>
+
+    <!-- 2. derivation -->
+    <section class="pl-card">
+      <div class="pl-card-head"><h2>{{ _("From demand to the TC order") }}</h2></div>
+      <div id="derivation"></div>
+    </section>
+
+    <!-- 3. trade-off -->
+    <section class="pl-card">
+      <div class="pl-card-head">
+        <div>
+          <h2>{{ _("TC order size against how early it must arrive") }}</h2>
+          <p class="pl-note">{{ _("Each multiplication round buys a smaller order but costs lead time. Click a row to load it below.") }}</p>
+        </div>
+        <label class="pl-inline">{{ _("Needed by") }}
+          <input type="date" id="need-by">
+        </label>
+      </div>
+      <div id="tc-options" class="pl-scroll"></div>
+    </section>
+
+    <!-- 4. what-if -->
+    <section class="pl-card">
+      <div class="pl-card-head">
+        <div>
+          <h2>{{ _("What-if: motherstock build-up") }}</h2>
+          <p class="pl-note" id="wi-sub"></p>
+        </div>
+      </div>
+
+      <div class="pl-controls">
+        <label>{{ _("TC plantlets bought") }}
+          <input type="number" id="w-tc" min="1" step="1">
+        </label>
+        <label>{{ _("TC arrives") }}
+          <input type="date" id="w-date">
+        </label>
+        <label>{{ _("Multiplication rounds") }}
+          <input type="number" id="w-rounds" min="0" max="8" step="1">
+        </label>
+        <label>{{ _("% released to field each round") }}
+          <input type="range" id="w-field" min="0" max="100" step="10">
+          <output id="w-field-out"></output>
+        </label>
+      </div>
+      <p class="pl-note">
+        {{ _("Retaining everything doubles the pool each round; releasing half holds it level. 1000 → 500 field + 500 retained → 500 + 500 = 1000.") }}
+      </p>
+
+      <div class="pl-tiles pl-tiles-sm" id="wi-tiles"></div>
+
+      <h3>{{ _("Round by round") }}</h3>
+      <div id="wi-ledger" class="pl-scroll"></div>
+
+      <h3>{{ _("Motherstock pool and bench space") }}</h3>
+      <div class="pl-chart-wrap"><div id="wi-chart" class="pl-chart"></div></div>
+      <p class="pl-note">{{ _("Bench area is the pool divided by plants per m², so it tracks the pool exactly — the tooltip carries both.") }}</p>
+    </section>
+
+    <!-- 5. what was actually bought -->
+    <section class="pl-card">
+      <div class="pl-card-head"><h2>{{ _("Motherstock batches on record") }}</h2></div>
+      <div id="batches" class="pl-scroll"></div>
+    </section>
+  </div>
+
+  <div id="pl-tip" class="pl-tip" hidden></div>
+</div>
+
+<style>
+.pl-root.viz-root {
+  color-scheme: light;
+  --surface-1:#fcfcfb; --surface-2:#f4f4f1;
+  --text-primary:#0b0b0b; --text-secondary:#52514e; --text-muted:#898781;
+  --gridline:#e1e0d9; --baseline:#c3c2b7; --border:rgba(11,11,11,.10);
+  --series-1:#2a78d6; --series-2:#eb6834;
+  --seq-400:#3987e5; --seq-200:#9ec5f4;
+  --good:#0ca30c; --warning:#fab219; --serious:#ec835a; --critical:#d03b3b;
+}
+@media (prefers-color-scheme: dark) {
+  :root:where(:not([data-theme="light"])) .pl-root.viz-root {
+    color-scheme: dark;
+    --surface-1:#1a1a19; --surface-2:#232322;
+    --text-primary:#fff; --text-secondary:#c3c2b7; --text-muted:#898781;
+    --gridline:#2c2c2a; --baseline:#383835; --border:rgba(255,255,255,.10);
+    --series-1:#3987e5; --series-2:#d95926; --seq-400:#3987e5; --seq-200:#184f95;
+  }
+}
+:root[data-theme="dark"] .pl-root.viz-root {
+  color-scheme: dark;
+  --surface-1:#1a1a19; --surface-2:#232322;
+  --text-primary:#fff; --text-secondary:#c3c2b7; --text-muted:#898781;
+  --gridline:#2c2c2a; --baseline:#383835; --border:rgba(255,255,255,.10);
+  --series-1:#3987e5; --series-2:#d95926; --seq-400:#3987e5; --seq-200:#184f95;
+}
+
+.pl-root{max-width:1220px;margin:0 auto;padding:8px 0 64px;color:var(--text-primary)}
+.pl-head h1{font-size:1.7rem;margin:0 0 4px;letter-spacing:-.4px}
+.pl-sub{color:var(--text-secondary);margin:0 0 20px;font-size:.9rem}
+.pl-filters{display:flex;flex-wrap:wrap;gap:14px;align-items:flex-end;padding:12px 14px;
+  margin-bottom:18px;background:var(--surface-2);border:1px solid var(--border);border-radius:8px}
+.pl-filters label,.pl-controls label{display:flex;flex-direction:column;gap:4px;font-size:.7rem;
+  text-transform:uppercase;letter-spacing:.6px;color:var(--text-muted);margin:0}
+.pl-filters select,.pl-controls input,.pl-inline input{padding:6px 8px;font-size:.88rem;
+  border:1px solid var(--border);border-radius:6px;background:var(--surface-1);
+  color:var(--text-primary);min-width:150px}
+.pl-inline{display:flex;flex-direction:column;gap:4px;font-size:.7rem;text-transform:uppercase;
+  letter-spacing:.6px;color:var(--text-muted)}
+.pl-asof{margin-left:auto;font-size:.78rem;color:var(--text-muted)}
+
+.pl-tiles{display:grid;gap:12px;margin-bottom:18px;
+  grid-template-columns:repeat(auto-fit,minmax(180px,1fr))}
+.pl-tiles-sm{grid-template-columns:repeat(auto-fit,minmax(150px,1fr));margin:12px 0 4px}
+.pl-tile{padding:13px 15px;background:var(--surface-2);border:1px solid var(--border);border-radius:8px}
+.pl-tile .k{font-size:.68rem;text-transform:uppercase;letter-spacing:.7px;color:var(--text-muted);margin-bottom:5px}
+.pl-tile .v{font-size:1.4rem;font-weight:600;line-height:1.1;font-variant-numeric:tabular-nums}
+.pl-tile .m{font-size:.74rem;color:var(--text-secondary);margin-top:4px}
+
+.pl-card{background:var(--surface-1);border:1px solid var(--border);border-radius:10px;
+  padding:16px 18px;margin-bottom:18px}
+.pl-card-head{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;margin-bottom:10px}
+.pl-card-head h2{font-size:1rem;margin:0;font-weight:600}
+.pl-card h3{font-size:.85rem;margin:16px 0 6px;font-weight:600;color:var(--text-secondary)}
+.pl-note{font-size:.76rem;color:var(--text-secondary);margin:6px 0 0}
+
+.pl-toggle{display:inline-flex;border:1px solid var(--border);border-radius:6px;overflow:hidden;flex:none}
+.pl-toggle button{border:0;background:var(--surface-1);padding:5px 12px;font-size:.78rem;
+  color:var(--text-secondary);cursor:pointer}
+.pl-toggle button.is-on{background:var(--seq-400);color:#fff}
+
+.pl-legend{display:flex;gap:16px;margin-bottom:8px}
+.pl-key{display:inline-flex;align-items:center;gap:6px;font-size:.78rem;color:var(--text-secondary)}
+.pl-key .sw{width:10px;height:10px;border-radius:2px;display:inline-block}
+
+.pl-chart-wrap{overflow-x:auto}
+.pl-chart svg{display:block}
+.pl-chart .grid line{stroke:var(--gridline);stroke-width:1}
+.pl-chart .baseline{stroke:var(--baseline);stroke-width:1}
+.pl-chart text{fill:var(--text-muted);font-size:10px}
+.pl-chart .bar,.pl-chart .dot{cursor:pointer}
+.pl-chart .bar:hover{opacity:.82}
+
+.pl-controls{display:grid;gap:14px;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));
+  padding:12px 14px;background:var(--surface-2);border:1px solid var(--border);border-radius:8px}
+.pl-controls output{font-size:.85rem;color:var(--text-primary);font-variant-numeric:tabular-nums}
+
+table.pl-t{width:100%;border-collapse:collapse;font-size:.8rem}
+table.pl-t th{text-align:left;font-size:.66rem;text-transform:uppercase;letter-spacing:.5px;
+  color:var(--text-muted);border-bottom:1px solid var(--baseline);padding:6px 8px;white-space:nowrap}
+table.pl-t td{padding:6px 8px;border-bottom:1px solid var(--gridline);vertical-align:middle}
+table.pl-t td.n{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+table.pl-t tr.click{cursor:pointer}
+table.pl-t tr.click:hover td{background:var(--surface-2)}
+table.pl-t tr.sel td{background:color-mix(in srgb, var(--seq-200) 30%, transparent)}
+.pl-scroll{overflow-x:auto}
+
+.pill{display:inline-flex;align-items:center;gap:5px;padding:2px 8px;border-radius:999px;
+  font-size:.71rem;font-weight:500;border:1px solid var(--border);white-space:nowrap}
+.pill .dot2{width:7px;height:7px;border-radius:50%}
+
+.step{display:grid;grid-template-columns:26px 1fr auto;gap:10px;align-items:baseline;
+  padding:7px 0;border-bottom:1px solid var(--gridline)}
+.step .i{width:22px;height:22px;border-radius:50%;background:var(--seq-200);
+  color:var(--text-primary);font-size:.7rem;display:grid;place-items:center;font-weight:600}
+.step .t{font-size:.85rem}
+.step .t small{display:block;color:var(--text-muted);font-size:.72rem;margin-top:1px}
+.step .v{font-size:.95rem;font-weight:600;font-variant-numeric:tabular-nums;text-align:right}
+.step .v small{font-weight:400;color:var(--text-muted);font-size:.7rem;display:block}
+
+.pl-tip{position:fixed;z-index:60;pointer-events:none;padding:7px 10px;background:var(--text-primary);
+  color:var(--surface-1);border-radius:6px;font-size:.75rem;line-height:1.45;
+  box-shadow:0 3px 12px rgba(0,0,0,.18);max-width:250px}
+.pl-empty{color:var(--text-muted);font-size:.82rem;padding:10px 0}
+.warn{color:var(--critical)}
+</style>
+
+<script>
+(function () {
+  "use strict";
+  const $ = (id) => document.getElementById(id);
+  const nf = new Intl.NumberFormat();
+  const num = (v) => nf.format(Math.round(v || 0));
+  // Some derivation steps are fractional (2.7 stems/plant), and rounding those to
+  // whole numbers misstates the very figure the chain turns on.
+  const numx = (v) => {
+    const n = Number(v || 0);
+    return Number.isInteger(n) ? nf.format(n)
+      : nf.format(Number(n.toFixed(2)));
+  };
+  const esc = (s) => String(s == null ? "" : s).replace(/[&<>"']/g,
+    (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+
+  const M = "upande_summer_flowers.summer_flowers.planning_api.";
+  const call = (method, args) => new Promise((resolve, reject) => {
+    let done = false;
+    const fin = (fn, v) => { if (!done) { done = true; fn(v); } };
+    setTimeout(() => fin(reject, new Error("Timed out: " + method)), 30000);
+    try {
+      frappe.call({
+        method: M + method, args: args || {},
+        callback: (r) => fin(resolve, r && r.message),
+        error: (r) => fin(reject, new Error(method + ": " +
+          ((r && r.responseJSON && (r.responseJSON.exc_type || r.responseJSON.message)) ||
+           (r && r.statusText) || "failed"))),
+      });
+    } catch (e) { fin(reject, e); }
+  });
+
+  const S = { scope: null, dv: null, deriv: null, opts: null, sim: null,
+              grain: "month", version: null, variety: "", farm: "" };
+
+  // ---- tooltip
+  const tip = $("pl-tip");
+  function showTip(html, ev) {
+    tip.innerHTML = html; tip.hidden = false;
+    const r = tip.getBoundingClientRect();
+    let x = ev.clientX + 14, y = ev.clientY - r.height - 10;
+    if (x + r.width > window.innerWidth - 8) x = ev.clientX - r.width - 14;
+    if (y < 8) y = ev.clientY + 16;
+    tip.style.left = x + "px"; tip.style.top = y + "px";
+  }
+  const hideTip = () => { tip.hidden = true; };
+
+  // ---- grouped bars: production vs demand
+  function drawGrouped(el, rows) {
+    if (!rows.length) { el.innerHTML = '<p class="pl-empty">Nothing to plot.</p>'; return; }
+    const GAP = 2, bw = rows.length > 60 ? 4 : 11, group = bw * 2 + GAP;
+    const step = group + (rows.length > 60 ? 3 : 14);
+    const padL = 56, padR = 12, padT = 12, padB = 34, h = 250;
+    const plotH = h - padT - padB;
+    const w = Math.max(600, padL + padR + rows.length * step);
+    const max = Math.max(...rows.flatMap((r) => [r.production, r.demand]), 1);
+    const mag = Math.pow(10, Math.floor(Math.log10(max)));
+    const tickStep = Math.ceil(max / 4 / mag) * mag;
+    const top = Math.ceil(max / tickStep) * tickStep;
+    const ticks = []; for (let v = 0; v <= top; v += tickStep) ticks.push(v);
+    const y = (v) => padT + plotH - (v / top) * plotH;
+    const R = 4;
+
+    function bar(x, v, fill, meta) {
+      const bh = Math.max(0, plotH - (y(v) - padT)); if (bh <= 0) return "";
+      const r = Math.min(R, bh, bw / 2), y0 = y(v);
+      return `<path class="bar" d="M${x},${padT + plotH} V${y0 + r} Q${x},${y0} ${x + r},${y0}
+        H${x + bw - r} Q${x + bw},${y0} ${x + bw},${y0 + r} V${padT + plotH} Z"
+        fill="${fill}" data-tip="${esc(meta)}"/>`;
+    }
+    let svg = `<svg viewBox="0 0 ${w} ${h}" width="${w}" height="${h}" role="img"
+      aria-label="Production versus demand">`;
+    svg += '<g class="grid">';
+    ticks.forEach((t) => {
+      svg += `<line x1="${padL}" x2="${w - padR}" y1="${y(t)}" y2="${y(t)}"/>`;
+      svg += `<text x="${padL - 8}" y="${y(t) + 3}" text-anchor="end">${num(t)}</text>`;
+    });
+    svg += "</g>";
+    const everyN = rows.length > 60 ? 13 : (rows.length > 18 ? 2 : 1);
+    rows.forEach((r, i) => {
+      const x = padL + i * step + 5;
+      const meta = `<b>${esc(r.label)}</b><br>Production ${num(r.production)}` +
+        `<br>Demand ${num(r.demand)}<br>Variance ${r.variance > 0 ? "+" : ""}${num(r.variance)}`;
+      svg += bar(x, r.production, "var(--series-1)", meta);
+      svg += bar(x + bw + GAP, r.demand, "var(--series-2)", meta);
+      if (i % everyN === 0) {
+        svg += `<text x="${x + bw + GAP / 2}" y="${h - padB + 14}" text-anchor="middle">${esc(r.label)}</text>`;
+      }
+    });
+    svg += `<line class="baseline" x1="${padL}" x2="${w - padR}" y1="${padT + plotH}" y2="${padT + plotH}"/></svg>`;
+    el.innerHTML = svg;
+    el.querySelectorAll(".bar").forEach((b) => {
+      b.addEventListener("mousemove", (e) => showTip(b.dataset.tip, e));
+      b.addEventListener("mouseleave", hideTip);
+    });
+  }
+
+  // ---- step line: MS pool over time (bench m2 is pool/density, so one series)
+  function drawPool(el, timeline, params) {
+    const rows = timeline.filter((r) => r.week_offset % 2 === 0 || r.added || r.released_to_field);
+    if (!rows.length) { el.innerHTML = '<p class="pl-empty">No timeline.</p>'; return; }
+    const padL = 60, padR = 58, padT = 14, padB = 34, h = 240;
+    const plotH = h - padT - padB, w = Math.max(620, padL + padR + rows.length * 5);
+    const max = Math.max(...rows.map((r) => r.ms_pool), 1);
+    const mag = Math.pow(10, Math.floor(Math.log10(max)));
+    const tickStep = Math.ceil(max / 4 / mag) * mag;
+    const top = Math.ceil(max / tickStep) * tickStep;
+    const y = (v) => padT + plotH - (v / top) * plotH;
+    const x = (i) => padL + (i / Math.max(1, rows.length - 1)) * (w - padL - padR);
+    const dens = params.plants_per_sqm_bench || 124;
+
+    let svg = `<svg viewBox="0 0 ${w} ${h}" width="${w}" height="${h}" role="img"
+      aria-label="Motherstock pool over time">`;
+    svg += '<g class="grid">';
+    for (let v = 0; v <= top; v += tickStep) {
+      svg += `<line x1="${padL}" x2="${w - padR}" y1="${y(v)}" y2="${y(v)}"/>`;
+      svg += `<text x="${padL - 8}" y="${y(v) + 3}" text-anchor="end">${num(v)}</text>`;
+      svg += `<text x="${w - padR + 8}" y="${y(v) + 3}">${num(v / dens)} m²</text>`;
+    }
+    svg += "</g>";
+    // step path, because the pool changes in jumps not gradients
+    let d = "";
+    rows.forEach((r, i) => {
+      const px = x(i), py = y(r.ms_pool);
+      d += i === 0 ? `M${px},${py}` : ` H${px} V${py}`;
+    });
+    svg += `<path d="${d}" fill="none" stroke="var(--series-1)" stroke-width="2"/>`;
+    rows.forEach((r, i) => {
+      if (!r.added && !r.released_to_field) return;
+      svg += `<circle class="dot" cx="${x(i)}" cy="${y(r.ms_pool)}" r="4.5"
+        fill="${r.released_to_field ? "var(--series-2)" : "var(--series-1)"}"
+        stroke="var(--surface-1)" stroke-width="2"
+        data-tip="${esc(`<b>${r.label}</b><br>Pool ${num(r.ms_pool)} plants<br>Bench ${r.bench_sqm} m²<br>` +
+          (r.added ? `+${num(r.added)} matured<br>` : "") +
+          (r.released_to_field ? `−${num(r.released_to_field)} to field<br>` : "") +
+          `Cuttings/wk ${num(r.weekly_cutting_capacity)}`)}"/>`;
+    });
+    const everyN = Math.ceil(rows.length / 10);
+    rows.forEach((r, i) => {
+      if (i % everyN) return;
+      svg += `<text x="${x(i)}" y="${h - padB + 15}" text-anchor="middle">${esc(r.label)}</text>`;
+    });
+    svg += `<line class="baseline" x1="${padL}" x2="${w - padR}" y1="${padT + plotH}" y2="${padT + plotH}"/></svg>`;
+    el.innerHTML = svg;
+    el.querySelectorAll(".dot").forEach((c) => {
+      c.addEventListener("mousemove", (e) => showTip(c.dataset.tip, e));
+      c.addEventListener("mouseleave", hideTip);
+    });
+  }
+
+  // ---- renderers
+  function renderTiles() {
+    const t = S.dv && S.dv.totals;
+    if (!t) { $("tiles").innerHTML = '<p class="pl-empty">No plan for this scope.</p>'; return; }
+    const tiles = [
+      { k: "Demand", v: num(t.demand_stems), m: "stems over the plan" },
+      { k: "Planned production", v: num(t.production_stems),
+        m: `${t.coverage_pct.toFixed(1)}% of demand`,
+        c: t.coverage_pct >= 100 ? "--good" : "--serious" },
+      { k: "Plants required", v: num(t.plants_required),
+        m: `${num(t.beds_required)} beds · ${t.plantings_proposed} plantings` },
+      { k: "Peak sticking week", v: num(t.peak_weekly_sticking),
+        m: `${t.peak_sticking_week || "—"} — sizes the motherstock` },
+      { k: "Stems per plant life", v: t.stems_per_plant_life.toFixed(1),
+        m: `${num(t.stems_per_ha_year)} stems/ha/yr` },
+    ];
+    $("tiles").innerHTML = tiles.map((x) =>
+      `<div class="pl-tile"><div class="k">${esc(x.k)}</div>` +
+      `<div class="v"${x.c ? ` style="color:var(${x.c})"` : ""}>${esc(x.v)}</div>` +
+      `<div class="m">${esc(x.m)}</div></div>`).join("");
+  }
+
+  function renderDerivation() {
+    const d = S.deriv;
+    if (!d || !d.plan) { $("derivation").innerHTML = '<p class="pl-empty">No plan.</p>'; return; }
+    $("derivation").innerHTML =
+      d.steps.map((s, i) =>
+        `<div class="step"><div class="i">${i + 1}</div>` +
+        `<div class="t">${esc(s.step)}<small>${esc(s.note)}</small></div>` +
+        `<div class="v">${numx(s.value)}<small>${esc(s.unit)}</small></div></div>`).join("") +
+      `<div class="step"><div class="i">→</div><div class="t"><b>Motherstock required</b>` +
+      `<small>${num(d.pots_required)} pots · ${d.bench_sqm} m² of bench</small></div>` +
+      `<div class="v">${num(d.mothers_required)}<small>mother plants</small></div></div>` +
+      `<p class="pl-note">Divide that by the multiplication achieved before you need the plants — that is the TC order.</p>`;
+  }
+
+  function renderOptions() {
+    const o = S.opts;
+    if (!o) return;
+    $("tc-options").innerHTML =
+      '<table class="pl-t"><thead><tr><th>Rounds</th><th class="n">Lead (wks)</th>' +
+      '<th class="n">TC to buy</th><th>TC arrives</th><th>Order by</th>' +
+      '<th class="n">Cost</th><th class="n">Workbook TC</th><th></th></tr></thead><tbody>' +
+      o.options.map((x) =>
+        `<tr class="click" data-rounds="${x.rounds}" data-tc="${x.tc_plants}" data-arrive="${x.tc_arrival_date}">` +
+        `<td>${x.rounds}</td><td class="n">${x.weeks_lead}</td>` +
+        `<td class="n"><b>${num(x.tc_plants)}</b></td>` +
+        `<td>${esc(x.tc_arrival_date)}</td>` +
+        `<td${x.order_in_past ? ' class="warn"' : ""}>${esc(x.order_by_date)}${x.order_in_past ? " ⚠" : ""}</td>` +
+        `<td class="n">${num(x.cost)}</td><td class="n">${num(x.workbook_tc)}</td>` +
+        `<td>${x.is_cheapest_achievable ? '<span class="pill"><i class="dot2" style="background:var(--good)"></i>cheapest</span>' : (x.order_in_past ? '<span class="pill"><i class="dot2" style="background:var(--critical)"></i>date passed</span>' : "")}</td></tr>`
+      ).join("") + "</tbody></table>" +
+      `<p class="pl-note">Each round takes ${o.weeks_per_round} weeks (${o.establishment_weeks} wks establishment + cycle time). "Workbook TC" is what the old linear formula would have ordered.</p>`;
+
+    $("tc-options").querySelectorAll("tr.click").forEach((tr) => {
+      tr.addEventListener("click", () => {
+        $("tc-options").querySelectorAll("tr").forEach((r) => r.classList.remove("sel"));
+        tr.classList.add("sel");
+        $("w-tc").value = tr.dataset.tc;
+        $("w-rounds").value = tr.dataset.rounds;
+        $("w-date").value = tr.dataset.arrive;
+        runSim();
+      });
+    });
+  }
+
+  function renderSim() {
+    const r = S.sim; if (!r) return;
+    const fe = r.field_effect;
+    $("wi-sub").textContent =
+      `${num(r.tc_plants)} plantlets arriving ${r.tc_arrival_date}, ${r.rounds} round(s), ` +
+      `factor ${r.factor} — each round takes ${r.params.cycle_time_weeks + r.params.weeks_to_productive_ms} weeks`;
+
+    $("wi-tiles").innerHTML = [
+      { k: "Final MS pool", v: num(r.final_pool),
+        m: `${r.multiplication_achieved.toFixed(1)}× the order` },
+      { k: "Workbook would give", v: num(r.workbook_linear_pool),
+        m: `${r.workbook_multiplication.toFixed(0)}× (linear)`, c: "--text-muted" },
+      { k: "Released to field", v: num(fe.plants),
+        m: `${fe.beds} beds · ${fe.gross_area_ha} ha` },
+      { k: "Stems over their life", v: num(fe.stems_over_life), m: "from the released plants" },
+      { k: "Peak bench", v: r.peak_bench_sqm + " m²",
+        m: `${num(r.peak_pots)} pots at ${r.peak_week || "—"}` },
+      { k: "TC cost", v: num(r.tc_cost), m: `at ${r.rate} per plantlet` },
+    ].map((x) =>
+      `<div class="pl-tile"><div class="k">${esc(x.k)}</div>` +
+      `<div class="v"${x.c ? ` style="color:var(${x.c})"` : ""}>${esc(x.v)}</div>` +
+      `<div class="m">${esc(x.m)}</div></div>`).join("");
+
+    $("wi-ledger").innerHTML = r.ledger.length
+      ? '<table class="pl-t"><thead><tr><th>Round</th><th>At</th><th class="n">Pool before</th>' +
+        '<th class="n">→ Field</th><th class="n">Retained</th><th class="n">Produced</th>' +
+        '<th class="n">Pool after</th><th>Productive from</th></tr></thead><tbody>' +
+        r.ledger.map((L) => {
+          const tl = r.timeline[L.pool_after_week_offset];
+          const at = r.timeline[L.at_week_offset];
+          return `<tr><td>${L.round}</td><td>${esc(at ? at.label : "+" + L.at_week_offset)}</td>` +
+            `<td class="n">${num(L.pool_before)}</td><td class="n">${num(L.released_to_field)}</td>` +
+            `<td class="n">${num(L.retained)}</td><td class="n">${num(L.produced)}</td>` +
+            `<td class="n"><b>${num(L.pool_after)}</b></td>` +
+            `<td>${esc(tl ? tl.label : "+" + L.pool_after_week_offset)}</td></tr>`;
+        }).join("") + "</tbody></table>"
+      : '<p class="pl-empty">No multiplication rounds — the pool is used as it arrives.</p>';
+
+    drawPool($("wi-chart"), r.timeline, r.params);
+  }
+
+  function renderBatches(rows) {
+    if (!rows.length) { $("batches").innerHTML = '<p class="pl-empty">No motherstock batches saved yet.</p>'; return; }
+    $("batches").innerHTML =
+      '<table class="pl-t"><thead><tr><th>Batch</th><th>Gen</th><th>Status</th>' +
+      '<th class="n">TC bought</th><th class="n">Rate</th><th>Ordered</th><th>On farm</th>' +
+      '<th>Productive</th><th class="n">Mothers</th><th class="n">Bench m²</th>' +
+      '<th>Expires</th></tr></thead><tbody>' +
+      rows.map((b) =>
+        `<tr><td><a href="/app/summer-flower-motherstock-batch/${encodeURIComponent(b.name)}">${esc(b.name)}</a></td>` +
+        `<td>${b.generation || 1}</td><td>${esc(b.batch_status)}</td>` +
+        `<td class="n">${num(b.tc_plants_required)}</td><td class="n">${b.rate_per_plantlet || "—"}</td>` +
+        `<td>${esc(b.tc_order_date || "—")}</td><td>${esc(b.tc_on_farm_date || "—")}</td>` +
+        `<td>${esc(b.max_pc_date || "—")}</td><td class="n">${num(b.mother_plants)}</td>` +
+        `<td class="n">${b.peak_bench_sqm || 0}</td><td>${esc(b.expiry_date || "—")}</td></tr>`
+      ).join("") + "</tbody></table>";
+  }
+
+  // ---- flow
+  function runSim() {
+    if (!S.version) return;
+    const args = {
+      version: S.version,
+      tc_plants: $("w-tc").value || 1,
+      tc_arrival_date: $("w-date").value,
+      rounds: $("w-rounds").value || 0,
+      field_pct: $("w-field").value || 0,
+    };
+    $("w-field-out").textContent = args.field_pct + "%";
+    return call("simulate_buildup", args).then((r) => { S.sim = r; renderSim(); });
+  }
+
+  function loadScopeData() {
+    const a = { variety: S.variety, farm: S.farm };
+    return Promise.all([
+      call("demand_vs_production", a),
+      call("tc_derivation", a),
+      call("motherstock_batches", a),
+    ]).then(([dv, deriv, batches]) => {
+      S.dv = dv && dv.plan ? dv : null;
+      S.deriv = deriv;
+      renderTiles();
+      renderDerivation();
+      renderBatches(batches || []);
+      $("dv-sub").textContent = S.dv
+        ? `${S.dv.plan} · ${S.dv.variety} at ${S.dv.farm} · ${S.dv.period} · ${S.dv.status}`
+        : "No production plan in this scope.";
+      drawGrouped($("dv-chart"), S.dv ? (S.grain === "month" ? S.dv.months : S.dv.weeks) : []);
+
+      if (!deriv || !deriv.plan) return;
+      S.version = deriv.version;
+      $("f-version").value = S.version;
+      const needBy = $("need-by").value || S.dv.weeks[0].date;
+      $("need-by").value = needBy;
+      return call("tc_options", {
+        version: S.version, target_pool: deriv.mothers_required, need_by: needBy,
+        field_pct: 0,
+      }).then((o) => {
+        S.opts = o; renderOptions();
+        const first = o.options.find((x) => !x.order_in_past) || o.options[0];
+        if (!$("w-tc").value) {
+          $("w-tc").value = first.tc_plants;
+          $("w-rounds").value = first.rounds;
+          $("w-date").value = first.tc_arrival_date;
+          $("w-field").value = 0;
+        }
+        return runSim();
+      });
+    });
+  }
+
+  function boot() {
+    return call("scope").then((sc) => {
+      S.scope = sc;
+      const vs = $("f-variety"), fs = $("f-farm"), vers = $("f-version");
+      vs.add(new Option("All varieties", ""));
+      sc.varieties.forEach((x) => vs.add(new Option(x, x)));
+      fs.add(new Option("All farms", ""));
+      sc.farms.forEach((x) => fs.add(new Option(x, x)));
+      sc.versions.forEach((v) => vers.add(new Option(
+        `${v.name}${v.is_current ? " (current)" : ""}`, v.name)));
+
+      vs.addEventListener("change", () => { S.variety = vs.value; loadScopeData(); });
+      fs.addEventListener("change", () => { S.farm = fs.value; loadScopeData(); });
+      vers.addEventListener("change", () => { S.version = vers.value; runSim(); });
+      ["w-tc", "w-rounds", "w-date"].forEach((id) =>
+        $(id).addEventListener("change", runSim));
+      $("w-field").addEventListener("input", () => {
+        $("w-field-out").textContent = $("w-field").value + "%";
+      });
+      $("w-field").addEventListener("change", runSim);
+      $("need-by").addEventListener("change", loadScopeData);
+      $("g-month").addEventListener("click", () => setGrain("month"));
+      $("g-week").addEventListener("click", () => setGrain("week"));
+
+      return loadScopeData();
+    });
+  }
+
+  function setGrain(g) {
+    S.grain = g;
+    $("g-month").classList.toggle("is-on", g === "month");
+    $("g-week").classList.toggle("is-on", g === "week");
+    $("g-month").setAttribute("aria-pressed", g === "month");
+    $("g-week").setAttribute("aria-pressed", g === "week");
+    if (S.dv) drawGrouped($("dv-chart"), g === "month" ? S.dv.months : S.dv.weeks);
+  }
+
+  frappe.ready(() => {
+    if (frappe.session && frappe.session.user === "Guest") {
+      window.location.href = "/login?redirect-to=" + encodeURIComponent(window.location.pathname);
+      return;
+    }
+    boot().then(() => {
+      $("pl-loading").hidden = true;
+      $("pl-body").hidden = false;
+      $("asof").textContent = "As of " + frappe.datetime.get_today();
+    }).catch((e) => {
+      $("pl-loading").innerHTML = '<span class="warn">' +
+        esc("Could not load: " + (e.message || e)) + "</span>";
+      console.error(e);
+    });
+  });
+})();
+</script>
+{% endblock %}
