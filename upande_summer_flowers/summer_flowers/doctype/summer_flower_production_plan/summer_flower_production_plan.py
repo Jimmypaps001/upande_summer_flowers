@@ -171,8 +171,12 @@ class SummerFlowerProductionPlan(Document):
 		for row in self.plan_blocks:
 			if not row.is_new_planting:
 				continue
+			# A link to a planting that has since been deleted must not block a
+			# rebuild, otherwise the row is skipped silently and forever.
 			if row.existing_planting:
-				continue
+				if frappe.db.exists("Planting Calendar", row.existing_planting):
+					continue
+				row.db_set("existing_planting", None)
 			if not row.block:
 				skipped.append(_("row {0}: no block allocated").format(row.idx))
 				continue

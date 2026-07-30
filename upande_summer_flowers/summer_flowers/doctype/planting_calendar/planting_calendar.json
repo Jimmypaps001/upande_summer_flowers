@@ -56,7 +56,11 @@
   "crop_cycle",
   "flush_tab",
   "flush_section",
-  "flush_projection"
+  "flush_projection",
+  "beds_tab",
+  "bed_allocation",
+  "beds_uprooted",
+  "plants_lost_to_uprooting"
  ],
  "fields": [
   {
@@ -359,12 +363,36 @@
    "fieldtype": "Table",
    "label": "Flush Projection",
    "options": "Planting Calendar Flush"
+  },
+  {
+   "fieldname": "beds_tab",
+   "fieldtype": "Tab Break",
+   "label": "Beds"
+  },
+  {
+   "description": "The individual beds this planting occupies. Uprooting one bed here reduces every later flush by that bed's share.",
+   "fieldname": "bed_allocation",
+   "fieldtype": "Table",
+   "label": "Bed Allocation",
+   "options": "Planting Calendar Bed"
+  },
+  {
+   "fieldname": "beds_uprooted",
+   "fieldtype": "Int",
+   "label": "Beds Uprooted",
+   "read_only": 1
+  },
+  {
+   "fieldname": "plants_lost_to_uprooting",
+   "fieldtype": "Int",
+   "label": "Plants Lost to Early Uprooting",
+   "read_only": 1
   }
  ],
  "grid_page_length": 50,
  "index_web_pages_for_search": 1,
  "links": [],
- "modified": "2026-07-30 22:37:32.644982",
+ "modified": "2026-07-31 01:13:09.016849",
  "modified_by": "Administrator",
  "module": "Summer Flowers",
  "name": "Planting Calendar",

@@ -1,0 +1,74 @@
+{
+ "custom_fields": [
+  {
+   "description": "Injected by Upande Summer Flowers.",
+   "dt": "Bed",
+   "fieldname": "custom_summer_flowers_section",
+   "fieldtype": "Section Break",
+   "insert_after": "custom_active",
+   "label": "Summer Flowers",
+   "module": "Summer Flowers"
+  },
+  {
+   "description": "Beds are grouped by greenhouse out of the box; this is what puts them under a production block.",
+   "dt": "Bed",
+   "fieldname": "custom_block",
+   "fieldtype": "Link",
+   "insert_after": "custom_summer_flowers_section",
+   "label": "Block",
+   "module": "Summer Flowers",
+   "options": "Block"
+  },
+  {
+   "default": "Empty",
+   "dt": "Bed",
+   "fieldname": "custom_bed_status",
+   "fieldtype": "Select",
+   "insert_after": "custom_block",
+   "label": "Bed Status",
+   "module": "Summer Flowers",
+   "options": "Empty\nPlanted\nProducing\nUprooted"
+  },
+  {
+   "dt": "Bed",
+   "fieldname": "custom_cb_sf_bed",
+   "fieldtype": "Column Break",
+   "insert_after": "custom_bed_status",
+   "module": "Summer Flowers"
+  },
+  {
+   "description": "The planting currently standing on this bed.",
+   "dt": "Bed",
+   "fieldname": "custom_planting_calendar",
+   "fieldtype": "Link",
+   "insert_after": "custom_cb_sf_bed",
+   "label": "Planting Calendar",
+   "module": "Summer Flowers",
+   "options": "Planting Calendar",
+   "read_only": 1
+  },
+  {
+   "dt": "Bed",
+   "fieldname": "custom_plants",
+   "fieldtype": "Int",
+   "insert_after": "custom_planting_calendar",
+   "label": "Plants on Bed",
+   "module": "Summer Flowers",
+   "read_only": 1
+  },
+  {
+   "description": "Set when this individual bed is pulled out ahead of the rest of the planting. Later flushes lose this bed's share.",
+   "dt": "Bed",
+   "fieldname": "custom_uproot_date",
+   "fieldtype": "Date",
+   "insert_after": "custom_plants",
+   "label": "Bed Uproot Date",
+   "module": "Summer Flowers"
+  }
+ ],
+ "custom_perms": [],
+ "doctype": "Bed",
+ "links": [],
+ "property_setters": [],
+ "sync_on_migrate": 1
+}

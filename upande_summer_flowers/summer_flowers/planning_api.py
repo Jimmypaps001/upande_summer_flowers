@@ -498,6 +498,114 @@ def block_forecast(plan=None, variety=None, farm=None, blocks=None):
 	}
 
 
+@frappe.whitelist()
+def beds_under_block(block=None, farm=None):
+	"""Every bed under a block, with what is standing on it."""
+	_guard()
+	f = {}
+	if block:
+		f["custom_block"] = block
+	elif farm:
+		f["custom_block"] = ["in", frappe.get_all(
+			"Block", filters={"farm": farm, "custom_is_summer_flower_block": 1}, pluck="name")]
+	else:
+		f["custom_block"] = ["is", "set"]
+
+	rows = frappe.get_all(
+		"Bed", filters=f,
+		fields=["name", "bed", "greenhouse", "custom_block", "custom_bed_status",
+		        "custom_planting_calendar", "custom_plants", "custom_uproot_date",
+		        "bed_length", "bed_width"],
+		order_by="custom_block asc, bed asc",
+	)
+	by_block = {}
+	for r in rows:
+		by_block.setdefault(r.custom_block, []).append({
+			"bed": r.name, "number": r.bed, "status": r.custom_bed_status or "Empty",
+			"planting": r.custom_planting_calendar, "plants": r.custom_plants or 0,
+			"uproot_date": str(r.custom_uproot_date) if r.custom_uproot_date else None,
+			"area": flt(r.bed_length) * flt(r.bed_width),
+		})
+	return {
+		"blocks": [
+			{
+				"block": b,
+				"block_code": (b or "").split(" - Block ")[-1],
+				"beds": beds,
+				"total": len(beds),
+				"planted": len([x for x in beds if x["status"] in ("Planted", "Producing")]),
+				"uprooted": len([x for x in beds if x["status"] == "Uprooted"]),
+				"empty": len([x for x in beds if x["status"] == "Empty"]),
+				"plants": sum(x["plants"] for x in beds),
+			}
+			for b, beds in sorted(by_block.items())
+		],
+		"total_beds": len(rows),
+	}
+
+
+@frappe.whitelist()
+def uproot_bed_whatif(planting, bed, on_date, plan=None):
+	"""Effect of uprooting one bed on production against demand. Nothing is saved."""
+	_guard()
+	doc = frappe.get_doc("Planting Calendar", planting)
+	row = next((r for r in doc.bed_allocation if r.bed == bed), None)
+	if not row:
+		frappe.throw(_("Bed {0} is not allocated to {1}.").format(bed, planting))
+
+	on_date = getdate(on_date)
+	per_bed = row.plants or 0
+	before, after, deltas = [], [], []
+	for fl in doc.flush_projection:
+		hd = getdate(fl.harvest_date)
+		was = fl.expected_stems or 0
+		# Only flushes on or after the uproot date lose this bed.
+		lost = int(round((fl.stems_per_plant or 0) * per_bed)) if hd >= on_date else 0
+		before.append({"flush": fl.flush_number, "date": str(hd),
+		               "label": f"{fl.year}-W{fl.week_no:02d}", "stems": was})
+		after.append({"flush": fl.flush_number, "date": str(hd),
+		              "label": f"{fl.year}-W{fl.week_no:02d}", "stems": was - lost})
+		deltas.append({"flush": fl.flush_number, "label": f"{fl.year}-W{fl.week_no:02d}",
+		               "date": str(hd), "lost": lost, "affected": bool(lost)})
+
+	# Put the loss against the plan's demand for those weeks.
+	weeks = {}
+	if plan is None:
+		rows = frappe.get_all("Summer Flower Production Plan",
+		                      filters={"variety": doc.variety, "docstatus": ["<", 2]},
+		                      pluck="name", order_by="creation desc", limit=1)
+		plan = rows[0] if rows else None
+	if plan:
+		p = frappe.get_doc("Summer Flower Production Plan", plan)
+		weeks = {(w.year, w.week_no): w for w in p.plan_weeks}
+
+	impact = []
+	for fl, d in zip(doc.flush_projection, deltas):
+		if not d["lost"]:
+			continue
+		w = weeks.get((fl.year, fl.week_no))
+		dem = (w.demand_stems or 0) if w else 0
+		prod = (w.production_stems or 0) if w else 0
+		impact.append({
+			"label": d["label"], "date": d["date"], "flush": fl.flush_number,
+			"lost": d["lost"], "demand": dem,
+			"production_before": prod, "production_after": prod - d["lost"],
+			"variance_before": prod - dem, "variance_after": prod - d["lost"] - dem,
+			"turns_short": (prod - dem) >= 0 and (prod - d["lost"] - dem) < 0,
+		})
+
+	return {
+		"planting": planting, "bed": bed, "bed_number": row.bed_number,
+		"on_date": str(on_date), "plants_on_bed": per_bed, "plan": plan,
+		"stems_before": sum(b["stems"] for b in before),
+		"stems_after": sum(a["stems"] for a in after),
+		"stems_lost": sum(d["lost"] for d in deltas),
+		"flushes_affected": len([d for d in deltas if d["affected"]]),
+		"flushes": deltas, "impact": impact,
+		"weeks_turned_short": len([i for i in impact if i["turns_short"]]),
+	}
+
+
 EVENT_TYPES = {
 	"tc_order": "TC order",
 	"tc_arrive": "TC arrives",

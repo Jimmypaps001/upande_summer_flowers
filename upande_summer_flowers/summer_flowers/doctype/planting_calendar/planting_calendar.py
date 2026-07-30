@@ -31,6 +31,7 @@ class PlantingCalendar(Document):
 		self.set_dates()
 		self.check_block_capacity()
 		self.check_block_not_double_booked()
+		self.allocate_beds()
 		self.build_flush_projection()
 		self.set_yield()
 		self.check_seedling_source()
@@ -144,6 +145,73 @@ class PlantingCalendar(Document):
 					title=_("Block already occupied"),
 				)
 
+	# --------------------------------------------------------------------- beds
+	def allocate_beds(self):
+		"""Attach individual beds so one can be uprooted independently.
+
+		Beds ship grouped by greenhouse, so they are drawn from the ones assigned to
+		this block. Rows already carrying an uproot date are preserved.
+		"""
+		existing = {r.bed: r for r in self.bed_allocation if r.bed}
+		want = self.beds or 0
+
+		if len(existing) != want:
+			free = frappe.get_all(
+				"Bed",
+				filters={
+					"custom_block": self.block,
+					"custom_planting_calendar": ["in", [None, "", self.name or "__new__"]],
+				},
+				fields=["name", "bed"],
+				order_by="bed asc",
+				limit=want,
+			)
+			if len(free) < want and not existing:
+				frappe.msgprint(
+					_("Block {0} has {1} free beds but this planting needs {2}. "
+					  "Allocate the rest manually.").format(self.block, len(free), want),
+					indicator="orange", title=_("Not enough beds"),
+				)
+			keep = [existing[b["name"]] for b in free if b["name"] in existing]
+			self.bed_allocation = []
+			per_bed = int(round((self.plants or 0) / want)) if want else 0
+			for b in free:
+				prior = existing.get(b["name"])
+				self.append("bed_allocation", {
+					"bed": b["name"], "bed_number": b["bed"], "plants": per_bed,
+					"bed_status": prior.bed_status if prior else "Planted",
+					"actual_uproot_date": prior.actual_uproot_date if prior else None,
+					"uproot_reason": prior.uproot_reason if prior else None,
+				})
+		else:
+			per_bed = int(round((self.plants or 0) / want)) if want else 0
+			for r in self.bed_allocation:
+				if not r.plants:
+					r.plants = per_bed
+
+		for r in self.bed_allocation:
+			if r.actual_uproot_date:
+				r.bed_status = "Uprooted"
+
+		self.beds_uprooted = sum(1 for r in self.bed_allocation if r.actual_uproot_date)
+		self.plants_lost_to_uprooting = sum(
+			(r.plants or 0) for r in self.bed_allocation if r.actual_uproot_date
+		)
+
+	def plants_standing_on(self, when):
+		"""Plants still in the ground on a date, after per-bed uprooting.
+
+		Falls back to the header count when no beds are allocated, so the maths
+		still works for a planting recorded without bed detail.
+		"""
+		if not self.bed_allocation:
+			return self.plants or 0
+		when = getdate(when)
+		return sum(
+			(r.plants or 0) for r in self.bed_allocation
+			if not (r.actual_uproot_date and getdate(r.actual_uproot_date) <= when)
+		)
+
 	# ------------------------------------------------------------------ flushes
 	def build_flush_projection(self):
 		actuals = {
@@ -168,10 +236,13 @@ class PlantingCalendar(Document):
 			year, week = iso_year_week(harvest)
 			no = len(self.flush_projection) + 1
 			harvested, actual = actuals.get(no, (0, 0))
-			expected = int(round(spp * (self.plants or 0)))
+			# Per-bed, so a bed pulled early stops contributing from that date on.
+			standing = self.plants_standing_on(harvest)
+			expected = int(round(spp * standing))
 			self.append("flush_projection", {
 				"flush_number": no, "harvest_date": harvest, "year": year,
 				"week_no": week, "stems_per_plant": spp, "expected_stems": expected,
+				"plants_standing": standing,
 				"is_harvested": harvested, "actual_stems": actual,
 				"variance_stems": (actual or 0) - expected if harvested else 0,
 			})
@@ -206,6 +277,38 @@ class PlantingCalendar(Document):
 	def refresh_block_coverage(self):
 		if self.block and frappe.db.exists("Block", self.block):
 			refresh_coverage(self.block)
+		self.sync_bed_records()
+
+	def sync_bed_records(self):
+		"""Mirror allocation onto the Bed records so beds are queryable directly."""
+		for r in self.bed_allocation:
+			if not (r.bed and frappe.db.exists("Bed", r.bed)):
+				continue
+			frappe.db.set_value("Bed", r.bed, {
+				"custom_planting_calendar": self.name,
+				"custom_plants": r.plants or 0,
+				"custom_bed_status": r.bed_status or "Planted",
+				"custom_uproot_date": r.actual_uproot_date,
+			}, update_modified=False)
+
+	@frappe.whitelist()
+	def uproot_bed(self, bed, on_date, reason=None):
+		"""Pull one bed early. Later flushes lose that bed's share."""
+		row = next((r for r in self.bed_allocation if r.bed == bed), None)
+		if not row:
+			frappe.throw(_("Bed {0} is not allocated to this planting.").format(bed))
+		if not reason:
+			frappe.throw(_("A reason is required to uproot a bed early."))
+		row.actual_uproot_date = getdate(on_date)
+		row.uproot_reason = reason
+		row.bed_status = "Uprooted"
+		self.save()
+		return {
+			"bed": bed,
+			"beds_uprooted": self.beds_uprooted,
+			"plants_lost": self.plants_lost_to_uprooting,
+			"expected_stems_life": self.expected_stems_life,
+		}
 
 	# ------------------------------------------------------------- crop cycle
 	@frappe.whitelist()
