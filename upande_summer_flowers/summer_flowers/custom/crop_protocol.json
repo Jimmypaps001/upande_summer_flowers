@@ -1,0 +1,63 @@
+{
+ "custom_fields": [
+  {
+   "collapsible": 1,
+   "description": "Injected by Upande Summer Flowers. Per-farm, versioned parameter sets hang off this variety master; the master itself is not versioned.",
+   "dt": "Crop Protocol",
+   "fieldname": "custom_summer_flowers_section",
+   "fieldtype": "Section Break",
+   "insert_after": "average_stem_length_cm",
+   "label": "Summer Flowers",
+   "module": "Summer Flowers"
+  },
+  {
+   "default": "0",
+   "description": "Marks this variety as a summer flower, keeping it separable from roses and other crops in planning and reporting.",
+   "dt": "Crop Protocol",
+   "fieldname": "custom_is_summer_flower",
+   "fieldtype": "Check",
+   "insert_after": "custom_summer_flowers_section",
+   "label": "Is Summer Flower",
+   "module": "Summer Flowers"
+  },
+  {
+   "dt": "Crop Protocol",
+   "fieldname": "custom_cb_sf_1",
+   "fieldtype": "Column Break",
+   "insert_after": "custom_is_summer_flower",
+   "module": "Summer Flowers"
+  },
+  {
+   "description": "Number of per-farm versions defined against this variety.",
+   "dt": "Crop Protocol",
+   "fieldname": "custom_version_count",
+   "fieldtype": "Int",
+   "insert_after": "custom_cb_sf_1",
+   "label": "Protocol Versions",
+   "module": "Summer Flowers",
+   "read_only": 1
+  },
+  {
+   "description": "Farms that currently have an Active version for this variety.",
+   "dt": "Crop Protocol",
+   "fieldname": "custom_farms_with_versions",
+   "fieldtype": "Small Text",
+   "insert_after": "custom_version_count",
+   "label": "Farms Covered",
+   "module": "Summer Flowers",
+   "read_only": 1
+  }
+ ],
+ "custom_perms": [],
+ "doctype": "Crop Protocol",
+ "links": [
+  {
+   "group": "Summer Flowers",
+   "link_doctype": "Crop Protocol Version",
+   "link_fieldname": "crop_protocol",
+   "parent": "Crop Protocol"
+  }
+ ],
+ "property_setters": [],
+ "sync_on_migrate": 1
+}

@@ -1,0 +1,740 @@
+{
+ "actions": [],
+ "allow_bulk_edit": 1,
+ "allow_rename": 1,
+ "autoname": "format:{crop_protocol}-{farm}-v{version}",
+ "creation": "2026-07-30 14:48:53.032639",
+ "description": "A versioned, per-farm parameter set for a variety's Crop Protocol. Prior versions are preserved with effective dates so a crop cycle stays linked to the version it actually ran under.",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "details_tab",
+  "identification_section",
+  "crop_protocol",
+  "variety",
+  "farm",
+  "cb_ident",
+  "company",
+  "crop_class",
+  "climate_note",
+  "version_section",
+  "version",
+  "version_status",
+  "workflow_state",
+  "cb_version",
+  "effective_from",
+  "effective_to",
+  "is_current",
+  "lineage_section",
+  "supersedes",
+  "superseded_by",
+  "cb_lineage",
+  "change_reason",
+  "approval_section",
+  "approved_by",
+  "cb_appr",
+  "approved_on",
+  "geometry_tab",
+  "density_section",
+  "plants_per_sqm_net",
+  "net_gross_ratio",
+  "cb_geo",
+  "plants_per_bed",
+  "min_planting_beds",
+  "derived_geo_section",
+  "sqm_net_per_bed",
+  "sqm_gross_per_bed",
+  "cb_geo2",
+  "plants_per_sqm_gross",
+  "min_planting_plants",
+  "cycle_tab",
+  "timeline_section",
+  "weeks_to_pinch",
+  "flush_interval_weeks",
+  "cb_time",
+  "sticking_to_planting_weeks",
+  "calendar_rounding_weeks",
+  "derived_time_section",
+  "first_harvest_offset_weeks",
+  "total_weeks_in_ground",
+  "cb_time2",
+  "harvest_weeks_per_year",
+  "flushes_per_year",
+  "flush_section",
+  "flush_schedule",
+  "flush_totals_section",
+  "total_flushes",
+  "total_stems_per_plant_life",
+  "cb_flush",
+  "stems_per_ha_life",
+  "stems_per_ha_year",
+  "propagation_tab",
+  "establishment_section",
+  "weeks_on_tray",
+  "weeks_on_pot",
+  "cb_est",
+  "weeks_to_max_pc",
+  "hardening_weeks",
+  "est_derived_section",
+  "establishment_weeks",
+  "bench_section",
+  "cuttings_per_plant_per_week",
+  "plants_per_pot",
+  "cb_bench",
+  "pots_per_sqm",
+  "plants_per_sqm_bench",
+  "multiplication_section",
+  "max_multiplication_cycles",
+  "multiplication_factor_per_cycle",
+  "cb_mult",
+  "cycle_time_weeks",
+  "motherstock_life_weeks",
+  "mult_derived_section",
+  "max_multiplication_factor",
+  "cb_mult2",
+  "lead_time_weeks",
+  "grades_tab",
+  "grade_section",
+  "grade_allocation",
+  "grade_total_pct",
+  "loss_section",
+  "rooting_success_pct",
+  "field_establishment_pct",
+  "cb_loss",
+  "cuttings_per_plant_required",
+  "reject_section",
+  "cutting_reject_pct"
+ ],
+ "fields": [
+  {
+   "fieldname": "details_tab",
+   "fieldtype": "Tab Break",
+   "label": "Details"
+  },
+  {
+   "fieldname": "identification_section",
+   "fieldtype": "Section Break"
+  },
+  {
+   "fieldname": "crop_protocol",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Crop Protocol (variety master)",
+   "options": "Crop Protocol",
+   "reqd": 1
+  },
+  {
+   "fetch_from": "crop_protocol.variety",
+   "fieldname": "variety",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "label": "Variety",
+   "options": "Item",
+   "read_only": 1
+  },
+  {
+   "fieldname": "farm",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Farm",
+   "options": "Farm",
+   "reqd": 1
+  },
+  {
+   "fieldname": "cb_ident",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "company",
+   "fieldtype": "Link",
+   "label": "Company",
+   "options": "Company"
+  },
+  {
+   "default": "Summer Flower",
+   "description": "Keeps summer flowers separable from other crops.",
+   "fieldname": "crop_class",
+   "fieldtype": "Select",
+   "in_standard_filter": 1,
+   "label": "Crop Class",
+   "options": "Summer Flower\nRose\nOther",
+   "reqd": 1
+  },
+  {
+   "description": "Altitude, temperature, light \u2014 what makes this farm's curve differ from the same variety elsewhere.",
+   "fieldname": "climate_note",
+   "fieldtype": "Small Text",
+   "label": "Why this farm differs"
+  },
+  {
+   "fieldname": "version_section",
+   "fieldtype": "Section Break",
+   "label": "Version"
+  },
+  {
+   "default": "1",
+   "description": "Incremented for each amendment. Prior versions are kept, not overwritten.",
+   "fieldname": "version",
+   "fieldtype": "Int",
+   "in_list_view": 1,
+   "label": "Version",
+   "reqd": 1
+  },
+  {
+   "default": "Draft",
+   "fieldname": "version_status",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Status",
+   "options": "Draft\nPending Approval\nActive\nSuperseded",
+   "read_only": 1
+  },
+  {
+   "fieldname": "workflow_state",
+   "fieldtype": "Link",
+   "hidden": 1,
+   "in_standard_filter": 1,
+   "label": "Workflow State",
+   "no_copy": 1,
+   "options": "Workflow State",
+   "read_only": 1
+  },
+  {
+   "fieldname": "cb_version",
+   "fieldtype": "Column Break"
+  },
+  {
+   "description": "Cycles planted on or after this date use this version.",
+   "fieldname": "effective_from",
+   "fieldtype": "Date",
+   "in_list_view": 1,
+   "label": "Effective From",
+   "reqd": 1
+  },
+  {
+   "description": "Set automatically when a later version supersedes this one.",
+   "fieldname": "effective_to",
+   "fieldtype": "Date",
+   "label": "Effective To",
+   "read_only": 1
+  },
+  {
+   "fieldname": "is_current",
+   "fieldtype": "Check",
+   "label": "Is Current",
+   "read_only": 1
+  },
+  {
+   "fieldname": "lineage_section",
+   "fieldtype": "Section Break",
+   "label": "Lineage"
+  },
+  {
+   "fieldname": "supersedes",
+   "fieldtype": "Link",
+   "label": "Supersedes",
+   "options": "Crop Protocol Version",
+   "read_only": 1
+  },
+  {
+   "fieldname": "superseded_by",
+   "fieldtype": "Link",
+   "label": "Superseded By",
+   "options": "Crop Protocol Version",
+   "read_only": 1
+  },
+  {
+   "fieldname": "cb_lineage",
+   "fieldtype": "Column Break"
+  },
+  {
+   "description": "Mandatory. Why this amendment was made \u2014 retained for audit.",
+   "fieldname": "change_reason",
+   "fieldtype": "Small Text",
+   "label": "Change Reason",
+   "reqd": 1
+  },
+  {
+   "fieldname": "approval_section",
+   "fieldtype": "Section Break",
+   "label": "Approval"
+  },
+  {
+   "fieldname": "approved_by",
+   "fieldtype": "Link",
+   "label": "Approved By",
+   "options": "User",
+   "read_only": 1
+  },
+  {
+   "fieldname": "cb_appr",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "approved_on",
+   "fieldtype": "Datetime",
+   "label": "Approved On",
+   "read_only": 1
+  },
+  {
+   "fieldname": "geometry_tab",
+   "fieldtype": "Tab Break",
+   "label": "Geometry"
+  },
+  {
+   "fieldname": "density_section",
+   "fieldtype": "Section Break",
+   "label": "Planting Density"
+  },
+  {
+   "default": "20",
+   "fieldname": "plants_per_sqm_net",
+   "fieldtype": "Int",
+   "label": "Plants per m\u00b2 (net)",
+   "reqd": 1
+  },
+  {
+   "default": "0.8",
+   "description": "Net bed area \u00f7 gross block area.",
+   "fieldname": "net_gross_ratio",
+   "fieldtype": "Float",
+   "label": "Net Gross Ratio",
+   "precision": "3"
+  },
+  {
+   "fieldname": "cb_geo",
+   "fieldtype": "Column Break"
+  },
+  {
+   "default": "1000",
+   "fieldname": "plants_per_bed",
+   "fieldtype": "Int",
+   "label": "Plants Per Bed"
+  },
+  {
+   "default": "10",
+   "fieldname": "min_planting_beds",
+   "fieldtype": "Int",
+   "label": "Minimum planting (beds)"
+  },
+  {
+   "fieldname": "derived_geo_section",
+   "fieldtype": "Section Break",
+   "label": "Derived"
+  },
+  {
+   "fieldname": "sqm_net_per_bed",
+   "fieldtype": "Float",
+   "label": "m\u00b2 net per bed",
+   "precision": "2",
+   "read_only": 1
+  },
+  {
+   "fieldname": "sqm_gross_per_bed",
+   "fieldtype": "Float",
+   "label": "m\u00b2 gross per bed",
+   "precision": "2",
+   "read_only": 1
+  },
+  {
+   "fieldname": "cb_geo2",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "plants_per_sqm_gross",
+   "fieldtype": "Float",
+   "label": "Plants per m\u00b2 (gross)",
+   "precision": "2",
+   "read_only": 1
+  },
+  {
+   "fieldname": "min_planting_plants",
+   "fieldtype": "Int",
+   "label": "Minimum planting (plants)",
+   "read_only": 1
+  },
+  {
+   "fieldname": "cycle_tab",
+   "fieldtype": "Tab Break",
+   "label": "Cycle"
+  },
+  {
+   "fieldname": "timeline_section",
+   "fieldtype": "Section Break",
+   "label": "Timeline"
+  },
+  {
+   "default": "7",
+   "fieldname": "weeks_to_pinch",
+   "fieldtype": "Int",
+   "label": "Weeks planting \u2192 pinch",
+   "reqd": 1
+  },
+  {
+   "default": "13",
+   "fieldname": "flush_interval_weeks",
+   "fieldtype": "Int",
+   "label": "Flush Interval Weeks",
+   "reqd": 1
+  },
+  {
+   "fieldname": "cb_time",
+   "fieldtype": "Column Break"
+  },
+  {
+   "default": "3",
+   "fieldname": "sticking_to_planting_weeks",
+   "fieldtype": "Int",
+   "label": "Weeks sticking \u2192 planting"
+  },
+  {
+   "default": "1",
+   "description": "Allowance for plantings not landing on the planning grid's week boundary. Set 0 if plantings are always Mondays.",
+   "fieldname": "calendar_rounding_weeks",
+   "fieldtype": "Int",
+   "label": "Calendar Rounding Weeks"
+  },
+  {
+   "fieldname": "derived_time_section",
+   "fieldtype": "Section Break",
+   "label": "Derived"
+  },
+  {
+   "fieldname": "first_harvest_offset_weeks",
+   "fieldtype": "Int",
+   "label": "Weeks planting \u2192 first harvest",
+   "read_only": 1
+  },
+  {
+   "fieldname": "total_weeks_in_ground",
+   "fieldtype": "Int",
+   "label": "Total Weeks In Ground",
+   "read_only": 1
+  },
+  {
+   "fieldname": "cb_time2",
+   "fieldtype": "Column Break"
+  },
+  {
+   "description": "52 \u00f7 flush interval. The planting returns to the same weeks each year.",
+   "fieldname": "harvest_weeks_per_year",
+   "fieldtype": "Int",
+   "label": "Harvest Weeks Per Year",
+   "read_only": 1
+  },
+  {
+   "fieldname": "flushes_per_year",
+   "fieldtype": "Float",
+   "label": "Flushes Per Year",
+   "precision": "2",
+   "read_only": 1
+  },
+  {
+   "fieldname": "flush_section",
+   "fieldtype": "Section Break",
+   "label": "Flush Schedule"
+  },
+  {
+   "fieldname": "flush_schedule",
+   "fieldtype": "Table",
+   "label": "Flush Schedule",
+   "options": "Summer Flower Protocol Flush"
+  },
+  {
+   "fieldname": "flush_totals_section",
+   "fieldtype": "Section Break",
+   "label": "Flush Totals"
+  },
+  {
+   "fieldname": "total_flushes",
+   "fieldtype": "Int",
+   "label": "Total Flushes",
+   "read_only": 1
+  },
+  {
+   "fieldname": "total_stems_per_plant_life",
+   "fieldtype": "Float",
+   "label": "Total Stems Per Plant Life",
+   "precision": "2",
+   "read_only": 1
+  },
+  {
+   "fieldname": "cb_flush",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "stems_per_ha_life",
+   "fieldtype": "Float",
+   "label": "Stems Per Ha Life",
+   "precision": "0",
+   "read_only": 1
+  },
+  {
+   "fieldname": "stems_per_ha_year",
+   "fieldtype": "Float",
+   "label": "Stems Per Ha Year",
+   "precision": "0",
+   "read_only": 1
+  },
+  {
+   "fieldname": "propagation_tab",
+   "fieldtype": "Tab Break",
+   "label": "Propagation & Motherstock"
+  },
+  {
+   "fieldname": "establishment_section",
+   "fieldtype": "Section Break",
+   "label": "Establishment (TC \u2192 productive motherstock)"
+  },
+  {
+   "default": "3",
+   "fieldname": "weeks_on_tray",
+   "fieldtype": "Int",
+   "label": "Weeks On Tray"
+  },
+  {
+   "default": "8",
+   "fieldname": "weeks_on_pot",
+   "fieldtype": "Int",
+   "label": "Weeks on pot to first harvest"
+  },
+  {
+   "fieldname": "cb_est",
+   "fieldtype": "Column Break"
+  },
+  {
+   "default": "4",
+   "fieldname": "weeks_to_max_pc",
+   "fieldtype": "Int",
+   "label": "Weeks to max PC"
+  },
+  {
+   "default": "3",
+   "fieldname": "hardening_weeks",
+   "fieldtype": "Int",
+   "label": "Hardening Weeks"
+  },
+  {
+   "fieldname": "est_derived_section",
+   "fieldtype": "Section Break"
+  },
+  {
+   "fieldname": "establishment_weeks",
+   "fieldtype": "Int",
+   "label": "Establishment total (weeks)",
+   "read_only": 1
+  },
+  {
+   "fieldname": "bench_section",
+   "fieldtype": "Section Break",
+   "label": "Bench & Cutting Yield"
+  },
+  {
+   "default": "1",
+   "fieldname": "cuttings_per_plant_per_week",
+   "fieldtype": "Float",
+   "label": "Cuttings Per Plant Per Week",
+   "precision": "3"
+  },
+  {
+   "default": "4",
+   "fieldname": "plants_per_pot",
+   "fieldtype": "Int",
+   "label": "Plants Per Pot"
+  },
+  {
+   "fieldname": "cb_bench",
+   "fieldtype": "Column Break"
+  },
+  {
+   "default": "31",
+   "fieldname": "pots_per_sqm",
+   "fieldtype": "Int",
+   "label": "Pots per m\u00b2"
+  },
+  {
+   "fieldname": "plants_per_sqm_bench",
+   "fieldtype": "Float",
+   "label": "Plants per m\u00b2 of bench",
+   "precision": "1",
+   "read_only": 1
+  },
+  {
+   "fieldname": "multiplication_section",
+   "fieldtype": "Section Break",
+   "label": "Multiplication"
+  },
+  {
+   "default": "4",
+   "fieldname": "max_multiplication_cycles",
+   "fieldtype": "Int",
+   "label": "Max Multiplication Cycles"
+  },
+  {
+   "default": "1",
+   "fieldname": "multiplication_factor_per_cycle",
+   "fieldtype": "Float",
+   "label": "Multiplication Factor Per Cycle",
+   "precision": "3"
+  },
+  {
+   "fieldname": "cb_mult",
+   "fieldtype": "Column Break"
+  },
+  {
+   "default": "1",
+   "fieldname": "cycle_time_weeks",
+   "fieldtype": "Int",
+   "label": "Cycle Time Weeks"
+  },
+  {
+   "default": "52",
+   "fieldname": "motherstock_life_weeks",
+   "fieldtype": "Int",
+   "label": "Motherstock Life Weeks"
+  },
+  {
+   "fieldname": "mult_derived_section",
+   "fieldtype": "Section Break",
+   "label": "Derived"
+  },
+  {
+   "fieldname": "max_multiplication_factor",
+   "fieldtype": "Float",
+   "label": "Max Multiplication Factor",
+   "precision": "2",
+   "read_only": 1
+  },
+  {
+   "fieldname": "cb_mult2",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "lead_time_weeks",
+   "fieldtype": "Int",
+   "label": "Lead time at max cycles (weeks)",
+   "read_only": 1
+  },
+  {
+   "fieldname": "grades_tab",
+   "fieldtype": "Tab Break",
+   "label": "Grades & Losses"
+  },
+  {
+   "fieldname": "grade_section",
+   "fieldtype": "Section Break",
+   "label": "Grade Allocation"
+  },
+  {
+   "fieldname": "grade_allocation",
+   "fieldtype": "Table",
+   "label": "Grade Allocation",
+   "options": "Summer Flower Protocol Grade"
+  },
+  {
+   "fieldname": "grade_total_pct",
+   "fieldtype": "Percent",
+   "label": "Total %",
+   "read_only": 1
+  },
+  {
+   "fieldname": "loss_section",
+   "fieldtype": "Section Break",
+   "label": "Losses"
+  },
+  {
+   "default": "90",
+   "fieldname": "rooting_success_pct",
+   "fieldtype": "Percent",
+   "label": "Rooting success %"
+  },
+  {
+   "default": "95",
+   "fieldname": "field_establishment_pct",
+   "fieldtype": "Percent",
+   "label": "Field establishment %"
+  },
+  {
+   "fieldname": "cb_loss",
+   "fieldtype": "Column Break"
+  },
+  {
+   "description": "Cuttings to stick per plant standing in the field.",
+   "fieldname": "cuttings_per_plant_required",
+   "fieldtype": "Float",
+   "label": "Cuttings Per Plant Required",
+   "precision": "3",
+   "read_only": 1
+  },
+  {
+   "fieldname": "reject_section",
+   "fieldtype": "Section Break"
+  },
+  {
+   "default": "10",
+   "description": "Applied when a Production Plan converts extra plants into cuttings.",
+   "fieldname": "cutting_reject_pct",
+   "fieldtype": "Percent",
+   "label": "Cutting reject %"
+  }
+ ],
+ "grid_page_length": 50,
+ "index_web_pages_for_search": 1,
+ "links": [],
+ "modified": "2026-07-30 14:48:53.032639",
+ "modified_by": "Administrator",
+ "module": "Summer Flowers",
+ "name": "Crop Protocol Version",
+ "naming_rule": "Expression (old style)",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Agriculture Manager",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Agriculture User",
+   "share": 1,
+   "write": 1
+  }
+ ],
+ "row_format": "Dynamic",
+ "rows_threshold_for_grid_search": 20,
+ "search_fields": "crop_protocol,farm,version,version_status",
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": [],
+ "title_field": "crop_protocol",
+ "track_changes": 1
+}

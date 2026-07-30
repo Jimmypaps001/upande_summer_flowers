@@ -1,0 +1,429 @@
+{
+ "custom_fields": [
+  {
+   "description": "Injected by Upande Summer Flowers. Only applies to cycles growing summer flowers; other crops are unaffected.",
+   "dt": "Crop Cycle",
+   "fieldname": "custom_summer_flowers_tab",
+   "fieldtype": "Tab Break",
+   "insert_after": "last_replanting_date",
+   "label": "Summer Flowers",
+   "module": "Summer Flowers"
+  },
+  {
+   "dt": "Crop Cycle",
+   "fieldname": "custom_sf_scope_section",
+   "fieldtype": "Section Break",
+   "insert_after": "custom_summer_flowers_tab",
+   "label": "Scope",
+   "module": "Summer Flowers"
+  },
+  {
+   "default": "0",
+   "description": "Tick to bring this cycle into summer flower planning. Left unticked, every field below is ignored.",
+   "dt": "Crop Cycle",
+   "fieldname": "custom_is_summer_flower_cycle",
+   "fieldtype": "Check",
+   "insert_after": "custom_sf_scope_section",
+   "label": "Is Summer Flower Cycle",
+   "module": "Summer Flowers"
+  },
+  {
+   "depends_on": "custom_is_summer_flower_cycle",
+   "dt": "Crop Cycle",
+   "fieldname": "custom_sf_variety",
+   "fieldtype": "Link",
+   "insert_after": "custom_is_summer_flower_cycle",
+   "label": "Variety",
+   "module": "Summer Flowers",
+   "options": "Item"
+  },
+  {
+   "dt": "Crop Cycle",
+   "fieldname": "custom_cb_sf_scope",
+   "fieldtype": "Column Break",
+   "insert_after": "custom_sf_variety",
+   "module": "Summer Flowers"
+  },
+  {
+   "depends_on": "custom_is_summer_flower_cycle",
+   "description": "The version this cycle actually runs under. Resolved from the planting date, and deliberately not moved when a newer version is approved.",
+   "dt": "Crop Cycle",
+   "fieldname": "custom_crop_protocol_version",
+   "fieldtype": "Link",
+   "insert_after": "custom_cb_sf_scope",
+   "label": "Crop Protocol Version",
+   "module": "Summer Flowers",
+   "options": "Crop Protocol Version"
+  },
+  {
+   "depends_on": "custom_is_summer_flower_cycle",
+   "dt": "Crop Cycle",
+   "fieldname": "custom_market_demand",
+   "fieldtype": "Link",
+   "insert_after": "custom_crop_protocol_version",
+   "label": "Market Demand",
+   "module": "Summer Flowers",
+   "options": "Summer Flower Market Demand"
+  },
+  {
+   "depends_on": "custom_is_summer_flower_cycle",
+   "dt": "Crop Cycle",
+   "fieldname": "custom_sf_status_section",
+   "fieldtype": "Section Break",
+   "insert_after": "custom_market_demand",
+   "label": "Cycle Status",
+   "module": "Summer Flowers"
+  },
+  {
+   "default": "Active",
+   "dt": "Crop Cycle",
+   "fieldname": "custom_sf_cycle_status",
+   "fieldtype": "Select",
+   "insert_after": "custom_sf_status_section",
+   "label": "Summer Flower Cycle Status",
+   "module": "Summer Flowers",
+   "options": "Active\nReplanting\nPartially Uprooted\nEnded"
+  },
+  {
+   "description": "Weeks since planting, from the version in force for this cycle.",
+   "dt": "Crop Cycle",
+   "fieldname": "custom_plant_age_weeks",
+   "fieldtype": "Int",
+   "insert_after": "custom_sf_cycle_status",
+   "label": "Plant Age (weeks)",
+   "module": "Summer Flowers",
+   "read_only": 1
+  },
+  {
+   "dt": "Crop Cycle",
+   "fieldname": "custom_cb_sf_status",
+   "fieldtype": "Column Break",
+   "insert_after": "custom_plant_age_weeks",
+   "module": "Summer Flowers"
+  },
+  {
+   "dt": "Crop Cycle",
+   "fieldname": "custom_live_plant_count",
+   "fieldtype": "Int",
+   "insert_after": "custom_cb_sf_status",
+   "label": "Live Plant Count",
+   "module": "Summer Flowers"
+  },
+  {
+   "dt": "Crop Cycle",
+   "fieldname": "custom_cuttings_taken",
+   "fieldtype": "Int",
+   "insert_after": "custom_live_plant_count",
+   "label": "Cuttings Taken for Propagation",
+   "module": "Summer Flowers",
+   "read_only": 1
+  },
+  {
+   "depends_on": "custom_is_summer_flower_cycle",
+   "dt": "Crop Cycle",
+   "fieldname": "custom_sf_dates_section",
+   "fieldtype": "Section Break",
+   "insert_after": "custom_cuttings_taken",
+   "label": "Timeline",
+   "module": "Summer Flowers"
+  },
+  {
+   "dt": "Crop Cycle",
+   "fieldname": "custom_planting_date",
+   "fieldtype": "Date",
+   "insert_after": "custom_sf_dates_section",
+   "label": "Planting Date",
+   "module": "Summer Flowers"
+  },
+  {
+   "dt": "Crop Cycle",
+   "fieldname": "custom_planned_pinch_date",
+   "fieldtype": "Date",
+   "insert_after": "custom_planting_date",
+   "label": "Planned Pinch Date",
+   "module": "Summer Flowers",
+   "read_only": 1
+  },
+  {
+   "description": "Recording this recalculates every downstream forecast date from the actual, not the plan.",
+   "dt": "Crop Cycle",
+   "fieldname": "custom_actual_pinch_date",
+   "fieldtype": "Date",
+   "insert_after": "custom_planned_pinch_date",
+   "label": "Actual Pinch Date",
+   "module": "Summer Flowers"
+  },
+  {
+   "dt": "Crop Cycle",
+   "fieldname": "custom_cb_sf_dates",
+   "fieldtype": "Column Break",
+   "insert_after": "custom_actual_pinch_date",
+   "module": "Summer Flowers"
+  },
+  {
+   "dt": "Crop Cycle",
+   "fieldname": "custom_planned_uproot_date",
+   "fieldtype": "Date",
+   "insert_after": "custom_cb_sf_dates",
+   "label": "Planned Uprooting Date",
+   "module": "Summer Flowers",
+   "read_only": 1
+  },
+  {
+   "dt": "Crop Cycle",
+   "fieldname": "custom_actual_uproot_date",
+   "fieldtype": "Date",
+   "insert_after": "custom_planned_uproot_date",
+   "label": "Actual Uprooting Date",
+   "module": "Summer Flowers"
+  },
+  {
+   "description": "Mandatory when uprooting deviates from the planned date. Retained for variance reporting.",
+   "dt": "Crop Cycle",
+   "fieldname": "custom_uproot_deviation_reason",
+   "fieldtype": "Small Text",
+   "insert_after": "custom_actual_uproot_date",
+   "label": "Uprooting Deviation Reason",
+   "module": "Summer Flowers"
+  },
+  {
+   "depends_on": "custom_is_summer_flower_cycle",
+   "dt": "Crop Cycle",
+   "fieldname": "custom_sf_forecast_section",
+   "fieldtype": "Section Break",
+   "insert_after": "custom_uproot_deviation_reason",
+   "label": "Rolling Harvest Forecast",
+   "module": "Summer Flowers"
+  },
+  {
+   "dt": "Crop Cycle",
+   "fieldname": "custom_current_flush_number",
+   "fieldtype": "Int",
+   "insert_after": "custom_sf_forecast_section",
+   "label": "Current Flush Number",
+   "module": "Summer Flowers",
+   "read_only": 1
+  },
+  {
+   "dt": "Crop Cycle",
+   "fieldname": "custom_next_harvest_date",
+   "fieldtype": "Date",
+   "insert_after": "custom_current_flush_number",
+   "label": "Next Harvest Date",
+   "module": "Summer Flowers",
+   "read_only": 1
+  },
+  {
+   "dt": "Crop Cycle",
+   "fieldname": "custom_expected_stems_next_flush",
+   "fieldtype": "Int",
+   "insert_after": "custom_next_harvest_date",
+   "label": "Expected Stems Next Flush",
+   "module": "Summer Flowers",
+   "read_only": 1
+  },
+  {
+   "dt": "Crop Cycle",
+   "fieldname": "custom_cb_sf_forecast",
+   "fieldtype": "Column Break",
+   "insert_after": "custom_expected_stems_next_flush",
+   "module": "Summer Flowers"
+  },
+  {
+   "dt": "Crop Cycle",
+   "fieldname": "custom_expected_stems_life",
+   "fieldtype": "Int",
+   "insert_after": "custom_cb_sf_forecast",
+   "label": "Expected Stems (life)",
+   "module": "Summer Flowers",
+   "read_only": 1
+  },
+  {
+   "dt": "Crop Cycle",
+   "fieldname": "custom_total_harvested_stems",
+   "fieldtype": "Int",
+   "insert_after": "custom_expected_stems_life",
+   "label": "Total Harvested Stems",
+   "module": "Summer Flowers",
+   "read_only": 1
+  },
+  {
+   "dt": "Crop Cycle",
+   "fieldname": "custom_harvest_variance_stems",
+   "fieldtype": "Int",
+   "insert_after": "custom_total_harvested_stems",
+   "label": "Harvest Variance (stems)",
+   "module": "Summer Flowers",
+   "read_only": 1
+  },
+  {
+   "collapsible": 1,
+   "depends_on": "custom_is_summer_flower_cycle",
+   "description": "Overrides apply to this cycle only and never alter the variety master or the protocol version.",
+   "dt": "Crop Cycle",
+   "fieldname": "custom_sf_override_section",
+   "fieldtype": "Section Break",
+   "insert_after": "custom_harvest_variance_stems",
+   "label": "Cycle-level Protocol Override",
+   "module": "Summer Flowers"
+  },
+  {
+   "default": "0",
+   "dt": "Crop Cycle",
+   "fieldname": "custom_has_protocol_override",
+   "fieldtype": "Check",
+   "insert_after": "custom_sf_override_section",
+   "label": "Has Protocol Override",
+   "module": "Summer Flowers"
+  },
+  {
+   "depends_on": "custom_has_protocol_override",
+   "description": "Mandatory justification, retained alongside the original version values for comparison.",
+   "dt": "Crop Cycle",
+   "fieldname": "custom_override_justification",
+   "fieldtype": "Small Text",
+   "insert_after": "custom_has_protocol_override",
+   "label": "Override Justification",
+   "module": "Summer Flowers"
+  },
+  {
+   "depends_on": "custom_has_protocol_override",
+   "dt": "Crop Cycle",
+   "fieldname": "custom_override_approved_by",
+   "fieldtype": "Link",
+   "insert_after": "custom_override_justification",
+   "label": "Override Approved By",
+   "module": "Summer Flowers",
+   "options": "User",
+   "read_only": 1
+  },
+  {
+   "depends_on": "custom_is_summer_flower_cycle",
+   "dt": "Crop Cycle",
+   "fieldname": "custom_sf_royalty_section",
+   "fieldtype": "Section Break",
+   "insert_after": "custom_override_approved_by",
+   "label": "Royalty",
+   "module": "Summer Flowers"
+  },
+  {
+   "default": "0",
+   "dt": "Crop Cycle",
+   "fieldname": "custom_royalty_applicable",
+   "fieldtype": "Check",
+   "insert_after": "custom_sf_royalty_section",
+   "label": "Royalty Applicable",
+   "module": "Summer Flowers"
+  },
+  {
+   "depends_on": "custom_royalty_applicable",
+   "dt": "Crop Cycle",
+   "fieldname": "custom_royalty_rate",
+   "fieldtype": "Currency",
+   "insert_after": "custom_royalty_applicable",
+   "label": "Royalty Rate per Plant",
+   "module": "Summer Flowers",
+   "options": "custom_royalty_currency"
+  },
+  {
+   "depends_on": "custom_royalty_applicable",
+   "dt": "Crop Cycle",
+   "fieldname": "custom_royalty_currency",
+   "fieldtype": "Link",
+   "insert_after": "custom_royalty_rate",
+   "label": "Royalty Currency",
+   "module": "Summer Flowers",
+   "options": "Currency"
+  },
+  {
+   "dt": "Crop Cycle",
+   "fieldname": "custom_cb_sf_royalty",
+   "fieldtype": "Column Break",
+   "insert_after": "custom_royalty_currency",
+   "module": "Summer Flowers"
+  },
+  {
+   "depends_on": "custom_royalty_applicable",
+   "dt": "Crop Cycle",
+   "fieldname": "custom_total_royalty_payable",
+   "fieldtype": "Currency",
+   "insert_after": "custom_cb_sf_royalty",
+   "label": "Total Royalty Payable",
+   "module": "Summer Flowers",
+   "options": "custom_royalty_currency",
+   "read_only": 1
+  },
+  {
+   "depends_on": "custom_royalty_applicable",
+   "dt": "Crop Cycle",
+   "fieldname": "custom_royalty_invoice",
+   "fieldtype": "Link",
+   "insert_after": "custom_total_royalty_payable",
+   "label": "Royalty Purchase Invoice",
+   "module": "Summer Flowers",
+   "options": "Purchase Invoice"
+  },
+  {
+   "collapsible": 1,
+   "depends_on": "custom_is_summer_flower_cycle",
+   "dt": "Crop Cycle",
+   "fieldname": "custom_sf_asset_section",
+   "fieldtype": "Section Break",
+   "insert_after": "custom_royalty_invoice",
+   "label": "Biological Asset",
+   "module": "Summer Flowers"
+  },
+  {
+   "default": "0",
+   "description": "Creates an Asset valued at plants x cost per plant, depreciated straight-line over the life expectancy in the protocol version.",
+   "dt": "Crop Cycle",
+   "fieldname": "custom_is_biological_asset",
+   "fieldtype": "Check",
+   "insert_after": "custom_sf_asset_section",
+   "label": "Is Biological Asset",
+   "module": "Summer Flowers"
+  },
+  {
+   "depends_on": "custom_is_biological_asset",
+   "dt": "Crop Cycle",
+   "fieldname": "custom_cost_per_plant",
+   "fieldtype": "Currency",
+   "insert_after": "custom_is_biological_asset",
+   "label": "Cost per Plant",
+   "module": "Summer Flowers"
+  },
+  {
+   "dt": "Crop Cycle",
+   "fieldname": "custom_cb_sf_asset",
+   "fieldtype": "Column Break",
+   "insert_after": "custom_cost_per_plant",
+   "module": "Summer Flowers"
+  },
+  {
+   "depends_on": "custom_is_biological_asset",
+   "dt": "Crop Cycle",
+   "fieldname": "custom_biological_asset_value",
+   "fieldtype": "Currency",
+   "insert_after": "custom_cb_sf_asset",
+   "label": "Biological Asset Value",
+   "module": "Summer Flowers",
+   "read_only": 1
+  },
+  {
+   "depends_on": "custom_is_biological_asset",
+   "dt": "Crop Cycle",
+   "fieldname": "custom_biological_asset",
+   "fieldtype": "Link",
+   "insert_after": "custom_biological_asset_value",
+   "label": "Asset",
+   "module": "Summer Flowers",
+   "options": "Asset",
+   "read_only": 1
+  }
+ ],
+ "custom_perms": [],
+ "doctype": "Crop Cycle",
+ "links": [],
+ "property_setters": [],
+ "sync_on_migrate": 1
+}
