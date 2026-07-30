@@ -29,6 +29,10 @@ fixtures = [
 		"filters": [["name", "in", ["Submit for Approval", "Approve", "Reject", "Reopen"]]],
 	},
 	{
+		"dt": "Workspace",
+		"filters": [["name", "in", ["Summer Flowers"]]],
+	},
+	{
 		"dt": "Role",
 		"filters": [["name", "in", ["Agriculture Manager", "Agriculture User"]]],
 	},
