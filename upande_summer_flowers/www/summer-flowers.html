@@ -283,10 +283,15 @@ table.sf-t td.n { text-align: right; font-variant-numeric: tabular-nums;
 
   // ---- status pills: colour is never the only cue, a label always rides along
   const STATUS = {
+    // motherstock
     Planned: "--text-muted", "TC Ordered": "--warning", Establishing: "--warning",
     Multiplying: "--serious", Productive: "--good", Expired: "--critical",
+    // plans and planting calendars
     Draft: "--text-muted", "Pending Approval": "--warning",
     Approved: "--good", Rejected: "--critical",
+    Planted: "--good", Uprooted: "--text-muted", Cancelled: "--critical",
+    // protocol versions
+    Active: "--good", Superseded: "--text-muted",
   };
   const pill = (label) =>
     `<span class="pill"><i class="dot" style="background:var(${
@@ -493,13 +498,16 @@ table.sf-t td.n { text-align: right; font-variant-numeric: tabular-nums;
     $("onground").innerHTML =
       '<table class="sf-t"><thead><tr><th>Block</th><th>Variety</th><th>Status</th>' +
       '<th class="n">Beds</th><th class="n">Plants</th><th>Planted</th>' +
-      '<th>Harvest weeks</th><th class="n">Wks left</th></tr></thead><tbody>' +
+      '<th>Harvest weeks</th><th class="n">Expected</th><th>Source</th>' +
+      '<th class="n">Wks left</th></tr></thead><tbody>' +
       rows.map((r) =>
         `<tr><td>${esc(r.block)}</td><td>${esc(r.variety)}</td>` +
-        `<td>${pill(r.planting_status)}</td><td class="n">${num(r.beds)}</td>` +
+        `<td>${pill(r.calendar_status)}</td><td class="n">${num(r.beds)}</td>` +
         `<td class="n">${num(r.plants)}</td>` +
         `<td>${esc(r.planting_date)}<br><span class="sf-note">${r.planting_year}-W${String(r.planting_week).padStart(2, "0")}</span></td>` +
         `<td>${esc(r.harvest_week_family || "—")}</td>` +
+        `<td class="n">${num(r.expected_stems_life)}</td>` +
+        `<td>${esc(r.seedling_source || "—")}</td>` +
         `<td class="n">${num(r.weeks_remaining)}</td></tr>`
       ).join("") + "</tbody></table>";
   }
