@@ -29,6 +29,10 @@ fixtures = [
 		"filters": [["name", "in", ["Submit for Approval", "Approve", "Reject", "Reopen"]]],
 	},
 	{
+		"dt": "Workspace Sidebar",
+		"filters": [["title", "in", ["Summer Flowers"]]],
+	},
+	{
 		"dt": "Workspace",
 		"filters": [["name", "in", ["Summer Flowers"]]],
 	},
