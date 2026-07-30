@@ -249,6 +249,119 @@ def simulate_buildup(version, tc_plants, tc_arrival_date, rounds=4, field_pct=0,
 
 
 @frappe.whitelist()
+def planting_plan(plan=None, variety=None, farm=None):
+	"""The planting plan: what to stick, when to plant, and where it lands.
+
+	Also returns block occupancy windows, because a block holds one planting at a
+	time and that constraint is only visible on a timeline.
+	"""
+	_guard()
+	f = {"docstatus": ["<", 2]}
+	if variety:
+		f["variety"] = variety
+	if farm:
+		f["farm"] = farm
+	if not plan:
+		rows = frappe.get_all("Summer Flower Production Plan", filters=f, pluck="name",
+		                      order_by="creation desc", limit=1)
+		if not rows:
+			return {"plan": None, "plantings": [], "occupancy": [], "totals": {}}
+		plan = rows[0]
+
+	p = frappe.get_doc("Summer Flower Production Plan", plan)
+	v = frappe.get_cached_doc("Crop Protocol Version", p.protocol)
+
+	plantings = []
+	for b in p.plan_blocks:
+		plantings.append({
+			"idx": b.idx,
+			"is_new": bool(b.is_new_planting),
+			"block": b.block,
+			"existing_planting": b.existing_planting,
+			"beds": b.beds or 0,
+			"plants": b.plants or 0,
+			"cuttings": v.cuttings_for_plants(b.plants or 0) if b.plants else 0,
+			"stick": f"{b.sticking_year}-W{b.sticking_week:02d}"
+			if b.sticking_year and b.sticking_week else None,
+			"plant": f"{b.planting_year}-W{b.planting_week:02d}"
+			if b.planting_year and b.planting_week else None,
+			"planting_date": str(b.planting_date) if b.planting_date else None,
+			"pinch_date": str(b.pinch_date) if b.pinch_date else None,
+			"first_harvest": f"{b.first_harvest_year}-W{b.first_harvest_week:02d}"
+			if b.first_harvest_year and b.first_harvest_week else None,
+			"harvest_family": b.harvest_week_family,
+			"gross_area_ha": flt(b.gross_area_ha),
+			"lifetime_stems": b.lifetime_stems or 0,
+			"below_minimum": bool(b.below_minimum),
+			"in_past": bool(b.planting_in_past),
+			"unallocated": bool(b.is_new_planting and not b.block),
+			"notes": b.notes,
+		})
+
+	# Occupancy windows, from the plan's allocated rows plus anything already on
+	# the ground as a Planting Calendar.
+	life_weeks = int(v.total_weeks_in_ground or 0)
+	occupancy = []
+	for b in p.plan_blocks:
+		if not b.block or not b.planting_date:
+			continue
+		start = getdate(b.planting_date)
+		occupancy.append({
+			"block": b.block,
+			"source": "plan",
+			"ref": b.existing_planting or f"row {b.idx}",
+			"start": str(start),
+			"end": str(start + datetime.timedelta(weeks=life_weeks)),
+			"beds": b.beds or 0,
+			"status": "Proposed",
+		})
+	for c in frappe.get_all(
+		"Planting Calendar",
+		filters={"calendar_status": ["not in", ("Cancelled",)]},
+		fields=["name", "block", "variety", "beds", "planting_date",
+		        "planned_uproot_date", "actual_uproot_date", "calendar_status"],
+	):
+		if variety and c.variety != variety:
+			continue
+		occupancy.append({
+			"block": c.block,
+			"source": "calendar",
+			"ref": c.name,
+			"start": str(c.planting_date),
+			"end": str(c.actual_uproot_date or c.planned_uproot_date),
+			"beds": c.beds or 0,
+			"status": c.calendar_status,
+		})
+
+	new_rows = [x for x in plantings if x["is_new"]]
+	blocks_available = frappe.db.count("Block", {
+		"custom_is_summer_flower_block": 1, **({"farm": p.farm} if p.farm else {})
+	})
+	return {
+		"plan": p.name,
+		"variety": p.variety,
+		"farm": p.farm,
+		"plantings": plantings,
+		"occupancy": occupancy,
+		"totals": {
+			"proposed": len(new_rows),
+			"existing": len(plantings) - len(new_rows),
+			"allocated": len([x for x in new_rows if x["block"]]),
+			"unallocated": len([x for x in new_rows if x["unallocated"]]),
+			"below_minimum": len([x for x in new_rows if x["below_minimum"]]),
+			"in_past": len([x for x in new_rows if x["in_past"]]),
+			"beds": sum(x["beds"] for x in new_rows),
+			"plants": sum(x["plants"] for x in new_rows),
+			"cuttings": sum(x["cuttings"] for x in new_rows),
+			"blocks_available": blocks_available,
+			"blocks_needed": len(new_rows),
+			"weeks_in_ground": life_weeks,
+			"min_planting_beds": v.min_planting_beds or 0,
+		},
+	}
+
+
+@frappe.whitelist()
 def motherstock_batches(variety=None, farm=None):
 	"""Saved batches, so the dashboard can show what was actually bought and when."""
 	_guard()

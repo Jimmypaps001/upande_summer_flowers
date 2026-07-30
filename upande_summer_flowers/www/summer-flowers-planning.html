@@ -101,7 +101,30 @@
       <p class="pl-note">{{ _("Bench area is the pool divided by plants per m², so it tracks the pool exactly — the tooltip carries both.") }}</p>
     </section>
 
-    <!-- 5. what was actually bought -->
+    <!-- 5. planting plan -->
+    <section class="pl-card">
+      <div class="pl-card-head">
+        <div>
+          <h2>{{ _("Planting plan") }}</h2>
+          <p class="pl-note" id="pp-sub"></p>
+        </div>
+        <div class="pl-toggle" role="group" aria-label="{{ _('Show') }}">
+          <button type="button" id="pp-all" class="is-on" aria-pressed="true">{{ _("All") }}</button>
+          <button type="button" id="pp-alloc" aria-pressed="false">{{ _("Allocated") }}</button>
+          <button type="button" id="pp-flag" aria-pressed="false">{{ _("Flagged") }}</button>
+        </div>
+      </div>
+      <div class="pl-tiles pl-tiles-sm" id="pp-tiles"></div>
+
+      <h3>{{ _("Block occupancy") }}</h3>
+      <p class="pl-note" style="margin-top:0">{{ _("A block holds one planting at a time, so each bar owns its block for the whole cycle. Gaps are the only room for another planting.") }}</p>
+      <div class="pl-chart-wrap"><div id="pp-gantt" class="pl-chart"></div></div>
+
+      <h3>{{ _("Stick, plant, harvest") }}</h3>
+      <div id="pp-table" class="pl-scroll"></div>
+    </section>
+
+    <!-- 6. what was actually bought -->
     <section class="pl-card">
       <div class="pl-card-head"><h2>{{ _("Motherstock batches on record") }}</h2></div>
       <div id="batches" class="pl-scroll"></div>
@@ -251,7 +274,8 @@ table.pl-t tr.sel td{background:color-mix(in srgb, var(--seq-200) 30%, transpare
   });
 
   const S = { scope: null, dv: null, deriv: null, opts: null, sim: null,
-              grain: "month", version: null, variety: "", farm: "" };
+              grain: "month", version: null, variety: "", farm: "",
+              pp: null, ppFilter: "all" };
 
   // ---- tooltip
   const tip = $("pl-tip");
@@ -475,6 +499,122 @@ table.pl-t tr.sel td{background:color-mix(in srgb, var(--seq-200) 30%, transpare
     drawPool($("wi-chart"), r.timeline, r.params);
   }
 
+  // ---- block occupancy timeline
+  function drawGantt(el, occupancy) {
+    if (!occupancy.length) {
+      el.innerHTML = '<p class="pl-empty">No allocated plantings to place on blocks.</p>';
+      return;
+    }
+    const blocks = [...new Set(occupancy.map((o) => o.block))].sort();
+    const t0 = Math.min(...occupancy.map((o) => +new Date(o.start)));
+    const t1 = Math.max(...occupancy.map((o) => +new Date(o.end)));
+    const span = Math.max(1, t1 - t0);
+    const padL = 150, padR = 16, padT = 22, rowH = 20, padB = 30;
+    const h = padT + blocks.length * rowH + padB;
+    const w = Math.max(680, 900);
+    const x = (ms) => padL + ((ms - t0) / span) * (w - padL - padR);
+
+    const STATUS_FILL = {
+      Proposed: "var(--seq-200)", Draft: "var(--seq-200)",
+      "Pending Approval": "var(--warning)", Approved: "var(--series-1)",
+      Planted: "var(--good)", Uprooted: "var(--text-muted)",
+    };
+
+    let svg = `<svg viewBox="0 0 ${w} ${h}" width="${w}" height="${h}" role="img"
+      aria-label="Block occupancy over time">`;
+    // year gridlines
+    svg += '<g class="grid">';
+    const y0 = new Date(t0).getFullYear(), y1 = new Date(t1).getFullYear();
+    for (let yr = y0; yr <= y1 + 1; yr++) {
+      const ms = +new Date(yr, 0, 1);
+      if (ms < t0 || ms > t1) continue;
+      svg += `<line x1="${x(ms)}" x2="${x(ms)}" y1="${padT - 6}" y2="${padT + blocks.length * rowH}"/>`;
+      svg += `<text x="${x(ms)}" y="${padT - 10}" text-anchor="middle">${yr}</text>`;
+    }
+    svg += "</g>";
+
+    blocks.forEach((b, i) => {
+      const cy = padT + i * rowH;
+      svg += `<text x="${padL - 10}" y="${cy + 13}" text-anchor="end">${esc(b.split(" - Block ").pop())}</text>`;
+      svg += `<line class="grid" x1="${padL}" x2="${w - padR}" y1="${cy + rowH}" y2="${cy + rowH}" stroke="var(--gridline)"/>`;
+    });
+
+    occupancy.forEach((o) => {
+      const i = blocks.indexOf(o.block);
+      const bx = x(+new Date(o.start)), bw = Math.max(3, x(+new Date(o.end)) - bx);
+      const by = padT + i * rowH + 3;
+      svg += `<rect class="bar" x="${bx}" y="${by}" width="${bw}" height="${rowH - 7}" rx="3"
+        fill="${STATUS_FILL[o.status] || "var(--seq-200)"}"
+        stroke="var(--surface-1)" stroke-width="1.5"
+        data-tip="${esc(`<b>${o.block.split(" - Block ").pop()}</b><br>${o.ref}<br>` +
+          `${o.start} → ${o.end}<br>${o.beds} beds · ${o.status}`)}"/>`;
+    });
+    svg += "</svg>";
+    el.innerHTML = svg;
+    el.querySelectorAll(".bar").forEach((r) => {
+      r.addEventListener("mousemove", (e) => showTip(r.dataset.tip, e));
+      r.addEventListener("mouseleave", hideTip);
+    });
+  }
+
+  function renderPlantingPlan() {
+    const pp = S.pp;
+    if (!pp || !pp.plan) {
+      $("pp-tiles").innerHTML = '<p class="pl-empty">No plan.</p>';
+      $("pp-table").innerHTML = ""; $("pp-gantt").innerHTML = "";
+      return;
+    }
+    const t = pp.totals;
+    $("pp-sub").textContent =
+      `${pp.plan} · ${t.proposed} plantings proposed · ${t.weeks_in_ground} weeks in ground each`;
+
+    const short = t.blocks_needed - t.blocks_available;
+    $("pp-tiles").innerHTML = [
+      { k: "Plantings proposed", v: num(t.proposed), m: `${num(t.beds)} beds` },
+      { k: "Plants to establish", v: num(t.plants), m: `${num(t.cuttings)} cuttings to stick` },
+      { k: "Blocks needed", v: num(t.blocks_needed),
+        m: `${num(t.blocks_available)} available` + (short > 0 ? ` · short ${num(short)}` : ""),
+        c: short > 0 ? "--critical" : "--good" },
+      { k: "Unallocated", v: num(t.unallocated),
+        m: "no free block for the window", c: t.unallocated ? "--serious" : "--good" },
+      { k: "Below minimum block", v: num(t.below_minimum),
+        m: `under ${t.min_planting_beds} beds`, c: t.below_minimum ? "--warning" : "--good" },
+      { k: "Planting week passed", v: num(t.in_past),
+        m: "cannot still be planted", c: t.in_past ? "--critical" : "--good" },
+    ].map((x) =>
+      `<div class="pl-tile"><div class="k">${esc(x.k)}</div>` +
+      `<div class="v"${x.c ? ` style="color:var(${x.c})"` : ""}>${esc(x.v)}</div>` +
+      `<div class="m">${esc(x.m)}</div></div>`).join("");
+
+    drawGantt($("pp-gantt"), pp.occupancy);
+
+    let rows = pp.plantings;
+    if (S.ppFilter === "alloc") rows = rows.filter((r) => r.block);
+    if (S.ppFilter === "flag") {
+      rows = rows.filter((r) => r.below_minimum || r.in_past || r.unallocated);
+    }
+    const shown = rows.slice(0, 120);
+    $("pp-table").innerHTML =
+      '<table class="pl-t"><thead><tr><th>#</th><th>Stick</th><th>Plant</th>' +
+      '<th>1st harvest</th><th>Harvest weeks</th><th class="n">Beds</th>' +
+      '<th class="n">Plants</th><th class="n">Cuttings</th><th class="n">Stems (life)</th>' +
+      '<th>Block</th><th>Flags</th></tr></thead><tbody>' +
+      shown.map((r) => {
+        const flags = [];
+        if (r.unallocated) flags.push('<span class="pill"><i class="dot2" style="background:var(--serious)"></i>no block</span>');
+        if (r.below_minimum) flags.push('<span class="pill"><i class="dot2" style="background:var(--warning)"></i>below min</span>');
+        if (r.in_past) flags.push('<span class="pill"><i class="dot2" style="background:var(--critical)"></i>past</span>');
+        return `<tr><td>${r.idx}</td><td>${esc(r.stick || "—")}</td><td>${esc(r.plant || "—")}</td>` +
+          `<td>${esc(r.first_harvest || "—")}</td><td>${esc(r.harvest_family || "—")}</td>` +
+          `<td class="n">${num(r.beds)}</td><td class="n">${num(r.plants)}</td>` +
+          `<td class="n">${num(r.cuttings)}</td><td class="n">${num(r.lifetime_stems)}</td>` +
+          `<td>${esc(r.block ? r.block.split(" - Block ").pop() : "—")}</td>` +
+          `<td>${flags.join(" ") || ""}</td></tr>`;
+      }).join("") + "</tbody></table>" +
+      (rows.length > shown.length
+        ? `<p class="pl-note">Showing ${shown.length} of ${rows.length} rows.</p>` : "");
+  }
+
   function renderBatches(rows) {
     if (!rows.length) { $("batches").innerHTML = '<p class="pl-empty">No motherstock batches saved yet.</p>'; return; }
     $("batches").innerHTML =
@@ -512,12 +652,15 @@ table.pl-t tr.sel td{background:color-mix(in srgb, var(--seq-200) 30%, transpare
       call("demand_vs_production", a),
       call("tc_derivation", a),
       call("motherstock_batches", a),
-    ]).then(([dv, deriv, batches]) => {
+      call("planting_plan", a),
+    ]).then(([dv, deriv, batches, pp]) => {
       S.dv = dv && dv.plan ? dv : null;
       S.deriv = deriv;
+      S.pp = pp;
       renderTiles();
       renderDerivation();
       renderBatches(batches || []);
+      renderPlantingPlan();
       $("dv-sub").textContent = S.dv
         ? `${S.dv.plan} · ${S.dv.variety} at ${S.dv.farm} · ${S.dv.period} · ${S.dv.status}`
         : "No production plan in this scope.";
@@ -568,6 +711,16 @@ table.pl-t tr.sel td{background:color-mix(in srgb, var(--seq-200) 30%, transpare
       $("need-by").addEventListener("change", loadScopeData);
       $("g-month").addEventListener("click", () => setGrain("month"));
       $("g-week").addEventListener("click", () => setGrain("week"));
+      [["pp-all", "all"], ["pp-alloc", "alloc"], ["pp-flag", "flag"]].forEach(([id, key]) =>
+        $(id).addEventListener("click", () => {
+          S.ppFilter = key;
+          ["pp-all", "pp-alloc", "pp-flag"].forEach((b) => {
+            const on = b === id;
+            $(b).classList.toggle("is-on", on);
+            $(b).setAttribute("aria-pressed", on);
+          });
+          renderPlantingPlan();
+        }));
 
       return loadScopeData();
     });
