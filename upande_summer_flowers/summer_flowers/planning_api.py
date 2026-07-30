@@ -362,6 +362,233 @@ def planting_plan(plan=None, variety=None, farm=None):
 
 
 @frappe.whitelist()
+def simulate_lifecycle(version, tc_qty, order_date, num_cycles=4, to_prop_pct=0,
+                       farm_overrides=None, max_bench_sqm=None):
+	"""The weekly TC -> motherstock -> cuttings lifecycle, with propagation feedback."""
+	_guard()
+	from upande_summer_flowers.summer_flowers import lifecycle_sim as ls
+
+	if isinstance(farm_overrides, str):
+		farm_overrides = frappe.parse_json(farm_overrides or "{}")
+	if max_bench_sqm in (None, ""):
+		max_bench_sqm = frappe.db.get_single_value("Summer Flower Settings", "max_bench_sqm")
+
+	p = ls.params_from_version(version)
+	res = ls.simulate(
+		p, frappe.utils.cint(tc_qty), order_date,
+		num_cycles=frappe.utils.cint(num_cycles),
+		farm_overrides=farm_overrides,
+		default_to_prop_pct=flt(to_prop_pct),
+		max_bench_sqm=max_bench_sqm,
+	)
+	# Trim the row payload: the table only needs weeks where something happens.
+	res["rows"] = [
+		r for r in res["rows"]
+		if r["total_cap"] or r["events"] or r["phase"]
+	]
+	return res
+
+
+@frappe.whitelist()
+def block_forecast(plan=None, variety=None, farm=None, blocks=None):
+	"""Per-block weekly forecast to the end of each cycle, plus uprooting dates.
+
+	Every block at the farm is returned, including ones with nothing planted, and
+	every week in a planted block's life is returned including the non-harvest
+	ones. A block that is idle or between flushes should read as a real zero rather
+	than be missing from the data.
+	"""
+	_guard()
+	if isinstance(blocks, str):
+		blocks = [b for b in frappe.parse_json(blocks) if b] if blocks.startswith("[") \
+			else [blocks]
+
+	bfilters = {"custom_is_summer_flower_block": 1}
+	if farm:
+		bfilters["farm"] = farm
+	all_blocks = frappe.get_all(
+		"Block", filters=bfilters,
+		fields=["name", "block", "farm", "custom_total_beds", "custom_gross_area_ha"],
+		order_by="block asc",
+	)
+	if blocks:
+		all_blocks = [b for b in all_blocks if b.name in blocks]
+
+	pfilters = {"calendar_status": ["not in", ("Cancelled",)]}
+	if variety:
+		pfilters["variety"] = variety
+	plantings = frappe.get_all(
+		"Planting Calendar", filters=pfilters,
+		fields=["name", "block", "variety", "beds", "plants", "planting_date",
+		        "pinch_date", "planned_uproot_date", "actual_uproot_date",
+		        "calendar_status", "expected_stems_life", "crop_protocol_version"],
+	)
+	by_block = {}
+	for pl in plantings:
+		by_block.setdefault(pl.block, []).append(pl)
+
+	out = []
+	for b in all_blocks:
+		rows = by_block.get(b.name, [])
+		entry = {
+			"block": b.name,
+			"block_code": b.block,
+			"farm": b.farm,
+			"total_beds": b.custom_total_beds or 0,
+			"gross_area_ha": flt(b.custom_gross_area_ha),
+			"plantings": [],
+			"status": "Not planted",
+		}
+		for pl in rows:
+			flushes = frappe.get_all(
+				"Planting Calendar Flush",
+				filters={"parent": pl.name},
+				fields=["flush_number", "harvest_date", "year", "week_no",
+				        "expected_stems", "actual_stems", "is_harvested"],
+				order_by="flush_number asc",
+			)
+			harvest_weeks = {(f.year, f.week_no): f for f in flushes}
+			end = getdate(pl.actual_uproot_date or pl.planned_uproot_date)
+			start = getdate(pl.planting_date)
+
+			# Every week of the cycle, producing or not.
+			weeks = []
+			cur = start
+			while cur <= end:
+				y, w = iso_year_week(cur)
+				f = harvest_weeks.get((y, w))
+				weeks.append({
+					"year": y, "week_no": w, "date": str(cur),
+					"label": f"{y}-W{w:02d}",
+					"stems": (f.actual_stems if (f and f.is_harvested) else
+					          (f.expected_stems if f else 0)) or 0,
+					"is_harvest_week": bool(f),
+					"flush_number": f.flush_number if f else None,
+					"is_actual": bool(f and f.is_harvested),
+				})
+				cur += datetime.timedelta(weeks=1)
+
+			entry["plantings"].append({
+				"name": pl.name, "variety": pl.variety, "beds": pl.beds,
+				"plants": pl.plants, "status": pl.calendar_status,
+				"planting_date": str(pl.planting_date),
+				"pinch_date": str(pl.pinch_date) if pl.pinch_date else None,
+				"planned_uproot_date": str(pl.planned_uproot_date)
+				if pl.planned_uproot_date else None,
+				"actual_uproot_date": str(pl.actual_uproot_date)
+				if pl.actual_uproot_date else None,
+				"uproot_date": str(end),
+				"version": pl.crop_protocol_version,
+				"expected_stems_life": pl.expected_stems_life or 0,
+				"harvest_weeks": len(flushes),
+				"cycle_weeks": len(weeks),
+				"weeks": weeks,
+			})
+			entry["status"] = pl.calendar_status
+		out.append(entry)
+
+	return {
+		"blocks": out,
+		"totals": {
+			"blocks": len(out),
+			"planted": len([b for b in out if b["plantings"]]),
+			"idle": len([b for b in out if not b["plantings"]]),
+			"stems": sum(p["expected_stems_life"] for b in out for p in b["plantings"]),
+		},
+	}
+
+
+EVENT_TYPES = {
+	"tc_order": "TC order",
+	"tc_arrive": "TC arrives",
+	"ms_first_cut": "Motherstock first cut",
+	"ms_expiry": "Motherstock expires",
+	"stick": "Stick cuttings",
+	"plant": "Plant out",
+	"pinch": "Pinch",
+	"harvest": "Harvest",
+	"uproot": "Uproot",
+}
+
+
+@frappe.whitelist()
+def event_calendar(plan=None, variety=None, farm=None, year=None):
+	"""Every dated event the demand and plan imply, for a calendar view."""
+	_guard()
+	events = []
+
+	def add(date, kind, title, ref=None, block=None, qty=None):
+		if not date:
+			return
+		d = getdate(date)
+		if year and d.year != int(year):
+			return
+		y, w = iso_year_week(d)
+		events.append({
+			"date": str(d), "year": d.year, "month": d.month, "day": d.day,
+			"iso_year": y, "week_no": w, "kind": kind,
+			"kind_label": EVENT_TYPES.get(kind, kind),
+			"title": title, "ref": ref, "block": block, "qty": qty,
+		})
+
+	pfilters = {"calendar_status": ["not in", ("Cancelled",)]}
+	if variety:
+		pfilters["variety"] = variety
+	if farm:
+		pfilters["farm"] = farm
+
+	for pl in frappe.get_all(
+		"Planting Calendar", filters=pfilters,
+		fields=["name", "block", "variety", "beds", "plants", "sticking_date",
+		        "planting_date", "pinch_date", "planned_uproot_date",
+		        "actual_uproot_date"],
+	):
+		short = (pl.block or "").split(" - Block ")[-1]
+		add(pl.sticking_date, "stick", f"Stick {pl.plants:,} cuttings", pl.name, short, pl.plants)
+		add(pl.planting_date, "plant", f"Plant {pl.beds} beds ({pl.plants:,})", pl.name,
+		    short, pl.plants)
+		add(pl.pinch_date, "pinch", "Pinch", pl.name, short)
+		add(pl.actual_uproot_date or pl.planned_uproot_date, "uproot", "Uproot", pl.name, short)
+		for f in frappe.get_all(
+			"Planting Calendar Flush", filters={"parent": pl.name},
+			fields=["flush_number", "harvest_date", "expected_stems", "actual_stems",
+			        "is_harvested"], order_by="flush_number asc",
+		):
+			stems = (f.actual_stems if f.is_harvested else f.expected_stems) or 0
+			add(f.harvest_date, "harvest",
+			    f"Flush {f.flush_number}: {stems:,} stems", pl.name, short, stems)
+
+	for b in frappe.get_all(
+		"Summer Flower Motherstock Batch",
+		filters={k: v for k, v in (("variety", variety), ("farm", farm)) if v},
+		fields=["name", "variety", "tc_plants_required", "tc_order_date",
+		        "tc_on_farm_date", "max_pc_date", "expiry_date"],
+	):
+		add(b.tc_order_date, "tc_order",
+		    f"Order {(b.tc_plants_required or 0):,} TC plantlets", b.name, None,
+		    b.tc_plants_required)
+		add(b.tc_on_farm_date, "tc_arrive", "TC plantlets on farm", b.name)
+		add(b.max_pc_date, "ms_first_cut", "Motherstock productive", b.name)
+		add(b.expiry_date, "ms_expiry", "Motherstock expires", b.name)
+
+	events.sort(key=lambda e: (e["date"], e["kind"]))
+	by_month = {}
+	for e in events:
+		by_month.setdefault(f"{e['year']}-{e['month']:02d}", []).append(e)
+	counts = {}
+	for e in events:
+		counts[e["kind"]] = counts.get(e["kind"], 0) + 1
+
+	return {
+		"events": events,
+		"by_month": by_month,
+		"years": sorted({e["year"] for e in events}),
+		"counts": counts,
+		"kinds": EVENT_TYPES,
+	}
+
+
+@frappe.whitelist()
 def motherstock_batches(variety=None, farm=None):
 	"""Saved batches, so the dashboard can show what was actually bought and when."""
 	_guard()
