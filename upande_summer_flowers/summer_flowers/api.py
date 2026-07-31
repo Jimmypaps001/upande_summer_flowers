@@ -57,6 +57,7 @@ def overview(farm=None, variety=None):
 		"Summer Flower Production Plan",
 		filters=dfilters,
 		fields=["name", "variety", "farm", "status", "workflow_state",
+		        "market_demand",
 		        "from_year", "from_week", "to_year", "to_week",
 		        "total_production_stems", "total_demand_stems", "coverage_pct",
 		        "weeks_in_deficit", "worst_weekly_deficit", "peak_weekly_sticking",

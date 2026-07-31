@@ -280,3 +280,37 @@ fixtures = [
 # List of apps whose translatable strings should be excluded from this app's translations.
 # ignore_translatable_strings_from = []
 
+# Document Events
+# ---------------
+# Everything the dashboard is derived from. Touch any of these and every open
+# dashboard refetches -- see upande_summer_flowers/live.py. This map IS the
+# dependency graph: if dashboard.py starts reading a new doctype, add it here
+# or the page will quietly serve a stale plan.
+_LIVE = "upande_summer_flowers.live.on_change"
+_LIVE_DOCTYPES = (
+	"Summer Flower Protocol",
+	"Summer Flower Protocol Flush",
+	"Summer Flower Protocol Grade",
+	"Summer Flower Market Demand",
+	"Summer Flower Demand Week",
+	"Summer Flower Production Plan",
+	"Summer Flower Plan Week",
+	"Summer Flower Plan Block",
+	"Summer Flower Planting",
+	"Summer Flower Block",
+	"Summer Flower Motherstock Batch",
+	"Summer Flower Budget",
+	"Summer Flower Settings",
+	"Summer Flower TC Price Band",
+)
+doc_events = {
+	dt: {
+		"after_insert": _LIVE,
+		"on_update": _LIVE,
+		"on_submit": _LIVE,
+		"on_cancel": _LIVE,
+		"on_update_after_submit": _LIVE,
+		"on_trash": _LIVE,
+	}
+	for dt in _LIVE_DOCTYPES
+}

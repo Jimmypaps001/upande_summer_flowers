@@ -13,3 +13,7 @@ venv/
 .vscode/
 *.log
 upande_summer_flowers/public/dist/
+
+# local agent tooling, not part of the app
+.claude-flow/
+**/.claude-flow/
