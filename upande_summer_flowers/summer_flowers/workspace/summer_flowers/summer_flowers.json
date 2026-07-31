@@ -1,0 +1,271 @@
+{
+ "app": "upande_summer_flowers",
+ "charts": [],
+ "content": "[{\"data\": {\"col\": 12, \"text\": \"<span class=\\\"h4\\\"><b>Summer Flowers</b></span>\"}, \"id\": \"sfh\", \"type\": \"header\"}, {\"data\": {\"col\": 12, \"text\": \"Demand-driven planning, budgeting and motherstock scheduling.\"}, \"id\": \"sfsc\", \"type\": \"paragraph\"}, {\"id\": \"d75232c188\", \"type\": \"shortcut\", \"data\": {\"shortcut_name\": \"Planning Dashboard\", \"col\": 4}}, {\"id\": \"21e5f3f6f3\", \"type\": \"shortcut\", \"data\": {\"shortcut_name\": \"Harvest\", \"col\": 4}}, {\"id\": \"76b4b483b6\", \"type\": \"shortcut\", \"data\": {\"shortcut_name\": \"Review and Approvals\", \"col\": 4}}, {\"id\": \"fb6aa7a1e7\", \"type\": \"shortcut\", \"data\": {\"shortcut_name\": \"Plans awaiting approval\", \"col\": 4}}, {\"id\": \"19907cc897\", \"type\": \"shortcut\", \"data\": {\"shortcut_name\": \"Active crop cycles\", \"col\": 4}}, {\"id\": \"db49fea8e2\", \"type\": \"shortcut\", \"data\": {\"shortcut_name\": \"Order sheets to approve\", \"col\": 4}}, {\"id\": \"cceee97913\", \"type\": \"card\", \"data\": {\"card_name\": \"Planning\", \"col\": 4}}, {\"id\": \"404c3e6649\", \"type\": \"card\", \"data\": {\"card_name\": \"Costs and Inputs\", \"col\": 4}}, {\"id\": \"5640b283d0\", \"type\": \"card\", \"data\": {\"card_name\": \"On the Ground\", \"col\": 4}}, {\"id\": \"1408011e97\", \"type\": \"card\", \"data\": {\"card_name\": \"Protocol\", \"col\": 4}}, {\"id\": \"1cfc8b8359\", \"type\": \"card\", \"data\": {\"card_name\": \"Motherstock\", \"col\": 4}}, {\"id\": \"4b03b5695f\", \"type\": \"card\", \"data\": {\"card_name\": \"Setup\", \"col\": 4}}]",
+ "creation": "2026-07-30 23:50:24.760659",
+ "custom_blocks": [],
+ "docstatus": 0,
+ "doctype": "Workspace",
+ "hide_custom": 0,
+ "icon": "leaf",
+ "idx": 0,
+ "indicator_color": "green",
+ "is_hidden": 0,
+ "label": "Summer Flowers",
+ "link_type": "DocType",
+ "links": [
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Planning",
+   "link_count": 3,
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Card Break"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Market Demand",
+   "link_count": 0,
+   "link_to": "Summer Flower Market Demand",
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Production Plan",
+   "link_count": 0,
+   "link_to": "Summer Flower Production Plan",
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Revenue Budget",
+   "link_count": 0,
+   "link_to": "Summer Flower Budget",
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Costs and Inputs",
+   "link_count": 2,
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Card Break"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Block Production Budget",
+   "link_count": 0,
+   "link_to": "Block Production Budget",
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Input Order Sheet",
+   "link_count": 0,
+   "link_to": "Input Order Sheet",
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "On the Ground",
+   "link_count": 5,
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Card Break"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Planting Calendar",
+   "link_count": 0,
+   "link_to": "Planting Calendar",
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Crop Cycles",
+   "link_count": 0,
+   "link_to": "Crop Cycle",
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Blocks",
+   "link_count": 0,
+   "link_to": "Block",
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Beds",
+   "link_count": 0,
+   "link_to": "Bed",
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Block Change Request",
+   "link_count": 0,
+   "link_to": "Block Change Request",
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Protocol",
+   "link_count": 2,
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Card Break"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Crop Protocol",
+   "link_count": 0,
+   "link_to": "Crop Protocol",
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Protocol Versions",
+   "link_count": 0,
+   "link_to": "Crop Protocol Version",
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Motherstock",
+   "link_count": 1,
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Card Break"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Motherstock Batches",
+   "link_count": 0,
+   "link_to": "Summer Flower Motherstock Batch",
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Setup",
+   "link_count": 1,
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Card Break"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Summer Flower Settings",
+   "link_count": 0,
+   "link_to": "Summer Flower Settings",
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Link"
+  }
+ ],
+ "modified": "2026-07-31 12:35:40.996507",
+ "modified_by": "Administrator",
+ "module": "Summer Flowers",
+ "name": "Summer Flowers",
+ "number_cards": [],
+ "owner": "Administrator",
+ "public": 1,
+ "quick_lists": [],
+ "roles": [],
+ "sequence_id": 90.0,
+ "shortcuts": [
+  {
+   "color": "Blue",
+   "doc_view": "",
+   "label": "Planning Dashboard",
+   "type": "URL",
+   "url": "/summer-flowers-planning"
+  },
+  {
+   "color": "Green",
+   "doc_view": "",
+   "label": "Harvest",
+   "type": "URL",
+   "url": "/summer-flowers-planning#harvest"
+  },
+  {
+   "color": "Orange",
+   "doc_view": "",
+   "label": "Review and Approvals",
+   "type": "URL",
+   "url": "/summer-flowers-planning#review"
+  },
+  {
+   "color": "Orange",
+   "doc_view": "",
+   "label": "Plans awaiting approval",
+   "link_to": "Summer Flower Production Plan",
+   "stats_filter": "{\"workflow_state\":\"Pending Approval\"}",
+   "type": "DocType"
+  },
+  {
+   "color": "Green",
+   "doc_view": "",
+   "label": "Active crop cycles",
+   "link_to": "Crop Cycle",
+   "stats_filter": "{\"custom_is_summer_flower_cycle\":1,\"custom_sf_cycle_status\":\"Active\"}",
+   "type": "DocType"
+  },
+  {
+   "color": "Orange",
+   "doc_view": "",
+   "label": "Order sheets to approve",
+   "link_to": "Input Order Sheet",
+   "stats_filter": "{\"status\":\"Pending Approval\"}",
+   "type": "DocType"
+  }
+ ],
+ "title": "Summer Flowers",
+ "type": "Workspace"
+}

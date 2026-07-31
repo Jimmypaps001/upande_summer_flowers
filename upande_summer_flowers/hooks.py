@@ -28,13 +28,14 @@ fixtures = [
 		"dt": "Workflow Action Master",
 		"filters": [["name", "in", ["Submit for Approval", "Approve", "Reject", "Reopen"]]],
 	},
+	# The Workspace itself is NOT a fixture: it belongs to the module, so
+	# developer_mode exports it to summer_flowers/workspace/ and migrate syncs it
+	# from there. Shipping it both ways gives two sources of truth that drift --
+	# and the one that matters is the `content` block layout, which decides what
+	# the page actually draws.
 	{
 		"dt": "Workspace Sidebar",
 		"filters": [["title", "in", ["Summer Flowers"]]],
-	},
-	{
-		"dt": "Workspace",
-		"filters": [["name", "in", ["Summer Flowers"]]],
 	},
 	{
 		"dt": "Role",

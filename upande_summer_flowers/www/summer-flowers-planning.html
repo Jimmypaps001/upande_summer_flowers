@@ -2039,7 +2039,15 @@ input.pin.tgt.manual{border-color:var(--warning);
     });
   }
 
-  function setTab(name) {
+  const TABS = ["overview", "demand", "planting", "blocks", "harvest", "review",
+               "protocol", "motherstock", "calendar"];
+
+  function setTab(name, fromHash) {
+    // The tab lives in the URL so a workspace shortcut can point straight at
+    // Harvest or Review instead of landing on Overview and making the user hunt.
+    if (!fromHash && location.hash.slice(1) !== name) {
+      history.replaceState(null, "", "#" + name);
+    }
     document.querySelectorAll(".pl-tabs button").forEach((b) => {
       const on = b.dataset.tab === name;
       b.classList.toggle("is-on", on); b.setAttribute("aria-selected", on);
@@ -2151,6 +2159,11 @@ input.pin.tgt.manual{border-color:var(--warning);
       }
     });
 
+    window.addEventListener("hashchange", () => {
+      const want = (location.hash || "").slice(1);
+      if (TABS.includes(want)) setTab(want, true);
+    });
+
     // Hand-set a weekly target on blur, so typing does not fire a write per keystroke.
     $("pl-root").addEventListener("change", (ev) => {
       const t = ev.target.closest("input.tgt");
@@ -2255,7 +2268,8 @@ input.pin.tgt.manual{border-color:var(--warning);
       $("pl-loading").hidden = true;
       $("pl-body").hidden = false;
       $("asof").textContent = "As of " + frappe.datetime.get_today();
-      setTab("overview");
+      const want = (location.hash || "").slice(1);
+      setTab(TABS.includes(want) ? want : "overview", true);
     }).catch((e) => {
       $("pl-loading").innerHTML = '<span class="warn">' +
         esc("Could not load: " + (e.message || e)) + "</span>";
