@@ -12,7 +12,7 @@ import datetime
 import frappe
 from frappe import _
 from frappe.model.document import Document
-from frappe.utils import add_days, getdate, now_datetime, nowdate
+from frappe.utils import add_days, flt, getdate, now_datetime, nowdate
 
 from upande_summer_flowers.summer_flowers.planning import iso_year_week
 
@@ -24,8 +24,25 @@ RESERVING_STATES = ("Draft", "Pending Approval", "Approved", "Planted")
 
 
 class PlantingCalendar(Document):
+	@property
+	def version(self):
+		"""The protocol version this planting runs on.
+
+		Resolved lazily rather than assigned in validate: whitelisted methods are
+		called on a freshly loaded document, where validate has not run, and an
+		instance attribute set there would not exist yet.
+		"""
+		if not self.crop_protocol_version:
+			frappe.throw(_("{0} has no Crop Protocol Version.").format(
+				self.name or _("This planting")))
+		cached = self.get("_version_doc")
+		if cached is None or cached.name != self.crop_protocol_version:
+			cached = frappe.get_cached_doc("Crop Protocol Version",
+			                               self.crop_protocol_version)
+			self._version_doc = cached
+		return cached
+
 	def validate(self):
-		self.version = frappe.get_cached_doc("Crop Protocol Version", self.crop_protocol_version)
 		self.check_version_applies()
 		self.set_size()
 		self.set_dates()
@@ -324,46 +341,48 @@ class PlantingCalendar(Document):
 	# ------------------------------------------------------------- crop cycle
 	@frappe.whitelist()
 	def create_crop_cycle(self):
-		"""An approved calendar becomes a Crop Cycle.
+		"""An approved calendar becomes a Crop Cycle for its block.
 
-		Crop Cycle is keyed by greenhouse on this site, so an existing cycle for the
-		greenhouse is reused and stamped with this planting's summer flower fields
-		rather than duplicated.
+		One cycle per block-planting, not per greenhouse. The doctype's native
+		naming is `field:greenhouse`, which would have made every block in a
+		greenhouse share one record and overwrite each other's dates; the summer
+		flower subclass names the cycle after this calendar instead.
 		"""
 		if self.calendar_status not in ("Approved", "Planted"):
 			frappe.throw(_("Approve the planting calendar first."))
 		if self.crop_cycle and frappe.db.exists("Crop Cycle", self.crop_cycle):
 			return self.crop_cycle
-		if not self.greenhouse:
-			frappe.throw(_("Block {0} has no greenhouse, which Crop Cycle is keyed by.")
-			             .format(self.block))
 
 		v = self.version
-		if frappe.db.exists("Crop Cycle", self.greenhouse):
-			cycle = frappe.get_doc("Crop Cycle", self.greenhouse)
-		else:
-			cycle = frappe.new_doc("Crop Cycle")
-			cycle.greenhouse = self.greenhouse
-			cycle.farm = self.farm
-			cycle.company = self.company
+		cycle = frappe.new_doc("Crop Cycle")
+		cycle.greenhouse = self.greenhouse
+		cycle.farm = self.farm
+		cycle.company = self.company
 
 		cycle.custom_is_summer_flower_cycle = 1
+		cycle.custom_block = self.block
+		cycle.custom_planting_calendar = self.name
 		cycle.custom_sf_variety = self.variety
 		cycle.custom_crop_protocol_version = self.crop_protocol_version
+		cycle.custom_market_demand = frappe.db.get_value(
+			"Summer Flower Market Demand",
+			{"variety": self.variety, "farm": self.farm}, "name")
+		cycle.custom_seedling_source = self.seedling_source
+		cycle.custom_supplier = self.supplier
+		cycle.custom_propagation_batch = self.propagation_batch
 		cycle.custom_sf_cycle_status = "Active"
 		cycle.custom_planting_date = self.planting_date
-		cycle.custom_planned_pinch_date = self.pinch_date
-		cycle.custom_planned_uproot_date = self.planned_uproot_date
 		cycle.custom_live_plant_count = self.plants
-		cycle.custom_expected_stems_life = self.expected_stems_life
-		cycle.custom_plant_age_weeks = max(
-			0, (getdate(nowdate()) - getdate(self.planting_date)).days // 7
-		)
+		cycle.custom_beds_planted = self.beds
+		cycle.custom_area_planted_sqm = flt(self.net_area_sqm)
+		cycle.custom_planting_density_per_sqm = v.plants_per_sqm_net
 		if v.plants_per_sqm_net:
 			cycle.plants_per_sqm = v.plants_per_sqm_net
+		# The subclass derives pinch, uproot, age, the flush schedule and the
+		# per-grade weekly targets from the protocol on save.
 		cycle.flags.ignore_permissions = True
 		cycle.flags.ignore_mandatory = True
-		cycle.save()
+		cycle.insert()
 
 		self.db_set("crop_cycle", cycle.name)
 		self.db_set("approved_by", frappe.session.user, update_modified=False)

@@ -170,17 +170,27 @@ add_to_apps_screen = [
 # 	"Event": "frappe.desk.doctype.event.event.has_permission",
 # }
 
+# Class Overrides
+# ---------------
+# Crop Cycle lives in upande_agriculture and carries live records for other crops.
+# The subclass adds the summer flower lifecycle behind the
+# custom_is_summer_flower_cycle flag and, for those cycles only, names them per
+# block-planting instead of per greenhouse -- the native `field:greenhouse` rule
+# would otherwise collapse every block in a greenhouse into one record.
+
+override_doctype_class = {
+	"Crop Cycle": "upande_summer_flowers.summer_flowers.crop_cycle.SummerFlowerCropCycle",
+}
+
 # Document Events
 # ---------------
 # Hook on document methods and events
 
-# doc_events = {
-# 	"*": {
-# 		"on_update": "method",
-# 		"on_cancel": "method",
-# 		"on_trash": "method"
-# 	}
-# }
+doc_events = {
+	"Block": {
+		"validate": "upande_summer_flowers.summer_flowers.block.validate_block",
+	},
+}
 
 # Scheduled Tasks
 # ---------------
