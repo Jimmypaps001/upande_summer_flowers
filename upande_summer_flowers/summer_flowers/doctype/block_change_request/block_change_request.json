@@ -1,0 +1,240 @@
+{
+ "actions": [],
+ "allow_bulk_edit": 1,
+ "allow_rename": 1,
+ "autoname": "naming_series:",
+ "creation": "2026-07-31 10:18:27.405461",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "naming_series",
+  "request_type",
+  "farm",
+  "cb1",
+  "company",
+  "effective_date",
+  "status",
+  "sec_src",
+  "sources",
+  "sec_res",
+  "results",
+  "sec_area",
+  "source_area_ha",
+  "result_area_ha",
+  "cb2",
+  "area_difference_ha",
+  "sec_just",
+  "justification",
+  "approved_by",
+  "cb3",
+  "approved_on",
+  "executed_on",
+  "rejection_reason"
+ ],
+ "fields": [
+  {
+   "fieldname": "naming_series",
+   "fieldtype": "Select",
+   "label": "Series",
+   "options": "BCR-.YYYY.-.#####"
+  },
+  {
+   "fieldname": "request_type",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Request Type",
+   "options": "Split\nRecombine",
+   "reqd": 1
+  },
+  {
+   "fieldname": "farm",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "label": "Farm",
+   "options": "Farm",
+   "reqd": 1
+  },
+  {
+   "fieldname": "cb1",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "company",
+   "fieldtype": "Link",
+   "label": "Company",
+   "options": "Company"
+  },
+  {
+   "fieldname": "effective_date",
+   "fieldtype": "Date",
+   "in_list_view": 1,
+   "label": "Effective Date",
+   "reqd": 1
+  },
+  {
+   "default": "Draft",
+   "fieldname": "status",
+   "fieldtype": "Select",
+   "in_standard_filter": 1,
+   "label": "Status",
+   "options": "Draft\nPending Approval\nApproved\nRejected\nExecuted",
+   "read_only": 1
+  },
+  {
+   "fieldname": "sec_src",
+   "fieldtype": "Section Break",
+   "label": "Blocks Affected"
+  },
+  {
+   "fieldname": "sources",
+   "fieldtype": "Table",
+   "label": "Source Blocks",
+   "options": "Block Change Source"
+  },
+  {
+   "fieldname": "sec_res",
+   "fieldtype": "Section Break",
+   "label": "Resulting Blocks"
+  },
+  {
+   "fieldname": "results",
+   "fieldtype": "Table",
+   "label": "Resulting Blocks",
+   "options": "Block Change Result"
+  },
+  {
+   "fieldname": "sec_area",
+   "fieldtype": "Section Break",
+   "label": "Area Check"
+  },
+  {
+   "fieldname": "source_area_ha",
+   "fieldtype": "Float",
+   "label": "Source Area (ha)",
+   "read_only": 1
+  },
+  {
+   "fieldname": "result_area_ha",
+   "fieldtype": "Float",
+   "label": "Result Area (ha)",
+   "read_only": 1
+  },
+  {
+   "fieldname": "cb2",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "area_difference_ha",
+   "fieldtype": "Float",
+   "label": "Difference (ha)",
+   "read_only": 1
+  },
+  {
+   "fieldname": "sec_just",
+   "fieldtype": "Section Break",
+   "label": "Justification"
+  },
+  {
+   "fieldname": "justification",
+   "fieldtype": "Small Text",
+   "in_list_view": 1,
+   "label": "Justification",
+   "reqd": 1
+  },
+  {
+   "fieldname": "approved_by",
+   "fieldtype": "Link",
+   "label": "Approved By",
+   "options": "User",
+   "read_only": 1
+  },
+  {
+   "fieldname": "cb3",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "approved_on",
+   "fieldtype": "Datetime",
+   "label": "Approved On",
+   "read_only": 1
+  },
+  {
+   "fieldname": "executed_on",
+   "fieldtype": "Datetime",
+   "label": "Executed On",
+   "read_only": 1
+  },
+  {
+   "depends_on": "eval:doc.status=='Rejected'",
+   "fieldname": "rejection_reason",
+   "fieldtype": "Small Text",
+   "label": "Rejection Reason"
+  }
+ ],
+ "grid_page_length": 50,
+ "index_web_pages_for_search": 1,
+ "links": [],
+ "modified": "2026-07-31 10:18:27.405461",
+ "modified_by": "Administrator",
+ "module": "Summer Flowers",
+ "name": "Block Change Request",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Farm Manager",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Agriculture Manager",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Agriculture User",
+   "share": 1,
+   "write": 1
+  }
+ ],
+ "row_format": "Dynamic",
+ "rows_threshold_for_grid_search": 20,
+ "sort_field": "creation",
+ "sort_order": "DESC",
+ "states": [],
+ "track_changes": 1
+}
