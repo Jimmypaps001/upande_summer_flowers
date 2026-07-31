@@ -125,20 +125,28 @@ class SummerFlowerCropCycle(CropCycle):
 	# ------------------------------------------------------------- validate
 	def validate(self):
 		super().validate()
-		if not self.get("custom_is_summer_flower_cycle"):
-			# greenhouse is unique on this doctype, so a block-centric cycle has to
-			# leave it empty -- one greenhouse holds many blocks. Relaxing the
-			# mandatory flag for that would have quietly removed the guarantee from
-			# every bed-range crop, so it is re-imposed here instead.
+
+		# Scope is what the cycle occupies; the summer flower flag is which planning
+		# engine applies to it. They are separate on purpose: a block-scoped cycle
+		# for another crop is a legitimate thing to want, and a greenhouse-scoped
+		# summer flower cycle should still get its flush forecast.
+		if self.is_block_scoped():
+			self.sync_block_geometry()
+		else:
+			# greenhouse is unique on this doctype, so only a block-scoped cycle may
+			# leave it empty. Relaxing the mandatory flag for that would have quietly
+			# removed the guarantee from every bed-range crop, so it is re-imposed
+			# here for everything still described by a greenhouse.
 			if not self.get("greenhouse"):
-				frappe.throw(_("Greenhouse is required on a crop cycle."))
+				frappe.throw(_("Greenhouse is required on a greenhouse-scoped cycle."))
+
+		if not self.get("custom_is_summer_flower_cycle"):
 			return
 
 		self._version = self._resolve_version()
 		self.protocol = EffectiveProtocol(self._version, self)
 
 		self.check_override_approval()
-		self.sync_block_geometry()
 		self.set_dates()
 		self.set_plant_age()
 		self.check_uproot_deviation()
@@ -147,6 +155,18 @@ class SummerFlowerCropCycle(CropCycle):
 		self.build_weekly_targets()
 		self.sync_cycle_status()
 		self.compute_royalty()
+		self.sync_biological_asset()
+
+	def is_block_scoped(self):
+		"""Block-scoped when scope says so, or when a block is set.
+
+		The fallback matters for records created before the scope field existed and
+		for anyone who fills in the block without touching the selector.
+		"""
+		scope = self.get("custom_cycle_scope")
+		if scope:
+			return scope == "Block"
+		return bool(self.get("custom_block"))
 
 	def _resolve_version(self):
 		if not self.get("custom_crop_protocol_version"):
@@ -156,13 +176,20 @@ class SummerFlowerCropCycle(CropCycle):
 
 	# ------------------------------------------------------------- geometry
 	def sync_block_geometry(self):
-		"""Block area is the ceiling; a planting need not fill it.
+		"""Align a block-scoped cycle with the block it occupies.
 
 		Gross area is read from the block on every save rather than copied once,
-		because a block's gross area legitimately changes over time.
+		because a block's gross area legitimately changes over time. The native
+		bed-range fields are left alone: a block cycle is described by the block's
+		own beds, not by ranges typed onto the cycle.
 		"""
 		if not self.get("custom_block"):
-			return
+			frappe.throw(_("A block-scoped cycle needs a Block."))
+		if self.get("bed_range"):
+			frappe.throw(_(
+				"This cycle is scoped to block {0}, so its beds come from the block. "
+				"Clear the Bed Ranges table, or set the scope to Greenhouse."
+			).format(self.custom_block))
 		# The native greenhouse field is unique, so it stays empty; the greenhouse is
 		# still recorded, derived from the block, so reports do not lose it.
 		self.greenhouse = None
@@ -438,7 +465,50 @@ class SummerFlowerCropCycle(CropCycle):
 		self.custom_total_royalty_payable = (
 			flt(self.custom_royalty_rate) * cint(self.custom_total_harvested_stems))
 
+	# ---------------------------------------------------- biological asset
+	def sync_biological_asset(self):
+		"""A standing crop is a biological asset, so make it a real Asset.
+
+		The value moves as plants are uprooted, so it is recomputed on every save
+		while the asset is still a draft. Once submitted the asset is an accounting
+		document and is left alone -- adjusting it then is a write-down, not an edit.
+		"""
+		self.custom_biological_asset_value = (
+			flt(self.custom_cost_per_plant) * cint(self.custom_live_plant_count))
+		if not cint(self.get("custom_is_biological_asset")):
+			return
+		if not flt(self.custom_cost_per_plant):
+			frappe.throw(_(
+				"A biological asset needs a cost per plant to be worth anything."))
+		if self.get("custom_biological_asset"):
+			if frappe.db.get_value("Asset", self.custom_biological_asset,
+			                       "docstatus") == 0:
+				meta = frappe.get_meta("Asset")
+				vals = {f: flt(self.custom_biological_asset_value)
+				        for f in ASSET_VALUE_FIELDS if meta.has_field(f)}
+				if meta.has_field("asset_quantity"):
+					vals["asset_quantity"] = cint(self.custom_live_plant_count) or 1
+				frappe.db.set_value("Asset", self.custom_biological_asset, vals,
+				                    update_modified=False)
+			return
+		# Created on insert only once the cycle has what an Asset needs.
+		if self.is_new() or not self.get("custom_planting_date"):
+			return
+		self.custom_biological_asset = create_biological_asset(self)
+
 	# ------------------------------------------------------------- actions
+	@frappe.whitelist()
+	def create_asset(self):
+		"""Create the Asset for a cycle already flagged as a biological asset."""
+		if not cint(self.get("custom_is_biological_asset")):
+			frappe.throw(_("Tick Is Biological Asset first."))
+		if self.get("custom_biological_asset") and frappe.db.exists(
+				"Asset", self.custom_biological_asset):
+			return self.custom_biological_asset
+		name = create_biological_asset(self)
+		self.db_set("custom_biological_asset", name)
+		return name
+
 	@frappe.whitelist()
 	def approve_protocol_override(self):
 		if not _has_role():
@@ -571,3 +641,163 @@ def _monday(year, week):
 		return datetime.date.fromisocalendar(year, week, 1)
 	except ValueError:
 		return None
+
+
+# ---------------------------------------------------------------------------
+# Biological assets
+# ---------------------------------------------------------------------------
+
+BIO_CATEGORY = "BIOLOGICAL ASSETS (PLANTS)"
+
+
+def bio_asset_item(variety):
+	"""The fixed-asset Item that stands for a variety as a biological asset.
+
+	The variety's own Item is a stock item -- it is the stems that get sold -- so it
+	cannot double as the asset. One fixed-asset item per variety keeps asset
+	reporting readable without turning the variety into something it is not.
+
+	A site-wide item can be nominated in Summer Flower Settings instead, which
+	avoids taking every new variety through item approval.
+	"""
+	nominated = frappe.db.get_single_value("Summer Flower Settings",
+	                                       "biological_asset_item")
+	if nominated:
+		return nominated
+	code = "BIO-{0}".format(variety)[:140]
+	if frappe.db.exists("Item", code):
+		return code
+	if not frappe.db.exists("Asset Category", BIO_CATEGORY):
+		frappe.throw(_(
+			"Asset Category {0} does not exist, so a biological asset cannot be "
+			"created.").format(BIO_CATEGORY))
+	item = frappe.new_doc("Item")
+	item.item_code = code
+	item.item_name = "{0} (standing crop)".format(variety)[:140]
+	item.item_group = frappe.db.get_value("Item", variety, "item_group") or \
+		frappe.db.get_value("Item Group", {"is_group": 0}, "name")
+	item.stock_uom = "Nos"
+	item.is_fixed_asset = 1
+	item.is_stock_item = 0
+	# Set as an integer on purpose. Asset.validate_item reads this through
+	# get_cached_value, which for a freshly inserted Item hands back the field
+	# default as the string "0" -- and "0" is truthy, so the asset would refuse the
+	# item as disabled.
+	item.disabled = 0
+	item.asset_category = BIO_CATEGORY
+	item.description = _(
+		"Standing crop of {0} held as a biological asset. Not a stock item: the "
+		"stems it produces are.").format(variety)
+	item.flags.ignore_permissions = True
+	item.flags.ignore_mandatory = True
+	item.insert()
+	frappe.clear_document_cache("Item", item.name)
+	return item.name
+
+
+def _check_item_usable(code):
+	"""This site auto-disables any Item that is not through item approval.
+
+	Forcing it enabled would step around a real control, so the asset stops here
+	and says what has to happen instead. Nominating an already-approved item in
+	Summer Flower Settings avoids the round trip for every new variety.
+	"""
+	row = frappe.db.get_value("Item", code,
+	                          ["disabled", "workflow_state"], as_dict=True)
+	if not row:
+		frappe.throw(_("Item {0} does not exist.").format(code))
+	if row.disabled:
+		frappe.throw(_(
+			"Item {0} exists but is disabled: this site disables any item that has "
+			"not been through item approval, and it is currently {1}. Get the item "
+			"approved, or nominate an approved fixed-asset item in Summer Flower "
+			"Settings, then create the asset again."
+		).format(code, row.workflow_state or _("Draft")))
+	return code
+
+
+def _asset_location(farm, greenhouse=None):
+	"""Asset needs a Location. Prefer the farm's own, then its name."""
+	if farm:
+		loc = frappe.db.get_value("Farm", farm, "custom_location")
+		if loc and frappe.db.exists("Location", loc):
+			return loc
+		if frappe.db.exists("Location", farm):
+			return farm
+	if greenhouse:
+		# Greenhouse names carry the site, e.g. "Simotwo GH 17 - KR".
+		head = str(greenhouse).split(" ")[0]
+		if frappe.db.exists("Location", head):
+			return head
+	return None
+
+
+# Asset renamed its value fields across versions -- this one has purchase_amount and
+# net_purchase_amount, older ones gross_purchase_amount -- so write whichever exist
+# rather than pinning to one spelling.
+ASSET_VALUE_FIELDS = ("gross_purchase_amount", "purchase_amount",
+                      "net_purchase_amount")
+
+
+def _set_asset_value(asset, value, quantity):
+	meta = frappe.get_meta("Asset")
+	wrote = []
+	for f in ASSET_VALUE_FIELDS:
+		if meta.has_field(f):
+			asset.set(f, value)
+			wrote.append(f)
+	if not wrote:
+		frappe.throw(_("Asset has no purchase-amount field this version recognises."))
+	if meta.has_field("asset_quantity"):
+		asset.asset_quantity = quantity
+	return wrote
+
+
+def create_biological_asset(cycle):
+	"""Create a non-depreciating Asset for a standing crop.
+
+	Non-depreciating because the site's category has no accumulated depreciation
+	account configured; a depreciating asset would fail on submit. The asset is
+	left as a draft for finance to submit, which is also what keeps the value
+	editable while plants are still going in and coming out.
+	"""
+	variety = cycle.get("custom_sf_variety") or cycle.get("variety")
+	if not variety:
+		frappe.throw(_("A biological asset needs a variety."))
+	farm = cycle.get("farm")
+	location = _asset_location(farm, cycle.get("custom_greenhouse")
+	                           or cycle.get("greenhouse"))
+	if not location:
+		frappe.throw(_(
+			"Asset requires a Location and none matches farm {0}. Set the farm's "
+			"Location, or create a Location named after it."
+		).format(farm))
+	company = cycle.get("company") or frappe.db.get_value("Farm", farm, "company")
+	where = cycle.get("custom_block") or cycle.get("greenhouse") or farm
+
+	asset = frappe.new_doc("Asset")
+	asset.item_code = _check_item_usable(bio_asset_item(variety))
+	asset.asset_name = "{0} - {1} - planted {2}".format(
+		variety, str(where).split(" - ").pop(), cycle.get("custom_planting_date"))[:140]
+	asset.asset_category = BIO_CATEGORY
+	asset.company = company
+	asset.location = location
+	asset.purchase_date = getdate(cycle.get("custom_planting_date"))
+	# It starts earning at first harvest, not at planting.
+	first = None
+	for r in (cycle.get("custom_flush_schedule") or []):
+		first = r.harvest_date
+		break
+	asset.available_for_use_date = getdate(first or cycle.get("custom_planting_date"))
+	_set_asset_value(asset, flt(cycle.get("custom_biological_asset_value")),
+	                 cint(cycle.get("custom_live_plant_count")) or 1)
+	asset.calculate_depreciation = 0
+	asset.is_existing_asset = 1
+	asset.flags.ignore_permissions = True
+	asset.flags.ignore_mandatory = True
+	asset.insert()
+	frappe.msgprint(
+		_("Biological asset {0} created as a draft for finance to submit.").format(
+			frappe.utils.get_link_to_form("Asset", asset.name)),
+		indicator="green", alert=True)
+	return asset.name

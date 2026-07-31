@@ -1,0 +1,416 @@
+{
+ "actions": [],
+ "allow_bulk_edit": 1,
+ "allow_rename": 1,
+ "autoname": "naming_series:",
+ "creation": "2026-07-31 22:48:56.914107",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "naming_series",
+  "work_type",
+  "crop_cycle",
+  "block",
+  "greenhouse",
+  "cb1",
+  "farm",
+  "variety",
+  "status",
+  "company",
+  "sec_scope",
+  "from_bed",
+  "to_bed",
+  "total_beds",
+  "cb2",
+  "plants_per_bed",
+  "reason",
+  "sec_replant",
+  "new_variety",
+  "seedling_source",
+  "cb3",
+  "propagation_batch",
+  "cost",
+  "sec_prog",
+  "beds_done",
+  "beds_remaining",
+  "pct_complete",
+  "cb4",
+  "current_bed",
+  "fraction_in_bed",
+  "last_full_bed",
+  "sec_dates",
+  "started_on",
+  "last_worked_on",
+  "cb5",
+  "completed_on",
+  "days_worked",
+  "sec_entries",
+  "progress",
+  "sec_effect",
+  "plants_affected",
+  "plants_applied",
+  "cb6",
+  "logged_to_cycle",
+  "total_labour_hours"
+ ],
+ "fields": [
+  {
+   "fieldname": "naming_series",
+   "fieldtype": "Select",
+   "label": "Series",
+   "options": "BWO-.YYYY.-.#####"
+  },
+  {
+   "bold": 1,
+   "fieldname": "work_type",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Work Type",
+   "options": "Uprooting\nReplanting",
+   "reqd": 1
+  },
+  {
+   "fieldname": "crop_cycle",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Crop Cycle",
+   "options": "Crop Cycle",
+   "reqd": 1
+  },
+  {
+   "fieldname": "block",
+   "fieldtype": "Link",
+   "label": "Block",
+   "options": "Block",
+   "read_only": 1
+  },
+  {
+   "fieldname": "greenhouse",
+   "fieldtype": "Link",
+   "label": "Greenhouse",
+   "options": "Warehouse",
+   "read_only": 1
+  },
+  {
+   "fieldname": "cb1",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "farm",
+   "fieldtype": "Link",
+   "label": "Farm",
+   "options": "Farm",
+   "read_only": 1
+  },
+  {
+   "fieldname": "variety",
+   "fieldtype": "Link",
+   "label": "Variety",
+   "options": "Item",
+   "read_only": 1
+  },
+  {
+   "default": "Not Started",
+   "fieldname": "status",
+   "fieldtype": "Select",
+   "in_standard_filter": 1,
+   "label": "Status",
+   "options": "Not Started\nIn Progress\nPaused\nCompleted\nCancelled",
+   "read_only": 1
+  },
+  {
+   "fieldname": "company",
+   "fieldtype": "Link",
+   "label": "Company",
+   "options": "Company",
+   "read_only": 1
+  },
+  {
+   "fieldname": "sec_scope",
+   "fieldtype": "Section Break",
+   "label": "Beds to Work"
+  },
+  {
+   "fieldname": "from_bed",
+   "fieldtype": "Int",
+   "in_list_view": 1,
+   "label": "From Bed",
+   "reqd": 1
+  },
+  {
+   "fieldname": "to_bed",
+   "fieldtype": "Int",
+   "in_list_view": 1,
+   "label": "To Bed",
+   "reqd": 1
+  },
+  {
+   "fieldname": "total_beds",
+   "fieldtype": "Float",
+   "label": "Total Beds",
+   "precision": "2",
+   "read_only": 1
+  },
+  {
+   "fieldname": "cb2",
+   "fieldtype": "Column Break"
+  },
+  {
+   "description": "Defaults from the cycle's plants divided by its beds.",
+   "fieldname": "plants_per_bed",
+   "fieldtype": "Float",
+   "label": "Plants per Bed",
+   "precision": "2"
+  },
+  {
+   "depends_on": "eval:doc.work_type=='Uprooting'",
+   "fieldname": "reason",
+   "fieldtype": "Select",
+   "label": "Reason",
+   "options": "\nLow Yield\nDisease\nVariety Change\nAge (End of Cycle)\nReplanting\nOther"
+  },
+  {
+   "depends_on": "eval:doc.work_type=='Replanting'",
+   "fieldname": "sec_replant",
+   "fieldtype": "Section Break",
+   "label": "Replanting"
+  },
+  {
+   "fieldname": "new_variety",
+   "fieldtype": "Link",
+   "label": "New Variety",
+   "options": "Item"
+  },
+  {
+   "fieldname": "seedling_source",
+   "fieldtype": "Select",
+   "label": "Seedling Source",
+   "options": "\nIn-house Propagation\nBought-in Rooted Cuttings\nTissue Culture\nOwn Motherstock Cuttings"
+  },
+  {
+   "fieldname": "cb3",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "propagation_batch",
+   "fieldtype": "Link",
+   "label": "Propagation Batch",
+   "options": "Summer Flower Motherstock Batch"
+  },
+  {
+   "fieldname": "cost",
+   "fieldtype": "Currency",
+   "label": "Cost"
+  },
+  {
+   "fieldname": "sec_prog",
+   "fieldtype": "Section Break",
+   "label": "Where the Work Reached"
+  },
+  {
+   "bold": 1,
+   "fieldname": "beds_done",
+   "fieldtype": "Float",
+   "label": "Beds Done",
+   "precision": "2",
+   "read_only": 1
+  },
+  {
+   "fieldname": "beds_remaining",
+   "fieldtype": "Float",
+   "label": "Beds Remaining",
+   "precision": "2",
+   "read_only": 1
+  },
+  {
+   "fieldname": "pct_complete",
+   "fieldtype": "Percent",
+   "label": "Complete",
+   "read_only": 1
+  },
+  {
+   "fieldname": "cb4",
+   "fieldtype": "Column Break"
+  },
+  {
+   "description": "The bed part-way through, if any.",
+   "fieldname": "current_bed",
+   "fieldtype": "Int",
+   "label": "Current Bed",
+   "read_only": 1
+  },
+  {
+   "fieldname": "fraction_in_bed",
+   "fieldtype": "Percent",
+   "label": "Into That Bed",
+   "read_only": 1
+  },
+  {
+   "fieldname": "last_full_bed",
+   "fieldtype": "Int",
+   "label": "Last Bed Finished",
+   "read_only": 1
+  },
+  {
+   "fieldname": "sec_dates",
+   "fieldtype": "Section Break",
+   "label": "Timing"
+  },
+  {
+   "fieldname": "started_on",
+   "fieldtype": "Date",
+   "label": "Started",
+   "read_only": 1
+  },
+  {
+   "fieldname": "last_worked_on",
+   "fieldtype": "Date",
+   "label": "Last Worked",
+   "read_only": 1
+  },
+  {
+   "fieldname": "cb5",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "completed_on",
+   "fieldtype": "Date",
+   "label": "Completed",
+   "read_only": 1
+  },
+  {
+   "fieldname": "days_worked",
+   "fieldtype": "Int",
+   "label": "Days Worked",
+   "read_only": 1
+  },
+  {
+   "fieldname": "sec_entries",
+   "fieldtype": "Section Break",
+   "label": "Daily Progress"
+  },
+  {
+   "fieldname": "progress",
+   "fieldtype": "Table",
+   "label": "Progress",
+   "options": "Bed Work Progress"
+  },
+  {
+   "fieldname": "sec_effect",
+   "fieldtype": "Section Break",
+   "label": "Effect"
+  },
+  {
+   "fieldname": "plants_affected",
+   "fieldtype": "Int",
+   "label": "Plants Affected",
+   "read_only": 1
+  },
+  {
+   "description": "How much of plants_affected the cycle already reflects. Kept so re-saving applies a delta rather than double-counting.",
+   "fieldname": "plants_applied",
+   "fieldtype": "Int",
+   "hidden": 1,
+   "label": "Plants Applied to Cycle",
+   "read_only": 1
+  },
+  {
+   "fieldname": "cb6",
+   "fieldtype": "Column Break"
+  },
+  {
+   "default": "0",
+   "description": "Set once the summary row has been written onto the crop cycle's own replanting or uprooting tab.",
+   "fieldname": "logged_to_cycle",
+   "fieldtype": "Check",
+   "label": "Logged to Cycle",
+   "read_only": 1
+  },
+  {
+   "fieldname": "total_labour_hours",
+   "fieldtype": "Float",
+   "label": "Labour Hours",
+   "precision": "2",
+   "read_only": 1
+  }
+ ],
+ "grid_page_length": 50,
+ "index_web_pages_for_search": 1,
+ "links": [],
+ "modified": "2026-07-31 22:48:56.914107",
+ "modified_by": "Administrator",
+ "module": "Summer Flowers",
+ "name": "Bed Work Order",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Farm Manager",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Agriculture Manager",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Production Manager",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Agriculture User",
+   "share": 1,
+   "write": 1
+  }
+ ],
+ "row_format": "Dynamic",
+ "rows_threshold_for_grid_search": 20,
+ "sort_field": "creation",
+ "sort_order": "DESC",
+ "states": [],
+ "track_changes": 1
+}

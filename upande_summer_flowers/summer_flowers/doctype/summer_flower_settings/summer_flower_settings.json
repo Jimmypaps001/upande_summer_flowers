@@ -21,7 +21,9 @@
   "default_business_unit",
   "default_request_type",
   "cb_proc",
-  "default_input_purpose"
+  "default_input_purpose",
+  "bio_section",
+  "biological_asset_item"
  ],
  "fields": [
   {
@@ -111,13 +113,25 @@
    "fieldname": "default_input_purpose",
    "fieldtype": "Small Text",
    "label": "Default Line Purpose"
+  },
+  {
+   "fieldname": "bio_section",
+   "fieldtype": "Section Break",
+   "label": "Biological Assets"
+  },
+  {
+   "description": "An approved fixed-asset item to raise standing-crop assets against. Leave empty to create one per variety, which then has to go through item approval before an asset can be raised.",
+   "fieldname": "biological_asset_item",
+   "fieldtype": "Link",
+   "label": "Biological Asset Item",
+   "options": "Item"
   }
  ],
  "grid_page_length": 50,
  "index_web_pages_for_search": 1,
  "issingle": 1,
  "links": [],
- "modified": "2026-07-31 22:11:17.913991",
+ "modified": "2026-07-31 22:45:51.765224",
  "modified_by": "Administrator",
  "module": "Summer Flowers",
  "name": "Summer Flower Settings",
