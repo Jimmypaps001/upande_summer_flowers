@@ -16,7 +16,12 @@
   "bands_section",
   "tc_price_bands",
   "bench_section",
-  "max_bench_sqm"
+  "max_bench_sqm",
+  "procurement_section",
+  "default_business_unit",
+  "default_request_type",
+  "cb_proc",
+  "default_input_purpose"
  ],
  "fields": [
   {
@@ -74,13 +79,45 @@
    "fieldtype": "Float",
    "label": "Available Bench (m\u00b2)",
    "precision": "1"
+  },
+  {
+   "description": "Defaults for the Material Requests raised for crop inputs. Material Request is the order sheet; these are only the site-specific fields it makes mandatory and cannot derive.",
+   "fieldname": "procurement_section",
+   "fieldtype": "Section Break",
+   "label": "Input Requests"
+  },
+  {
+   "description": "Mandatory on Material Request at this site.",
+   "fieldname": "default_business_unit",
+   "fieldtype": "Link",
+   "label": "Default Business Unit",
+   "options": "Business Unit"
+  },
+  {
+   "default": "Farm Inputs",
+   "description": "Chemical and Fertiliser Issuing request types are used when the request is type-specific.",
+   "fieldname": "default_request_type",
+   "fieldtype": "Link",
+   "label": "Default Request Type",
+   "options": "Request Type"
+  },
+  {
+   "fieldname": "cb_proc",
+   "fieldtype": "Column Break"
+  },
+  {
+   "default": "Summer flower crop inputs",
+   "description": "Copied onto each Material Request line, which requires it at this site.",
+   "fieldname": "default_input_purpose",
+   "fieldtype": "Small Text",
+   "label": "Default Line Purpose"
   }
  ],
  "grid_page_length": 50,
  "index_web_pages_for_search": 1,
  "issingle": 1,
  "links": [],
- "modified": "2026-07-31 00:32:27.168867",
+ "modified": "2026-07-31 22:11:17.913991",
  "modified_by": "Administrator",
  "module": "Summer Flowers",
  "name": "Summer Flower Settings",

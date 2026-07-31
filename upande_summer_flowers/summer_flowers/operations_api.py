@@ -26,9 +26,6 @@ REVIEW_SOURCES = (
 	 "Protocol Version", ["variety", "farm", "version", "change_reason"]),
 	("Block Production Budget", "status", "Pending Approval", "Block Budget",
 	 ["block", "variety", "from_date", "to_date", "total_budgeted", "currency"]),
-	("Input Order Sheet", "status", "Pending Approval", "Input Order Sheet",
-	 ["block", "sheet_type", "from_date", "to_date", "total_amount", "currency",
-	  "total_qty_to_order"]),
 	("Block Change Request", "status", "Pending Approval", "Block Change",
 	 ["request_type", "farm", "effective_date", "source_area_ha", "result_area_ha",
 	  "justification"]),
@@ -39,8 +36,6 @@ REVIEW_SOURCES = (
 ALLOWED_ACTIONS = {
 	"Block Production Budget": ("submit_for_approval", "approve", "reject",
 	                            "refresh_actuals"),
-	"Input Order Sheet": ("submit_for_approval", "approve", "reject",
-	                      "send_to_procurement", "load_from_protocol"),
 	"Block Change Request": ("submit_for_approval", "approve", "reject", "execute"),
 	"Crop Cycle": ("approve_protocol_override", "approve_uproot_deviation",
 	               "submit_targets_for_validation", "validate_targets",
@@ -400,6 +395,27 @@ def review_queue():
 				           for k in extra},
 				"actions": ["approve", "reject"],
 			})
+
+	# Material Request is the input order sheet, and submitting it is the approval,
+	# so a draft block-scoped request is what is waiting on someone. It is listed
+	# rather than actioned here: submitting a Material Request goes through
+	# Material Request, which is where its own validation and notifications live.
+	for r in frappe.get_all(
+		"Material Request",
+		filters={"custom_sf_block": ["is", "set"], "docstatus": 0},
+		fields=["name", "modified", "owner", "status", "custom_sf_block",
+		        "custom_request_type", "schedule_date", "custom_sf_area_ha",
+		        "custom_farm"]):
+		items.append({
+			"doctype": "Material Request", "label": "Input Request",
+			"name": r.name, "status": r.status or "Draft",
+			"modified": str(r.modified), "owner": r.owner,
+			"detail": {"block": r.custom_sf_block,
+			           "request type": r.custom_request_type,
+			           "needed by": str(r.schedule_date or ""),
+			           "area ha": r.custom_sf_area_ha},
+			"actions": [], "route": "/app/material-request/" + r.name,
+		})
 
 	cycles = frappe.get_all(
 		"Crop Cycle",

@@ -191,6 +191,14 @@ doc_events = {
 	"Block": {
 		"validate": "upande_summer_flowers.summer_flowers.block.validate_block",
 	},
+	# Material Request IS the crop input order sheet -- there is no parallel
+	# doctype. This only derives quantities from area and application rate, and
+	# returns immediately unless custom_sf_block is set, which matters on a site
+	# with 11,609 requests and a dozen other scripts on the doctype.
+	"Material Request": {
+		"validate": "upande_summer_flowers.summer_flowers.material_request"
+		            ".validate_input_request",
+	},
 }
 
 # Scheduled Tasks

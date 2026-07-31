@@ -1325,12 +1325,19 @@ input.pin.tgt.manual{border-color:var(--warning);
             .filter(([, v]) => v !== null && v !== "" && v !== "None")
             .map(([k, v]) => `<span class="bf-meta">${esc(k.replace(/_/g, " "))}: <b>${esc(v)}</b></span>`)
             .join(" · ");
-          const btns = i.actions.map((a) => {
-            const isReject = a === "reject" || a === "reject_targets";
-            return `<button type="button" class="pl-btn${isReject ? "" : " primary"}" ` +
-              `data-act="${esc(a)}" data-dt="${esc(i.doctype)}" data-nm="${esc(i.name)}"` +
-              `${r.can_approve ? "" : " disabled"}>${esc(a.replace(/_/g, " "))}</button>`;
-          }).join(" ");
+          // Some items are not actioned here: a Material Request is approved by
+          // being submitted, and that belongs on the Material Request itself, where
+          // its own validation and notifications live. Those get a link instead.
+          const btns = i.actions.length
+            ? i.actions.map((a) => {
+                const isReject = a === "reject" || a === "reject_targets";
+                return `<button type="button" class="pl-btn${isReject ? "" : " primary"}" ` +
+                  `data-act="${esc(a)}" data-dt="${esc(i.doctype)}" data-nm="${esc(i.name)}"` +
+                  `${r.can_approve ? "" : " disabled"}>${esc(a.replace(/_/g, " "))}</button>`;
+              }).join(" ")
+            : `<a class="pl-btn primary" href="${esc(i.route ||
+                ("/app/" + i.doctype.toLowerCase().replace(/ /g, "-") + "/" + i.name))}" ` +
+              `target="_blank" rel="noopener">Open to submit</a>`;
           return `<div class="rv-item"><div class="rv-head">` +
             `<span class="pill"><i class="dot2" style="background:var(--serious)"></i>${esc(i.label)}</span>` +
             `<b>${esc(i.name)}</b><span class="bf-meta">${esc(i.status)}</span>` +

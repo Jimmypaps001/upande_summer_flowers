@@ -221,8 +221,8 @@
     "icon": null,
     "indent": 0,
     "keep_closed": 0,
-    "label": "Input Order Sheet",
-    "link_to": "Input Order Sheet",
+    "label": "Input Requests",
+    "link_to": "Material Request",
     "link_type": "DocType",
     "navigate_to_tab": null,
     "route_options": null,
@@ -439,7 +439,7 @@
     "url": null
    }
   ],
-  "modified": "2026-07-31 12:35:41.924988",
+  "modified": "2026-07-31 22:13:44.156710",
   "module": "Summer Flowers",
   "module_onboarding": null,
   "name": "Summer Flowers",

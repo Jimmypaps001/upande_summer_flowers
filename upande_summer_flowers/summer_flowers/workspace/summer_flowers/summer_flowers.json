@@ -1,7 +1,7 @@
 {
  "app": "upande_summer_flowers",
  "charts": [],
- "content": "[{\"data\": {\"col\": 12, \"text\": \"<span class=\\\"h4\\\"><b>Summer Flowers</b></span>\"}, \"id\": \"sfh\", \"type\": \"header\"}, {\"data\": {\"col\": 12, \"text\": \"Demand-driven planning, budgeting and motherstock scheduling.\"}, \"id\": \"sfsc\", \"type\": \"paragraph\"}, {\"id\": \"d75232c188\", \"type\": \"shortcut\", \"data\": {\"shortcut_name\": \"Planning Dashboard\", \"col\": 4}}, {\"id\": \"21e5f3f6f3\", \"type\": \"shortcut\", \"data\": {\"shortcut_name\": \"Harvest\", \"col\": 4}}, {\"id\": \"76b4b483b6\", \"type\": \"shortcut\", \"data\": {\"shortcut_name\": \"Review and Approvals\", \"col\": 4}}, {\"id\": \"fb6aa7a1e7\", \"type\": \"shortcut\", \"data\": {\"shortcut_name\": \"Plans awaiting approval\", \"col\": 4}}, {\"id\": \"19907cc897\", \"type\": \"shortcut\", \"data\": {\"shortcut_name\": \"Active crop cycles\", \"col\": 4}}, {\"id\": \"db49fea8e2\", \"type\": \"shortcut\", \"data\": {\"shortcut_name\": \"Order sheets to approve\", \"col\": 4}}, {\"id\": \"cceee97913\", \"type\": \"card\", \"data\": {\"card_name\": \"Planning\", \"col\": 4}}, {\"id\": \"404c3e6649\", \"type\": \"card\", \"data\": {\"card_name\": \"Costs and Inputs\", \"col\": 4}}, {\"id\": \"5640b283d0\", \"type\": \"card\", \"data\": {\"card_name\": \"On the Ground\", \"col\": 4}}, {\"id\": \"1408011e97\", \"type\": \"card\", \"data\": {\"card_name\": \"Protocol\", \"col\": 4}}, {\"id\": \"1cfc8b8359\", \"type\": \"card\", \"data\": {\"card_name\": \"Motherstock\", \"col\": 4}}, {\"id\": \"4b03b5695f\", \"type\": \"card\", \"data\": {\"card_name\": \"Setup\", \"col\": 4}}]",
+ "content": "[{\"data\": {\"col\": 12, \"text\": \"<span class=\\\"h4\\\"><b>Summer Flowers</b></span>\"}, \"id\": \"sfh\", \"type\": \"header\"}, {\"data\": {\"col\": 12, \"text\": \"Demand-driven planning, budgeting and motherstock scheduling.\"}, \"id\": \"sfsc\", \"type\": \"paragraph\"}, {\"id\": \"fb988566b2\", \"type\": \"shortcut\", \"data\": {\"shortcut_name\": \"Planning Dashboard\", \"col\": 4}}, {\"id\": \"c46ec1240f\", \"type\": \"shortcut\", \"data\": {\"shortcut_name\": \"Harvest\", \"col\": 4}}, {\"id\": \"a2ce10a68d\", \"type\": \"shortcut\", \"data\": {\"shortcut_name\": \"Review and Approvals\", \"col\": 4}}, {\"id\": \"b5ce9f63f7\", \"type\": \"shortcut\", \"data\": {\"shortcut_name\": \"Plans awaiting approval\", \"col\": 4}}, {\"id\": \"a634b720d4\", \"type\": \"shortcut\", \"data\": {\"shortcut_name\": \"Active crop cycles\", \"col\": 4}}, {\"id\": \"064f261412\", \"type\": \"shortcut\", \"data\": {\"shortcut_name\": \"Input requests to submit\", \"col\": 4}}, {\"id\": \"504256ca83\", \"type\": \"card\", \"data\": {\"card_name\": \"Planning\", \"col\": 4}}, {\"id\": \"63cc5eddac\", \"type\": \"card\", \"data\": {\"card_name\": \"Costs and Inputs\", \"col\": 4}}, {\"id\": \"d29941521d\", \"type\": \"card\", \"data\": {\"card_name\": \"On the Ground\", \"col\": 4}}, {\"id\": \"7bf9e160a5\", \"type\": \"card\", \"data\": {\"card_name\": \"Protocol\", \"col\": 4}}, {\"id\": \"cb0d5e469b\", \"type\": \"card\", \"data\": {\"card_name\": \"Motherstock\", \"col\": 4}}, {\"id\": \"4cf1ebcbbc\", \"type\": \"card\", \"data\": {\"card_name\": \"Setup\", \"col\": 4}}]",
  "creation": "2026-07-30 23:50:24.760659",
  "custom_blocks": [],
  "docstatus": 0,
@@ -75,9 +75,9 @@
   {
    "hidden": 0,
    "is_query_report": 0,
-   "label": "Input Order Sheet",
+   "label": "Input Requests",
    "link_count": 0,
-   "link_to": "Input Order Sheet",
+   "link_to": "Material Request",
    "link_type": "DocType",
    "onboard": 0,
    "type": "Link"
@@ -209,7 +209,7 @@
    "type": "Link"
   }
  ],
- "modified": "2026-07-31 12:35:40.996507",
+ "modified": "2026-07-31 22:13:41.998652",
  "modified_by": "Administrator",
  "module": "Summer Flowers",
  "name": "Summer Flowers",
@@ -260,9 +260,9 @@
   {
    "color": "Orange",
    "doc_view": "",
-   "label": "Order sheets to approve",
-   "link_to": "Input Order Sheet",
-   "stats_filter": "{\"status\":\"Pending Approval\"}",
+   "label": "Input requests to submit",
+   "link_to": "Material Request",
+   "stats_filter": "{\"custom_sf_block\":[\"is\",\"set\"],\"docstatus\":0}",
    "type": "DocType"
   }
  ],
