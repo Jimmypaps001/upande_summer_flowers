@@ -37,7 +37,10 @@
   "approved_on",
   "cb4",
   "material_request",
-  "rejection_reason"
+  "rejection_reason",
+  "business_unit",
+  "request_type",
+  "purpose"
  ],
  "fields": [
   {
@@ -223,12 +226,34 @@
    "fieldname": "rejection_reason",
    "fieldtype": "Small Text",
    "label": "Rejection Reason"
+  },
+  {
+   "description": "Required on Material Request at this site.",
+   "fieldname": "business_unit",
+   "fieldtype": "Link",
+   "label": "Business Unit",
+   "options": "Business Unit"
+  },
+  {
+   "default": "Farm Inputs",
+   "description": "Required on Material Request at this site.",
+   "fieldname": "request_type",
+   "fieldtype": "Link",
+   "label": "Request Type",
+   "options": "Request Type"
+  },
+  {
+   "default": "Summer flower crop production inputs",
+   "description": "Copied onto every Material Request line.",
+   "fieldname": "purpose",
+   "fieldtype": "Small Text",
+   "label": "Purpose"
   }
  ],
  "grid_page_length": 50,
  "index_web_pages_for_search": 1,
  "links": [],
- "modified": "2026-07-31 10:18:26.460758",
+ "modified": "2026-07-31 11:26:06.288351",
  "modified_by": "Administrator",
  "module": "Summer Flowers",
  "name": "Input Order Sheet",

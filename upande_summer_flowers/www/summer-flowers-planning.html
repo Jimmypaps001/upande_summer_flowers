@@ -26,6 +26,8 @@
       <button role="tab" data-tab="demand" aria-selected="false">{{ _("Market Demand") }}</button>
       <button role="tab" data-tab="planting" aria-selected="false">{{ _("Planting Plan") }}</button>
       <button role="tab" data-tab="blocks" aria-selected="false">{{ _("Block Forecast") }}</button>
+      <button role="tab" data-tab="harvest" aria-selected="false">{{ _("Harvest") }}</button>
+      <button role="tab" data-tab="review" aria-selected="false">{{ _("Review") }}<span id="rv-badge" class="pl-badge" hidden></span></button>
       <button role="tab" data-tab="protocol" aria-selected="false">{{ _("Protocol") }}</button>
       <button role="tab" data-tab="motherstock" aria-selected="false">{{ _("Motherstock") }}</button>
       <button role="tab" data-tab="calendar" aria-selected="false">{{ _("Calendar") }}</button>
@@ -129,6 +131,60 @@
           <span class="pl-key"><i class="sw" style="background:var(--warning)"></i>{{ _("Uprooted bed") }}</span>
         </div>
         <div id="bf-body"></div>
+      </div>
+    </section>
+
+    <!-- ══ HARVEST ══ -->
+    <section class="pl-pane" data-pane="harvest">
+      <div class="pl-card">
+        <div class="pl-card-head">
+          <div><h2>{{ _("Crop cycles on the ground") }}</h2>
+               <p class="pl-note">{{ _("One cycle per block planting. Pick a cycle to record a pinch, cut a flush, take cuttings or end it.") }}</p></div>
+          <label class="pl-inline">{{ _("Cycle") }}
+            <select id="hv-cycle"></select>
+          </label>
+        </div>
+        <div class="pl-tiles pl-tiles-sm" id="hv-tiles"></div>
+        <div id="hv-cycles"></div>
+      </div>
+
+      <div class="pl-card" id="hv-detail-card" hidden>
+        <div class="pl-card-head">
+          <div><h2 id="hv-title">{{ _("Cycle") }}</h2>
+               <p class="pl-note" id="hv-sub"></p></div>
+          <span id="hv-actions" class="pl-actions"></span>
+        </div>
+        <div class="pl-tiles pl-tiles-sm" id="hv-dtiles"></div>
+
+        <h3 class="pl-h3">{{ _("Flush schedule — record what was cut") }}</h3>
+        <p class="pl-note">{{ _("A flush can be cut on or after the day it happened; a future date is refused. Recording a cut rolls the next harvest date and the remaining stems forward.") }}</p>
+        <div id="hv-flushes"></div>
+
+        <h3 class="pl-h3">{{ _("Expected stems per week by grade") }}</h3>
+        <p class="pl-note">{{ _("Targets default to the expectation. Type over one to set it by hand — amber means hand-set, and those survive a protocol change while defaults are recalculated.") }}
+          <button type="button" class="pl-btn" data-op="reset-targets">{{ _("Reset all to forecast") }}</button></p>
+        <div id="hv-targets"></div>
+      </div>
+    </section>
+
+    <!-- ══ REVIEW ══ -->
+    <section class="pl-pane" data-pane="review">
+      <div class="pl-card">
+        <div class="pl-card-head">
+          <div><h2>{{ _("Waiting on a decision") }}</h2>
+               <p class="pl-note">{{ _("Everything across the module that needs approving or validating. The same rules apply here as on the desk form — an approval you are not entitled to make will be refused.") }}</p></div>
+          <button type="button" class="pl-btn" id="rv-refresh">{{ _("Refresh") }}</button>
+        </div>
+        <div class="pl-tiles pl-tiles-sm" id="rv-tiles"></div>
+        <div id="rv-body"></div>
+      </div>
+
+      <div class="pl-card">
+        <div class="pl-card-head">
+          <div><h2>{{ _("Production plan") }}</h2>
+               <p class="pl-note">{{ _("Drive the plan through its workflow. Approving a plan is what creates the budget and its monthly distributions.") }}</p></div>
+        </div>
+        <div id="rv-plan"></div>
       </div>
     </section>
 
@@ -406,6 +462,52 @@ table.pl-t tr.zero td{color:var(--text-muted)}
 .bg-b.up{background:var(--warning);color:#33270a;font-weight:600}
 .pl-h3{font-size:.83rem;font-weight:600;margin:16px 0 7px;color:var(--text-secondary);
   text-transform:uppercase;letter-spacing:.04em}
+
+/* transactional tabs */
+.pl-badge{display:inline-grid;place-items:center;min-width:17px;height:17px;padding:0 5px;
+  margin-left:6px;border-radius:9px;background:var(--critical);color:#fff;
+  font-size:.62rem;font-weight:700;vertical-align:middle}
+.pl-actions{display:flex;gap:6px;flex-wrap:wrap}
+.hv-row{cursor:pointer}
+.hv-row:hover{background:color-mix(in srgb,var(--seq-400) 8%,transparent)}
+.hv-row.is-on{background:color-mix(in srgb,var(--seq-400) 14%,transparent)}
+.hv-row.is-on td{font-weight:600}
+input.pin.tgt{width:78px}
+input.pin.tgt.manual{border-color:var(--warning);
+  background:color-mix(in srgb,var(--warning) 10%,transparent)}
+.rv-item{border:1px solid var(--border);border-radius:9px;margin-bottom:10px;
+  overflow:hidden}
+.rv-head{display:flex;gap:11px;align-items:center;flex-wrap:wrap;padding:9px 13px;
+  background:var(--surface-2);font-size:.85rem}
+.rv-det{padding:8px 13px;display:flex;gap:14px;flex-wrap:wrap}
+.pl-btn[disabled]{opacity:.45;cursor:not-allowed}
+
+/* portal-safe form modal */
+.fm-back{position:fixed;inset:0;z-index:1060;background:rgba(0,0,0,.42);
+  display:grid;place-items:center;padding:18px;overflow:auto}
+.fm-box{background:var(--surface);color:var(--text-primary);border-radius:11px;
+  width:100%;max-width:470px;box-shadow:0 14px 44px rgba(0,0,0,.32);
+  border:1px solid var(--border);max-height:calc(100vh - 36px);display:flex;
+  flex-direction:column}
+.fm-head{display:flex;align-items:center;gap:10px;padding:13px 16px;
+  border-bottom:1px solid var(--border);font-size:.95rem}
+.fm-x{margin-left:auto;border:0;background:none;font-size:1.35rem;line-height:1;
+  color:var(--text-muted);cursor:pointer;padding:0 3px}
+.fm-body{padding:14px 16px;overflow:auto}
+.fm-intro{font-size:.8rem;color:var(--text-secondary);margin:0 0 11px}
+.fm-f{display:block;margin-bottom:12px}
+.fm-f>span{display:block;font-size:.74rem;font-weight:600;margin-bottom:4px;
+  color:var(--text-secondary);text-transform:uppercase;letter-spacing:.03em}
+.fm-f input,.fm-f textarea{width:100%;padding:7px 9px;border:1px solid var(--border);
+  border-radius:6px;background:var(--surface-2);color:var(--text-primary);
+  font-size:.86rem;font-family:inherit}
+.fm-f input:focus,.fm-f textarea:focus{outline:2px solid var(--seq-400);
+  outline-offset:-1px}
+.fm-f small{display:block;font-size:.71rem;color:var(--text-muted);margin-top:3px}
+.fm-req{color:var(--critical)}
+.fm-err{margin-top:6px;font-size:.78rem;color:var(--critical);font-weight:600}
+.fm-foot{display:flex;gap:8px;justify-content:flex-end;padding:12px 16px;
+  border-top:1px solid var(--border)}
 .pl-svg{width:100%;height:auto;display:block}
 .pl-ax{font-size:9px;fill:var(--text-muted)}
 
@@ -516,10 +618,26 @@ table.pl-t tr.zero td{color:var(--text-muted)}
     } catch (e) { fin(rej, e); }
   });
 
+  // Transactions live in their own module: planning_api reads, operations_api writes.
+  const OPS = "upande_summer_flowers.summer_flowers.operations_api.";
+  const callOp = (m, a) => new Promise((res, rej) => {
+    let done = false; const fin = (f, v) => { if (!done) { done = true; f(v); } };
+    setTimeout(() => fin(rej, new Error("Timed out: " + m)), 45000);
+    try {
+      frappe.call({ method: OPS + m, args: a || {},
+        callback: (r) => fin(res, r && r.message),
+        error: (r) => fin(rej, new Error(
+          (r && r.responseJSON && (r.responseJSON._server_messages
+            ? JSON.parse(r.responseJSON._server_messages).map(
+                (s) => { try { return JSON.parse(s).message; } catch (e) { return s; } }).join(" ")
+            : (r.responseJSON.exc_type || r.responseJSON.message))) || (m + " failed"))) });
+    } catch (e) { fin(rej, e); }
+  });
+
   const S = { variety: "", farm: "", version: null, grain: "month",
               dv: null, deriv: null, pp: null, bf: null, cal: null, ls: null, pr: null,
               ppFilter: "all", dmFilter: "all", bfBlock: "", calYear: null,
-              bfOpen: new Set() };
+              bfOpen: new Set(), cyc: null, cycle: null, det: null, rv: null };
 
   const KIND_COLOR = { stick: "--violet", plant: "--series-1", pinch: "--warning",
     harvest: "--good", uproot: "--critical", tc_order: "--serious",
@@ -827,6 +945,408 @@ table.pl-t tr.zero td{color:var(--text-muted)}
         ? `${num(Math.round(u.net_sqm_used))} of ${num(Math.round(u.net_sqm_total))} m² net`
         : `area recorded on ${u.beds_measured}/${u.beds_total} beds only`) +
       `</span></div><div class="bg-grid">${cells}</div></div>`;
+  }
+
+  // ══════════════════════════ HARVEST ══════════════════════════
+  const toast = (msg, bad) => frappe.show_alert(
+    { message: msg, indicator: bad ? "red" : "green" }, bad ? 8 : 5);
+
+  // A portal page loads frappe-web.bundle, which has no frappe.ui.form.make_control,
+  // so frappe.ui.Dialog can only render HTML here -- give it a field and it throws
+  // "make_control is not a function" and no dialog appears at all. Every dialog that
+  // collects input therefore uses this instead.
+  function formModal({ title, intro, fields, submitLabel, onSubmit }) {
+    const wrap = document.createElement("div");
+    wrap.className = "fm-back";
+    const body = (fields || []).map((f) => {
+      const id = "fm_" + f.name;
+      if (f.type === "text") {
+        return `<label class="fm-f"><span>${esc(f.label)}` +
+          (f.required ? ' <b class="fm-req">*</b>' : "") + `</span>` +
+          `<textarea id="${id}" rows="3">${esc(f.value || "")}</textarea>` +
+          (f.note ? `<small>${esc(f.note)}</small>` : "") + `</label>`;
+      }
+      const t = f.type === "date" ? "date" : f.type === "int" ? "number" : "text";
+      return `<label class="fm-f"><span>${esc(f.label)}` +
+        (f.required ? ' <b class="fm-req">*</b>' : "") + `</span>` +
+        `<input id="${id}" type="${t}"${t === "number" ? ' min="0" step="1"' : ""} ` +
+        `value="${esc(f.value === 0 || f.value ? f.value : "")}">` +
+        (f.note ? `<small>${esc(f.note)}</small>` : "") + `</label>`;
+    }).join("");
+    wrap.innerHTML = `<div class="fm-box" role="dialog" aria-modal="true" aria-label="${esc(title)}">` +
+      `<div class="fm-head"><b>${esc(title)}</b>` +
+      `<button type="button" class="fm-x" aria-label="Close">&times;</button></div>` +
+      `<div class="fm-body">${intro || ""}${body}` +
+      `<div class="fm-err" hidden></div></div>` +
+      `<div class="fm-foot"><button type="button" class="pl-btn fm-cancel">Cancel</button>` +
+      `<button type="button" class="pl-btn primary fm-ok">${esc(submitLabel || "Save")}</button>` +
+      `</div></div>`;
+    document.body.appendChild(wrap);
+    const close = () => wrap.remove();
+    const err = wrap.querySelector(".fm-err");
+    const read = () => {
+      const out = {};
+      (fields || []).forEach((f) => {
+        const el = wrap.querySelector("#fm_" + f.name);
+        out[f.name] = f.type === "int" ? parseInt(el.value || 0, 10) || 0 : el.value;
+      });
+      return out;
+    };
+    wrap.querySelector(".fm-x").onclick = close;
+    wrap.querySelector(".fm-cancel").onclick = close;
+    wrap.addEventListener("click", (e) => { if (e.target === wrap) close(); });
+    wrap.querySelector(".fm-ok").onclick = () => {
+      const v = read();
+      const missing = (fields || []).filter(
+        (f) => f.required && (v[f.name] === "" || v[f.name] === null ||
+                              v[f.name] === undefined));
+      if (missing.length) {
+        err.hidden = false;
+        err.textContent = missing.map((f) => f.label).join(", ") + " required.";
+        return;
+      }
+      close();
+      onSubmit(v);
+    };
+    const first = wrap.querySelector("input, textarea");
+    if (first) first.focus();
+    document.addEventListener("keydown", function esc2(e) {
+      if (e.key === "Escape") { close(); document.removeEventListener("keydown", esc2); }
+    });
+    return wrap;
+  }
+
+  // Every write funnels through here so a refused transaction always surfaces the
+  // server's own message rather than a generic failure.
+  function run(m, args, after) {
+    return callOp(m, args).then((r) => { if (after) after(r); return r; })
+      .catch((e) => { toast(esc(e.message || String(e)), true); throw e; });
+  }
+
+  function loadCycles() {
+    return callOp("crop_cycles", { variety: S.variety, farm: S.farm })
+      .then((r) => {
+        S.cyc = r;
+        const sel = $("hv-cycle");
+        const keep = S.cycle;
+        sel.innerHTML = "";
+        (r.cycles || []).forEach((c) => sel.add(new Option(
+          `${c.block_code} · ${c.custom_sf_variety} · planted ${c.custom_planting_date}`,
+          c.name)));
+        if (r.cycles && r.cycles.length) {
+          S.cycle = (keep && r.cycles.some((c) => c.name === keep)) ? keep : r.cycles[0].name;
+          sel.value = S.cycle;
+        } else { S.cycle = null; }
+        renderCycles();
+        return S.cycle ? loadDetail() : null;
+      });
+  }
+
+  function loadDetail() {
+    if (!S.cycle) { $("hv-detail-card").hidden = true; return Promise.resolve(); }
+    return callOp("crop_cycle_detail", { cycle: S.cycle })
+      .then((d) => { S.det = d; renderDetail(); });
+  }
+
+  function renderCycles() {
+    const r = S.cyc; if (!r) return;
+    const t = r.totals;
+    $("hv-tiles").innerHTML = [
+      { k: "Cycles", v: num(t.cycles), m: `${t.active} active · ${t.ended} ended` },
+      { k: "Plants standing", v: num(t.plants_standing), m: "live count" },
+      { k: "Harvested", v: num(t.harvested), m: "stems cut to date", c: "--good" },
+      { k: "Still to cut", v: num(t.remaining), m: "expected, remaining flushes" },
+      { k: "Harvest variance", v: sgn(t.variance), m: "actual vs expected so far",
+        c: t.variance >= 0 ? "--good" : "--critical" },
+      { k: "Needing attention", v: num(t.needing_attention),
+        m: t.next_harvest ? "next cut " + t.next_harvest : "no cut scheduled",
+        c: t.needing_attention ? "--serious" : "--good" },
+    ].map(tile).join("");
+
+    $("hv-cycles").innerHTML = (r.cycles || []).length
+      ? '<table class="pl-t"><thead><tr><th>Block</th><th>Variety</th><th>Status</th>' +
+        '<th>Planted</th><th>Age wk</th><th class="n">Plants</th><th class="n">Flush</th>' +
+        '<th>Next cut</th><th class="n">Harvested</th><th class="n">Variance</th>' +
+        '<th>Needs</th></tr></thead><tbody>' +
+        r.cycles.map((c) => {
+          const vr = c.custom_harvest_variance_stems || 0;
+          return `<tr class="hv-row${c.name === S.cycle ? " is-on" : ""}" data-cycle="${esc(c.name)}">` +
+            `<td><b>${esc(c.block_code)}</b></td><td>${esc(c.custom_sf_variety || "")}</td>` +
+            `<td>${esc(c.custom_sf_cycle_status || "")}</td>` +
+            `<td>${esc(c.custom_planting_date || "")}</td>` +
+            `<td>${c.custom_plant_age_weeks || 0}</td>` +
+            `<td class="n">${num(c.custom_live_plant_count)}</td>` +
+            `<td class="n">${c.custom_current_flush_number || 0}</td>` +
+            `<td>${esc(c.custom_next_harvest_date || "—")}</td>` +
+            `<td class="n">${num(c.custom_total_harvested_stems)}</td>` +
+            `<td class="n"${vr ? ` style="color:var(${vr < 0 ? "--critical" : "--good"})"` : ""}>${sgn(vr)}</td>` +
+            `<td>${c.needs.length
+              ? `<span class="pill"><i class="dot2" style="background:var(--serious)"></i>${esc(c.needs.join(", "))}</span>`
+              : ""}</td></tr>`;
+        }).join("") + "</tbody></table>"
+      : '<p class="pl-empty">No crop cycles yet. Approve a Planting Calendar to create one.</p>';
+  }
+
+  function renderDetail() {
+    const d = S.det; if (!d) return;
+    $("hv-detail-card").hidden = false;
+    $("hv-title").textContent = `${d.block_code} · ${d.variety}`;
+    $("hv-sub").innerHTML = `${esc(d.cycle)} · protocol ${esc(d.protocol)}` +
+      (d.protocol_is_current ? "" : ' <span class="pill"><i class="dot2" style="background:var(--warning)"></i>not the current version</span>') +
+      (d.override.active ? ' <span class="pill"><i class="dot2" style="background:var(--violet)"></i>protocol overridden</span>' : "") +
+      ` · status ${esc(d.status)}`;
+
+    const acts = [];
+    if (!d.dates.actual_pinch) acts.push(`<button type="button" class="pl-btn" data-op="pinch">Record actual pinch</button>`);
+    acts.push(`<button type="button" class="pl-btn" data-op="cuttings">Take cuttings</button>`);
+    if (d.targets_status === "Draft" || d.targets_status === "Rejected")
+      acts.push(`<button type="button" class="pl-btn" data-op="submit-targets">Submit targets</button>`);
+    if (!d.dates.actual_uproot) acts.push(`<button type="button" class="pl-btn" data-op="end">End cycle</button>`);
+    $("hv-actions").innerHTML = acts.join(" ");
+
+    const h = d.harvest, g = d.geometry;
+    $("hv-dtiles").innerHTML = [
+      { k: "Current flush", v: num(h.current_flush) + " / " + num(h.current_flush + h.flushes_remaining),
+        m: h.next_date ? "next " + h.next_date : "no cut left" },
+      { k: "Harvested", v: num(h.harvested), m: "of " + num(h.expected_life) + " expected life",
+        c: "--good" },
+      { k: "Variance so far", v: sgn(h.variance), m: "vs harvested flushes' expectation",
+        c: h.variance >= 0 ? "--good" : "--critical" },
+      { k: "Live plants", v: num(g.live_plants),
+        m: `${num(g.beds)} beds · ${num(Math.round(g.area_planted_sqm))} m² · ${g.utilisation_pct.toFixed(0)}% of block` },
+      { k: "Cuttings taken", v: num(g.cuttings_taken), m: "for propagation" },
+      { k: "Plant age", v: num(d.dates.plant_age_weeks) + " wk",
+        m: d.dates.uproot_deviation_days
+          ? `uproot ${d.dates.uproot_deviation_days} d off plan` : "on plan" },
+      { k: "Targets", v: esc(d.targets_status), m: num(d.target_total) + " stems",
+        c: d.targets_status === "Validated" ? "--good" : "--serious" },
+      { k: "Royalty", v: d.royalty.applicable ? num(Math.round(d.royalty.payable)) : "—",
+        m: d.royalty.applicable ? `${d.royalty.rate}/stem ${d.royalty.currency || ""}` : "not applicable" },
+    ].map(tile).join("");
+
+    $("hv-flushes").innerHTML =
+      '<table class="pl-t"><thead><tr><th>Flush</th><th>Due</th><th>Week</th>' +
+      '<th class="n">Stems/plant</th><th class="n">Plants</th><th class="n">Expected</th>' +
+      '<th class="n">Actual</th><th class="n">Variance</th><th></th></tr></thead><tbody>' +
+      d.flushes.map((f) => {
+        const vr = f.variance_stems || 0;
+        return `<tr${f.is_harvested ? ' class="zero"' : ""}><td><b>F${f.flush_number}</b></td>` +
+          `<td>${esc(f.harvest_date)}</td><td>${esc(f.label)}</td>` +
+          `<td class="n">${f.stems_per_plant.toFixed(2)}</td>` +
+          `<td class="n">${num(f.plants_standing)}</td>` +
+          `<td class="n">${num(f.expected_stems)}</td>` +
+          `<td class="n">${f.is_harvested ? num(f.actual_stems) : "—"}</td>` +
+          `<td class="n"${vr ? ` style="color:var(${vr < 0 ? "--critical" : "--good"})"` : ""}>` +
+          `${f.is_harvested ? sgn(vr) : ""}</td>` +
+          `<td>${f.is_harvested
+            ? '<span class="pill"><i class="dot2" style="background:var(--good)"></i>cut</span>'
+            : f.is_due
+              ? `<button type="button" class="pl-btn primary" data-op="harvest" data-flush="${f.flush_number}">Record cut</button>`
+              : '<span class="bf-meta">not due</span>'}</td></tr>`;
+      }).join("") + "</tbody></table>";
+
+    // Targets grouped by week so a week reads as one row of grades.
+    const weeks = {};
+    d.targets.forEach((t) => { (weeks[t.label] = weeks[t.label] || []).push(t); });
+    const grades = [...new Set(d.targets.map((t) => t.grade))];
+    $("hv-targets").innerHTML = Object.keys(weeks).length
+      ? '<table class="pl-t"><thead><tr><th>Week</th><th>Flush</th>' +
+        grades.map((g) => `<th class="n">${esc(g)}</th>`).join("") +
+        '<th class="n">Total target</th><th class="n">Actual</th></tr></thead><tbody>' +
+        Object.entries(weeks).map(([label, rows]) => {
+          const byGrade = {}; rows.forEach((r) => { byGrade[r.grade] = r; });
+          const tot = rows.reduce((s, r) => s + r.target_stems, 0);
+          const act = rows.reduce((s, r) => s + r.actual_stems, 0);
+          return `<tr><td>${esc(label)}</td><td>F${rows[0].flush_number}</td>` +
+            grades.map((g) => {
+              const r = byGrade[g];
+              if (!r) return '<td class="n">—</td>';
+              return `<td class="n"><input class="pin tgt${r.is_manual ? " manual" : ""}" ` +
+                `type="number" min="0" value="${r.target_stems}" data-row="${esc(r.name)}" ` +
+                `title="${r.is_manual ? "set by hand — " : ""}expected ${num(r.expected_stems)}"></td>`;
+            }).join("") +
+            `<td class="n"><b>${num(tot)}</b></td><td class="n">${act ? num(act) : "—"}</td></tr>`;
+        }).join("") + "</tbody></table>"
+      : '<p class="pl-empty">No harvest weeks yet.</p>';
+  }
+
+  function askHarvest(flushNumber) {
+    const d = S.det;
+    const f = d.flushes.find((x) => x.flush_number === +flushNumber);
+    const grades = [...new Set(d.targets.filter(
+      (t) => t.flush_number === f.flush_number).map((t) => t.grade))];
+    const fields = [
+      { name: "harvest_date", label: "Harvested on", type: "date",
+        value: f.harvest_date, required: true,
+        note: "A future date is refused. Cutting earlier than planned is fine." },
+      { name: "actual_stems", label: "Total stems cut", type: "int",
+        value: f.expected_stems, required: true },
+    ];
+    grades.forEach((g) => fields.push(
+      { name: "g_" + g.replace(/\W/g, "_"), label: g + " stems", type: "int", value: 0 }));
+
+    formModal({
+      title: "Record harvest",
+      intro: `<p class="fm-intro">Flush <b>F${f.flush_number}</b> on ${esc(d.block_code)}, ` +
+        `due ${esc(f.harvest_date)}. Expected <b>${num(f.expected_stems)}</b> stems from ` +
+        `${num(f.plants_standing)} plants.</p>` +
+        '<p class="fm-intro">Leave the grades at zero to record only the total. If you ' +
+        'fill them in they must add up to the total.</p>',
+      fields, submitLabel: "Record",
+      onSubmit(v) {
+        const splits = {}; let any = false;
+        grades.forEach((g) => {
+          const n = v["g_" + g.replace(/\W/g, "_")] || 0;
+          if (n) any = true;
+          splits[g] = n;
+        });
+        run("record_harvest", {
+          cycle: S.cycle, flush_number: f.flush_number,
+          actual_stems: v.actual_stems, harvest_date: v.harvest_date,
+          grade_actuals: any ? JSON.stringify(splits) : null,
+        }, (r) => {
+          toast(`Recorded ${num(r.recorded)} stems on F${f.flush_number}. ` +
+                `Variance ${sgn(r.variance)}. ` +
+                (r.next_harvest_date ? `Next cut ${r.next_harvest_date}.` : "No cut left."));
+          refreshAfterWrite();
+        });
+      },
+    });
+  }
+
+  const cint = (v) => parseInt(v || 0, 10) || 0;
+
+  function refreshAfterWrite() {
+    // A write can move production, so the projections are reloaded too rather
+    // than leaving the other tabs showing pre-transaction numbers.
+    return loadCycles().then(loadReview).then(() => loadScope()).catch(() => {});
+  }
+
+  function askPinch() {
+    const d = S.det;
+    formModal({
+      title: "Record actual pinch",
+      intro: `<p class="fm-intro">Planned pinch was <b>${esc(d.dates.planned_pinch)}</b>. ` +
+        `A different date re-anchors the uproot date and every flush by the same drift.</p>`,
+      fields: [{ name: "d", label: "Pinched on", type: "date",
+                 value: d.dates.planned_pinch, required: true }],
+      submitLabel: "Record",
+      onSubmit(v) {
+        run("set_actual_pinch", { cycle: S.cycle, actual_pinch_date: v.d }, (r) => {
+          toast(`Pinch ${r.actual_pinch}. Uproot moved ${r.planned_uproot_was} -> ` +
+                `${r.planned_uproot_now}.`);
+          refreshAfterWrite();
+        });
+      },
+    });
+  }
+
+  function askCuttings() {
+    formModal({
+      title: "Take cuttings for propagation",
+      intro: '<p class="fm-intro">Cuttings do not reduce the live plant count — the ' +
+        'plant stays in the ground.</p>',
+      fields: [
+        { name: "q", label: "Cuttings taken", type: "int", required: true },
+        { name: "d", label: "Taken on", type: "date",
+          value: frappe.datetime.get_today() },
+      ],
+      submitLabel: "Record",
+      onSubmit(v) {
+        run("record_cuttings_on", { cycle: S.cycle, quantity: v.q, taken_on: v.d },
+          (r) => {
+            toast(`${num(r.cuttings_taken)} cuttings recorded. Live plants unchanged.`);
+            refreshAfterWrite();
+          });
+      },
+    });
+  }
+
+  function askEnd() {
+    const d = S.det;
+    formModal({
+      title: "End the cycle",
+      intro: `<p class="fm-intro">Planned uproot is <b>${esc(d.dates.planned_uproot)}</b>. ` +
+        `Uprooting off that date needs a reason and Farm Manager approval, and ` +
+        `recalculates plant age, remaining flushes and expected stems.</p>`,
+      fields: [
+        { name: "d", label: "Uprooted on", type: "date",
+          value: d.dates.planned_uproot, required: true },
+        { name: "r", label: "Deviation reason", type: "text",
+          note: "Required whenever the date differs from plan." },
+      ],
+      submitLabel: "End cycle",
+      onSubmit(v) {
+        run("end_cycle_on", { cycle: S.cycle, actual_uproot_date: v.d, reason: v.r },
+          (r) => {
+            toast(`Cycle ${r.status}. Deviation ${r.deviation_days} d. ` +
+                  `${num(r.flushes_remaining)} flushes and ` +
+                  `${num(r.expected_stems_remaining)} stems dropped.`);
+            refreshAfterWrite();
+          });
+      },
+    });
+  }
+
+  // ══════════════════════════ REVIEW ══════════════════════════
+  function loadReview() {
+    return callOp("review_queue").then((r) => { S.rv = r; renderReview(); return r; });
+  }
+
+  function renderReview() {
+    const r = S.rv; if (!r) return;
+    const t = r.totals;
+    const badge = $("rv-badge");
+    badge.hidden = !t.pending;
+    badge.textContent = t.pending;
+
+    $("rv-tiles").innerHTML = [
+      { k: "Pending", v: num(t.pending), m: "items awaiting a decision",
+        c: t.pending ? "--serious" : "--good" },
+      ...Object.entries(t.by_label).map(([k, v]) => ({ k, v: num(v), m: "waiting" })),
+    ].concat(r.can_approve ? [] : [{ k: "Your access", v: "read only",
+        m: "you cannot approve", c: "--warning" }]).map(tile).join("");
+
+    $("rv-body").innerHTML = t.pending
+      ? r.items.map((i) => {
+          const det = Object.entries(i.detail || {})
+            .filter(([, v]) => v !== null && v !== "" && v !== "None")
+            .map(([k, v]) => `<span class="bf-meta">${esc(k.replace(/_/g, " "))}: <b>${esc(v)}</b></span>`)
+            .join(" · ");
+          const btns = i.actions.map((a) => {
+            const isReject = a === "reject" || a === "reject_targets";
+            return `<button type="button" class="pl-btn${isReject ? "" : " primary"}" ` +
+              `data-act="${esc(a)}" data-dt="${esc(i.doctype)}" data-nm="${esc(i.name)}"` +
+              `${r.can_approve ? "" : " disabled"}>${esc(a.replace(/_/g, " "))}</button>`;
+          }).join(" ");
+          return `<div class="rv-item"><div class="rv-head">` +
+            `<span class="pill"><i class="dot2" style="background:var(--serious)"></i>${esc(i.label)}</span>` +
+            `<b>${esc(i.name)}</b><span class="bf-meta">${esc(i.status)}</span>` +
+            `<span class="pl-actions" style="margin-left:auto">${btns}</span></div>` +
+            `<div class="rv-det">${det}</div></div>`;
+        }).join("")
+      : '<p class="pl-empty">Nothing is waiting. Everything is approved or in draft.</p>';
+
+    const p = S.dv && S.dv.plan;
+    $("rv-plan").innerHTML = p
+      ? `<div class="rv-item"><div class="rv-head">` +
+        `<b>${esc(p)}</b><span class="bf-meta">state ${esc(S.planState || "?")}</span>` +
+        (S.planBudget ? `<span class="bf-meta">budget ${esc(S.planBudget)}</span>` : "") +
+        `<span class="pl-actions" style="margin-left:auto">` +
+        (S.planTransitions || []).map((a) =>
+          `<button type="button" class="pl-btn${a === "Approve" ? " primary" : ""}" ` +
+          `data-plan="${esc(a)}">${esc(a)}</button>`).join(" ") +
+        `</span></div><div class="rv-det"><span class="bf-meta">` +
+        `Approving a plan posts the budget and its monthly distributions.</span></div></div>`
+      : '<p class="pl-empty">No production plan in scope.</p>';
+  }
+
+  function loadPlanState() {
+    if (!(S.dv && S.dv.plan)) return Promise.resolve();
+    return callOp("plan_transitions", { plan: S.dv.plan }).then((r) => {
+      S.planState = r.state; S.planBudget = r.budget; S.planTransitions = r.transitions;
+      renderReview();
+    }).catch(() => {});
   }
 
   function toggleBlock(block) {
@@ -1361,21 +1881,20 @@ table.pl-t tr.zero td{color:var(--text-muted)}
         message: esc(e.message || e), indicator: "red" }));
 
     if (d.editable) return finish();
-    const dlg = new frappe.ui.Dialog({
-      title: __("Amend protocol"),
+    formModal({
+      title: "Amend protocol",
+      intro: `<p class="fm-intro">Version <b>${esc(d.version)}</b> is ` +
+        `<b>${esc(d.status)}</b>. Crop cycles are pinned to the parameters they ran ` +
+        `under, so this creates <b>v${(d.version_no || 0) + 1}</b> as a Draft instead ` +
+        `of overwriting it.</p>`,
       fields: [
-        { fieldtype: "HTML", options:
-          `<p style="font-size:12px">Version <b>${esc(d.version)}</b> is <b>${esc(d.status)}</b>. ` +
-          `Crop cycles are pinned to the parameters they ran under, so this creates ` +
-          `<b>v${(d.version_no || 0) + 1}</b> as a Draft instead of overwriting it.</p>` },
-        { fieldname: "change_reason", label: __("Change reason"), fieldtype: "Small Text", reqd: 1 },
-        { fieldname: "effective_from", label: __("Effective from"), fieldtype: "Date",
-          reqd: 1, default: frappe.datetime.add_days(frappe.datetime.get_today(), 1) },
+        { name: "change_reason", label: "Change reason", type: "text", required: true },
+        { name: "effective_from", label: "Effective from", type: "date", required: true,
+          value: frappe.datetime.add_days(frappe.datetime.get_today(), 1) },
       ],
-      primary_action_label: __("Create amendment"),
-      primary_action(v) { dlg.hide(); finish(v.change_reason, v.effective_from); },
+      submitLabel: "Create amendment",
+      onSubmit: (v) => finish(v.change_reason, v.effective_from),
     });
-    dlg.show();
   }
 
   function runLifecycle() {
@@ -1439,6 +1958,12 @@ table.pl-t tr.zero td{color:var(--text-muted)}
     }
     if (name === "planting" && S.pp) drawGantt($("pp-gantt"), S.pp.occupancy);
     if (name === "motherstock" && S.ls) drawPool($("ls-chart"), S.ls.rows);
+    // The transactional tabs read live state, so they refetch on reveal rather
+    // than showing whatever was true when the page first loaded.
+    if (name === "harvest") loadCycles().catch((e) => toast(esc(e.message), true));
+    if (name === "review") {
+      loadReview().then(loadPlanState).catch((e) => toast(esc(e.message), true));
+    }
   }
 
   function toggleGroup(pairs, key, cb) {
@@ -1462,7 +1987,76 @@ table.pl-t tr.zero td{color:var(--text-muted)}
       const el = ev.target.closest("[data-explain]");
       if (el) { ev.preventDefault(); showExplain(el.dataset.explain); return; }
       const bh = ev.target.closest(".bf-click");
-      if (bh) { toggleBlock(bh.dataset.block); }
+      if (bh) { toggleBlock(bh.dataset.block); return; }
+
+      // ---- harvest tab
+      const row = ev.target.closest(".hv-row");
+      if (row && !ev.target.closest("button")) {
+        S.cycle = row.dataset.cycle; $("hv-cycle").value = S.cycle;
+        renderCycles(); loadDetail(); return;
+      }
+      const op = ev.target.closest("[data-op]");
+      if (op) {
+        const k = op.dataset.op;
+        if (k === "harvest") askHarvest(op.dataset.flush);
+        else if (k === "pinch") askPinch();
+        else if (k === "cuttings") askCuttings();
+        else if (k === "end") askEnd();
+        else if (k === "reset-targets") {
+          run("reset_targets", { cycle: S.cycle }, (r) => {
+            toast(`${num(r.reset)} targets reset to forecast. Total now ${num(r.target_total)}.`);
+            loadDetail();
+          });
+        }
+        else if (k === "submit-targets") {
+          run("act", { doctype: "Crop Cycle", name: S.cycle,
+                       action: "submit_targets_for_validation" }, (r) => {
+            toast("Targets submitted for validation."); refreshAfterWrite();
+          });
+        }
+        return;
+      }
+
+      // ---- review tab
+      const rv = ev.target.closest("[data-act]");
+      if (rv) {
+        const a = rv.dataset.act, dt = rv.dataset.dt, nm = rv.dataset.nm;
+        const needsReason = a === "reject" || a === "reject_targets";
+        const fire = (reason) => run("act",
+          { doctype: dt, name: nm, action: a, reason: reason || null }, (r) => {
+            toast(`${nm}: ${a.replace(/_/g, " ")} → ${r.status || "done"}`);
+            refreshAfterWrite();
+          });
+        if (needsReason) {
+          formModal({
+            title: "Reason for rejecting " + nm,
+            fields: [{ name: "r", label: "Reason", type: "text", required: true }],
+            submitLabel: "Reject",
+            onSubmit: (v) => fire(v.r),
+          });
+        } else { fire(); }
+        return;
+      }
+      const pa = ev.target.closest("[data-plan]");
+      if (pa && S.dv && S.dv.plan) {
+        run("plan_action", { plan: S.dv.plan, action: pa.dataset.plan }, (r) => {
+          toast(`Plan ${r.plan} → ${r.state}` + (r.budget ? `, budget ${r.budget}` : ""));
+          S.planState = r.state; S.planBudget = r.budget;
+          S.planTransitions = r.transitions;
+          refreshAfterWrite();
+        });
+      }
+    });
+
+    // Hand-set a weekly target on blur, so typing does not fire a write per keystroke.
+    $("pl-root").addEventListener("change", (ev) => {
+      const t = ev.target.closest("input.tgt");
+      if (!t) return;
+      run("set_weekly_target", { row: t.dataset.row, target_stems: t.value }, (r) => {
+        toast("Target set. Total now " + num(r.target_total) +
+              (r.targets_status !== "Validated" ? " (validation lapsed)" : ""));
+        loadDetail();
+      });
     });
     // Keyboard parity for the block headers, which are divs acting as buttons.
     $("pl-root").addEventListener("keydown", (ev) => {
@@ -1492,6 +2086,14 @@ table.pl-t tr.zero td{color:var(--text-muted)}
         "ppFilter", renderPlanting);
 
       $("bf-block").addEventListener("change", (e) => { S.bfBlock = e.target.value; renderBlocks(); });
+      $("hv-cycle").addEventListener("change", (e) => {
+        S.cycle = e.target.value; renderCycles(); loadDetail();
+      });
+      $("rv-refresh").addEventListener("click", () => {
+        loadReview().then(loadPlanState)
+          .then(() => toast("Review queue refreshed."))
+          .catch((e) => toast(esc(e.message), true));
+      });
       $("pr-edit").addEventListener("click", () => { prEditing = true; renderProtocol(); });
       $("pr-cancel").addEventListener("click", () => {
         prEditing = false; PR_FLUSH.rows = null; renderProtocol(); });

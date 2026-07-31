@@ -126,6 +126,12 @@ class SummerFlowerCropCycle(CropCycle):
 	def validate(self):
 		super().validate()
 		if not self.get("custom_is_summer_flower_cycle"):
+			# greenhouse is unique on this doctype, so a block-centric cycle has to
+			# leave it empty -- one greenhouse holds many blocks. Relaxing the
+			# mandatory flag for that would have quietly removed the guarantee from
+			# every bed-range crop, so it is re-imposed here instead.
+			if not self.get("greenhouse"):
+				frappe.throw(_("Greenhouse is required on a crop cycle."))
 			return
 
 		self._version = self._resolve_version()
@@ -157,6 +163,11 @@ class SummerFlowerCropCycle(CropCycle):
 		"""
 		if not self.get("custom_block"):
 			return
+		# The native greenhouse field is unique, so it stays empty; the greenhouse is
+		# still recorded, derived from the block, so reports do not lose it.
+		self.greenhouse = None
+		self.custom_greenhouse = frappe.db.get_value("Block", self.custom_block,
+		                                             "greenhouse")
 		ha = flt(frappe.db.get_value("Block", self.custom_block,
 		                             "custom_gross_area_ha"))
 		gross_sqm = ha * 10_000
@@ -353,15 +364,14 @@ class SummerFlowerCropCycle(CropCycle):
 			self.custom_target_total_stems = 0
 			return
 
-		# Actuals and hand-set targets must survive the rebuild, but an
-		# auto-defaulted target must not: it would otherwise keep the old
-		# expectation after a protocol override changed the yields. A target is
-		# treated as hand-set only when it differs from the expectation it was
-		# defaulted from.
+		# Actuals and hand-set targets survive the rebuild; auto-defaulted targets
+		# are recomputed. Whether a target was hand-set is recorded on the row
+		# rather than inferred from it differing from the expectation -- inference
+		# is self-perpetuating, because one save that changed the expectation while
+		# keeping the target would make the pair look hand-set forever.
 		prev = {
 			(cint(r.year), cint(r.week_no), r.grade): (
-				cint(r.target_stems), cint(r.expected_stems),
-				cint(r.actual_stems), r.notes)
+				cint(r.target_stems), cint(r.is_manual), cint(r.actual_stems), r.notes)
 			for r in (self.get("custom_weekly_targets") or [])
 		}
 		self.set("custom_weekly_targets", [])
@@ -369,15 +379,15 @@ class SummerFlowerCropCycle(CropCycle):
 			for grade, pct in grades:
 				expected = int(round(cint(fl.expected_stems) * pct / 100.0))
 				key = (cint(fl.year), cint(fl.week_no), grade)
-				old_target, old_expected, actual, notes = prev.get(key, (0, 0, 0, None))
-				manual = bool(old_target) and old_target != old_expected
-				target = old_target if manual else expected
+				old_target, manual, actual, notes = prev.get(key, (0, 0, 0, None))
+				target = old_target if (manual and old_target) else expected
 				self.append("custom_weekly_targets", {
 					"year": fl.year, "week_no": fl.week_no,
 					"week_start_date": _monday(cint(fl.year), cint(fl.week_no)),
 					"flush_number": fl.flush_number, "grade": grade,
 					"expected_stems": expected,
 					"target_stems": target,
+					"is_manual": manual,
 					"actual_stems": actual,
 					"variance_stems": (actual - target) if actual else 0,
 					"notes": notes,
@@ -488,11 +498,26 @@ class SummerFlowerCropCycle(CropCycle):
 
 	@frappe.whitelist()
 	def record_harvest(self, flush_number, actual_stems, harvest_date=None):
-		"""Close a flush with what was actually cut and roll the forecast on."""
+		"""Close a flush with what was actually cut and roll the forecast on.
+
+		The date checked is the one the harvest actually happened on -- the
+		supplied date if there is one, else the flush's planned date. Cutting
+		earlier than planned is a real thing and is allowed; recording a cut that
+		has not happened yet is not.
+		"""
 		row = next((r for r in (self.get("custom_flush_schedule") or [])
 		            if cint(r.flush_number) == cint(flush_number)), None)
 		if not row:
 			frappe.throw(_("Flush {0} is not on this cycle.").format(flush_number))
+		when = getdate(harvest_date) if harvest_date else (
+			getdate(row.harvest_date) if row.harvest_date else getdate(nowdate()))
+		if when > getdate(nowdate()):
+			frappe.throw(_(
+				"Flush {0} would be dated {1}, which is in the future. Record the "
+				"harvest on or after the day it was cut."
+			).format(flush_number, when))
+		if cint(actual_stems) < 0:
+			frappe.throw(_("Harvested stems cannot be negative."))
 		row.is_harvested = 1
 		row.actual_stems = cint(actual_stems)
 		if harvest_date:

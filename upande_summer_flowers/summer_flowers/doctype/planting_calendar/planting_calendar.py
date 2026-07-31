@@ -355,7 +355,9 @@ class PlantingCalendar(Document):
 
 		v = self.version
 		cycle = frappe.new_doc("Crop Cycle")
-		cycle.greenhouse = self.greenhouse
+		# greenhouse is left empty on purpose: it carries a unique index, and one
+		# greenhouse holds many blocks. The subclass records it in
+		# custom_greenhouse, derived from the block.
 		cycle.farm = self.farm
 		cycle.company = self.company
 

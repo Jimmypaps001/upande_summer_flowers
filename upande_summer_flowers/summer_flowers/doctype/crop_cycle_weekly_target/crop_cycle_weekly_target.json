@@ -16,7 +16,8 @@
   "expected_stems",
   "actual_stems",
   "variance_stems",
-  "notes"
+  "notes",
+  "is_manual"
  ],
  "fields": [
   {
@@ -87,13 +88,22 @@
    "fieldname": "notes",
    "fieldtype": "Small Text",
    "label": "Notes"
+  },
+  {
+   "columns": 1,
+   "default": "0",
+   "description": "Set when a person types a target. Auto-defaulted targets are recalculated whenever the expectation changes; hand-set ones are left alone.",
+   "fieldname": "is_manual",
+   "fieldtype": "Check",
+   "in_list_view": 1,
+   "label": "Target Set by Hand"
   }
  ],
  "grid_page_length": 50,
  "index_web_pages_for_search": 1,
  "istable": 1,
  "links": [],
- "modified": "2026-07-31 09:56:15.168935",
+ "modified": "2026-07-31 10:50:26.887785",
  "modified_by": "Administrator",
  "module": "Summer Flowers",
  "name": "Crop Cycle Weekly Target",
