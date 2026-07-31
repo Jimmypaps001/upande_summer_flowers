@@ -55,7 +55,16 @@ class SummerFlowerProtocol(Document):
 		self.total_stems_per_plant_life = sum((r.stems_per_plant or 0) for r in rows)
 
 		last = max((r.weeks_from_pinch or 0) for r in rows) if rows else 0
-		self.total_weeks_in_ground = (self.weeks_to_pinch or 0) + last
+		# The rounding allowance is part of every other offset -- harvest_week_of_year
+		# above, first_harvest_offset_weeks below, and flush_offsets(). Leaving it out
+		# here made total_weeks_in_ground land exactly one week BEFORE the final
+		# flush, so consumers that stop at the end of life dropped that flush: the
+		# production plan's break at summer_flower_production_plan.py:329 and
+		# planting.build_flush_projection both did. Aster declares 8 flushes and
+		# every planting carried 7.
+		self.total_weeks_in_ground = (
+			(self.weeks_to_pinch or 0) + last + (self.calendar_rounding_weeks or 0)
+		)
 
 		first = min((r.weeks_from_pinch or 0) for r in rows) if rows else 0
 		self.first_harvest_offset_weeks = (
