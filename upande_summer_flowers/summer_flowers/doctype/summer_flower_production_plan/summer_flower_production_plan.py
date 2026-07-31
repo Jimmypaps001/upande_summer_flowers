@@ -231,7 +231,10 @@ def build_from_demand(market_demand, from_year=None, from_week=None, weeks=None)
 	plan.market_demand = market_demand
 	plan.from_year = frappe.utils.cint(from_year) or first.year
 	plan.from_week = frappe.utils.cint(from_week) or first.week_no
-	plan.weeks_covered = frappe.utils.cint(weeks) or min(len(demand.demand_weeks), 156)
+	# Cover the whole register by default. A flat 156 (3 x 52) truncates a horizon that
+	# crosses a 53-week ISO year: a 3-financial-year forecast is 157 weeks, and capping
+	# it silently dropped the final week's demand from the plan.
+	plan.weeks_covered = frappe.utils.cint(weeks) or len(demand.demand_weeks)
 	plan.pull_header_from_demand()
 
 	_populate(plan)
@@ -278,6 +281,7 @@ def _populate(plan):
 			planting.gross_area_ha or 0,
 		))
 		if hit:
+			fh_year, fh_week = planting.first_harvest()
 			plan.append("plan_blocks", {
 				"is_new_planting": 0,
 				"block": planting.block,
@@ -288,11 +292,12 @@ def _populate(plan):
 				"planting_week": planting.planting_week,
 				"planting_date": planting.planting_date,
 				"pinch_date": planting.pinch_date,
-				"first_harvest_year": planting.first_harvest_year,
-				"first_harvest_week": planting.first_harvest_week,
+				"first_harvest_year": fh_year,
+				"first_harvest_week": fh_week,
 				"harvest_week_family": planting.harvest_week_family,
 				"gross_area_ha": planting.gross_area_ha,
-				"lifetime_stems": planting.lifetime_stems,
+				"lifetime_stems": planting.expected_stems_life,
+				"planting_in_past": 1 if getdate(planting.planting_date) < getdate(nowdate()) else 0,
 			})
 
 	# ---- close the remaining deficits

@@ -427,17 +427,64 @@ def block_forecast(plan=None, variety=None, farm=None, blocks=None):
 	for pl in plantings:
 		by_block.setdefault(pl.block, []).append(pl)
 
+	# Beds for every block in scope, in one query rather than per block.
+	beds_by_block = {}
+	if all_blocks:
+		for r in frappe.get_all(
+			"Bed",
+			filters={"custom_block": ["in", [b.name for b in all_blocks]]},
+			fields=["name", "bed", "greenhouse", "custom_block", "custom_bed_status",
+			        "custom_planting_calendar", "custom_plants", "custom_uproot_date",
+			        "bed_length", "bed_width"],
+			order_by="custom_block asc, bed asc",
+		):
+			beds_by_block.setdefault(r.custom_block, []).append({
+				"bed": r.name,
+				"number": r.bed,
+				"status": r.custom_bed_status or "Empty",
+				"planting": r.custom_planting_calendar,
+				"plants": r.custom_plants or 0,
+				"uproot_date": str(r.custom_uproot_date) if r.custom_uproot_date else None,
+				"area_sqm": flt(r.bed_length) * flt(r.bed_width),
+			})
+
 	out = []
 	for b in all_blocks:
 		rows = by_block.get(b.name, [])
+		beds = beds_by_block.get(b.name, [])
+		# Utilisation is counted off bed records, not off Planting Calendar.beds, so a
+		# bed pulled early shows as free again the moment its status changes.
+		used = [x for x in beds if x["status"] in ("Planted", "Producing")]
+		uprooted = [x for x in beds if x["status"] == "Uprooted"]
+		free = [x for x in beds if x["status"] not in ("Planted", "Producing", "Uprooted")]
+		net_total = sum(x["area_sqm"] for x in beds)
+		net_used = sum(x["area_sqm"] for x in used)
+		# Most Bed records carry no length/width, so area-based utilisation is not
+		# trustworthy on its own. Report how much of it is actually measured and let
+		# the caller fall back to bed counts rather than quote a silent under-count.
+		measured = len([x for x in beds if x["area_sqm"] > 0])
 		entry = {
 			"block": b.name,
 			"block_code": b.block,
 			"farm": b.farm,
-			"total_beds": b.custom_total_beds or 0,
+			"total_beds": b.custom_total_beds or len(beds),
 			"gross_area_ha": flt(b.custom_gross_area_ha),
 			"plantings": [],
 			"status": "Not planted",
+			"beds": beds,
+			"utilisation": {
+				"beds_total": len(beds),
+				"beds_used": len(used),
+				"beds_free": len(free),
+				"beds_uprooted": len(uprooted),
+				"pct_used": round(len(used) * 100.0 / len(beds), 2) if beds else 0.0,
+				"net_sqm_total": round(net_total, 1),
+				"net_sqm_used": round(net_used, 1),
+				"net_sqm_free": round(net_total - net_used, 1),
+				"beds_measured": measured,
+				"area_complete": bool(beds) and measured == len(beds),
+				"plants_standing": sum(x["plants"] for x in used),
+			},
 		}
 		for pl in rows:
 			flushes = frappe.get_all(
@@ -487,13 +534,74 @@ def block_forecast(plan=None, variety=None, farm=None, blocks=None):
 			entry["status"] = pl.calendar_status
 		out.append(entry)
 
+	# ---- the overlay: every block's weeks summed onto one series
+	# Contributors are kept per week so a spike in the overlay can be traced back to
+	# the blocks that caused it without re-reading the per-block payload.
+	agg, contrib = {}, {}
+	for b in out:
+		for p in b["plantings"]:
+			for w in p["weeks"]:
+				key = (w["year"], w["week_no"])
+				agg[key] = agg.get(key, 0) + (w["stems"] or 0)
+				if w["stems"]:
+					contrib.setdefault(key, []).append(
+						{"block": b["block_code"], "stems": w["stems"],
+						 "flush": w["flush_number"]})
+
+	# Fall back to the newest live plan so the overlay has a demand line even when the
+	# caller does not know the plan name yet (the dashboard loads its panes in parallel).
+	if not plan:
+		pf = {"docstatus": ["<", 2]}
+		if variety:
+			pf["variety"] = variety
+		if farm:
+			pf["farm"] = farm
+		found = frappe.get_all("Summer Flower Production Plan", filters=pf, pluck="name",
+		                       order_by="creation desc", limit=1)
+		plan = found[0] if found else None
+
+	demand_map = {}
+	if plan:
+		pdoc = frappe.get_doc("Summer Flower Production Plan", plan)
+		demand_map = {(w.year, w.week_no): (w.demand_stems or 0) for w in pdoc.plan_weeks}
+
+	overlay = []
+	for (y, w) in sorted(set(agg) | set(demand_map)):
+		stems = agg.get((y, w), 0)
+		dem = demand_map.get((y, w), 0)
+		overlay.append({
+			"year": y, "week_no": w, "label": f"{y}-W{w:02d}",
+			"stems": stems, "demand": dem, "variance": stems - dem,
+			"blocks_producing": len(contrib.get((y, w), [])),
+			"contributors": sorted(contrib.get((y, w), []),
+			                       key=lambda c: -c["stems"])[:6],
+		})
+
+	u = [b["utilisation"] for b in out]
 	return {
 		"blocks": out,
+		"overlay": overlay,
 		"totals": {
 			"blocks": len(out),
 			"planted": len([b for b in out if b["plantings"]]),
 			"idle": len([b for b in out if not b["plantings"]]),
 			"stems": sum(p["expected_stems_life"] for b in out for p in b["plantings"]),
+			"beds_total": sum(x["beds_total"] for x in u),
+			"beds_used": sum(x["beds_used"] for x in u),
+			"beds_free": sum(x["beds_free"] for x in u),
+			"beds_uprooted": sum(x["beds_uprooted"] for x in u),
+			"pct_used": round(
+				sum(x["beds_used"] for x in u) * 100.0 / sum(x["beds_total"] for x in u), 2
+			) if sum(x["beds_total"] for x in u) else 0.0,
+			"net_sqm_total": round(sum(x["net_sqm_total"] for x in u), 1),
+			"net_sqm_used": round(sum(x["net_sqm_used"] for x in u), 1),
+			"net_sqm_free": round(sum(x["net_sqm_free"] for x in u), 1),
+			"beds_measured": sum(x["beds_measured"] for x in u),
+			"blocks_area_incomplete": len([x for x in u if not x["area_complete"]]),
+			"gross_area_ha": round(sum(b["gross_area_ha"] for b in out), 3),
+			"plants_standing": sum(x["plants_standing"] for x in u),
+			"weeks_producing": len([r for r in overlay if r["stems"]]),
+			"weeks_in_deficit": len([r for r in overlay if r["variance"] < 0]),
 		},
 	}
 

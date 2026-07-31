@@ -102,6 +102,17 @@ class PlantingCalendar(Document):
 	def end_date(self):
 		return getdate(self.actual_uproot_date or self.planned_uproot_date)
 
+	def first_harvest(self):
+		"""(year, week) of flush 1, or (None, None) before the projection is built.
+
+		There is no stored first_harvest_year/week field: the first flush is simply
+		the head of flush_projection, so reading it from there keeps the two from
+		drifting when the protocol version or planting date changes.
+		"""
+		for r in sorted(self.flush_projection, key=lambda r: r.flush_number or 0):
+			return r.year, r.week_no
+		return None, None
+
 	# ---------------------------------------------------------------- occupancy
 	def check_block_capacity(self):
 		total = frappe.db.get_value("Block", self.block, "custom_total_beds") or 0
