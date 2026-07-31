@@ -26,6 +26,58 @@ def _guard():
 		frappe.throw(_("Please sign in."), frappe.PermissionError)
 
 
+def resolve_plan(variety=None, farm=None, plan=None):
+	"""The plan the dashboard should show when none was asked for.
+
+	An approved plan is preferred over a newer draft. Picking simply the newest
+	made the whole dashboard swing onto whatever draft was created last, which
+	hid the approved plan and -- because a budget only exists once a plan is
+	approved -- made the budget look as though it had disappeared.
+	"""
+	if plan:
+		return plan
+	f = {"docstatus": ["<", 2]}
+	if variety:
+		f["variety"] = variety
+	if farm:
+		f["farm"] = farm
+	approved = frappe.get_all("Summer Flower Production Plan",
+	                          filters={**f, "docstatus": 1}, pluck="name",
+	                          order_by="creation desc", limit=1)
+	if approved:
+		return approved[0]
+	rows = frappe.get_all("Summer Flower Production Plan", filters=f, pluck="name",
+	                      order_by="creation desc", limit=1)
+	return rows[0] if rows else None
+
+
+@frappe.whitelist()
+def plans(variety=None, farm=None):
+	"""Every plan in scope, so the dashboard can offer a choice rather than guess."""
+	_guard()
+	f = {"docstatus": ["<", 2]}
+	if variety:
+		f["variety"] = variety
+	if farm:
+		f["farm"] = farm
+	rows = frappe.get_all(
+		"Summer Flower Production Plan", filters=f,
+		fields=["name", "workflow_state", "status", "docstatus", "budget",
+		        "market_demand", "variety", "farm", "from_year", "from_week",
+		        "to_year", "to_week", "weeks_covered", "total_demand_stems",
+		        "total_production_stems", "coverage_pct", "weeks_in_deficit",
+		        "new_beds_required", "creation"],
+		order_by="creation desc",
+	)
+	for r in rows:
+		r["label"] = "%s · %dW%02d-%dW%02d · %s%s" % (
+			r.name, r.from_year or 0, r.from_week or 0, r.to_year or 0,
+			r.to_week or 0, r.workflow_state or r.status or "?",
+			" · budget" if r.budget else "")
+		r["is_authoritative"] = r.docstatus == 1
+	return {"plans": rows, "default": resolve_plan(variety, farm)}
+
+
 @frappe.whitelist()
 def scope():
 	"""Varieties and farms that have an active protocol version."""
@@ -52,17 +104,9 @@ def demand_vs_production(variety=None, farm=None, plan=None):
 	plants and stems" in one payload.
 	"""
 	_guard()
-	f = {"docstatus": ["<", 2]}
-	if variety:
-		f["variety"] = variety
-	if farm:
-		f["farm"] = farm
+	plan = resolve_plan(variety, farm, plan)
 	if not plan:
-		rows = frappe.get_all("Summer Flower Production Plan", filters=f, pluck="name",
-		                      order_by="creation desc", limit=1)
-		if not rows:
-			return {"plan": None}
-		plan = rows[0]
+		return {"plan": None}
 
 	p = frappe.get_doc("Summer Flower Production Plan", plan)
 	v = frappe.get_cached_doc("Crop Protocol Version", p.protocol)
@@ -256,17 +300,9 @@ def planting_plan(plan=None, variety=None, farm=None):
 	time and that constraint is only visible on a timeline.
 	"""
 	_guard()
-	f = {"docstatus": ["<", 2]}
-	if variety:
-		f["variety"] = variety
-	if farm:
-		f["farm"] = farm
+	plan = resolve_plan(variety, farm, plan)
 	if not plan:
-		rows = frappe.get_all("Summer Flower Production Plan", filters=f, pluck="name",
-		                      order_by="creation desc", limit=1)
-		if not rows:
-			return {"plan": None, "plantings": [], "occupancy": [], "totals": {}}
-		plan = rows[0]
+		return {"plan": None, "plantings": [], "occupancy": [], "totals": {}}
 
 	p = frappe.get_doc("Summer Flower Production Plan", plan)
 	v = frappe.get_cached_doc("Crop Protocol Version", p.protocol)
@@ -548,17 +584,10 @@ def block_forecast(plan=None, variety=None, farm=None, blocks=None):
 						{"block": b["block_code"], "stems": w["stems"],
 						 "flush": w["flush_number"]})
 
-	# Fall back to the newest live plan so the overlay has a demand line even when the
-	# caller does not know the plan name yet (the dashboard loads its panes in parallel).
-	if not plan:
-		pf = {"docstatus": ["<", 2]}
-		if variety:
-			pf["variety"] = variety
-		if farm:
-			pf["farm"] = farm
-		found = frappe.get_all("Summer Flower Production Plan", filters=pf, pluck="name",
-		                       order_by="creation desc", limit=1)
-		plan = found[0] if found else None
+	# Resolve the plan the same way every other endpoint does, so the overlay has a
+	# demand line even when the caller does not know the plan name yet (the dashboard
+	# loads its panes in parallel).
+	plan = resolve_plan(variety, farm, plan)
 
 	demand_map = {}
 	if plan:
@@ -875,11 +904,7 @@ def uproot_bed_whatif(planting, bed, on_date, plan=None):
 
 	# Put the loss against the plan's demand for those weeks.
 	weeks = {}
-	if plan is None:
-		rows = frappe.get_all("Summer Flower Production Plan",
-		                      filters={"variety": doc.variety, "docstatus": ["<", 2]},
-		                      pluck="name", order_by="creation desc", limit=1)
-		plan = rows[0] if rows else None
+	plan = resolve_plan(variety=doc.variety, plan=plan)
 	if plan:
 		p = frappe.get_doc("Summer Flower Production Plan", plan)
 		weeks = {(w.year, w.week_no): w for w in p.plan_weeks}

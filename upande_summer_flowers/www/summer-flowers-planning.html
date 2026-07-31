@@ -15,6 +15,7 @@
     <label>{{ _("Variety") }}<select id="f-variety"></select></label>
     <label>{{ _("Farm") }}<select id="f-farm"></select></label>
     <label>{{ _("Protocol version") }}<select id="f-version"></select></label>
+    <label>{{ _("Production plan") }}<select id="f-plan"></select></label>
     <span class="pl-asof" id="asof"></span>
   </div>
 
@@ -185,6 +186,16 @@
                <p class="pl-note">{{ _("Drive the plan through its workflow. Approving a plan is what creates the budget and its monthly distributions.") }}</p></div>
         </div>
         <div id="rv-plan"></div>
+      </div>
+
+      <div class="pl-card">
+        <div class="pl-card-head">
+          <div><h2>{{ _("Budget") }}</h2>
+               <p class="pl-note">{{ _("Built from the plan on approval, priced at the plan's stems, then split by month and posted to a Monthly Distribution and an ERPNext Budget per fiscal year.") }}</p></div>
+          <span id="bg-actions" class="pl-actions"></span>
+        </div>
+        <div class="pl-tiles pl-tiles-sm" id="bg-tiles"></div>
+        <div id="bg-body"></div>
       </div>
     </section>
 
@@ -637,7 +648,8 @@ input.pin.tgt.manual{border-color:var(--warning);
   const S = { variety: "", farm: "", version: null, grain: "month",
               dv: null, deriv: null, pp: null, bf: null, cal: null, ls: null, pr: null,
               ppFilter: "all", dmFilter: "all", bfBlock: "", calYear: null,
-              bfOpen: new Set(), cyc: null, cycle: null, det: null, rv: null };
+              bfOpen: new Set(), cyc: null, cycle: null, det: null, rv: null,
+              plan: "", plans: null, bg: null };
 
   const KIND_COLOR = { stick: "--violet", plant: "--series-1", pinch: "--warning",
     harvest: "--good", uproot: "--critical", tc_order: "--serious",
@@ -1346,7 +1358,84 @@ input.pin.tgt.manual{border-color:var(--warning);
     return callOp("plan_transitions", { plan: S.dv.plan }).then((r) => {
       S.planState = r.state; S.planBudget = r.budget; S.planTransitions = r.transitions;
       renderReview();
+      return loadBudget();
     }).catch(() => {});
+  }
+
+  function loadBudget() {
+    if (!(S.dv && S.dv.plan)) { S.bg = null; renderBudget(); return Promise.resolve(); }
+    return callOp("budget_detail", { plan: S.dv.plan })
+      .then((b) => { S.bg = b; renderBudget(); })
+      .catch((e) => { S.bg = { error: e.message }; renderBudget(); });
+  }
+
+  function renderBudget() {
+    const b = S.bg;
+    if (!b) { $("bg-tiles").innerHTML = ""; $("bg-body").innerHTML =
+      '<p class="pl-empty">No plan in scope.</p>'; $("bg-actions").innerHTML = ""; return; }
+    if (b.error) {
+      $("bg-tiles").innerHTML = ""; $("bg-actions").innerHTML = "";
+      $("bg-body").innerHTML = `<p class="pl-empty">${esc(b.error)}</p>`; return;
+    }
+    // A draft plan has no budget by design: approval is the transition that builds it.
+    if (!b.budget) {
+      $("bg-tiles").innerHTML = "";
+      $("bg-actions").innerHTML = "";
+      const expected = b.expected_value
+        ? ` Once approved it will be worth about <b>${num(Math.round(b.expected_value))} ` +
+          `${esc(b.currency || "")}</b>.` : "";
+      $("bg-body").innerHTML = `<div class="pl-callout">Plan <b>${esc(b.plan || "—")}</b> is ` +
+        `<b>${esc(b.plan_state || "Draft")}</b>, so it has no budget yet — the budget is ` +
+        `built by the approval transition, not by saving the plan.${expected}` +
+        ` Approve it in the card above and the budget, its monthly split and the ` +
+        `ERPNext postings appear here.</div>`;
+      return;
+    }
+
+    $("bg-actions").innerHTML = b.posted
+      ? '<span class="pill"><i class="dot2" style="background:var(--good)"></i>posted to accounts</span>'
+      : `<button type="button" class="pl-btn primary" data-bg="post">Post to accounts</button>`;
+
+    $("bg-tiles").innerHTML = [
+      { k: "Budget", v: esc(b.budget), m: esc(b.status || "") },
+      { k: "Total value", v: num(Math.round(b.total_value)),
+        m: esc(b.currency || "") + " at " + b.price_per_stem + "/stem" },
+      { k: "Stems", v: num(b.total_stems), m: "priced across the plan" },
+      { k: "Months", v: num(b.months_covered),
+        m: b.fiscal_years.length + " fiscal years" },
+      { k: "Account", v: esc((b.account || "—").split(" - ")[0]),
+        m: esc(b.cost_center || "") },
+    ].map(tile).join("");
+
+    const fy = '<table class="pl-t"><thead><tr><th>Fiscal year</th><th class="n">Stems</th>' +
+      '<th class="n">Value</th><th class="n">Months</th><th>Monthly distribution</th>' +
+      '<th>ERPNext budget</th></tr></thead><tbody>' +
+      b.fiscal_years.map((r) => {
+        const md = r.monthly_distribution;
+        const eb = r.erpnext_budget;
+        return `<tr><td><b>${esc(r.fiscal_year)}</b></td><td class="n">${num(r.stems)}</td>` +
+          `<td class="n">${num(Math.round(r.value))}</td><td class="n">${r.months_covered}</td>` +
+          `<td>${md
+            ? `${esc(md.name)} <span class="bf-meta">${md.months} months · ` +
+              `${md.pct_total}%</span>`
+            : '<span class="bf-meta">not posted</span>'}</td>` +
+          `<td>${eb
+            ? `${esc(eb.name)} <span class="bf-meta">${esc(eb.against)} ` +
+              `${esc(eb.against_value || "")} · ${num(Math.round(eb.amount))} · ` +
+              `${eb.rows} rows · ${eb.docstatus ? "submitted" : "draft"}</span>`
+            : '<span class="bf-meta">not posted</span>'}</td></tr>`;
+      }).join("") + "</tbody></table>";
+
+    const months = '<h3 class="pl-h3">Monthly split</h3>' +
+      '<table class="pl-t"><thead><tr><th>Month</th><th>FY</th><th class="n">Stems</th>' +
+      '<th class="n">Value</th><th class="n">% of FY</th></tr></thead><tbody>' +
+      b.months.map((m) => `<tr><td>${esc(m.month_name)} ${String(m.year).slice(2)}</td>` +
+        `<td>${esc(m.fiscal_year || "")}</td><td class="n">${num(m.stems)}</td>` +
+        `<td class="n">${num(Math.round(m.value))}</td>` +
+        `<td class="n">${m.pct_of_fiscal_year.toFixed(2)}</td></tr>`).join("") +
+      "</tbody></table>";
+
+    $("bg-body").innerHTML = fy + months;
   }
 
   function toggleBlock(block) {
@@ -1908,7 +1997,9 @@ input.pin.tgt.manual{border-color:var(--warning);
   }
 
   function loadScope() {
-    const a = { variety: S.variety, farm: S.farm };
+    // The plan is part of the scope: every plan-aware endpoint is given the same
+    // one, so the tabs cannot end up describing different plans.
+    const a = { variety: S.variety, farm: S.farm, plan: S.plan || null };
     return Promise.all([
       call("demand_vs_production", a), call("tc_derivation", a), call("planting_plan", a),
       call("block_forecast", a), call("event_calendar", a), call("protocol_detail", a),
@@ -1930,6 +2021,9 @@ input.pin.tgt.manual{border-color:var(--warning);
 
       renderOverview(); renderDemand(); renderPlanting();
       renderBlocks(); renderDerivation(); renderCalendar(); renderProtocol();
+      // Keep the picker honest about which plan the page is actually showing.
+      if (dv && dv.plan) { S.plan = dv.plan; const ps = $("f-plan"); if (ps) ps.value = dv.plan; }
+      loadPlanState();
       const pv = $("pr-version");
       pv.innerHTML = "";
       ((pr && pr.versions) || []).forEach((x) => pv.add(new Option(
@@ -2037,6 +2131,15 @@ input.pin.tgt.manual{border-color:var(--warning);
         } else { fire(); }
         return;
       }
+      const bg = ev.target.closest("[data-bg]");
+      if (bg && S.bg && S.bg.budget) {
+        run("act", { doctype: "Summer Flower Budget", name: S.bg.budget,
+                     action: "post_to_accounts" }, (r) => {
+          toast("Budget posted: monthly distributions and ERPNext budgets created.");
+          loadBudget();
+        });
+        return;
+      }
       const pa = ev.target.closest("[data-plan]");
       if (pa && S.dv && S.dv.plan) {
         run("plan_action", { plan: S.dv.plan, action: pa.dataset.plan }, (r) => {
@@ -2065,6 +2168,36 @@ input.pin.tgt.manual{border-color:var(--warning);
       if (bh) { ev.preventDefault(); toggleBlock(bh.dataset.block); }
     });
 
+    // The plan list is refreshed on every scope change; the default is the
+    // authoritative (approved) plan, not simply the newest, so creating a fresh
+    // draft no longer makes the approved plan and its budget vanish from view.
+    function loadPlans() {
+      return call("plans", { variety: S.variety, farm: S.farm }).then((r) => {
+        S.plans = r;
+        const sel = $("f-plan");
+        sel.innerHTML = "";
+        (r.plans || []).forEach((p) => {
+          const o = new Option(p.label, p.name);
+          if (p.is_authoritative) o.textContent = "★ " + o.textContent;
+          sel.add(o);
+        });
+        if (!r.plans || !r.plans.length) { sel.add(new Option("No plan", "")); S.plan = ""; }
+        else {
+          S.plan = (S.plan && r.plans.some((p) => p.name === S.plan)) ? S.plan
+                   : (r.default || r.plans[0].name);
+          sel.value = S.plan;
+        }
+        return S.plan;
+      });
+    }
+
+    $("f-plan").addEventListener("change", (e) => {
+      S.plan = e.target.value;
+      $("pl-loading").hidden = false; $("pl-loading").textContent = "Loading plan…";
+      loadScope().then(() => { $("pl-loading").hidden = true; })
+        .catch((e2) => { $("pl-loading").hidden = true; toast(esc(e2.message), true); });
+    });
+
     call("scope").then((sc) => {
       const vs = $("f-variety"), fs = $("f-farm"), vr = $("f-version");
       vs.add(new Option("All varieties", ""));
@@ -2074,8 +2207,14 @@ input.pin.tgt.manual{border-color:var(--warning);
       (sc.versions || []).forEach((v) =>
         vr.add(new Option(v.name + (v.is_current ? " (current)" : ""), v.name)));
 
-      vs.addEventListener("change", () => { S.variety = vs.value; loadScope(); });
-      fs.addEventListener("change", () => { S.farm = fs.value; loadScope(); });
+      // Changing variety or farm changes which plans exist, so the list is
+      // rebuilt and the default re-resolved before the panes reload.
+      vs.addEventListener("change", () => {
+        S.variety = vs.value; S.plan = ""; loadPlans().then(loadScope);
+      });
+      fs.addEventListener("change", () => {
+        S.farm = fs.value; S.plan = ""; loadPlans().then(loadScope);
+      });
       vr.addEventListener("change", () => { S.version = vr.value; runLifecycle(); });
 
       toggleGroup([["g-month", "month"], ["g-week", "week"]], "grain", () =>
@@ -2111,7 +2250,7 @@ input.pin.tgt.manual{border-color:var(--warning);
       });
       $("ls-prop").addEventListener("change", runLifecycle);
 
-      return loadScope();
+      return loadPlans().then(loadScope);
     }).then(() => {
       $("pl-loading").hidden = true;
       $("pl-body").hidden = false;

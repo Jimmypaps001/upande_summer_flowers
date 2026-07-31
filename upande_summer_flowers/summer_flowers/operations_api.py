@@ -45,6 +45,8 @@ ALLOWED_ACTIONS = {
 	"Crop Cycle": ("approve_protocol_override", "approve_uproot_deviation",
 	               "submit_targets_for_validation", "validate_targets",
 	               "reject_targets", "record_cuttings", "end_cycle"),
+	"Summer Flower Budget": ("post_to_accounts",),
+	"Summer Flower Production Plan": ("create_plantings", "regenerate"),
 }
 
 
@@ -470,6 +472,84 @@ def act(doctype, name, action, reason=None):
 	        "result": out if isinstance(out, (str, int, float, dict, list)) else None,
 	        "status": doc.get("status") or doc.get("custom_targets_status")
 	                  or doc.get("workflow_state")}
+
+
+# ---------------------------------------------------------------------------
+# Budget
+# ---------------------------------------------------------------------------
+
+@frappe.whitelist()
+def budget_detail(plan=None, budget=None):
+	"""The budget a plan produced, with its months and fiscal-year postings.
+
+	A budget only exists once a plan is approved -- approval is the transition that
+	submits the plan and builds it -- so a draft plan legitimately has none. The
+	payload says which case it is rather than returning an empty object, because
+	"no budget yet" and "budget missing" need different actions from the user.
+	"""
+	_guard()
+	if not budget:
+		if not plan:
+			return {"plan": None, "budget": None, "reason": "no plan in scope"}
+		p = frappe.db.get_value(
+			"Summer Flower Production Plan", plan,
+			["name", "budget", "workflow_state", "status", "docstatus",
+			 "total_production_stems", "price_per_stem", "currency"], as_dict=True)
+		if not p:
+			return {"plan": plan, "budget": None, "reason": "plan not found"}
+		if not p.budget:
+			return {
+				"plan": plan, "budget": None,
+				"plan_state": p.workflow_state or p.status,
+				"submitted": p.docstatus == 1,
+				"reason": "approved but no budget" if p.docstatus == 1
+				          else "plan is not approved yet",
+				"expected_value": flt(p.total_production_stems) * flt(p.price_per_stem),
+				"currency": p.currency,
+			}
+		budget = p.budget
+
+	b = frappe.get_doc("Summer Flower Budget", budget)
+	fys = []
+	for r in b.fiscal_years:
+		md = None
+		if r.monthly_distribution and frappe.db.exists("Monthly Distribution",
+		                                              r.monthly_distribution):
+			d = frappe.get_doc("Monthly Distribution", r.monthly_distribution)
+			md = {"name": d.name, "months": len(d.percentages),
+			      "pct_total": round(sum(flt(x.percentage_allocation)
+			                             for x in d.percentages), 4)}
+		eb = None
+		if r.erpnext_budget and frappe.db.exists("Budget", r.erpnext_budget):
+			e = frappe.get_doc("Budget", r.erpnext_budget)
+			eb = {"name": e.name, "docstatus": e.docstatus,
+			      "against": e.budget_against,
+			      "against_value": e.get(frappe.scrub(e.budget_against or "")),
+			      "account": e.get("account"),
+			      "amount": flt(e.get("budget_amount")),
+			      "rows": len(e.get("budget_distribution") or [])}
+		fys.append({
+			"fiscal_year": r.fiscal_year, "stems": cint(r.stems),
+			"value": flt(r.value), "months_covered": cint(r.months_covered),
+			"monthly_distribution": md, "erpnext_budget": eb,
+		})
+
+	return {
+		"plan": b.production_plan, "budget": b.name,
+		"status": b.budget_status, "currency": b.currency,
+		"total_stems": cint(b.total_stems), "total_value": flt(b.total_value),
+		"months_covered": cint(b.months_covered),
+		"price_per_stem": flt(b.price_per_stem),
+		"account": b.budget_account, "cost_center": b.cost_center,
+		"variety": b.variety, "farm": b.farm,
+		"posted": b.budget_status == "Posted to Accounts",
+		"months": [{
+			"year": m.year, "month": m.month, "month_name": m.month_name,
+			"fiscal_year": m.fiscal_year, "stems": cint(m.stems),
+			"value": flt(m.value), "pct_of_fiscal_year": flt(m.pct_of_fiscal_year),
+		} for m in b.budget_months],
+		"fiscal_years": fys,
+	}
 
 
 # ---------------------------------------------------------------------------
