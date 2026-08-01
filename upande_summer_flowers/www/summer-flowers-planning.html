@@ -1371,34 +1371,37 @@ input.pin.tgt.manual{border-color:var(--warning);
     const sp = c.space;
     if (!sp) { $("ch-space").innerHTML = ""; $("ch-space-note").innerHTML = ""; return; }
     $("ch-space").innerHTML = [
-      { k: "Beds wanted", v: num(sp.beds_wanted),
-        m: `of ${num(sp.beds_available)} at the farm · ${sp.beds_pct}%`,
+      { k: "Peak beds standing", v: num(sp.peak_beds),
+        m: `of ${num(sp.beds_available)} at the farm · ${sp.beds_pct}%` +
+           (sp.peak_beds_week ? ` · ${sp.peak_beds_week}` : ""),
         c: sp.beds_pct > 100 ? "--critical" : "--good" },
-      { k: "Plants to raise", v: num(sp.plants_wanted), m: "across the horizon" },
+      { k: "Beds over the horizon", v: num(sp.beds_wanted),
+        m: "a block reused counts twice" },
+      { k: "Plants to raise", v: num(sp.plants_wanted), m: "for placed plantings" },
       { k: "Area standing", v: sp.area_standing_ha.toFixed(3) + " ha",
         m: `farm has ${sp.gross_area_ha} ha gross` },
-      { k: "Plantings proposed", v: num(sp.proposals),
-        m: `${sp.blocks} blocks available` },
-      { k: "Without a block", v: num(sp.unallocated),
-        m: "nowhere to put them", c: sp.unallocated ? "--critical" : "--good" },
-      { k: "Below minimum", v: num(sp.below_minimum),
-        m: "smaller than the protocol allows",
-        c: sp.below_minimum ? "--serious" : "--good" },
+      { k: "Plantings placed", v: `${num(sp.placed)} / ${num(sp.proposals)}`,
+        m: `${sp.blocks_used} of ${sp.blocks} blocks used`,
+        c: sp.unallocated ? "--serious" : "--good" },
+      { k: "No block free", v: num(sp.unallocated),
+        m: sp.unmet_stems ? num(sp.unmet_stems) + " stems unmet" : "none",
+        c: sp.unallocated ? "--critical" : "--good" },
     ].map(tile).join("");
 
     // Beds are rarely what runs out; blocks are, because a block holds one
     // planting for that planting's whole life.
     const notes = [];
     if (sp.unallocated) {
-      notes.push(`${num(sp.unallocated)} of ${num(sp.proposals)} proposed plantings ` +
-        `have no block. Beds are not the constraint — the plan wants ${num(sp.beds_wanted)} ` +
-        `of ${num(sp.beds_available)} — but a block holds one planting at a time, and ` +
-        `${num(sp.proposals)} plantings cannot share ${sp.blocks} blocks.`);
+      notes.push(`Only ${num(sp.placed)} of ${num(sp.proposals)} proposed plantings ` +
+        `have a block free for their whole life, so ${num(sp.unmet_stems)} stems of ` +
+        `demand cannot be grown and coverage reflects that. Beds are not the ` +
+        `constraint — the peak is ${num(sp.peak_beds)} of ${num(sp.beds_available)} — ` +
+        `blocks are, because a block is held for a planting's entire cycle and the ` +
+        `farm has ${sp.blocks}.`);
     }
     if (sp.below_minimum) {
       notes.push(`${num(sp.below_minimum)} plantings are below the protocol's minimum ` +
-        `planting size. The planner sizes each one to a single week's shortfall; ` +
-        `fewer, larger plantings would satisfy the same demand.`);
+        `planting size.`);
     }
     if (c.propagation && c.propagation.schedule_warning) {
       notes.push(esc(c.propagation.schedule_warning).replace(/\n/g, "<br>"));

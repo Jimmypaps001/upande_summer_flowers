@@ -64,6 +64,10 @@ class SummerFlowerPropagationPlan(Document):
 		for b in self._plan.plan_blocks:
 			if not cint(b.is_new_planting):
 				continue
+			# A planting with no block will not happen, so raising cuttings for it
+			# would size the motherstock against work that cannot be done.
+			if cint(b.get("not_placed")):
+				continue
 			y, w = cint(b.sticking_year), cint(b.sticking_week)
 			if not (y and w):
 				continue

@@ -529,7 +529,9 @@ def chain_status(variety=None, farm=None, demand=None):
 		fields=["name", "workflow_state", "docstatus", "budget", "weeks_covered",
 		        "total_demand_stems", "total_production_stems", "coverage_pct",
 		        "weeks_in_deficit", "new_beds_required", "new_plants_required",
-		        "average_area_ha", "peak_weekly_sticking", "peak_sticking_week"],
+		        "average_area_ha", "peak_weekly_sticking", "peak_sticking_week",
+		        "peak_concurrent_beds", "peak_beds_week", "plantings_not_placed",
+		        "unmet_stems", "blocks_used"],
 		order_by="creation desc")
 	plan = plans[0] if plans else None
 
@@ -595,6 +597,7 @@ def _space_for(plan, farm):
 		filters={"parent": plan["name"], "is_new_planting": 1},
 		fields=["beds", "plants", "block", "below_minimum", "gross_area_ha"])
 	unallocated = len([r for r in rows if not r.block])
+	peak = cint(plan.get("peak_concurrent_beds"))
 	return {
 		"blocks": len(blocks),
 		"beds_available": beds_have,
@@ -603,10 +606,16 @@ def _space_for(plan, farm):
 		"plants_wanted": cint(plan.get("new_plants_required")),
 		"area_standing_ha": flt(plan.get("average_area_ha")),
 		"proposals": len(rows),
+		"placed": len(rows) - unallocated,
 		"unallocated": unallocated,
 		"below_minimum": len([r for r in rows if cint(r.below_minimum)]),
-		"beds_pct": round(cint(plan.get("new_beds_required")) * 100.0 / beds_have, 1)
-		            if beds_have else 0,
+		"blocks_used": cint(plan.get("blocks_used")),
+		"unmet_stems": cint(plan.get("unmet_stems")),
+		# Beds over the horizon double-count a block used twice, so the pressure
+		# figure is the most beds standing at once.
+		"peak_beds": peak,
+		"peak_beds_week": plan.get("peak_beds_week"),
+		"beds_pct": round(peak * 100.0 / beds_have, 1) if beds_have else 0,
 	}
 
 

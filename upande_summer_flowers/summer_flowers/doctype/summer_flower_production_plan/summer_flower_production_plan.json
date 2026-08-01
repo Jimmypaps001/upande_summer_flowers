@@ -59,7 +59,12 @@
   "blocks_section",
   "plan_blocks",
   "amend_section",
-  "amended_from"
+  "amended_from",
+  "plantings_not_placed",
+  "unmet_stems",
+  "blocks_used",
+  "peak_concurrent_beds",
+  "peak_beds_week"
  ],
  "fields": [
   {
@@ -369,13 +374,47 @@
    "options": "Summer Flower Production Plan",
    "print_hide": 1,
    "read_only": 1
+  },
+  {
+   "description": "Proposals the farm has no free block for. Their stems are excluded from production, so coverage reflects what can actually be grown.",
+   "fieldname": "plantings_not_placed",
+   "fieldtype": "Int",
+   "label": "Plantings With No Block",
+   "read_only": 1
+  },
+  {
+   "description": "Demand the unplaceable plantings would have covered.",
+   "fieldname": "unmet_stems",
+   "fieldtype": "Int",
+   "label": "Unmet Stems",
+   "read_only": 1
+  },
+  {
+   "description": "Distinct blocks the plan occupies.",
+   "fieldname": "blocks_used",
+   "fieldtype": "Int",
+   "label": "Blocks Used",
+   "read_only": 1
+  },
+  {
+   "description": "The most beds occupied at any one moment. This, not the lifetime total, is what the farm has to have room for.",
+   "fieldname": "peak_concurrent_beds",
+   "fieldtype": "Int",
+   "label": "Peak Beds Standing",
+   "read_only": 1
+  },
+  {
+   "fieldname": "peak_beds_week",
+   "fieldtype": "Data",
+   "label": "Peak Beds Week",
+   "read_only": 1
   }
  ],
  "grid_page_length": 50,
  "index_web_pages_for_search": 1,
  "is_submittable": 1,
  "links": [],
- "modified": "2026-07-30 22:41:32.407948",
+ "modified": "2026-08-01 11:53:29.564312",
  "modified_by": "Administrator",
  "module": "Summer Flowers",
  "name": "Summer Flower Production Plan",

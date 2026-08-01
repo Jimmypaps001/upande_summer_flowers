@@ -8,9 +8,10 @@ from collections import defaultdict
 import frappe
 from frappe import _
 from frappe.model.document import Document
-from frappe.utils import getdate, nowdate
+from frappe.utils import cint, getdate, nowdate
 
 from upande_summer_flowers.summer_flowers.doctype.planting_calendar.planting_calendar import (
+	RESERVING_STATES,
 	production_by_week,
 	standing_plantings,
 )
@@ -120,7 +121,12 @@ class SummerFlowerProductionPlan(Document):
 			if self.average_area_ha and years else 0
 		)
 
-		new_rows = [b for b in self.plan_blocks if b.is_new_planting]
+		# Only plantings that have a block count towards what has to be resourced.
+		# A proposal with nowhere to go is a statement of what the farm cannot do,
+		# not a bed to prepare or a cutting to stick, and counting it would ask
+		# propagation to raise plants that will never be planted.
+		new_rows = [b for b in self.plan_blocks
+		            if b.is_new_planting and not b.get("not_placed")]
 		self.new_beds_required = sum((b.beds or 0) for b in new_rows)
 		self.new_plants_required = sum((b.plants or 0) for b in new_rows)
 
@@ -330,7 +336,10 @@ def _populate(plan):
 	life_weeks = protocol.total_weeks_in_ground or 0
 	stick_weeks = protocol.sticking_to_planting_weeks or 0
 	today = getdate(nowdate())
-	free_beds = _free_bed_pool(plan.farm)
+	min_beds = cint(protocol.min_planting_beds) or 1
+	calendar = BlockCalendar(plan.farm, plan.variety)
+	block_capacity = calendar.capacity()
+	not_placed = unmet = 0
 
 	proposed = 0
 	for (year, week, monday) in grid:
@@ -342,13 +351,50 @@ def _populate(plan):
 		if not stems_f1 or not plants_per_bed:
 			break
 
-		beds = math.ceil(deficit / (stems_f1 * plants_per_bed))
+		wanted = math.ceil(deficit / (stems_f1 * plants_per_bed))
+		# A planting smaller than the protocol's minimum is not a planting anyone
+		# would make. Rounding up over-supplies this week, but the surplus lands in
+		# this planting's own flush weeks and the greedy loop then proposes fewer
+		# plantings overall, which is the point.
+		beds = max(wanted, min_beds)
+		# One planting cannot span two blocks, because a block is the unit that is
+		# held exclusively.
+		beds = min(beds, block_capacity) if block_capacity else beds
 		plants = beds * plants_per_bed
 		planting_date = monday - datetime.timedelta(weeks=first_offset)
 		p_year, p_week = iso_year_week(planting_date)
 		sticking_date = planting_date - datetime.timedelta(weeks=stick_weeks)
 		s_year, s_week = iso_year_week(sticking_date)
 		uproot = planting_date + datetime.timedelta(weeks=life_weeks)
+
+		# Find a block free for the planting's whole life before counting any of
+		# its stems. A planting with nowhere to go does not happen, so folding its
+		# flushes into the grid would report production the farm cannot grow.
+		block = calendar.place(beds, planting_date, uproot)
+		if not block:
+			not_placed += 1
+			unmet += deficit
+			plan.append("plan_blocks", {
+				"is_new_planting": 1,
+				"block": None,
+				"beds": beds,
+				"plants": plants,
+				"sticking_year": s_year,
+				"sticking_week": s_week,
+				"planting_year": p_year,
+				"planting_week": p_week,
+				"planting_date": planting_date,
+				"gross_area_ha": (beds * (protocol.sqm_gross_per_bed or 0)) / 10_000,
+				"below_minimum": 0,
+				"not_placed": 1,
+				"planting_in_past": 1 if planting_date < today else 0,
+				"notes": _(
+					"No block is free for the whole life {0} to {1}. Not counted as "
+					"production."
+				).format(planting_date, uproot),
+			})
+			proposed += 1
+			continue
 
 		# Fold every flush of this proposed planting into the grid.
 		family = set()
@@ -365,7 +411,7 @@ def _populate(plan):
 		gross_ha = (beds * (protocol.sqm_gross_per_bed or 0)) / 10_000
 		footprints.append((planting_date, uproot, gross_ha))
 
-		block, note = _take_beds(free_beds, beds)
+		note = None
 		plan.append("plan_blocks", {
 			"is_new_planting": 1,
 			"block": block,
@@ -386,13 +432,43 @@ def _populate(plan):
 			"lifetime_stems": int(round(
 				(protocol.total_stems_per_plant_life or 0) * plants
 			)),
-			"below_minimum": 1 if beds < (protocol.min_planting_beds or 0) else 0,
+			"below_minimum": 1 if beds < min_beds else 0,
+			"not_placed": 0,
 			"planting_in_past": 1 if planting_date < today else 0,
 			"notes": note,
 		})
 		proposed += 1
 
 	# ---- weekly grid
+	plan.plantings_not_placed = not_placed
+	plan.unmet_stems = unmet
+	plan.blocks_used = calendar.used()
+
+	# Beds required over a three-year horizon is a lifetime total: a block that
+	# hosts two successive plantings contributes its beds twice, so comparing that
+	# sum with the beds the farm has is meaningless. What the farm has to find room
+	# for is the most beds standing at any one moment.
+	occupied = []
+	for row in plan.plan_blocks:
+		if not row.get("is_new_planting") or row.get("not_placed"):
+			continue
+		if not row.get("planting_date"):
+			continue
+		start = getdate(row.planting_date)
+		occupied.append((start,
+		                 start + datetime.timedelta(weeks=life_weeks),
+		                 cint(row.beds)))
+	for pl in standing_plantings(plan.farm, plan.variety):
+		occupied.append((getdate(pl.planting_date), pl.end_date(), cint(pl.beds)))
+	peak_beds = 0
+	peak_when = None
+	for (_y, _w, monday) in grid:
+		here = sum(b for s, e, b in occupied if s <= monday < e)
+		if here > peak_beds:
+			peak_beds, peak_when = here, monday
+	plan.peak_concurrent_beds = peak_beds
+	plan.peak_beds_week = "%s-W%02d" % iso_year_week(peak_when) if peak_when else None
+
 	plan.plan_weeks = []
 	running = 0
 	for (year, week, monday) in grid:
@@ -413,36 +489,75 @@ def _populate(plan):
 		})
 
 
-def _free_bed_pool(farm):
-	"""Summer flower blocks at this farm with spare beds, most spare first.
+class BlockCalendar:
+	"""Which block is free, and when.
 
-	A block holds one planting at a time, so a block already carrying a standing
-	planting offers nothing regardless of how many beds are notionally free.
+	A block holds one planting at a time, but only for that planting's life --
+	once it is uprooted the block is available again. The previous version popped
+	a block out of the pool for good, so a three-year plan could never use more
+	than one planting per block and everything after the thirteenth proposal came
+	back unplaceable. Occupancy is a set of windows per block instead.
 	"""
-	rows = frappe.get_all(
-		"Block",
-		filters={"farm": farm, "custom_is_summer_flower_block": 1},
-		fields=["name", "custom_total_beds", "custom_current_planting"],
-		order_by="custom_total_beds desc",
-	)
-	return [
-		[r.name, r.custom_total_beds or 0]
-		for r in rows
-		if not r.custom_current_planting
-	]
 
+	def __init__(self, farm, variety=None):
+		self.blocks = []
+		rows = frappe.get_all(
+			"Block", filters={"farm": farm, "custom_is_summer_flower_block": 1},
+			fields=["name", "custom_total_beds"],
+			order_by="custom_total_beds desc")
+		for r in rows:
+			self.blocks.append({"name": r.name, "beds": cint(r.custom_total_beds),
+			                    "busy": []})
+		self._seed_standing(variety)
 
-def _take_beds(pool, beds):
-	"""Allocate a whole block to this planting. Returns (block, note).
+	def _seed_standing(self, variety):
+		"""Whatever already claims a block holds it until it comes out.
 
-	Because a block holds one planting at a time, the block leaves the pool once
-	taken rather than being topped up to capacity. A planting need not fill the
-	block.
-	"""
-	for i, entry in enumerate(pool):
-		if entry[1] >= beds:
-			pool.pop(i)
-			return entry[0], None
-	return None, _(
-		"No unoccupied block at this farm has {0} beds — allocate manually."
-	).format(beds)
+		RESERVING_STATES, not STANDING_STATES: a Draft planting has not gone into
+		the ground yet but it has claimed the block, and Planting Calendar refuses
+		a second planting there on exactly that basis. Seeding only the approved
+		ones let the planner propose blocks that create_plantings would reject.
+		"""
+		f = {"calendar_status": ["in", RESERVING_STATES]}
+		for r in frappe.get_all(
+				"Planting Calendar", filters=f,
+				fields=["block", "planting_date", "planned_uproot_date",
+				        "actual_uproot_date"]):
+			b = self._get(r.block)
+			if not b or not r.planting_date:
+				continue
+			end = r.actual_uproot_date or r.planned_uproot_date
+			b["busy"].append((getdate(r.planting_date),
+			                  getdate(end) if end else getdate(r.planting_date)))
+
+	def _get(self, name):
+		for b in self.blocks:
+			if b["name"] == name:
+				return b
+		return None
+
+	def place(self, beds, start, end):
+		"""Smallest block that fits and is free for the whole window.
+
+		Smallest-that-fits rather than largest-first: taking a 40-bed block for an
+		8-bed planting wastes the block for the planting's whole life, and blocks
+		are the scarce thing here, not beds.
+		"""
+		best = None
+		for b in self.blocks:
+			if b["beds"] < beds:
+				continue
+			if any(not (end <= s or start >= e) for s, e in b["busy"]):
+				continue
+			if best is None or b["beds"] < best["beds"]:
+				best = b
+		if best is None:
+			return None
+		best["busy"].append((start, end))
+		return best["name"]
+
+	def capacity(self):
+		return max((b["beds"] for b in self.blocks), default=0)
+
+	def used(self):
+		return len([b for b in self.blocks if b["busy"]])

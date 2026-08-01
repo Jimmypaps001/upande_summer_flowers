@@ -24,12 +24,14 @@
   "gross_area_ha",
   "lifetime_stems",
   "below_minimum",
+  "not_placed",
   "planting_in_past",
   "notes"
  ],
  "fields": [
   {
    "columns": 1,
+   "default": "0",
    "fieldname": "is_new_planting",
    "fieldtype": "Check",
    "in_list_view": 1,
@@ -140,6 +142,7 @@
    "read_only": 1
   },
   {
+   "default": "0",
    "description": "Beds required fall under the protocol's minimum planting size.",
    "fieldname": "below_minimum",
    "fieldtype": "Check",
@@ -147,6 +150,7 @@
    "read_only": 1
   },
   {
+   "default": "0",
    "description": "The planting week needed to serve this demand has already gone.",
    "fieldname": "planting_in_past",
    "fieldtype": "Check",
@@ -157,13 +161,22 @@
    "fieldname": "notes",
    "fieldtype": "Small Text",
    "label": "Notes"
+  },
+  {
+   "columns": 1,
+   "default": "0",
+   "description": "No block is free for this planting's whole life, so its stems are not counted as production.",
+   "fieldname": "not_placed",
+   "fieldtype": "Check",
+   "in_list_view": 1,
+   "label": "No Block Free"
   }
  ],
  "grid_page_length": 50,
  "index_web_pages_for_search": 1,
  "istable": 1,
  "links": [],
- "modified": "2026-07-30 22:41:33.057064",
+ "modified": "2026-08-01 11:51:31.249924",
  "modified_by": "Administrator",
  "module": "Summer Flowers",
  "name": "Summer Flower Plan Block",
