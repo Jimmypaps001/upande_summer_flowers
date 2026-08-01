@@ -1,0 +1,765 @@
+{% extends "templates/web.html" %}
+{% block title %}{{ _("Crop Cycles") }}{% endblock %}
+
+{% block page_content %}
+<div class="cc-root" id="cc-root">
+  <header class="cc-head">
+    <h1>{{ _("Crop Cycles") }}</h1>
+    <p class="cc-sub">{{ _("Planning and management for every cycle on the farm, whether it occupies a greenhouse or a block.") }}</p>
+  </header>
+
+  <div class="cc-filters" role="group" aria-label="{{ _('Scope') }}">
+    <label>{{ _("Farm") }}<select id="f-farm"></select></label>
+    <label>{{ _("Variety") }}<select id="f-variety"></select></label>
+    <label>{{ _("Scope") }}<select id="f-scope"></select></label>
+    <label>{{ _("Status") }}<select id="f-status"></select></label>
+    <span class="cc-asof" id="asof"></span>
+  </div>
+
+  <p id="cc-loading" class="cc-note">{{ _("Loading…") }}</p>
+
+  <div id="cc-body" hidden>
+    <nav class="cc-tabs" role="tablist" aria-label="{{ _('Sections') }}">
+      <button role="tab" data-tab="overview" aria-selected="true">{{ _("Overview") }}</button>
+      <button role="tab" data-tab="cycle" aria-selected="false">{{ _("Cycle Detail") }}</button>
+      <button role="tab" data-tab="work" aria-selected="false">{{ _("Bed Work") }}<span id="wk-badge" class="cc-badge" hidden></span></button>
+      <button role="tab" data-tab="assets" aria-selected="false">{{ _("Biological Assets") }}</button>
+    </nav>
+
+    <!-- ══ OVERVIEW ══ -->
+    <section class="cc-pane is-on" data-pane="overview">
+      <div class="cc-card">
+        <div class="cc-card-head">
+          <div><h2>{{ _("Every cycle in scope") }}</h2>
+               <p class="cc-note">{{ _("A greenhouse cycle is described by bed ranges; a block cycle by the block's own beds. Plants and area are read from whichever applies, so the totals mean the same thing across both.") }}</p></div>
+        </div>
+        <div class="cc-tiles" id="ov-tiles"></div>
+        <div id="ov-table"></div>
+      </div>
+    </section>
+
+    <!-- ══ CYCLE DETAIL ══ -->
+    <section class="cc-pane" data-pane="cycle">
+      <div class="cc-card">
+        <div class="cc-card-head">
+          <div><h2 id="cd-title">{{ _("Cycle") }}</h2>
+               <p class="cc-note" id="cd-sub"></p></div>
+          <label class="cc-inline">{{ _("Cycle") }}
+            <select id="cd-pick"></select>
+          </label>
+        </div>
+        <div class="cc-tiles" id="cd-tiles"></div>
+        <div id="cd-body"></div>
+      </div>
+    </section>
+
+    <!-- ══ BED WORK ══ -->
+    <section class="cc-pane" data-pane="work">
+      <div class="cc-card">
+        <div class="cc-card-head">
+          <div><h2>{{ _("Uprooting and replanting") }}</h2>
+               <p class="cc-note">{{ _("Work is measured in beds and can stop part-way through one. Two and a half beds today, the rest tomorrow — the job remembers where it reached, and the cycle's plant count follows.") }}</p></div>
+          <span class="cc-actions">
+            <button type="button" class="cc-btn primary" id="wk-new">{{ _("New job") }}</button>
+          </span>
+        </div>
+        <div class="cc-tiles" id="wk-tiles"></div>
+        <div id="wk-body"></div>
+      </div>
+    </section>
+
+    <!-- ══ ASSETS ══ -->
+    <section class="cc-pane" data-pane="assets">
+      <div class="cc-card">
+        <div class="cc-card-head">
+          <div><h2>{{ _("Standing crop as a biological asset") }}</h2>
+               <p class="cc-note">{{ _("Value is plants times cost per plant and moves as plants go in and come out. Assets are raised as drafts for finance to submit, and are non-depreciating because the category has no depreciation accounts.") }}</p></div>
+        </div>
+        <div class="cc-tiles" id="as-tiles"></div>
+        <div id="as-body"></div>
+      </div>
+    </section>
+  </div>
+</div>
+
+<style>
+.cc-root{--bg:#fdfdfc;--surface:#fff;--surface-2:#f5f4f1;--text-primary:#191918;
+  --text-secondary:#5b5b57;--text-muted:#8a8a85;--border:rgba(0,0,0,.10);
+  --series-1:#2a78d6;--series-2:#eb6834;--seq-400:#3987e5;--seq-200:#9ec5f4;
+  --good:#0ca30c;--warning:#fab219;--serious:#ec835a;--critical:#d03b3b;--violet:#4a3aa7;
+  max-width:1500px;margin:0 auto;padding:6px 4px 60px;color:var(--text-primary);
+  font-variant-numeric:tabular-nums}
+@media (prefers-color-scheme:dark){.cc-root{--bg:#1a1a19;--surface:#232322;
+  --surface-2:#2b2b29;--text-primary:#f5f5f2;--text-secondary:#b8b8b2;
+  --text-muted:#8a8a85;--border:rgba(255,255,255,.10);--series-1:#3987e5;
+  --seq-200:#184f95;--violet:#9085e9}}
+.cc-root[data-theme="dark"],:root[data-theme="dark"] .cc-root{--bg:#1a1a19;
+  --surface:#232322;--surface-2:#2b2b29;--text-primary:#f5f5f2;
+  --text-secondary:#b8b8b2;--text-muted:#8a8a85;--border:rgba(255,255,255,.10);
+  --series-1:#3987e5;--seq-200:#184f95;--violet:#9085e9}
+.cc-head h1{font-size:1.5rem;margin:0 0 2px;font-weight:650}
+.cc-sub,.cc-note{font-size:.8rem;color:var(--text-secondary);margin:0}
+.cc-filters{display:flex;gap:16px;align-items:flex-end;flex-wrap:wrap;
+  background:var(--surface-2);border:1px solid var(--border);border-radius:9px;
+  padding:11px 14px;margin:14px 0}
+.cc-filters label{display:flex;flex-direction:column;gap:3px;font-size:.7rem;
+  font-weight:600;color:var(--text-secondary);text-transform:uppercase;
+  letter-spacing:.04em}
+.cc-filters select{min-width:150px;padding:5px 8px;border:1px solid var(--border);
+  border-radius:6px;background:var(--surface);color:var(--text-primary);
+  font-size:.85rem;text-transform:none;font-weight:400}
+.cc-asof{margin-left:auto;font-size:.74rem;color:var(--text-muted)}
+.cc-tabs{display:flex;gap:2px;flex-wrap:wrap;border-bottom:2px solid var(--border);
+  margin-bottom:16px}
+.cc-tabs button{border:0;background:none;padding:9px 15px;font-size:.86rem;
+  font-weight:500;color:var(--text-secondary);cursor:pointer;
+  border-bottom:2px solid transparent;margin-bottom:-2px}
+.cc-tabs button.is-on{color:var(--seq-400);border-bottom-color:var(--seq-400);
+  font-weight:600}
+.cc-badge{display:inline-grid;place-items:center;min-width:17px;height:17px;
+  padding:0 5px;margin-left:6px;border-radius:9px;background:var(--critical);
+  color:#fff;font-size:.62rem;font-weight:700;vertical-align:middle}
+.cc-pane{display:none}.cc-pane.is-on{display:block}
+.cc-card{background:var(--surface);border:1px solid var(--border);border-radius:11px;
+  padding:16px 18px;margin-bottom:16px}
+.cc-card-head{display:flex;gap:16px;align-items:flex-start;flex-wrap:wrap;
+  margin-bottom:12px}
+.cc-card h2{font-size:1rem;margin:0 0 3px;font-weight:620}
+.cc-inline{display:flex;flex-direction:column;gap:3px;margin-left:auto;
+  font-size:.7rem;font-weight:600;color:var(--text-secondary);text-transform:uppercase}
+.cc-inline select{min-width:230px;padding:5px 8px;border:1px solid var(--border);
+  border-radius:6px;background:var(--surface);color:var(--text-primary);
+  font-size:.85rem;text-transform:none;font-weight:400}
+.cc-tiles{display:grid;gap:10px;grid-template-columns:repeat(auto-fit,minmax(158px,1fr));
+  margin-bottom:14px}
+.cc-tile{background:var(--surface-2);border:1px solid var(--border);border-radius:9px;
+  padding:10px 12px}
+.cc-tile .k{font-size:.66rem;text-transform:uppercase;letter-spacing:.05em;
+  color:var(--text-muted);font-weight:600}
+.cc-tile .v{font-size:1.3rem;font-weight:680;line-height:1.15;margin:3px 0 2px}
+.cc-tile .m{font-size:.71rem;color:var(--text-secondary)}
+.cc-t{width:100%;border-collapse:collapse;font-size:.79rem}
+.cc-t th{text-align:left;font-weight:600;color:var(--text-secondary);
+  border-bottom:1px solid var(--border);padding:6px 8px;white-space:nowrap;
+  font-size:.7rem;text-transform:uppercase;letter-spacing:.03em}
+.cc-t td{padding:6px 8px;border-bottom:1px solid var(--border)}
+.cc-t td.n,.cc-t th.n{text-align:right}
+.cc-t tr.pick{cursor:pointer}
+.cc-t tr.pick:hover{background:color-mix(in srgb,var(--seq-400) 8%,transparent)}
+.cc-scroll{overflow-x:auto}
+.pill{display:inline-flex;align-items:center;gap:5px;padding:2px 8px;
+  border-radius:999px;background:var(--surface-2);border:1px solid var(--border);
+  font-size:.7rem;white-space:nowrap}
+.pill .dot2{width:7px;height:7px;border-radius:50%}
+.cc-btn{padding:5px 11px;border:1px solid var(--border);border-radius:6px;
+  background:var(--surface);color:var(--text-primary);font-size:.79rem;cursor:pointer}
+.cc-btn.primary{background:var(--seq-400);color:#fff;border-color:var(--seq-400)}
+.cc-btn[disabled]{opacity:.45;cursor:not-allowed}
+.cc-actions{display:flex;gap:6px;flex-wrap:wrap;margin-left:auto}
+.cc-empty{font-size:.82rem;color:var(--text-muted);padding:14px 0}
+.cc-h3{font-size:.83rem;font-weight:600;margin:18px 0 7px;color:var(--text-secondary);
+  text-transform:uppercase;letter-spacing:.04em}
+.cc-callout{margin-top:10px;background:color-mix(in srgb,var(--warning) 12%,transparent);
+  border:1px solid color-mix(in srgb,var(--warning) 45%,transparent);
+  border-radius:7px;padding:9px 12px;font-size:.79rem}
+/* progress bar */
+.pb{display:flex;align-items:center;gap:9px;margin:5px 0}
+.pb-track{flex:1;height:11px;border-radius:6px;overflow:hidden;
+  background:var(--surface-2);border:1px solid var(--border);min-width:110px;
+  display:flex}
+.pb-fill{height:100%;background:var(--series-1)}
+.pb-part{height:100%;background:var(--seq-200)}
+.pb-num{font-size:.72rem;color:var(--text-secondary);min-width:96px;text-align:right}
+.job{border:1px solid var(--border);border-radius:9px;margin-bottom:11px;
+  overflow:hidden}
+.job-head{display:flex;gap:11px;align-items:center;flex-wrap:wrap;padding:9px 13px;
+  background:var(--surface-2);font-size:.85rem}
+.job-body{padding:10px 13px}
+.job-sum{font-size:.82rem;margin-bottom:8px}
+/* bed grid */
+.bg-grid{display:flex;flex-wrap:wrap;gap:3px;margin-top:6px}
+.bg-b{width:27px;height:23px;border-radius:3px;display:grid;place-items:center;
+  font-size:.56rem;font-variant-numeric:tabular-nums}
+.bg-b.on{background:var(--series-1);color:#fff;font-weight:600}
+.bg-b.off{background:var(--surface-2);color:var(--text-muted);
+  border:1px solid var(--border)}
+.bg-b.up{background:var(--warning);color:#33270a;font-weight:600}
+/* modal */
+.fm-back{position:fixed;inset:0;z-index:1060;background:rgba(0,0,0,.42);
+  display:grid;place-items:center;padding:18px;overflow:auto}
+.fm-box{background:var(--surface);color:var(--text-primary);border-radius:11px;
+  width:100%;max-width:470px;box-shadow:0 14px 44px rgba(0,0,0,.32);
+  border:1px solid var(--border);max-height:calc(100vh - 36px);display:flex;
+  flex-direction:column}
+.fm-head{display:flex;align-items:center;gap:10px;padding:13px 16px;
+  border-bottom:1px solid var(--border);font-size:.95rem}
+.fm-x{margin-left:auto;border:0;background:none;font-size:1.35rem;line-height:1;
+  color:var(--text-muted);cursor:pointer}
+.fm-body{padding:14px 16px;overflow:auto}
+.fm-intro{font-size:.8rem;color:var(--text-secondary);margin:0 0 11px}
+.fm-f{display:block;margin-bottom:12px}
+.fm-f>span{display:block;font-size:.74rem;font-weight:600;margin-bottom:4px;
+  color:var(--text-secondary);text-transform:uppercase;letter-spacing:.03em}
+.fm-f input,.fm-f select,.fm-f textarea{width:100%;padding:7px 9px;
+  border:1px solid var(--border);border-radius:6px;background:var(--surface-2);
+  color:var(--text-primary);font-size:.86rem;font-family:inherit}
+.fm-f small{display:block;font-size:.71rem;color:var(--text-muted);margin-top:3px}
+.fm-req{color:var(--critical)}
+.fm-err{margin-top:6px;font-size:.78rem;color:var(--critical);font-weight:600}
+.fm-foot{display:flex;gap:8px;justify-content:flex-end;padding:12px 16px;
+  border-top:1px solid var(--border)}
+</style>
+
+<script>
+(function () {
+  const $ = (id) => document.getElementById(id);
+  const nf = new Intl.NumberFormat();
+  const num = (v) => (v === null || v === undefined || v === "") ? "—" : nf.format(v);
+  const esc = (s) => String(s === null || s === undefined ? "" : s)
+    .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+  const sgn = (v) => (v > 0 ? "+" : "") + nf.format(v || 0);
+  const cint = (v) => parseInt(v || 0, 10) || 0;
+
+  const API = "upande_summer_flowers.summer_flowers.crop_cycle_api.";
+  const OPS = "upande_summer_flowers.summer_flowers.crop_cycle_ops.";
+  const rpc = (base) => (m, a) => new Promise((res, rej) => {
+    let done = false; const fin = (f, v) => { if (!done) { done = true; f(v); } };
+    setTimeout(() => fin(rej, new Error("Timed out: " + m)), 45000);
+    try {
+      frappe.call({ method: base + m, args: a || {},
+        callback: (r) => fin(res, r && r.message),
+        error: (r) => fin(rej, new Error(
+          (r && r.responseJSON && (r.responseJSON._server_messages
+            ? JSON.parse(r.responseJSON._server_messages).map((s) => {
+                try { return JSON.parse(s).message; } catch (e) { return s; } }).join(" ")
+            : (r.responseJSON.exc_type || r.responseJSON.message))) || (m + " failed"))) });
+    } catch (e) { fin(rej, e); }
+  });
+  const call = rpc(API), callOp = rpc(OPS);
+
+  const S = { farm: "", variety: "", scope: "", status: "",
+              list: null, cycle: null, det: null, work: null, assets: null };
+  const TABS = ["overview", "cycle", "work", "assets"];
+
+  const toast = (m, bad) => frappe.show_alert(
+    { message: m, indicator: bad ? "red" : "green" }, bad ? 8 : 5);
+  const run = (m, a, after) => callOp(m, a).then((r) => { if (after) after(r); return r; })
+    .catch((e) => { toast(esc(e.message || String(e)), true); throw e; });
+
+  // The website bundle has no frappe.ui.form.make_control, so frappe.ui.Dialog
+  // cannot render input fields on a portal page -- it throws and shows nothing.
+  function formModal({ title, intro, fields, submitLabel, onSubmit }) {
+    const wrap = document.createElement("div");
+    wrap.className = "fm-back";
+    const body = (fields || []).map((f) => {
+      const id = "fm_" + f.name;
+      const lab = `<span>${esc(f.label)}${f.required ? ' <b class="fm-req">*</b>' : ""}</span>`;
+      const note = f.note ? `<small>${esc(f.note)}</small>` : "";
+      if (f.type === "select") {
+        return `<label class="fm-f">${lab}<select id="${id}">` +
+          (f.options || []).map((o) =>
+            `<option value="${esc(o)}"${o === f.value ? " selected" : ""}>${esc(o || "—")}</option>`
+          ).join("") + `</select>${note}</label>`;
+      }
+      if (f.type === "text") {
+        return `<label class="fm-f">${lab}<textarea id="${id}" rows="3">${esc(f.value || "")}</textarea>${note}</label>`;
+      }
+      const t = f.type === "date" ? "date" : (f.type === "number" ? "number" : "text");
+      const step = f.type === "number" ? ` step="${f.step || 1}" min="${f.min !== undefined ? f.min : 0}"` : "";
+      return `<label class="fm-f">${lab}<input id="${id}" type="${t}"${step} ` +
+        `value="${esc(f.value === 0 || f.value ? f.value : "")}">${note}</label>`;
+    }).join("");
+    wrap.innerHTML = `<div class="fm-box" role="dialog" aria-modal="true" aria-label="${esc(title)}">` +
+      `<div class="fm-head"><b>${esc(title)}</b><button type="button" class="fm-x">&times;</button></div>` +
+      `<div class="fm-body">${intro || ""}${body}<div class="fm-err" hidden></div></div>` +
+      `<div class="fm-foot"><button type="button" class="cc-btn fm-cancel">Cancel</button>` +
+      `<button type="button" class="cc-btn primary fm-ok">${esc(submitLabel || "Save")}</button></div></div>`;
+    document.body.appendChild(wrap);
+    const close = () => wrap.remove();
+    const err = wrap.querySelector(".fm-err");
+    wrap.querySelector(".fm-x").onclick = close;
+    wrap.querySelector(".fm-cancel").onclick = close;
+    wrap.addEventListener("click", (e) => { if (e.target === wrap) close(); });
+    wrap.querySelector(".fm-ok").onclick = () => {
+      const v = {};
+      (fields || []).forEach((f) => {
+        const el = wrap.querySelector("#fm_" + f.name);
+        v[f.name] = f.type === "number" ? parseFloat(el.value || 0) || 0 : el.value;
+      });
+      const missing = (fields || []).filter((f) => f.required &&
+        (v[f.name] === "" || v[f.name] === null || v[f.name] === undefined));
+      if (missing.length) {
+        err.hidden = false;
+        err.textContent = missing.map((f) => f.label).join(", ") + " required.";
+        return;
+      }
+      close(); onSubmit(v);
+    };
+    const first = wrap.querySelector("input, select, textarea");
+    if (first) first.focus();
+    return wrap;
+  }
+
+  const tile = (x) => `<div class="cc-tile"><div class="k">${esc(x.k)}</div>` +
+    `<div class="v"${x.c ? ` style="color:var(${x.c})"` : ""}>${esc(x.v)}</div>` +
+    `<div class="m">${esc(x.m || "")}</div></div>`;
+
+  // ══════════════════════════ OVERVIEW ══════════════════════════
+  function loadList() {
+    return call("cycles", { farm: S.farm, variety: S.variety,
+                            cycle_scope: S.scope, status: S.status })
+      .then((r) => {
+        S.list = r;
+        const sel = $("cd-pick"); const keep = S.cycle;
+        sel.innerHTML = "";
+        r.cycles.forEach((c) => sel.add(new Option(
+          `${c.name} · ${c.custom_cycle_scope} · ${c.where}`, c.name)));
+        S.cycle = (keep && r.cycles.some((c) => c.name === keep)) ? keep
+                  : (r.cycles[0] ? r.cycles[0].name : null);
+        if (S.cycle) sel.value = S.cycle;
+        renderOverview();
+      });
+  }
+
+  function renderOverview() {
+    const r = S.list; if (!r) return;
+    const t = r.totals;
+    $("ov-tiles").innerHTML = [
+      { k: "Cycles", v: num(t.cycles),
+        m: `${t.block} block · ${t.greenhouse} greenhouse` },
+      { k: "Plants standing", v: num(t.plants), m: `${num(t.beds)} beds` },
+      { k: "Area", v: t.area_ha.toFixed(2) + " ha", m: "planted across all cycles" },
+      { k: "Harvested", v: num(t.harvested), m: "stems cut to date", c: "--good" },
+      { k: "Asset value", v: num(Math.round(t.asset_value)),
+        m: `${t.assets} asset(s) raised` },
+      { k: "Open bed jobs", v: num(t.open_jobs),
+        m: t.next_harvest ? "next cut " + t.next_harvest : "no cut scheduled",
+        c: t.open_jobs ? "--serious" : "--good" },
+      { k: "Needing attention", v: num(t.needing_attention), m: "approvals or jobs",
+        c: t.needing_attention ? "--serious" : "--good" },
+    ].map(tile).join("");
+
+    $("ov-table").innerHTML = r.cycles.length
+      ? '<div class="cc-scroll"><table class="cc-t"><thead><tr><th>Cycle</th><th>Scope</th>' +
+        '<th>Where</th><th>Variety</th><th>Status</th><th class="n">Beds</th>' +
+        '<th class="n">Plants</th><th class="n">Area m²</th><th>Next cut</th>' +
+        '<th class="n">Harvested</th><th>Needs</th></tr></thead><tbody>' +
+        r.cycles.map((c) => `<tr class="pick" data-cycle="${esc(c.name)}">` +
+          `<td><b>${esc(c.name)}</b></td>` +
+          `<td><span class="pill"><i class="dot2" style="background:var(${
+            c.is_block ? "--series-1" : "--violet"})"></i>${esc(c.custom_cycle_scope || "")}</span></td>` +
+          `<td>${esc(c.where)}</td><td>${esc(c.custom_sf_variety || "—")}</td>` +
+          `<td>${esc(c.custom_sf_cycle_status || "—")}</td>` +
+          `<td class="n">${num(c.beds)}</td><td class="n">${num(c.plants)}</td>` +
+          `<td class="n">${num(Math.round(c.area_sqm))}</td>` +
+          `<td>${esc(c.custom_next_harvest_date || "—")}</td>` +
+          `<td class="n">${num(c.custom_total_harvested_stems)}</td>` +
+          `<td>${c.needs.length ? `<span class="pill"><i class="dot2" style="background:var(--serious)"></i>${esc(c.needs.join(", "))}</span>` : ""}</td>` +
+          `</tr>`).join("") + "</tbody></table></div>"
+      : '<p class="cc-empty">No cycles match.</p>';
+  }
+
+  // ══════════════════════════ CYCLE DETAIL ══════════════════════════
+  function loadDetail() {
+    if (!S.cycle) { $("cd-body").innerHTML = '<p class="cc-empty">No cycle.</p>'; return Promise.resolve(); }
+    return call("cycle", { name: S.cycle }).then((d) => { S.det = d; renderDetail(); });
+  }
+
+  function renderDetail() {
+    const d = S.det; if (!d) return;
+    $("cd-title").textContent = `${d.cycle} · ${d.is_block ? d.block_code : (d.greenhouse || "")}`;
+    $("cd-sub").innerHTML =
+      `<span class="pill"><i class="dot2" style="background:var(${d.is_block ? "--series-1" : "--violet"})"></i>${esc(d.scope)}-scoped</span> ` +
+      (d.is_summer_flower ? '<span class="pill"><i class="dot2" style="background:var(--good)"></i>summer flower</span> ' : "") +
+      `${esc(d.variety || "")} · ${esc(d.farm || "")}` +
+      (d.protocol ? ` · protocol ${esc(d.protocol)}` : "");
+
+    const g = d.geometry;
+    const tiles = [
+      { k: "Plants", v: num(g.plants), m: `${num(g.beds)} beds` },
+      { k: "Area planted", v: num(Math.round(g.area_planted_sqm)) + " m²",
+        m: g.block_gross_sqm ? `${g.utilisation_pct.toFixed(0)}% of ${num(Math.round(g.block_gross_sqm))} m²` : "" },
+      { k: "Density", v: g.density ? g.density.toFixed(1) : "—", m: "plants / m²" },
+    ];
+    if (d.is_summer_flower) {
+      const h = d.harvest;
+      tiles.push(
+        { k: "Flush", v: `${h.current_flush} / ${h.current_flush + h.flushes_remaining}`,
+          m: h.next_date ? "next " + h.next_date : "no cut left" },
+        { k: "Harvested", v: num(h.harvested), m: `of ${num(h.expected_life)} life`, c: "--good" },
+        { k: "Variance", v: sgn(h.variance), m: "vs expectation so far",
+          c: h.variance >= 0 ? "--good" : "--critical" },
+        { k: "Plant age", v: d.dates.plant_age_weeks + " wk",
+          m: d.dates.planned_uproot ? "uproot " + d.dates.planned_uproot : "" });
+    }
+    tiles.push({ k: "Asset value", v: num(Math.round(d.asset.value)),
+      m: d.asset.asset ? esc(d.asset.asset) : (d.asset.is_biological ? "no asset yet" : "not an asset"),
+      c: d.asset.asset ? "--good" : "" });
+    $("cd-tiles").innerHTML = tiles.map(tile).join("");
+
+    let html = "";
+    if (!d.asset.asset) {
+      html += `<div class="cc-actions" style="margin:0 0 12px"><button type="button" class="cc-btn" data-op="asset">` +
+        (d.asset.is_biological ? "Create biological asset" : "Mark as biological asset") + `</button></div>`;
+    }
+
+    // Scope-specific description of what the cycle occupies.
+    if (d.is_block) {
+      const beds = d.beds || [];
+      const on = beds.filter((b) => b.status === "Planted" || b.status === "Producing").length;
+      const up = beds.filter((b) => b.status === "Uprooted").length;
+      html += `<h3 class="cc-h3">Beds in ${esc(d.block_code)}</h3>` +
+        `<div class="cc-note">${on} used · ${beds.length - on - up} unused · ${up} uprooted</div>` +
+        `<div class="bg-grid">` + beds.map((b) =>
+          `<div class="bg-b ${b.status === "Uprooted" ? "up" :
+            (b.status === "Planted" || b.status === "Producing") ? "on" : "off"}" ` +
+          `title="Bed ${b.number} — ${esc(b.status)}${b.plants ? ", " + num(b.plants) + " plants" : ""}">${b.number}</div>`
+        ).join("") + `</div>`;
+    } else {
+      html += `<h3 class="cc-h3">Bed ranges</h3>` + (d.bed_ranges && d.bed_ranges.length
+        ? '<table class="cc-t"><thead><tr><th>From</th><th>To</th><th>Variety</th>' +
+          '<th>Planted</th><th class="n">Area m²</th><th>Protocol</th></tr></thead><tbody>' +
+          d.bed_ranges.map((r) => `<tr><td>${r.from_bed}</td><td>${r.to_bed}</td>` +
+            `<td>${esc(r.variety || "")}</td><td>${esc(r.planting_date)}</td>` +
+            `<td class="n">${num(Math.round(r.area))}</td><td>${esc(r.protocol || "—")}</td></tr>`).join("") +
+          "</tbody></table>"
+        : '<p class="cc-empty">No bed ranges.</p>');
+      if (d.varieties_grown && d.varieties_grown.length) {
+        html += `<h3 class="cc-h3">Varieties grown</h3>` +
+          '<table class="cc-t"><thead><tr><th>Variety</th><th class="n">Beds</th>' +
+          '<th class="n">Area m²</th><th class="n">Plants</th></tr></thead><tbody>' +
+          d.varieties_grown.map((v) => `<tr><td>${esc(v.variety || "")}</td>` +
+            `<td class="n">${num(v.beds)}</td><td class="n">${num(Math.round(v.area_m2))}</td>` +
+            `<td class="n">${num(v.plants)}</td></tr>`).join("") + "</tbody></table>";
+      }
+    }
+
+    if (d.is_summer_flower && d.flushes && d.flushes.length) {
+      html += `<h3 class="cc-h3">Flush forecast</h3>` +
+        '<table class="cc-t"><thead><tr><th>Flush</th><th>Due</th><th>Week</th>' +
+        '<th class="n">Stems/plant</th><th class="n">Plants</th><th class="n">Expected</th>' +
+        '<th class="n">Actual</th><th class="n">Variance</th></tr></thead><tbody>' +
+        d.flushes.map((f) => `<tr><td><b>F${f.flush_number}</b></td>` +
+          `<td>${esc(f.harvest_date)}</td><td>${esc(f.label)}</td>` +
+          `<td class="n">${f.stems_per_plant.toFixed(2)}</td>` +
+          `<td class="n">${num(f.plants_standing)}</td>` +
+          `<td class="n">${num(f.expected_stems)}</td>` +
+          `<td class="n">${f.is_harvested ? num(f.actual_stems) : "—"}</td>` +
+          `<td class="n"${f.variance_stems ? ` style="color:var(${f.variance_stems < 0 ? "--critical" : "--good"})"` : ""}>` +
+          `${f.is_harvested ? sgn(f.variance_stems) : ""}</td></tr>`).join("") +
+        "</tbody></table>";
+    }
+
+    // Replanting and uprooting live on the cycle's own tabs, so they show here too.
+    ["uprooting", "replanting"].forEach((kind) => {
+      const rows = d.logs[kind] || [];
+      html += `<h3 class="cc-h3">${kind === "uprooting" ? "Uprooting" : "Replanting"} log</h3>`;
+      html += rows.length
+        ? '<table class="cc-t"><thead><tr><th>Date</th><th>From</th><th>To</th>' +
+          `<th class="n">Qty</th><th>${kind === "uprooting" ? "Reason" : "Variety"}</th>` +
+          '<th>Remarks</th></tr></thead><tbody>' +
+          rows.map((r) => `<tr><td>${esc(r.date)}</td><td>${r.from_bed}</td>` +
+            `<td>${r.to_bed}</td><td class="n">${num(r.qty)}</td>` +
+            `<td>${esc(kind === "uprooting" ? (r.reason || "") : (r.variety || ""))}</td>` +
+            `<td>${esc(r.remarks || "")}</td></tr>`).join("") + "</tbody></table>"
+        : `<p class="cc-empty">Nothing logged. Finished bed work writes its summary here.</p>`;
+    });
+
+    html += `<h3 class="cc-h3">Bed work on this cycle</h3>` +
+      `<div class="cc-actions" style="margin-bottom:8px"><button type="button" class="cc-btn primary" data-op="newjob">New job on this cycle</button></div>` +
+      (d.jobs.length ? d.jobs.map(jobCard).join("")
+        : '<p class="cc-empty">No jobs yet.</p>');
+    $("cd-body").innerHTML = html;
+  }
+
+  // ══════════════════════════ BED WORK ══════════════════════════
+  function progressBar(j) {
+    const total = j.total_beds || 1;
+    const full = Math.floor(j.beds_done + 1e-9);
+    const part = j.beds_done - full;
+    return `<div class="pb"><span class="pb-track">` +
+      `<span class="pb-fill" style="width:${(full * 100 / total).toFixed(2)}%"></span>` +
+      (part > 0 ? `<span class="pb-part" style="width:${(part * 100 / total).toFixed(2)}%"></span>` : "") +
+      `</span><span class="pb-num">${j.beds_done} / ${j.total_beds} beds · ${(j.pct_complete || 0).toFixed(0)}%</span></div>`;
+  }
+
+  function jobCard(j) {
+    const open = ["Not Started", "In Progress", "Paused"].includes(j.status);
+    const colour = j.status === "Completed" ? "--good"
+      : j.status === "Cancelled" ? "--text-muted"
+      : j.status === "Paused" ? "--warning" : "--series-1";
+    return `<div class="job"><div class="job-head">` +
+      `<span class="pill"><i class="dot2" style="background:var(${colour})"></i>${esc(j.work_type)}</span>` +
+      `<b>${esc(j.name)}</b>` +
+      `<span class="cc-note">${esc(j.block_code || j.crop_cycle)} · beds ${j.from_bed}-${j.to_bed}` +
+      (j.reason ? ` · ${esc(j.reason)}` : "") + `</span>` +
+      `<span class="cc-note">${esc(j.status)}</span>` +
+      `<span class="cc-actions">` +
+      (open ? `<button type="button" class="cc-btn primary" data-job="${esc(j.name)}" data-act="log">Log progress</button>` : "") +
+      (j.status === "In Progress" ? `<button type="button" class="cc-btn" data-job="${esc(j.name)}" data-act="pause">Pause</button>` : "") +
+      (j.status === "Paused" ? `<button type="button" class="cc-btn" data-job="${esc(j.name)}" data-act="resume">Resume</button>` : "") +
+      (open ? `<button type="button" class="cc-btn" data-job="${esc(j.name)}" data-act="cancel">Cancel</button>` : "") +
+      `</span></div><div class="job-body">` +
+      `<div class="job-sum">${esc(j.summary)}</div>` + progressBar(j) +
+      `<div class="cc-note">${num(j.plants_affected)} plants · ${j.days_worked || 0} day(s) · ` +
+      `${j.total_labour_hours || 0} labour hours` +
+      (j.logged_to_cycle ? " · logged to the cycle" : "") + `</div>` +
+      (j.progress && j.progress.length
+        ? '<table class="cc-t" style="margin-top:8px"><thead><tr><th>Date</th>' +
+          '<th class="n">Beds</th><th class="n">Cumulative</th><th>Reached</th>' +
+          '<th class="n">Plants</th><th class="n">Workers</th><th class="n">Hours</th>' +
+          '<th>Notes</th></tr></thead><tbody>' +
+          j.progress.map((p) => `<tr><td>${esc(p.work_date)}</td>` +
+            `<td class="n">${p.beds_done}</td><td class="n">${p.cumulative_beds}</td>` +
+            `<td>bed ${p.bed_reached}${p.fraction_in_bed ? ` at ${p.fraction_in_bed}%` : ""}</td>` +
+            `<td class="n">${num(p.plants)}</td><td class="n">${p.workers || "—"}</td>` +
+            `<td class="n">${p.labour_hours || "—"}</td><td>${esc(p.notes || "")}</td></tr>`).join("") +
+          "</tbody></table>"
+        : "") + `</div></div>`;
+  }
+
+  function loadWork() {
+    return call("bed_work", { farm: S.farm }).then((r) => {
+      S.work = r; renderWork();
+    });
+  }
+
+  function renderWork() {
+    const r = S.work; if (!r) return;
+    const t = r.totals;
+    const badge = $("wk-badge");
+    badge.hidden = !t.open; badge.textContent = t.open;
+    $("wk-tiles").innerHTML = [
+      { k: "Jobs", v: num(t.jobs), m: `${t.uprooting} uprooting · ${t.replanting} replanting` },
+      { k: "Open", v: num(t.open), m: "not finished", c: t.open ? "--serious" : "--good" },
+      { k: "Beds outstanding", v: t.beds_outstanding, m: "on open jobs" },
+      { k: "Beds done", v: t.beds_done_open, m: "on open jobs so far" },
+      { k: "Plants affected", v: num(t.plants_affected), m: "across all jobs" },
+      { k: "Labour hours", v: t.labour_hours, m: "recorded" },
+    ].map(tile).join("");
+    $("wk-body").innerHTML = r.jobs.length ? r.jobs.map(jobCard).join("")
+      : '<p class="cc-empty">No bed work yet. Open a job to start uprooting or replanting.</p>';
+  }
+
+  function askLog(job) {
+    const j = (S.work ? S.work.jobs : []).concat(S.det ? S.det.jobs : [])
+      .find((x) => x.name === job);
+    if (!j) return;
+    formModal({
+      title: "Log progress on " + job,
+      intro: `<p class="fm-intro">${esc(j.summary)} Fractions are the point: 2.5 means ` +
+        `two beds and half of the next.</p>`,
+      fields: [
+        { name: "work_date", label: "Date", type: "date",
+          value: frappe.datetime.get_today(), required: true },
+        { name: "beds_done", label: "Beds done", type: "number", step: "0.25",
+          value: "", required: true,
+          note: `${j.beds_remaining} beds remain on this job.` },
+        { name: "workers", label: "Workers", type: "number", value: "" },
+        { name: "labour_hours", label: "Labour hours", type: "number", step: "0.5", value: "" },
+        { name: "notes", label: "Notes", type: "text", value: "" },
+      ],
+      submitLabel: "Record",
+      onSubmit(v) {
+        run("log_bed_progress", { job: job, beds_done: v.beds_done,
+            work_date: v.work_date, workers: v.workers,
+            labour_hours: v.labour_hours, notes: v.notes }, (r) => {
+          toast(r.summary);
+          refresh();
+        });
+      },
+    });
+  }
+
+  function askNewJob(cycle) {
+    const cycles = (S.list ? S.list.cycles : []).map((c) => c.name);
+    formModal({
+      title: "New bed work job",
+      intro: '<p class="fm-intro">A job covers a run of beds and can be worked over ' +
+        'as many days as it takes. Only finished beds change status.</p>',
+      fields: [
+        { name: "crop_cycle", label: "Crop cycle", type: "select",
+          options: cycles, value: cycle || S.cycle, required: true },
+        { name: "work_type", label: "Work type", type: "select",
+          options: ["Uprooting", "Replanting"], value: "Uprooting", required: true },
+        { name: "from_bed", label: "From bed", type: "number", value: "", required: true },
+        { name: "to_bed", label: "To bed", type: "number", value: "", required: true,
+          note: "Bed numbers are unique within a greenhouse, so a block's beds are a range like 201-240." },
+        { name: "reason", label: "Reason (uprooting)", type: "select",
+          options: ["", "Low Yield", "Disease", "Variety Change",
+                    "Age (End of Cycle)", "Replanting", "Other"], value: "" },
+      ],
+      submitLabel: "Open job",
+      onSubmit(v) {
+        run("create_bed_work", v, (r) => {
+          toast(`Job ${r.job} opened over ${r.total_beds} beds.`);
+          refresh();
+        });
+      },
+    });
+  }
+
+  function askAsset() {
+    const d = S.det;
+    formModal({
+      title: "Biological asset",
+      intro: `<p class="fm-intro">Value is plants times cost per plant. The Asset is ` +
+        `raised as a non-depreciating draft for finance to submit, and its value ` +
+        `tracks the plant count while it stays a draft.</p>`,
+      fields: [
+        { name: "cost_per_plant", label: "Cost per plant", type: "number",
+          step: "0.01", value: d.asset.cost_per_plant || "", required: true },
+      ],
+      submitLabel: "Create asset",
+      onSubmit(v) {
+        run("set_biological_asset", { cycle: S.cycle,
+            cost_per_plant: v.cost_per_plant, create: 1 }, (r) => {
+          toast(r.asset ? `Asset ${r.asset} created, worth ${num(Math.round(r.value))}.`
+                        : "Marked as a biological asset.");
+          refresh();
+        });
+      },
+    });
+  }
+
+  // ══════════════════════════ ASSETS ══════════════════════════
+  function loadAssets() {
+    return call("biological_assets", { farm: S.farm }).then((r) => {
+      S.assets = r; renderAssets();
+    });
+  }
+
+  function renderAssets() {
+    const r = S.assets; if (!r) return;
+    const t = r.totals;
+    $("as-tiles").innerHTML = [
+      { k: "Flagged cycles", v: num(t.cycles), m: "held as biological assets" },
+      { k: "Assets raised", v: num(t.with_asset), m: `${t.drafts} still draft`,
+        c: "--good" },
+      { k: "Not yet raised", v: num(t.without_asset), m: "flagged, no Asset",
+        c: t.without_asset ? "--serious" : "--good" },
+      { k: "Cycle value", v: num(Math.round(t.cycle_value)), m: "plants × cost" },
+      { k: "Asset value", v: num(Math.round(t.asset_value)), m: "on the Asset record" },
+      { k: "Plants", v: num(t.plants), m: "standing" },
+    ].map(tile).join("");
+    $("as-body").innerHTML = r.assets.length
+      ? '<div class="cc-scroll"><table class="cc-t"><thead><tr><th>Cycle</th><th>Where</th>' +
+        '<th>Variety</th><th>Planted</th><th class="n">Plants</th>' +
+        '<th class="n">Cost/plant</th><th class="n">Cycle value</th><th>Asset</th>' +
+        '<th class="n">Asset value</th><th>Status</th></tr></thead><tbody>' +
+        r.assets.map((a) => `<tr class="pick" data-cycle="${esc(a.name)}">` +
+          `<td><b>${esc(a.name)}</b></td><td>${esc(a.block_code)}</td>` +
+          `<td>${esc(a.custom_sf_variety || "")}</td>` +
+          `<td>${esc(a.custom_planting_date || "")}</td>` +
+          `<td class="n">${num(a.custom_live_plant_count)}</td>` +
+          `<td class="n">${a.custom_cost_per_plant || "—"}</td>` +
+          `<td class="n">${num(Math.round(a.custom_biological_asset_value))}</td>` +
+          `<td>${a.custom_biological_asset ? esc(a.custom_biological_asset)
+            : '<span class="pill"><i class="dot2" style="background:var(--serious)"></i>not raised</span>'}</td>` +
+          `<td class="n">${a.asset_value === null ? "—" : num(Math.round(a.asset_value))}</td>` +
+          `<td>${esc(a.asset_status || "")}</td></tr>`).join("") +
+        "</tbody></table></div>"
+      : '<p class="cc-empty">No cycle is flagged as a biological asset.</p>';
+  }
+
+  // ══════════════════════════ shell ══════════════════════════
+  function setTab(name, fromHash) {
+    if (!fromHash && location.hash.slice(1) !== name) {
+      history.replaceState(null, "", "#" + name);
+    }
+    document.querySelectorAll(".cc-tabs button").forEach((b) => {
+      const on = b.dataset.tab === name;
+      b.classList.toggle("is-on", on); b.setAttribute("aria-selected", on);
+    });
+    document.querySelectorAll(".cc-pane").forEach((p) =>
+      p.classList.toggle("is-on", p.dataset.pane === name));
+    if (name === "cycle") loadDetail();
+    if (name === "work") loadWork();
+    if (name === "assets") loadAssets();
+  }
+
+  function refresh() {
+    return loadList().then(loadDetail).then(loadWork).then(loadAssets)
+      .catch((e) => toast(esc(e.message), true));
+  }
+
+  frappe.ready(() => {
+    if (frappe.session && frappe.session.user === "Guest") {
+      window.location.href = "/login?redirect-to=" + encodeURIComponent(location.pathname);
+      return;
+    }
+
+    $("cc-root").addEventListener("click", (ev) => {
+      const row = ev.target.closest("tr.pick");
+      if (row && !ev.target.closest("button")) {
+        S.cycle = row.dataset.cycle; $("cd-pick").value = S.cycle;
+        setTab("cycle"); return;
+      }
+      const jb = ev.target.closest("[data-job]");
+      if (jb) {
+        const job = jb.dataset.job, act = jb.dataset.act;
+        if (act === "log") { askLog(job); return; }
+        if (act === "cancel") {
+          formModal({ title: "Cancel " + job,
+            intro: '<p class="fm-intro">Cancelling hands back the plants this job had ' +
+                   'taken off the cycle.</p>',
+            fields: [{ name: "reason", label: "Reason", type: "text", required: true }],
+            submitLabel: "Cancel job",
+            onSubmit: (v) => run("bed_work_action",
+              { job: job, action: "cancel_job", reason: v.reason },
+              (r) => { toast(`${job} ${r.status}.`); refresh(); }) });
+          return;
+        }
+        run("bed_work_action", { job: job, action: act },
+            (r) => { toast(`${job} ${r.status}.`); refresh(); });
+        return;
+      }
+      const op = ev.target.closest("[data-op]");
+      if (op) {
+        if (op.dataset.op === "asset") askAsset();
+        if (op.dataset.op === "newjob") askNewJob(S.cycle);
+      }
+    });
+
+    document.querySelectorAll(".cc-tabs button").forEach((b) =>
+      b.addEventListener("click", () => setTab(b.dataset.tab)));
+    window.addEventListener("hashchange", () => {
+      const w = (location.hash || "").slice(1);
+      if (TABS.includes(w)) setTab(w, true);
+    });
+    $("wk-new").addEventListener("click", () => askNewJob(null));
+    $("cd-pick").addEventListener("change", (e) => {
+      S.cycle = e.target.value; loadDetail();
+    });
+
+    call("scope").then((sc) => {
+      const add = (id, all, list) => {
+        const s = $(id); s.add(new Option(all, ""));
+        list.forEach((x) => s.add(new Option(x, x)));
+        s.addEventListener("change", () => {
+          S[id.replace("f-", "")] = s.value;
+          $("cc-loading").hidden = false; $("cc-loading").textContent = "Loading…";
+          refresh().then(() => { $("cc-loading").hidden = true; });
+        });
+      };
+      add("f-farm", "All farms", sc.farms);
+      add("f-variety", "All varieties", sc.varieties);
+      add("f-scope", "Both scopes", sc.scopes);
+      add("f-status", "Any status", sc.statuses);
+      return refresh();
+    }).then(() => {
+      $("cc-loading").hidden = true;
+      $("cc-body").hidden = false;
+      $("asof").textContent = "As of " + frappe.datetime.get_today();
+      const w = (location.hash || "").slice(1);
+      setTab(TABS.includes(w) ? w : "overview", true);
+    }).catch((e) => {
+      $("cc-loading").innerHTML = '<span style="color:var(--critical)">' +
+        esc("Could not load: " + (e.message || e)) + "</span>";
+      console.error(e);
+    });
+  });
+})();
+</script>
+{% endblock %}

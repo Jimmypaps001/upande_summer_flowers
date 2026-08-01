@@ -1,7 +1,7 @@
 {
  "app": "upande_summer_flowers",
  "charts": [],
- "content": "[{\"data\": {\"col\": 12, \"text\": \"<span class=\\\"h4\\\"><b>Summer Flowers</b></span>\"}, \"id\": \"sfh\", \"type\": \"header\"}, {\"data\": {\"col\": 12, \"text\": \"Demand-driven planning, budgeting and motherstock scheduling.\"}, \"id\": \"sfsc\", \"type\": \"paragraph\"}, {\"id\": \"fb988566b2\", \"type\": \"shortcut\", \"data\": {\"shortcut_name\": \"Planning Dashboard\", \"col\": 4}}, {\"id\": \"c46ec1240f\", \"type\": \"shortcut\", \"data\": {\"shortcut_name\": \"Harvest\", \"col\": 4}}, {\"id\": \"a2ce10a68d\", \"type\": \"shortcut\", \"data\": {\"shortcut_name\": \"Review and Approvals\", \"col\": 4}}, {\"id\": \"b5ce9f63f7\", \"type\": \"shortcut\", \"data\": {\"shortcut_name\": \"Plans awaiting approval\", \"col\": 4}}, {\"id\": \"a634b720d4\", \"type\": \"shortcut\", \"data\": {\"shortcut_name\": \"Active crop cycles\", \"col\": 4}}, {\"id\": \"064f261412\", \"type\": \"shortcut\", \"data\": {\"shortcut_name\": \"Input requests to submit\", \"col\": 4}}, {\"id\": \"504256ca83\", \"type\": \"card\", \"data\": {\"card_name\": \"Planning\", \"col\": 4}}, {\"id\": \"63cc5eddac\", \"type\": \"card\", \"data\": {\"card_name\": \"Costs and Inputs\", \"col\": 4}}, {\"id\": \"d29941521d\", \"type\": \"card\", \"data\": {\"card_name\": \"On the Ground\", \"col\": 4}}, {\"id\": \"7bf9e160a5\", \"type\": \"card\", \"data\": {\"card_name\": \"Protocol\", \"col\": 4}}, {\"id\": \"cb0d5e469b\", \"type\": \"card\", \"data\": {\"card_name\": \"Motherstock\", \"col\": 4}}, {\"id\": \"4cf1ebcbbc\", \"type\": \"card\", \"data\": {\"card_name\": \"Setup\", \"col\": 4}}]",
+ "content": "[{\"data\": {\"col\": 12, \"text\": \"<span class=\\\"h4\\\"><b>Summer Flowers</b></span>\"}, \"id\": \"sfh\", \"type\": \"header\"}, {\"data\": {\"col\": 12, \"text\": \"Demand-driven planning, budgeting and motherstock scheduling.\"}, \"id\": \"sfsc\", \"type\": \"paragraph\"}, {\"id\": \"51332234ac\", \"type\": \"shortcut\", \"data\": {\"shortcut_name\": \"Planning Dashboard\", \"col\": 4}}, {\"id\": \"2481ba2dd5\", \"type\": \"shortcut\", \"data\": {\"shortcut_name\": \"Harvest\", \"col\": 4}}, {\"id\": \"38fd95de46\", \"type\": \"shortcut\", \"data\": {\"shortcut_name\": \"Crop Cycles\", \"col\": 4}}, {\"id\": \"695b782260\", \"type\": \"shortcut\", \"data\": {\"shortcut_name\": \"Review and Approvals\", \"col\": 4}}, {\"id\": \"644d7f3969\", \"type\": \"shortcut\", \"data\": {\"shortcut_name\": \"Plans awaiting approval\", \"col\": 4}}, {\"id\": \"de97e56ce2\", \"type\": \"shortcut\", \"data\": {\"shortcut_name\": \"Active crop cycles\", \"col\": 4}}, {\"id\": \"308ed6aa8f\", \"type\": \"shortcut\", \"data\": {\"shortcut_name\": \"Input requests to submit\", \"col\": 4}}, {\"id\": \"2b7cbd65cb\", \"type\": \"card\", \"data\": {\"card_name\": \"Planning\", \"col\": 4}}, {\"id\": \"68ebc1f95b\", \"type\": \"card\", \"data\": {\"card_name\": \"Costs and Inputs\", \"col\": 4}}, {\"id\": \"06c45c03ff\", \"type\": \"card\", \"data\": {\"card_name\": \"On the Ground\", \"col\": 4}}, {\"id\": \"13a82695f0\", \"type\": \"card\", \"data\": {\"card_name\": \"Protocol\", \"col\": 4}}, {\"id\": \"64e610566c\", \"type\": \"card\", \"data\": {\"card_name\": \"Motherstock\", \"col\": 4}}, {\"id\": \"bde015e4f5\", \"type\": \"card\", \"data\": {\"card_name\": \"Setup\", \"col\": 4}}]",
  "creation": "2026-07-30 23:50:24.760659",
  "custom_blocks": [],
  "docstatus": 0,
@@ -18,7 +18,7 @@
    "hidden": 0,
    "is_query_report": 0,
    "label": "Planning",
-   "link_count": 3,
+   "link_count": 4,
    "link_type": "DocType",
    "onboard": 0,
    "type": "Card Break"
@@ -39,6 +39,16 @@
    "label": "Production Plan",
    "link_count": 0,
    "link_to": "Summer Flower Production Plan",
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Propagation Plan",
+   "link_count": 0,
+   "link_to": "Summer Flower Propagation Plan",
    "link_type": "DocType",
    "onboard": 0,
    "type": "Link"
@@ -86,7 +96,7 @@
    "hidden": 0,
    "is_query_report": 0,
    "label": "On the Ground",
-   "link_count": 5,
+   "link_count": 6,
    "link_type": "DocType",
    "onboard": 0,
    "type": "Card Break"
@@ -107,6 +117,16 @@
    "label": "Crop Cycles",
    "link_count": 0,
    "link_to": "Crop Cycle",
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Bed Work Orders",
+   "link_count": 0,
+   "link_to": "Bed Work Order",
    "link_type": "DocType",
    "onboard": 0,
    "type": "Link"
@@ -209,7 +229,7 @@
    "type": "Link"
   }
  ],
- "modified": "2026-07-31 22:13:41.998652",
+ "modified": "2026-08-01 11:16:13.502384",
  "modified_by": "Administrator",
  "module": "Summer Flowers",
  "name": "Summer Flowers",
@@ -233,6 +253,13 @@
    "label": "Harvest",
    "type": "URL",
    "url": "/summer-flowers-planning#harvest"
+  },
+  {
+   "color": "Purple",
+   "doc_view": "",
+   "label": "Crop Cycles",
+   "type": "URL",
+   "url": "/crop-cycles"
   },
   {
    "color": "Orange",
