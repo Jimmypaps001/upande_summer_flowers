@@ -1,0 +1,105 @@
+{
+ "actions": [],
+ "allow_bulk_edit": 1,
+ "allow_rename": 1,
+ "creation": "2026-08-01 10:56:38.322538",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "year",
+  "week_no",
+  "week_start_date",
+  "plants_to_stick",
+  "cuttings_required",
+  "from_existing_ms",
+  "from_new_ms",
+  "shortfall",
+  "plant_week",
+  "notes"
+ ],
+ "fields": [
+  {
+   "columns": 1,
+   "fieldname": "year",
+   "fieldtype": "Int",
+   "in_list_view": 1,
+   "label": "Year"
+  },
+  {
+   "columns": 1,
+   "fieldname": "week_no",
+   "fieldtype": "Int",
+   "in_list_view": 1,
+   "label": "Week"
+  },
+  {
+   "columns": 2,
+   "fieldname": "week_start_date",
+   "fieldtype": "Date",
+   "in_list_view": 1,
+   "label": "Sticking Week"
+  },
+  {
+   "columns": 1,
+   "fieldname": "plants_to_stick",
+   "fieldtype": "Int",
+   "in_list_view": 1,
+   "label": "Plants"
+  },
+  {
+   "columns": 1,
+   "description": "Plants grossed up for rooting, field and reject losses.",
+   "fieldname": "cuttings_required",
+   "fieldtype": "Int",
+   "in_list_view": 1,
+   "label": "Cuttings"
+  },
+  {
+   "columns": 2,
+   "fieldname": "from_existing_ms",
+   "fieldtype": "Int",
+   "in_list_view": 1,
+   "label": "From Existing MS"
+  },
+  {
+   "columns": 2,
+   "fieldname": "from_new_ms",
+   "fieldtype": "Int",
+   "in_list_view": 1,
+   "label": "From New MS"
+  },
+  {
+   "columns": 1,
+   "fieldname": "shortfall",
+   "fieldtype": "Int",
+   "in_list_view": 1,
+   "label": "Uncovered"
+  },
+  {
+   "fieldname": "plant_week",
+   "fieldtype": "Data",
+   "label": "Plants Out"
+  },
+  {
+   "fieldname": "notes",
+   "fieldtype": "Small Text",
+   "label": "Notes"
+  }
+ ],
+ "grid_page_length": 50,
+ "index_web_pages_for_search": 1,
+ "istable": 1,
+ "links": [],
+ "modified": "2026-08-01 10:56:38.322538",
+ "modified_by": "Administrator",
+ "module": "Summer Flowers",
+ "name": "Summer Flower Propagation Week",
+ "owner": "Administrator",
+ "permissions": [],
+ "row_format": "Dynamic",
+ "rows_threshold_for_grid_search": 20,
+ "sort_field": "creation",
+ "sort_order": "DESC",
+ "states": []
+}

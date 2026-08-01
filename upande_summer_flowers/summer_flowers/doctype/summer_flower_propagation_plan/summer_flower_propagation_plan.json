@@ -1,0 +1,429 @@
+{
+ "actions": [],
+ "allow_bulk_edit": 1,
+ "allow_rename": 1,
+ "autoname": "naming_series:",
+ "creation": "2026-08-01 10:56:39.411801",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "naming_series",
+  "production_plan",
+  "market_demand",
+  "variety",
+  "farm",
+  "cb1",
+  "protocol",
+  "company",
+  "currency",
+  "status",
+  "sec_req",
+  "total_plants_to_stick",
+  "total_cuttings_required",
+  "cuttings_per_plant",
+  "cb2",
+  "peak_weekly_cuttings",
+  "peak_week",
+  "weeks_sticking",
+  "sec_cover",
+  "cuttings_from_existing",
+  "cuttings_from_new",
+  "cuttings_uncovered",
+  "cb3",
+  "existing_cover_pct",
+  "mother_plants_required",
+  "peak_bench_sqm",
+  "sec_tc",
+  "tc_plants_required",
+  "tc_order_date",
+  "tc_on_farm_date",
+  "cb4",
+  "first_sticking_date",
+  "tc_cost",
+  "total_cost",
+  "schedule_warning",
+  "sec_weeks",
+  "weeks",
+  "sec_sources",
+  "sources",
+  "sec_out",
+  "motherstock_batches_created",
+  "cb5",
+  "seedling_requests_created",
+  "sec_appr",
+  "approved_by",
+  "approved_on",
+  "cb6",
+  "rejection_reason"
+ ],
+ "fields": [
+  {
+   "fieldname": "naming_series",
+   "fieldtype": "Select",
+   "label": "Series",
+   "options": "SFPROP-.YYYY.-.#####"
+  },
+  {
+   "fieldname": "production_plan",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Production Plan",
+   "options": "Summer Flower Production Plan",
+   "reqd": 1
+  },
+  {
+   "fieldname": "market_demand",
+   "fieldtype": "Link",
+   "label": "Market Demand",
+   "options": "Summer Flower Market Demand",
+   "read_only": 1
+  },
+  {
+   "fieldname": "variety",
+   "fieldtype": "Link",
+   "label": "Variety",
+   "options": "Item",
+   "read_only": 1
+  },
+  {
+   "fieldname": "farm",
+   "fieldtype": "Link",
+   "in_standard_filter": 1,
+   "label": "Farm",
+   "options": "Farm",
+   "read_only": 1
+  },
+  {
+   "fieldname": "cb1",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "protocol",
+   "fieldtype": "Link",
+   "label": "Crop Protocol Version",
+   "options": "Crop Protocol Version",
+   "read_only": 1
+  },
+  {
+   "fieldname": "company",
+   "fieldtype": "Link",
+   "label": "Company",
+   "options": "Company",
+   "read_only": 1
+  },
+  {
+   "fieldname": "currency",
+   "fieldtype": "Link",
+   "label": "Currency",
+   "options": "Currency",
+   "read_only": 1
+  },
+  {
+   "default": "Draft",
+   "fieldname": "status",
+   "fieldtype": "Select",
+   "in_standard_filter": 1,
+   "label": "Status",
+   "options": "Draft\nPending Approval\nApproved\nRejected",
+   "read_only": 1
+  },
+  {
+   "fieldname": "sec_req",
+   "fieldtype": "Section Break",
+   "label": "Requirement"
+  },
+  {
+   "fieldname": "total_plants_to_stick",
+   "fieldtype": "Int",
+   "label": "Plants to Stick",
+   "read_only": 1
+  },
+  {
+   "fieldname": "total_cuttings_required",
+   "fieldtype": "Int",
+   "label": "Cuttings Required",
+   "read_only": 1
+  },
+  {
+   "description": "Grossed up for rooting, field establishment and reject losses on the protocol.",
+   "fieldname": "cuttings_per_plant",
+   "fieldtype": "Float",
+   "label": "Cuttings per Plant",
+   "precision": "3",
+   "read_only": 1
+  },
+  {
+   "fieldname": "cb2",
+   "fieldtype": "Column Break"
+  },
+  {
+   "bold": 1,
+   "description": "This, not the annual total, sizes the motherstock: cuttings cannot be banked.",
+   "fieldname": "peak_weekly_cuttings",
+   "fieldtype": "Int",
+   "label": "Peak Weekly Cuttings",
+   "read_only": 1
+  },
+  {
+   "fieldname": "peak_week",
+   "fieldtype": "Data",
+   "label": "Peak Week",
+   "read_only": 1
+  },
+  {
+   "fieldname": "weeks_sticking",
+   "fieldtype": "Int",
+   "label": "Weeks with Sticking",
+   "read_only": 1
+  },
+  {
+   "fieldname": "sec_cover",
+   "fieldtype": "Section Break",
+   "label": "Sourcing"
+  },
+  {
+   "fieldname": "cuttings_from_existing",
+   "fieldtype": "Int",
+   "label": "From Existing Motherstock",
+   "read_only": 1
+  },
+  {
+   "fieldname": "cuttings_from_new",
+   "fieldtype": "Int",
+   "label": "From New Motherstock",
+   "read_only": 1
+  },
+  {
+   "fieldname": "cuttings_uncovered",
+   "fieldtype": "Int",
+   "label": "Uncovered",
+   "read_only": 1
+  },
+  {
+   "fieldname": "cb3",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "existing_cover_pct",
+   "fieldtype": "Percent",
+   "label": "Existing Cover",
+   "read_only": 1
+  },
+  {
+   "fieldname": "mother_plants_required",
+   "fieldtype": "Int",
+   "label": "New Mother Plants",
+   "read_only": 1
+  },
+  {
+   "fieldname": "peak_bench_sqm",
+   "fieldtype": "Float",
+   "label": "Bench m\u00b2 at Peak",
+   "precision": "1",
+   "read_only": 1
+  },
+  {
+   "fieldname": "sec_tc",
+   "fieldtype": "Section Break",
+   "label": "Tissue Culture"
+  },
+  {
+   "fieldname": "tc_plants_required",
+   "fieldtype": "Int",
+   "label": "TC Plantlets to Buy",
+   "read_only": 1
+  },
+  {
+   "fieldname": "tc_order_date",
+   "fieldtype": "Date",
+   "label": "Order TC By",
+   "read_only": 1
+  },
+  {
+   "fieldname": "tc_on_farm_date",
+   "fieldtype": "Date",
+   "label": "TC on Farm",
+   "read_only": 1
+  },
+  {
+   "fieldname": "cb4",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "first_sticking_date",
+   "fieldtype": "Date",
+   "label": "First Sticking",
+   "read_only": 1
+  },
+  {
+   "fieldname": "tc_cost",
+   "fieldtype": "Currency",
+   "label": "TC Cost",
+   "options": "currency",
+   "read_only": 1
+  },
+  {
+   "fieldname": "total_cost",
+   "fieldtype": "Currency",
+   "label": "Total Cost",
+   "options": "currency",
+   "read_only": 1
+  },
+  {
+   "fieldname": "sec_weeks",
+   "fieldtype": "Section Break",
+   "label": "Week by Week"
+  },
+  {
+   "fieldname": "weeks",
+   "fieldtype": "Table",
+   "label": "Weeks",
+   "options": "Summer Flower Propagation Week"
+  },
+  {
+   "fieldname": "sec_sources",
+   "fieldtype": "Section Break",
+   "label": "Sources"
+  },
+  {
+   "fieldname": "sources",
+   "fieldtype": "Table",
+   "label": "Sources",
+   "options": "Summer Flower Propagation Source"
+  },
+  {
+   "fieldname": "sec_out",
+   "fieldtype": "Section Break",
+   "label": "Created"
+  },
+  {
+   "fieldname": "motherstock_batches_created",
+   "fieldtype": "Int",
+   "label": "Motherstock Batches",
+   "read_only": 1
+  },
+  {
+   "fieldname": "cb5",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "seedling_requests_created",
+   "fieldtype": "Int",
+   "label": "Seedling Requests",
+   "read_only": 1
+  },
+  {
+   "fieldname": "sec_appr",
+   "fieldtype": "Section Break",
+   "label": "Approval"
+  },
+  {
+   "fieldname": "approved_by",
+   "fieldtype": "Link",
+   "label": "Approved By",
+   "options": "User",
+   "read_only": 1
+  },
+  {
+   "fieldname": "approved_on",
+   "fieldtype": "Datetime",
+   "label": "Approved On",
+   "read_only": 1
+  },
+  {
+   "fieldname": "cb6",
+   "fieldtype": "Column Break"
+  },
+  {
+   "depends_on": "eval:doc.status=='Rejected'",
+   "fieldname": "rejection_reason",
+   "fieldtype": "Small Text",
+   "label": "Rejection Reason"
+  },
+  {
+   "description": "Raised when the plan asks for cuttings whose lead time has already passed.",
+   "fieldname": "schedule_warning",
+   "fieldtype": "Small Text",
+   "label": "Schedule Warning",
+   "read_only": 1
+  }
+ ],
+ "grid_page_length": 50,
+ "index_web_pages_for_search": 1,
+ "links": [],
+ "modified": "2026-08-01 11:02:12.292546",
+ "modified_by": "Administrator",
+ "module": "Summer Flowers",
+ "name": "Summer Flower Propagation Plan",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Farm Manager",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Agriculture Manager",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Production Manager",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Agriculture User",
+   "share": 1,
+   "write": 1
+  }
+ ],
+ "row_format": "Dynamic",
+ "rows_threshold_for_grid_search": 20,
+ "sort_field": "creation",
+ "sort_order": "DESC",
+ "states": [],
+ "track_changes": 1
+}

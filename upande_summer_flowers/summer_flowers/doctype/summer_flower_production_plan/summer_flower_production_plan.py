@@ -158,6 +158,21 @@ class SummerFlowerProductionPlan(Document):
 		return name
 
 	@frappe.whitelist()
+	def create_propagation_plan(self):
+		"""Work out how this plan's cuttings get sourced.
+
+		Separate from the plan because sourcing is a decision -- what existing
+		motherstock covers, what has to be bought as TC -- and it is reviewed and
+		approved on its own before any money is committed.
+		"""
+		from upande_summer_flowers.summer_flowers.doctype \
+			.summer_flower_propagation_plan.summer_flower_propagation_plan import (
+				build_from_plan,
+			)
+
+		return build_from_plan(self.name)
+
+	@frappe.whitelist()
 	def create_plantings(self):
 		"""Turn approved new-planting rows into actual Plantings on the ground.
 

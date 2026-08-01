@@ -1,0 +1,91 @@
+{
+ "actions": [],
+ "allow_bulk_edit": 1,
+ "allow_rename": 1,
+ "creation": "2026-08-01 10:56:39.179044",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "source_type",
+  "motherstock_batch",
+  "mother_plants",
+  "weekly_capacity",
+  "available_from",
+  "available_to",
+  "total_cuttings",
+  "notes"
+ ],
+ "fields": [
+  {
+   "columns": 2,
+   "fieldname": "source_type",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "label": "Source",
+   "options": "Existing Motherstock\nNew Motherstock (TC)\nBought-in Rooted Cuttings",
+   "reqd": 1
+  },
+  {
+   "columns": 2,
+   "fieldname": "motherstock_batch",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "label": "Motherstock Batch",
+   "options": "Summer Flower Motherstock Batch"
+  },
+  {
+   "columns": 1,
+   "fieldname": "mother_plants",
+   "fieldtype": "Int",
+   "in_list_view": 1,
+   "label": "Mother Plants"
+  },
+  {
+   "columns": 2,
+   "fieldname": "weekly_capacity",
+   "fieldtype": "Int",
+   "in_list_view": 1,
+   "label": "Cuttings / Week"
+  },
+  {
+   "columns": 2,
+   "fieldname": "available_from",
+   "fieldtype": "Date",
+   "in_list_view": 1,
+   "label": "Available From"
+  },
+  {
+   "columns": 2,
+   "fieldname": "available_to",
+   "fieldtype": "Date",
+   "in_list_view": 1,
+   "label": "Available To"
+  },
+  {
+   "fieldname": "total_cuttings",
+   "fieldtype": "Int",
+   "label": "Total Cuttings"
+  },
+  {
+   "fieldname": "notes",
+   "fieldtype": "Small Text",
+   "label": "Notes"
+  }
+ ],
+ "grid_page_length": 50,
+ "index_web_pages_for_search": 1,
+ "istable": 1,
+ "links": [],
+ "modified": "2026-08-01 10:56:39.179044",
+ "modified_by": "Administrator",
+ "module": "Summer Flowers",
+ "name": "Summer Flower Propagation Source",
+ "owner": "Administrator",
+ "permissions": [],
+ "row_format": "Dynamic",
+ "rows_threshold_for_grid_search": 20,
+ "sort_field": "creation",
+ "sort_order": "DESC",
+ "states": []
+}
