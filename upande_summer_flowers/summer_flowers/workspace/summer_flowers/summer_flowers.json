@@ -1,7 +1,7 @@
 {
  "app": "upande_summer_flowers",
  "charts": [],
- "content": "[{\"data\": {\"col\": 12, \"text\": \"<span class=\\\"h4\\\"><b>Summer Flowers</b></span>\"}, \"id\": \"sfh\", \"type\": \"header\"}, {\"data\": {\"col\": 12, \"text\": \"Demand-driven planning, budgeting and motherstock scheduling.\"}, \"id\": \"sfsc\", \"type\": \"paragraph\"}, {\"id\": \"51332234ac\", \"type\": \"shortcut\", \"data\": {\"shortcut_name\": \"Planning Dashboard\", \"col\": 4}}, {\"id\": \"2481ba2dd5\", \"type\": \"shortcut\", \"data\": {\"shortcut_name\": \"Harvest\", \"col\": 4}}, {\"id\": \"38fd95de46\", \"type\": \"shortcut\", \"data\": {\"shortcut_name\": \"Crop Cycles\", \"col\": 4}}, {\"id\": \"695b782260\", \"type\": \"shortcut\", \"data\": {\"shortcut_name\": \"Review and Approvals\", \"col\": 4}}, {\"id\": \"644d7f3969\", \"type\": \"shortcut\", \"data\": {\"shortcut_name\": \"Plans awaiting approval\", \"col\": 4}}, {\"id\": \"de97e56ce2\", \"type\": \"shortcut\", \"data\": {\"shortcut_name\": \"Active crop cycles\", \"col\": 4}}, {\"id\": \"308ed6aa8f\", \"type\": \"shortcut\", \"data\": {\"shortcut_name\": \"Input requests to submit\", \"col\": 4}}, {\"id\": \"2b7cbd65cb\", \"type\": \"card\", \"data\": {\"card_name\": \"Planning\", \"col\": 4}}, {\"id\": \"68ebc1f95b\", \"type\": \"card\", \"data\": {\"card_name\": \"Costs and Inputs\", \"col\": 4}}, {\"id\": \"06c45c03ff\", \"type\": \"card\", \"data\": {\"card_name\": \"On the Ground\", \"col\": 4}}, {\"id\": \"13a82695f0\", \"type\": \"card\", \"data\": {\"card_name\": \"Protocol\", \"col\": 4}}, {\"id\": \"64e610566c\", \"type\": \"card\", \"data\": {\"card_name\": \"Motherstock\", \"col\": 4}}, {\"id\": \"bde015e4f5\", \"type\": \"card\", \"data\": {\"card_name\": \"Setup\", \"col\": 4}}]",
+ "content": "[{\"data\": {\"col\": 12, \"text\": \"<span class=\\\"h4\\\"><b>Summer Flowers</b></span>\"}, \"id\": \"sfh\", \"type\": \"header\"}, {\"data\": {\"col\": 12, \"text\": \"Demand-driven planning, budgeting and motherstock scheduling.\"}, \"id\": \"sfsc\", \"type\": \"paragraph\"}, {\"id\": \"9a291e6462\", \"type\": \"shortcut\", \"data\": {\"shortcut_name\": \"Planning Dashboard\", \"col\": 4}}, {\"id\": \"12289b85de\", \"type\": \"shortcut\", \"data\": {\"shortcut_name\": \"Harvest\", \"col\": 4}}, {\"id\": \"634d0451da\", \"type\": \"shortcut\", \"data\": {\"shortcut_name\": \"Crop Cycles\", \"col\": 4}}, {\"id\": \"8c98a591db\", \"type\": \"shortcut\", \"data\": {\"shortcut_name\": \"Review and Approvals\", \"col\": 4}}, {\"id\": \"b719798f80\", \"type\": \"shortcut\", \"data\": {\"shortcut_name\": \"Plans awaiting approval\", \"col\": 4}}, {\"id\": \"6b63ed4c2f\", \"type\": \"shortcut\", \"data\": {\"shortcut_name\": \"Active crop cycles\", \"col\": 4}}, {\"id\": \"364c86f0d9\", \"type\": \"shortcut\", \"data\": {\"shortcut_name\": \"Input requests to submit\", \"col\": 4}}, {\"id\": \"df3648ae42\", \"type\": \"shortcut\", \"data\": {\"shortcut_name\": \"Bed work in progress\", \"col\": 4}}, {\"id\": \"a8015132d7\", \"type\": \"shortcut\", \"data\": {\"shortcut_name\": \"Biological assets\", \"col\": 4}}, {\"id\": \"95ded14bac\", \"type\": \"card\", \"data\": {\"card_name\": \"Planning\", \"col\": 4}}, {\"id\": \"7fc25a69c8\", \"type\": \"card\", \"data\": {\"card_name\": \"Propagation\", \"col\": 4}}, {\"id\": \"96663fbc99\", \"type\": \"card\", \"data\": {\"card_name\": \"Costs and Inputs\", \"col\": 4}}, {\"id\": \"8653a645d0\", \"type\": \"card\", \"data\": {\"card_name\": \"On the Ground\", \"col\": 4}}, {\"id\": \"d966b5d41e\", \"type\": \"card\", \"data\": {\"card_name\": \"Protocol\", \"col\": 4}}, {\"id\": \"3967d1a818\", \"type\": \"card\", \"data\": {\"card_name\": \"Setup\", \"col\": 4}}]",
  "creation": "2026-07-30 23:50:24.760659",
  "custom_blocks": [],
  "docstatus": 0,
@@ -18,7 +18,7 @@
    "hidden": 0,
    "is_query_report": 0,
    "label": "Planning",
-   "link_count": 4,
+   "link_count": 3,
    "link_type": "DocType",
    "onboard": 0,
    "type": "Card Break"
@@ -46,6 +46,25 @@
   {
    "hidden": 0,
    "is_query_report": 0,
+   "label": "Revenue Budget",
+   "link_count": 0,
+   "link_to": "Summer Flower Budget",
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Propagation",
+   "link_count": 4,
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Card Break"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
    "label": "Propagation Plan",
    "link_count": 0,
    "link_to": "Summer Flower Propagation Plan",
@@ -56,9 +75,29 @@
   {
    "hidden": 0,
    "is_query_report": 0,
-   "label": "Revenue Budget",
+   "label": "Motherstock Batches",
    "link_count": 0,
-   "link_to": "Summer Flower Budget",
+   "link_to": "Summer Flower Motherstock Batch",
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Seedling Requests",
+   "link_count": 0,
+   "link_to": "Seedling Request",
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Propagation Batches",
+   "link_count": 0,
+   "link_to": "Propagation Batch",
    "link_type": "DocType",
    "onboard": 0,
    "type": "Link"
@@ -193,25 +232,6 @@
   {
    "hidden": 0,
    "is_query_report": 0,
-   "label": "Motherstock",
-   "link_count": 1,
-   "link_type": "DocType",
-   "onboard": 0,
-   "type": "Card Break"
-  },
-  {
-   "hidden": 0,
-   "is_query_report": 0,
-   "label": "Motherstock Batches",
-   "link_count": 0,
-   "link_to": "Summer Flower Motherstock Batch",
-   "link_type": "DocType",
-   "onboard": 0,
-   "type": "Link"
-  },
-  {
-   "hidden": 0,
-   "is_query_report": 0,
    "label": "Setup",
    "link_count": 1,
    "link_type": "DocType",
@@ -229,7 +249,7 @@
    "type": "Link"
   }
  ],
- "modified": "2026-08-01 11:16:13.502384",
+ "modified": "2026-08-01 11:26:43.883896",
  "modified_by": "Administrator",
  "module": "Summer Flowers",
  "name": "Summer Flowers",
@@ -290,6 +310,22 @@
    "label": "Input requests to submit",
    "link_to": "Material Request",
    "stats_filter": "{\"custom_sf_block\":[\"is\",\"set\"],\"docstatus\":0}",
+   "type": "DocType"
+  },
+  {
+   "color": "Purple",
+   "doc_view": "",
+   "label": "Bed work in progress",
+   "link_to": "Bed Work Order",
+   "stats_filter": "{\"status\":[\"in\",[\"Not Started\",\"In Progress\",\"Paused\"]]}",
+   "type": "DocType"
+  },
+  {
+   "color": "Green",
+   "doc_view": "",
+   "label": "Biological assets",
+   "link_to": "Asset",
+   "stats_filter": "{\"asset_category\":\"BIOLOGICAL ASSETS (PLANTS)\"}",
    "type": "DocType"
   }
  ],
