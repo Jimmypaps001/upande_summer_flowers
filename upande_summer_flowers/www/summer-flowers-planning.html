@@ -172,6 +172,17 @@
     <section class="pl-pane" data-pane="review">
       <div class="pl-card">
         <div class="pl-card-head">
+          <div><h2>{{ _("Demand to budget") }}</h2>
+               <p class="pl-note">{{ _("The chain for this variety, and the space it asks the farm for. Each step can be run from here; they are the same methods the doctypes use.") }}</p></div>
+        </div>
+        <div id="ch-steps"></div>
+        <h3 class="pl-h3">{{ _("Space required") }}</h3>
+        <div class="pl-tiles pl-tiles-sm" id="ch-space"></div>
+        <div id="ch-space-note"></div>
+      </div>
+
+      <div class="pl-card">
+        <div class="pl-card-head">
           <div><h2>{{ _("Waiting on a decision") }}</h2>
                <p class="pl-note">{{ _("Everything across the module that needs approving or validating. The same rules apply here as on the desk form — an approval you are not entitled to make will be refused.") }}</p></div>
           <button type="button" class="pl-btn" id="rv-refresh">{{ _("Refresh") }}</button>
@@ -492,6 +503,14 @@ input.pin.tgt.manual{border-color:var(--warning);
   background:var(--surface-2);font-size:.85rem}
 .rv-det{padding:8px 13px;display:flex;gap:14px;flex-wrap:wrap}
 .pl-btn[disabled]{opacity:.45;cursor:not-allowed}
+.ch-flow{display:grid;gap:10px;grid-template-columns:repeat(auto-fit,minmax(210px,1fr))}
+.ch-step{background:var(--surface-2);border:1px solid var(--border);border-radius:9px;
+  padding:11px 13px;border-left:3px solid var(--border)}
+.ch-step.done{border-left-color:var(--good)}
+.ch-k{font-size:.68rem;text-transform:uppercase;letter-spacing:.05em;
+  color:var(--text-muted);font-weight:600}
+.ch-v{font-size:.92rem;font-weight:640;margin:3px 0 2px;word-break:break-all}
+.ch-m{font-size:.72rem;color:var(--text-secondary)}
 
 /* portal-safe form modal */
 /* The modal is appended to document.body, outside the dashboard root where the
@@ -665,7 +684,7 @@ input.pin.tgt.manual{border-color:var(--warning);
               dv: null, deriv: null, pp: null, bf: null, cal: null, ls: null, pr: null,
               ppFilter: "all", dmFilter: "all", bfBlock: "", calYear: null,
               bfOpen: new Set(), cyc: null, cycle: null, det: null, rv: null,
-              plan: "", plans: null, bg: null };
+              plan: "", plans: null, bg: null, chain: null };
 
   const KIND_COLOR = { stick: "--violet", plant: "--series-1", pinch: "--warning",
     harvest: "--good", uproot: "--critical", tc_order: "--serious",
@@ -1247,7 +1266,8 @@ input.pin.tgt.manual{border-color:var(--warning);
   function refreshAfterWrite() {
     // A write can move production, so the projections are reloaded too rather
     // than leaving the other tabs showing pre-transaction numbers.
-    return loadCycles().then(loadReview).then(() => loadScope()).catch(() => {});
+    return loadCycles().then(loadReview).then(loadChain)
+      .then(() => loadScope()).catch(() => {});
   }
 
   function askPinch() {
@@ -1317,6 +1337,76 @@ input.pin.tgt.manual{border-color:var(--warning);
   }
 
   // ══════════════════════════ REVIEW ══════════════════════════
+  function loadChain() {
+    return callOp("chain_status", { variety: S.variety, farm: S.farm })
+      .then((r) => { S.chain = r; renderChain(); })
+      .catch((e) => { S.chain = { error: e.message }; renderChain(); });
+  }
+
+  function renderChain() {
+    const c = S.chain;
+    if (!c || c.error || !c.demand) {
+      $("ch-steps").innerHTML = `<p class="pl-empty">${esc(
+        (c && c.error) || "No demand register in scope.")}</p>`;
+      $("ch-space").innerHTML = ""; $("ch-space-note").innerHTML = ""; return;
+    }
+    const NEXT = {
+      create_plan: ["Create production plan", "ch-plan"],
+      create_propagation: ["Create propagation plan", "ch-prop"],
+      approve_plan: ["Approve plan to create the budget", null],
+    };
+    $("ch-steps").innerHTML = '<div class="ch-flow">' + c.steps.map((st, i) => {
+      const btn = st.next && NEXT[st.next]
+        ? (NEXT[st.next][1]
+            ? `<button type="button" class="pl-btn primary" data-ch="${esc(NEXT[st.next][1])}">${esc(NEXT[st.next][0])}</button>`
+            : `<span class="bf-meta">${esc(NEXT[st.next][0])}</span>`)
+        : "";
+      return `<div class="ch-step${st.done ? " done" : ""}">` +
+        `<div class="ch-k">${i + 1}. ${esc(st.label)}</div>` +
+        `<div class="ch-v">${st.name ? esc(st.name) : "—"}</div>` +
+        `<div class="ch-m">${esc(st.state || (st.done ? "done" : "not yet"))}</div>` +
+        (btn ? `<div style="margin-top:7px">${btn}</div>` : "") + `</div>`;
+    }).join("") + "</div>";
+
+    const sp = c.space;
+    if (!sp) { $("ch-space").innerHTML = ""; $("ch-space-note").innerHTML = ""; return; }
+    $("ch-space").innerHTML = [
+      { k: "Beds wanted", v: num(sp.beds_wanted),
+        m: `of ${num(sp.beds_available)} at the farm · ${sp.beds_pct}%`,
+        c: sp.beds_pct > 100 ? "--critical" : "--good" },
+      { k: "Plants to raise", v: num(sp.plants_wanted), m: "across the horizon" },
+      { k: "Area standing", v: sp.area_standing_ha.toFixed(3) + " ha",
+        m: `farm has ${sp.gross_area_ha} ha gross` },
+      { k: "Plantings proposed", v: num(sp.proposals),
+        m: `${sp.blocks} blocks available` },
+      { k: "Without a block", v: num(sp.unallocated),
+        m: "nowhere to put them", c: sp.unallocated ? "--critical" : "--good" },
+      { k: "Below minimum", v: num(sp.below_minimum),
+        m: "smaller than the protocol allows",
+        c: sp.below_minimum ? "--serious" : "--good" },
+    ].map(tile).join("");
+
+    // Beds are rarely what runs out; blocks are, because a block holds one
+    // planting for that planting's whole life.
+    const notes = [];
+    if (sp.unallocated) {
+      notes.push(`${num(sp.unallocated)} of ${num(sp.proposals)} proposed plantings ` +
+        `have no block. Beds are not the constraint — the plan wants ${num(sp.beds_wanted)} ` +
+        `of ${num(sp.beds_available)} — but a block holds one planting at a time, and ` +
+        `${num(sp.proposals)} plantings cannot share ${sp.blocks} blocks.`);
+    }
+    if (sp.below_minimum) {
+      notes.push(`${num(sp.below_minimum)} plantings are below the protocol's minimum ` +
+        `planting size. The planner sizes each one to a single week's shortfall; ` +
+        `fewer, larger plantings would satisfy the same demand.`);
+    }
+    if (c.propagation && c.propagation.schedule_warning) {
+      notes.push(esc(c.propagation.schedule_warning).replace(/\n/g, "<br>"));
+    }
+    $("ch-space-note").innerHTML = notes.length
+      ? notes.map((n) => `<div class="pl-callout">${n}</div>`).join("") : "";
+  }
+
   function loadReview() {
     return callOp("review_queue").then((r) => { S.rv = r; renderReview(); return r; });
   }
@@ -2087,7 +2177,8 @@ input.pin.tgt.manual{border-color:var(--warning);
     // than showing whatever was true when the page first loaded.
     if (name === "harvest") loadCycles().catch((e) => toast(esc(e.message), true));
     if (name === "review") {
-      loadReview().then(loadPlanState).catch((e) => toast(esc(e.message), true));
+      loadReview().then(loadPlanState).then(loadChain)
+        .catch((e) => toast(esc(e.message), true));
     }
   }
 
@@ -2160,6 +2251,23 @@ input.pin.tgt.manual{border-color:var(--warning);
             onSubmit: (v) => fire(v.r),
           });
         } else { fire(); }
+        return;
+      }
+      const ch = ev.target.closest("[data-ch]");
+      if (ch && S.chain) {
+        if (ch.dataset.ch === "ch-plan") {
+          run("create_production_plan", { demand: S.chain.demand.name }, (r) => {
+            toast(`Plan ${r.name} created: ${r.weeks_covered} weeks, ` +
+                  `${r.coverage_pct.toFixed(1)}% coverage, ${num(r.new_beds_required)} beds.`);
+            refreshAfterWrite();
+          });
+        } else if (ch.dataset.ch === "ch-prop") {
+          run("create_propagation_plan", { plan: S.chain.plan.name }, (r) => {
+            toast(`Propagation plan ${r.name}: ${num(r.total_cuttings_required)} cuttings, ` +
+                  `${num(r.mother_plants_required)} mother plants, ${r.peak_bench_sqm} m² bench.`);
+            refreshAfterWrite();
+          });
+        }
         return;
       }
       const bg = ev.target.closest("[data-bg]");

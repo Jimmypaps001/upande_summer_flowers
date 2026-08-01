@@ -42,6 +42,9 @@ ALLOWED_ACTIONS = {
 	               "reject_targets", "record_cuttings", "end_cycle"),
 	"Summer Flower Budget": ("post_to_accounts",),
 	"Summer Flower Production Plan": ("create_plantings", "regenerate"),
+	"Summer Flower Propagation Plan": ("submit_for_approval", "approve", "reject",
+	                                   "create_motherstock_batch",
+	                                   "create_seedling_requests"),
 }
 
 
@@ -488,6 +491,150 @@ def act(doctype, name, action, reason=None):
 	        "result": out if isinstance(out, (str, int, float, dict, list)) else None,
 	        "status": doc.get("status") or doc.get("custom_targets_status")
 	                  or doc.get("workflow_state")}
+
+
+# ---------------------------------------------------------------------------
+# The chain: demand -> production plan -> propagation plan -> budget
+# ---------------------------------------------------------------------------
+
+@frappe.whitelist()
+def chain_status(variety=None, farm=None, demand=None):
+	"""Where a variety has got to along the chain, and what the next step is.
+
+	One call rather than four, so the dashboard cannot show a plan from one
+	variety next to a budget from another.
+	"""
+	_guard()
+	if not demand:
+		f = {}
+		if variety:
+			f["variety"] = variety
+		if farm:
+			f["farm"] = farm
+		rows = frappe.get_all("Summer Flower Market Demand", filters=f,
+		                      pluck="name", order_by="modified desc", limit=1)
+		demand = rows[0] if rows else None
+	if not demand:
+		return {"demand": None}
+
+	d = frappe.db.get_value(
+		"Summer Flower Market Demand", demand,
+		["name", "variety", "farm", "weeks_covered", "total_demand_stems",
+		 "horizon_start", "horizon_end", "horizon_status", "price_per_stem",
+		 "currency"], as_dict=True)
+
+	plans = frappe.get_all(
+		"Summer Flower Production Plan", filters={"market_demand": demand,
+		                                          "docstatus": ["<", 2]},
+		fields=["name", "workflow_state", "docstatus", "budget", "weeks_covered",
+		        "total_demand_stems", "total_production_stems", "coverage_pct",
+		        "weeks_in_deficit", "new_beds_required", "new_plants_required",
+		        "average_area_ha", "peak_weekly_sticking", "peak_sticking_week"],
+		order_by="creation desc")
+	plan = plans[0] if plans else None
+
+	prop = None
+	if plan:
+		pr = frappe.get_all(
+			"Summer Flower Propagation Plan",
+			filters={"production_plan": plan["name"]},
+			fields=["name", "status", "total_cuttings_required",
+			        "peak_weekly_cuttings", "peak_week", "cuttings_from_existing",
+			        "existing_cover_pct", "mother_plants_required",
+			        "peak_bench_sqm", "tc_plants_required", "tc_order_date",
+			        "first_sticking_date", "total_cost", "schedule_warning",
+			        "motherstock_batches_created", "seedling_requests_created"],
+			order_by="creation desc", limit=1)
+		prop = pr[0] if pr else None
+
+	budget = None
+	if plan and plan.get("budget"):
+		budget = frappe.db.get_value(
+			"Summer Flower Budget", plan["budget"],
+			["name", "budget_status", "total_stems", "total_value", "currency",
+			 "months_covered"], as_dict=True)
+
+	# Space: what the plan wants against what the farm actually has.
+	space = None
+	if plan:
+		space = _space_for(plan, d.get("farm"))
+
+	steps = [
+		{"key": "demand", "label": _("Market demand"), "done": True,
+		 "name": d["name"], "next": None},
+		{"key": "plan", "label": _("Production plan"), "done": bool(plan),
+		 "name": plan["name"] if plan else None,
+		 "state": plan["workflow_state"] if plan else None,
+		 "next": None if plan else "create_plan"},
+		{"key": "propagation", "label": _("Propagation plan"),
+		 "done": bool(prop), "name": prop["name"] if prop else None,
+		 "state": prop["status"] if prop else None,
+		 "next": ("create_propagation" if plan and not prop else None)},
+		{"key": "budget", "label": _("Budget"), "done": bool(budget),
+		 "name": budget["name"] if budget else None,
+		 "state": budget["budget_status"] if budget else None,
+		 "next": ("approve_plan" if plan and not budget
+		          and plan["docstatus"] == 0 else None)},
+	]
+	return {"demand": d, "plan": plan, "propagation": prop, "budget": budget,
+	        "space": space, "steps": steps}
+
+
+def _space_for(plan, farm):
+	"""Beds the plan wants against beds and blocks the farm has.
+
+	Beds are rarely the binding constraint; blocks are, because a block holds one
+	planting at a time and a planting sits in it for its whole life.
+	"""
+	blocks = frappe.get_all(
+		"Block", filters={"custom_is_summer_flower_block": 1, "farm": farm},
+		fields=["name", "custom_total_beds", "custom_gross_area_ha"])
+	beds_have = sum(cint(b.custom_total_beds) for b in blocks)
+	rows = frappe.get_all(
+		"Summer Flower Plan Block",
+		filters={"parent": plan["name"], "is_new_planting": 1},
+		fields=["beds", "plants", "block", "below_minimum", "gross_area_ha"])
+	unallocated = len([r for r in rows if not r.block])
+	return {
+		"blocks": len(blocks),
+		"beds_available": beds_have,
+		"gross_area_ha": round(sum(flt(b.custom_gross_area_ha) for b in blocks), 3),
+		"beds_wanted": cint(plan.get("new_beds_required")),
+		"plants_wanted": cint(plan.get("new_plants_required")),
+		"area_standing_ha": flt(plan.get("average_area_ha")),
+		"proposals": len(rows),
+		"unallocated": unallocated,
+		"below_minimum": len([r for r in rows if cint(r.below_minimum)]),
+		"beds_pct": round(cint(plan.get("new_beds_required")) * 100.0 / beds_have, 1)
+		            if beds_have else 0,
+	}
+
+
+@frappe.whitelist()
+def create_production_plan(demand):
+	"""Build the production plan for a demand register."""
+	_guard()
+	d = frappe.get_doc("Summer Flower Market Demand", demand)
+	name = d.create_production_plan()
+	frappe.db.commit()
+	p = frappe.db.get_value("Summer Flower Production Plan", name,
+	                        ["name", "weeks_covered", "coverage_pct",
+	                         "new_beds_required", "weeks_in_deficit"], as_dict=True)
+	return p
+
+
+@frappe.whitelist()
+def create_propagation_plan(plan):
+	"""Work out how the plan's cuttings get sourced."""
+	_guard()
+	p = frappe.get_doc("Summer Flower Production Plan", plan)
+	name = p.create_propagation_plan()
+	frappe.db.commit()
+	return frappe.db.get_value(
+		"Summer Flower Propagation Plan", name,
+		["name", "status", "total_cuttings_required", "peak_weekly_cuttings",
+		 "mother_plants_required", "tc_plants_required", "peak_bench_sqm"],
+		as_dict=True)
 
 
 # ---------------------------------------------------------------------------
