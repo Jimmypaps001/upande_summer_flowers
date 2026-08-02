@@ -10,7 +10,7 @@ import datetime
 
 import frappe
 from frappe import _
-from frappe.utils import flt, getdate, nowdate
+from frappe.utils import cint, flt, getdate, nowdate
 
 from upande_summer_flowers.summer_flowers.motherstock_sim import (
 	params_from_version,
@@ -306,6 +306,7 @@ def planting_plan(plan=None, variety=None, farm=None):
 
 	p = frappe.get_doc("Summer Flower Production Plan", plan)
 	v = frappe.get_cached_doc("Crop Protocol Version", p.protocol)
+	life_weeks = v.total_weeks_in_ground or 0
 
 	plantings = []
 	for b in p.plan_blocks:
@@ -329,6 +330,16 @@ def planting_plan(plan=None, variety=None, farm=None):
 			"sticking_week": b.sticking_week,
 			"planting_date": str(b.planting_date) if b.planting_date else None,
 			"pinch_date": str(b.pinch_date) if b.pinch_date else None,
+			# The other dates the plan commits to, so a calendar view does not have
+			# to re-derive them from the protocol and risk disagreeing with the plan.
+			"sticking_date": str(iso_monday(b.sticking_year, b.sticking_week))
+			if b.sticking_year and b.sticking_week else None,
+			"first_harvest_date": str(iso_monday(b.first_harvest_year,
+			                                     b.first_harvest_week))
+			if b.first_harvest_year and b.first_harvest_week else None,
+			"uproot_date": str(getdate(b.planting_date)
+			                   + datetime.timedelta(weeks=life_weeks))
+			if b.planting_date else None,
 			"first_harvest": f"{b.first_harvest_year}-W{b.first_harvest_week:02d}"
 			if b.first_harvest_year and b.first_harvest_week else None,
 			"harvest_family": b.harvest_week_family,
@@ -1053,3 +1064,76 @@ def motherstock_batches(variety=None, farm=None):
 		        "peak_weekly_cuttings", "effective_peak_cuttings"],
 		order_by="tc_order_date asc",
 	)
+
+
+@frappe.whitelist()
+def propagation_detail(plan=None, propagation_plan=None, variety=None, farm=None):
+	"""The propagation plan behind a production plan: weeks, sources, TC schedule."""
+	_guard()
+	if not propagation_plan:
+		plan = resolve_plan(variety, farm, plan)
+		if not plan:
+			return {"propagation_plan": None, "reason": "no production plan in scope"}
+		rows = frappe.get_all("Summer Flower Propagation Plan",
+		                      filters={"production_plan": plan}, pluck="name",
+		                      order_by="creation desc", limit=1)
+		if not rows:
+			return {"propagation_plan": None, "plan": plan,
+			        "reason": "not created yet"}
+		propagation_plan = rows[0]
+
+	d = frappe.get_doc("Summer Flower Propagation Plan", propagation_plan)
+	batches = frappe.get_all(
+		"Summer Flower Motherstock Batch",
+		filters={"production_plan": d.production_plan},
+		fields=["name", "batch_status", "mother_plants", "tc_plants_required",
+		        "tc_order_date", "tc_on_farm_date", "first_sticking_date",
+		        "expiry_date", "total_cost", "currency", "bench_sqm"])
+	return {
+		"propagation_plan": d.name,
+		"plan": d.production_plan,
+		"variety": d.variety, "farm": d.farm, "status": d.status,
+		"currency": d.currency,
+		"totals": {
+			"plants_to_stick": cint(d.total_plants_to_stick),
+			"cuttings_required": cint(d.total_cuttings_required),
+			"cuttings_per_plant": flt(d.cuttings_per_plant),
+			"weeks_sticking": cint(d.weeks_sticking),
+			"peak_weekly_cuttings": cint(d.peak_weekly_cuttings),
+			"peak_week": d.peak_week,
+			"from_existing": cint(d.cuttings_from_existing),
+			"from_new": cint(d.cuttings_from_new),
+			"uncovered": cint(d.cuttings_uncovered),
+			"existing_cover_pct": flt(d.existing_cover_pct),
+			"mother_plants": cint(d.mother_plants_required),
+			"bench_sqm": flt(d.peak_bench_sqm),
+			"tc_plants": cint(d.tc_plants_required),
+			"tc_order_date": str(d.tc_order_date or ""),
+			"tc_on_farm_date": str(d.tc_on_farm_date or ""),
+			"first_sticking_date": str(d.first_sticking_date or ""),
+			"tc_cost": flt(d.tc_cost), "total_cost": flt(d.total_cost),
+			"batches_created": cint(d.motherstock_batches_created),
+			"requests_created": cint(d.seedling_requests_created),
+		},
+		"warning": d.schedule_warning,
+		"weeks": [{
+			"year": r.year, "week_no": r.week_no,
+			"label": "%s-W%02d" % (r.year, cint(r.week_no)),
+			"week_start_date": str(r.week_start_date or ""),
+			"plants_to_stick": cint(r.plants_to_stick),
+			"cuttings_required": cint(r.cuttings_required),
+			"from_existing_ms": cint(r.from_existing_ms),
+			"from_new_ms": cint(r.from_new_ms),
+			"shortfall": cint(r.shortfall),
+			"plant_week": r.plant_week,
+		} for r in d.weeks],
+		"sources": [{
+			"source_type": r.source_type, "batch": r.motherstock_batch,
+			"mother_plants": cint(r.mother_plants),
+			"weekly_capacity": cint(r.weekly_capacity),
+			"available_from": str(r.available_from or ""),
+			"available_to": str(r.available_to or ""),
+			"notes": r.notes,
+		} for r in d.sources],
+		"batches": batches,
+	}

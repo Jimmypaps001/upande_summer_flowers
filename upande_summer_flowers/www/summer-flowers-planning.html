@@ -29,6 +29,7 @@
       <button role="tab" data-tab="demand" aria-selected="false">{{ _("Market Demand") }}</button>
       <button role="tab" data-tab="planting" aria-selected="false">{{ _("Planting Plan") }}</button>
       <button role="tab" data-tab="blocks" aria-selected="false">{{ _("Block Forecast") }}</button>
+      <button role="tab" data-tab="propagation" aria-selected="false">{{ _("Propagation") }}</button>
       <button role="tab" data-tab="harvest" aria-selected="false">{{ _("Harvest") }}</button>
       <button role="tab" data-tab="review" aria-selected="false">{{ _("Review") }}<span id="rv-badge" class="pl-badge" hidden></span></button>
       <button role="tab" data-tab="protocol" aria-selected="false">{{ _("Protocol") }}</button>
@@ -91,6 +92,10 @@
         <h3>{{ _("Block occupancy") }}</h3>
         <p class="pl-note" style="margin-top:0">{{ _("A block holds one planting at a time, so each bar owns its block for the whole cycle.") }}</p>
         <div class="pl-chart-wrap"><div id="pp-gantt" class="pl-chart"></div></div>
+        <h3>{{ _("Month by month") }}</h3>
+        <p class="pl-note" style="margin-top:0">{{ _("Every date the plan commits to, grouped by the month it falls in. Sticking is when cuttings go in the propagation house; planting is when they go to the field; uprooting is when the block comes free again.") }}</p>
+        <div class="pl-legend" id="pp-cal-legend"></div>
+        <div id="pp-calendar"></div>
         <h3>{{ _("Stick, plant, harvest") }}</h3>
         <div id="pp-table" class="pl-scroll pl-tall"></div>
       </div>
@@ -135,6 +140,20 @@
           <span class="pl-key"><i class="sw" style="background:var(--warning)"></i>{{ _("Uprooted bed") }}</span>
         </div>
         <div id="bf-body"></div>
+      </div>
+    </section>
+
+    <!-- ══ PROPAGATION ══ -->
+    <section class="pl-pane" data-pane="propagation">
+      <div class="pl-card">
+        <div class="pl-card-head">
+          <div><h2>{{ _("Propagation plan") }}</h2>
+               <p class="pl-note" id="pg-sub">{{ _("How the plan's cuttings get sourced: what standing motherstock already covers, and what has to be bought as tissue culture.") }}</p></div>
+          <span id="pg-actions" class="pl-actions"></span>
+        </div>
+        <div class="pl-tiles pl-tiles-sm" id="pg-tiles"></div>
+        <div id="pg-warn"></div>
+        <div id="pg-body"></div>
       </div>
     </section>
 
@@ -506,6 +525,28 @@ input.pin.tgt.manual{border-color:var(--warning);
   background:var(--surface-2);font-size:.85rem}
 .rv-det{padding:8px 13px;display:flex;gap:14px;flex-wrap:wrap}
 .pl-btn[disabled]{opacity:.45;cursor:not-allowed}
+.cal-grid{display:grid;gap:10px;grid-template-columns:repeat(auto-fit,minmax(215px,1fr))}
+.cal-cell{border:1px solid var(--border);border-radius:9px;padding:9px 11px;
+  background:var(--surface-2)}
+.cal-cell.quiet{opacity:.6}
+.cal-cell.nowhere{border-style:dashed;
+  background:color-mix(in srgb,var(--critical) 7%,var(--surface-2))}
+.cal-cell.nowhere .cal-head::after{content:" · nothing placeable";
+  font-weight:500;font-size:.66rem;color:var(--critical)}
+.cal-head{font-size:.78rem;font-weight:700;margin-bottom:6px}
+.cal-head span{color:var(--text-muted);font-weight:500}
+.cal-line{display:flex;align-items:baseline;gap:6px;font-size:.75rem;margin:3px 0;
+  flex-wrap:wrap}
+.cal-line .dot2{width:7px;height:7px;border-radius:50%;flex:none}
+.cal-who{color:var(--text-muted);font-size:.7rem}
+.cal-none{font-size:.72rem;color:var(--text-muted)}
+.pg-track{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:6px}
+.pg-stop{background:var(--surface-2);border:1px solid var(--border);border-radius:8px;
+  padding:8px 12px;min-width:130px}
+.pg-k{font-size:.66rem;text-transform:uppercase;letter-spacing:.05em;
+  color:var(--text-muted);font-weight:600}
+.pg-v{font-size:.9rem;font-weight:640}
+.pg-arrow{color:var(--text-muted);font-size:1.1rem}
 .ch-flow{display:grid;gap:10px;grid-template-columns:repeat(auto-fit,minmax(210px,1fr))}
 .ch-step{background:var(--surface-2);border:1px solid var(--border);border-radius:9px;
   padding:11px 13px;border-left:3px solid var(--border)}
@@ -687,7 +728,7 @@ input.pin.tgt.manual{border-color:var(--warning);
               dv: null, deriv: null, pp: null, bf: null, cal: null, ls: null, pr: null,
               ppFilter: "all", dmFilter: "all", bfBlock: "", calYear: null,
               bfOpen: new Set(), cyc: null, cycle: null, det: null, rv: null,
-              plan: "", plans: null, bg: null, chain: null,
+              plan: "", plans: null, bg: null, chain: null, pg: null,
               year: "", week: "" };
 
   const KIND_COLOR = { stick: "--violet", plant: "--series-1", pinch: "--warning",
@@ -833,36 +874,167 @@ input.pin.tgt.manual{border-color:var(--warning);
   }
 
   function drawGantt(el, occ) {
-    if (!occ || !occ.length) { el.innerHTML = '<p class="pl-empty">No allocated plantings.</p>'; return; }
+    if (!occ || !occ.length) {
+      el.innerHTML = '<p class="pl-empty">No allocated plantings.</p>'; return;
+    }
+    // Rewritten to be read rather than decoded: one labelled row per block,
+    // month ticks under the year, banded rows so the eye can follow a line
+    // across three years, a today marker, and the planting named inside its own
+    // bar wherever the bar is wide enough to hold it.
     const blocks = [...new Set(occ.map((o) => o.block))].sort();
     const t0 = Math.min(...occ.map((o) => +new Date(o.start)));
     const t1 = Math.max(...occ.map((o) => +new Date(o.end)));
     const span = Math.max(1, t1 - t0);
-    const padL = 120, padR = 16, padT = 22, rowH = 20, padB = 26;
-    const h = padT + blocks.length * rowH + padB, w = 900;
+    const padL = 132, padR = 18, padT = 40, rowH = 26, padB = 14;
+    const h = padT + blocks.length * rowH + padB, w = 1120;
     const x = (ms) => padL + ((ms - t0) / span) * (w - padL - padR);
     const FILL = { Proposed: "var(--seq-200)", Draft: "var(--seq-200)",
       "Pending Approval": "var(--warning)", Approved: "var(--series-1)",
       Planted: "var(--good)", Uprooted: "var(--text-muted)" };
-    let s = `<svg viewBox="0 0 ${w} ${h}" width="${w}" height="${h}" role="img"><g class="grid">`;
-    for (let yr = new Date(t0).getFullYear(); yr <= new Date(t1).getFullYear() + 1; yr++) {
-      const ms = +new Date(yr, 0, 1); if (ms < t0 || ms > t1) continue;
-      s += `<line x1="${x(ms)}" x2="${x(ms)}" y1="${padT - 6}" y2="${padT + blocks.length * rowH}"/>`;
-      s += `<text x="${x(ms)}" y="${padT - 10}" text-anchor="middle">${yr}</text>`;
+
+    let g = "";
+    // month ticks first, so year lines draw on top of them
+    let cur = new Date(new Date(t0).getFullYear(), new Date(t0).getMonth(), 1);
+    while (+cur <= t1) {
+      const ms = +cur;
+      if (ms >= t0) {
+        const isJan = cur.getMonth() === 0;
+        g += `<line x1="${x(ms).toFixed(1)}" x2="${x(ms).toFixed(1)}" y1="${padT - 8}" ` +
+          `y2="${padT + blocks.length * rowH}" stroke="var(--border)" ` +
+          `stroke-width="${isJan ? 1.4 : 0.5}"${isJan ? "" : ' opacity="0.55"'}/>`;
+        if (isJan) {
+          g += `<text x="${x(ms) + 4}" y="${padT - 22}" class="pl-ax" ` +
+            `style="font-size:11px;font-weight:700">${cur.getFullYear()}</text>`;
+        }
+        if (span / 86400000 < 900) {
+          g += `<text x="${x(ms) + 3}" y="${padT - 10}" class="pl-ax">` +
+            `${MONTHS[cur.getMonth()]}</text>`;
+        } else if (cur.getMonth() % 3 === 0) {
+          g += `<text x="${x(ms) + 3}" y="${padT - 10}" class="pl-ax">` +
+            `${MONTHS[cur.getMonth()]}</text>`;
+        }
+      }
+      cur = new Date(cur.getFullYear(), cur.getMonth() + 1, 1);
     }
-    s += "</g>";
+
+    let rowsSvg = "";
     blocks.forEach((b, i) => {
-      s += `<text x="${padL - 10}" y="${padT + i * rowH + 13}" text-anchor="end">${esc(shortBlock(b))}</text>`;
+      const y = padT + i * rowH;
+      if (i % 2 === 0) {
+        rowsSvg += `<rect x="${padL}" y="${y}" width="${w - padL - padR}" ` +
+          `height="${rowH}" fill="var(--surface-2)" opacity="0.55"/>`;
+      }
+      rowsSvg += `<text x="${padL - 10}" y="${y + rowH / 2 + 4}" text-anchor="end" ` +
+        `class="pl-ax" style="font-size:11px;font-weight:600">${esc(shortBlock(b))}</text>`;
     });
+
+    let bars = "";
     occ.forEach((o) => {
-      const i = blocks.indexOf(o.block), bx = x(+new Date(o.start));
-      const bw = Math.max(3, x(+new Date(o.end)) - bx);
-      s += `<rect class="bar" x="${bx}" y="${padT + i * rowH + 3}" width="${bw}"
-        height="${rowH - 7}" rx="3" fill="${FILL[o.status] || "var(--seq-200)"}"
-        stroke="var(--surface-1)" stroke-width="1.5"
-        data-tip="${esc(`<b>${shortBlock(o.block)}</b><br>${o.ref}<br>${o.start} → ${o.end}<br>${o.beds} beds · ${o.status}`)}"/>`;
+      const i = blocks.indexOf(o.block);
+      const bx = x(+new Date(o.start));
+      const bw = Math.max(4, x(+new Date(o.end)) - bx);
+      const y = padT + i * rowH + 4;
+      const label = `${shortBlock(o.block)} · ${o.beds}b`;
+      bars += `<g data-tip="${esc(`<b>${shortBlock(o.block)}</b><br>${o.ref}<br>` +
+        `${o.start} → ${o.end}<br>${o.beds} beds · ${o.status}`)}">` +
+        `<rect x="${bx.toFixed(1)}" y="${y}" width="${bw.toFixed(1)}" ` +
+        `height="${rowH - 9}" rx="3" fill="${FILL[o.status] || "var(--seq-200)"}"/>` +
+        (bw > 92 ? `<text x="${(bx + 6).toFixed(1)}" y="${y + rowH - 15}" ` +
+          `style="font-size:10px;fill:#fff;font-weight:600">${esc(label)}</text>` : "") +
+        `</g>`;
     });
-    el.innerHTML = s + "</svg>"; bindTips(el);
+
+    const now = Date.now();
+    let today = "";
+    if (now >= t0 && now <= t1) {
+      today = `<line x1="${x(now).toFixed(1)}" x2="${x(now).toFixed(1)}" ` +
+        `y1="${padT - 8}" y2="${padT + blocks.length * rowH}" ` +
+        `stroke="var(--critical)" stroke-width="1.6" stroke-dasharray="4 3"/>` +
+        `<text x="${x(now) + 4}" y="${padT + blocks.length * rowH + 11}" ` +
+        `class="pl-ax" style="fill:var(--critical);font-weight:700">today</text>`;
+    }
+
+    el.innerHTML = `<svg viewBox="0 0 ${w} ${h}" class="pl-svg" role="img" ` +
+      `aria-label="Block occupancy over time">${rowsSvg}${g}${bars}${today}</svg>` +
+      `<div class="pl-legend" style="margin-top:8px">` +
+      Object.entries({ Proposed: FILL.Proposed, "Pending Approval": FILL["Pending Approval"],
+        Approved: FILL.Approved, Planted: FILL.Planted }).map(([k, v]) =>
+        `<span class="pl-key"><i class="sw" style="background:${v}"></i>${k}</span>`
+      ).join("") + `</div>`;
+    bindTips(el);
+  }
+
+  // A month grid of everything the plan commits to. The timeline answers "which
+  // block, for how long"; this answers "what happens in March", which is the
+  // question a grower actually plans a week around.
+  const MONTHS = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+  const CAL_KINDS = [
+    ["stick", "Stick", "--violet"],
+    ["plant", "Plant", "--series-1"],
+    ["harvest", "First harvest", "--good"],
+    ["uproot", "Uproot", "--critical"],
+  ];
+
+  function renderPlantingCalendar(rows) {
+    const el = $("pp-calendar");
+    $("pp-cal-legend").innerHTML = CAL_KINDS.map(([, label, col]) =>
+      `<span class="pl-key"><i class="sw" style="background:var(${col})"></i>${label}</span>`
+    ).join("");
+    const buckets = {};
+    const put = (dateStr, kind, row) => {
+      if (!dateStr) return;
+      const d = new Date(dateStr);
+      if (isNaN(d)) return;
+      const key = d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0");
+      if (!inPeriod(d.getFullYear(), null)) { /* year filter only */ }
+      (buckets[key] = buckets[key] || { y: d.getFullYear(), m: d.getMonth(),
+                                        stick: [], plant: [], harvest: [], uproot: [] });
+      buckets[key][kind].push(row);
+    };
+    rows.forEach((r) => {
+      put(r.sticking_date || r.stick_date, "stick", r);
+      put(r.planting_date, "plant", r);
+      put(r.first_harvest_date, "harvest", r);
+      put(r.uproot_date, "uproot", r);
+    });
+    const keys = Object.keys(buckets).sort()
+      .filter((k) => !S.year || k.slice(0, 4) === String(S.year));
+    if (!keys.length) {
+      el.innerHTML = '<p class="pl-empty">No dated plantings in this period.</p>';
+      return;
+    }
+    el.innerHTML = '<div class="cal-grid">' + keys.map((k) => {
+      const b = buckets[k];
+      const chips = CAL_KINDS.map(([kind, label, col]) => {
+        const list = b[kind];
+        if (!list.length) return "";
+        // Naming the same non-block six times says nothing. Distinct blocks, then
+        // a count of the ones with nowhere to go.
+        const named = [...new Set(list.filter((r) => r.block)
+          .map((r) => shortBlock(r.block)))];
+        const homeless = list.filter((r) => !r.block).length;
+        const who = [named.slice(0, 5).join(", ")
+          + (named.length > 5 ? ` +${named.length - 5}` : ""),
+          homeless ? `${homeless} unplaced` : ""].filter(Boolean).join(" · ");
+        return `<div class="cal-line" data-tip="${esc(
+            `<b>${label}</b><br>${list.length} planting(s)<br>` +
+            list.slice(0, 8).map((r) =>
+              `${shortBlock(r.block) || "no block"} · ${r.beds}b · ${num(r.plants)} plants`
+            ).join("<br>"))}">` +
+          `<i class="dot2" style="background:var(${col})"></i>` +
+          `<b>${list.length}</b> ${esc(label.toLowerCase())}` +
+          `<span class="cal-who">${esc(who)}</span>` +
+          `</div>`;
+      }).join("");
+      const busy = CAL_KINDS.reduce((n, [kind]) => n + b[kind].length, 0);
+      const homelessTotal = CAL_KINDS.reduce(
+        (n, [kind]) => n + b[kind].filter((r) => !r.block).length, 0);
+      const allHomeless = busy > 0 && homelessTotal === busy;
+      return `<div class="cal-cell${busy ? "" : " quiet"}${allHomeless ? " nowhere" : ""}">` +
+        `<div class="cal-head">${MONTHS[b.m]} <span>${b.y}</span></div>` +
+        (chips || '<div class="cal-none">nothing scheduled</div>') + `</div>`;
+    }).join("") + "</div>";
+    bindTips(el);
   }
 
   function renderPlanting() {
@@ -895,6 +1067,7 @@ input.pin.tgt.manual{border-color:var(--warning);
     // A proposal is placed against its planting week, so that is what the period
     // filter matches on.
     rows = rows.filter((r) => inPeriod(r.planting_year, r.planting_week));
+    renderPlantingCalendar(rows);
     const shown = rows.slice(0, 200);
     $("pp-table").innerHTML =
       '<table class="pl-t"><thead><tr><th>#</th><th>Stick</th><th>Plant</th><th>1st harvest</th>' +
@@ -1018,6 +1191,131 @@ input.pin.tgt.manual{border-color:var(--warning);
       `</span></div><div class="bg-grid">${cells}</div></div>`;
   }
 
+  // ══════════════════════════ PROPAGATION ══════════════════════════
+  function loadPropagation() {
+    return call("propagation_detail", { plan: S.plan || null,
+                                        variety: S.variety, farm: S.farm })
+      .then((r) => { S.pg = r; renderPropagation(); })
+      .catch((e) => { S.pg = { error: e.message }; renderPropagation(); });
+  }
+
+  function renderPropagation() {
+    const r = S.pg;
+    if (!r || r.error || !r.propagation_plan) {
+      $("pg-tiles").innerHTML = ""; $("pg-warn").innerHTML = "";
+      $("pg-actions").innerHTML = r && r.plan
+        ? `<button type="button" class="pl-btn primary" data-pg="create">Create propagation plan</button>`
+        : "";
+      $("pg-body").innerHTML = `<p class="pl-empty">${esc(
+        (r && r.error) || (r && r.reason === "not created yet"
+          ? "No propagation plan for this production plan yet."
+          : "No production plan in scope."))}</p>`;
+      return;
+    }
+    const t = r.totals;
+    $("pg-sub").innerHTML = `${esc(r.propagation_plan)} · from ${esc(r.plan)} · ` +
+      `${esc(r.variety)} at ${esc(r.farm)} · status <b>${esc(r.status)}</b>`;
+    $("pg-actions").innerHTML = [
+      r.status === "Draft" || r.status === "Rejected"
+        ? `<button type="button" class="pl-btn" data-pg="submit">Submit for approval</button>` : "",
+      r.status === "Pending Approval"
+        ? `<button type="button" class="pl-btn primary" data-pg="approve">Approve</button>` : "",
+      r.status === "Pending Approval"
+        ? `<button type="button" class="pl-btn" data-pg="reject">Reject</button>` : "",
+      r.status === "Approved" && !t.batches_created
+        ? `<button type="button" class="pl-btn primary" data-pg="batch">Create motherstock batch</button>` : "",
+      r.status === "Approved" && !t.requests_created
+        ? `<button type="button" class="pl-btn" data-pg="requests">Create seedling requests</button>` : "",
+    ].filter(Boolean).join(" ");
+
+    $("pg-tiles").innerHTML = [
+      { k: "Plants to stick", v: num(t.plants_to_stick),
+        m: `over ${t.weeks_sticking} weeks` },
+      { k: "Cuttings needed", v: num(t.cuttings_required),
+        m: `${t.cuttings_per_plant.toFixed(3)} per plant after losses` },
+      { k: "Peak week", v: num(t.peak_weekly_cuttings),
+        m: `${t.peak_week || "—"} — this sizes the motherstock` },
+      { k: "From existing MS", v: num(t.from_existing),
+        m: `${t.existing_cover_pct.toFixed(1)}% cover`,
+        c: t.existing_cover_pct > 0 ? "--good" : "--serious" },
+      { k: "New mother plants", v: num(t.mother_plants),
+        m: `${t.bench_sqm} m² of bench` },
+      { k: "TC plantlets", v: num(t.tc_plants),
+        m: t.tc_order_date ? "order by " + t.tc_order_date : "none needed" },
+      { k: "Uncovered", v: num(t.uncovered), m: "no source",
+        c: t.uncovered ? "--critical" : "--good" },
+      { k: "Cost", v: num(Math.round(t.total_cost)),
+        m: `${esc(r.currency || "")} · TC ${num(Math.round(t.tc_cost))}` },
+    ].map(tile).join("");
+
+    $("pg-warn").innerHTML = r.warning
+      ? `<div class="pl-callout">${esc(r.warning).replace(/\n/g, "<br>")}</div>` : "";
+
+    let html = "";
+    if (t.tc_order_date) {
+      html += `<h3 class="pl-h3">Tissue culture schedule</h3>` +
+        `<div class="pg-track">` +
+        [["Order TC", t.tc_order_date], ["On farm", t.tc_on_farm_date],
+         ["First sticking", t.first_sticking_date]].map(([k, v], i, a) =>
+          `<div class="pg-stop"><div class="pg-k">${esc(k)}</div>` +
+          `<div class="pg-v">${esc(v || "—")}</div></div>` +
+          (i < a.length - 1 ? '<div class="pg-arrow">→</div>' : "")
+        ).join("") + `</div>`;
+    }
+
+    html += `<h3 class="pl-h3">Where the cuttings come from</h3>` +
+      (r.sources.length
+        ? '<table class="pl-t"><thead><tr><th>Source</th><th>Batch</th>' +
+          '<th class="n">Mother plants</th><th class="n">Cuttings / week</th>' +
+          '<th>Available from</th><th>Until</th><th>Notes</th></tr></thead><tbody>' +
+          r.sources.map((x) => `<tr><td><b>${esc(x.source_type)}</b></td>` +
+            `<td>${esc(x.batch || "—")}</td><td class="n">${num(x.mother_plants)}</td>` +
+            `<td class="n">${num(x.weekly_capacity)}</td>` +
+            `<td>${esc(x.available_from || "—")}</td>` +
+            `<td>${esc(x.available_to || "—")}</td>` +
+            `<td>${esc(x.notes || "")}</td></tr>`).join("") + "</tbody></table>"
+        : '<p class="pl-empty">No sources.</p>');
+
+    if (r.batches && r.batches.length) {
+      html += `<h3 class="pl-h3">Motherstock batches raised</h3>` +
+        '<table class="pl-t"><thead><tr><th>Batch</th><th>Status</th>' +
+        '<th class="n">Mother plants</th><th class="n">TC</th><th>Order</th>' +
+        '<th>On farm</th><th>First cut</th><th>Expires</th><th class="n">Cost</th>' +
+        '</tr></thead><tbody>' +
+        r.batches.map((b) => `<tr><td><b>${esc(b.name)}</b></td>` +
+          `<td>${esc(b.batch_status || "")}</td>` +
+          `<td class="n">${num(b.mother_plants)}</td>` +
+          `<td class="n">${num(b.tc_plants_required)}</td>` +
+          `<td>${esc(b.tc_order_date || "—")}</td>` +
+          `<td>${esc(b.tc_on_farm_date || "—")}</td>` +
+          `<td>${esc(b.first_sticking_date || "—")}</td>` +
+          `<td>${esc(b.expiry_date || "—")}</td>` +
+          `<td class="n">${num(Math.round(b.total_cost || 0))}</td></tr>`).join("") +
+        "</tbody></table>";
+    }
+
+    const weeks = r.weeks.filter((x) => inPeriod(x.year, x.week_no));
+    html += `<h3 class="pl-h3">Sticking week by week</h3>` +
+      (periodOn() ? `<p class="pl-note">Showing ${weeks.length} of ${r.weeks.length} ` +
+        `sticking weeks — ${esc(periodLabel())}.</p>` : "") +
+      (weeks.length
+        ? '<div class="pl-scroll pl-tall"><table class="pl-t"><thead><tr><th>Week</th>' +
+          '<th>Starts</th><th class="n">Plants</th><th class="n">Cuttings</th>' +
+          '<th class="n">Existing MS</th><th class="n">New MS</th>' +
+          '<th class="n">Uncovered</th><th>Plants out</th></tr></thead><tbody>' +
+          weeks.map((x) => `<tr${x.shortfall ? ' class="zero"' : ""}>` +
+            `<td>${esc(x.label)}</td><td>${esc(x.week_start_date)}</td>` +
+            `<td class="n">${num(x.plants_to_stick)}</td>` +
+            `<td class="n">${num(x.cuttings_required)}</td>` +
+            `<td class="n">${num(x.from_existing_ms)}</td>` +
+            `<td class="n">${num(x.from_new_ms)}</td>` +
+            `<td class="n"${x.shortfall ? ' style="color:var(--critical)"' : ""}>` +
+            `${num(x.shortfall)}</td><td>${esc(x.plant_week || "")}</td></tr>`).join("") +
+          "</tbody></table></div>"
+        : '<p class="pl-empty">No sticking weeks in this period.</p>');
+    $("pg-body").innerHTML = html;
+  }
+
   // ══════════════════════════ PERIOD FILTER ══════════════════════════
   // Applied in the browser to data already loaded, so narrowing to a week is
   // instant and does not refetch three years of grid to show one row of it.
@@ -1055,6 +1353,7 @@ input.pin.tgt.manual{border-color:var(--warning);
   function renderAllPanes() {
     renderOverview(); renderDemand(); renderPlanting();
     renderBlocks(); renderCalendar();
+    if (S.pg) renderPropagation();
     if (S.det) renderDetail();
   }
 
@@ -2223,8 +2522,8 @@ input.pin.tgt.manual{border-color:var(--warning);
     });
   }
 
-  const TABS = ["overview", "demand", "planting", "blocks", "harvest", "review",
-               "protocol", "motherstock", "calendar"];
+  const TABS = ["overview", "demand", "planting", "blocks", "propagation",
+               "harvest", "review", "protocol", "motherstock", "calendar"];
 
   function setTab(name, fromHash) {
     // The tab lives in the URL so a workspace shortcut can point straight at
@@ -2246,6 +2545,7 @@ input.pin.tgt.manual{border-color:var(--warning);
     if (name === "motherstock" && S.ls) drawPool($("ls-chart"), S.ls.rows);
     // The transactional tabs read live state, so they refetch on reveal rather
     // than showing whatever was true when the page first loaded.
+    if (name === "propagation") loadPropagation().catch((e) => toast(esc(e.message), true));
     if (name === "harvest") loadCycles().catch((e) => toast(esc(e.message), true));
     if (name === "review") {
       loadReview().then(loadPlanState).then(loadChain)
@@ -2322,6 +2622,29 @@ input.pin.tgt.manual{border-color:var(--warning);
             onSubmit: (v) => fire(v.r),
           });
         } else { fire(); }
+        return;
+      }
+      const pg = ev.target.closest("[data-pg]");
+      if (pg && S.pg) {
+        const k = pg.dataset.pg, nm = S.pg.propagation_plan;
+        const after = (msg) => (r) => { toast(msg(r)); loadPropagation(); loadChain(); };
+        if (k === "create") {
+          run("create_propagation_plan", { plan: S.pg.plan },
+              after((r) => `Propagation plan ${r.name}: ${num(r.total_cuttings_required)} cuttings.`));
+        } else if (k === "reject") {
+          formModal({ title: "Reject " + nm,
+            fields: [{ name: "r", label: "Reason", type: "text", required: true }],
+            submitLabel: "Reject",
+            onSubmit: (v) => run("act", { doctype: "Summer Flower Propagation Plan",
+              name: nm, action: "reject", reason: v.r },
+              after(() => `${nm} rejected.`)) });
+        } else {
+          const map = { submit: "submit_for_approval", approve: "approve",
+                        batch: "create_motherstock_batch",
+                        requests: "create_seedling_requests" };
+          run("act", { doctype: "Summer Flower Propagation Plan", name: nm,
+                       action: map[k] }, after(() => `${nm}: ${k} done.`));
+        }
         return;
       }
       const ch = ev.target.closest("[data-ch]");
