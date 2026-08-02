@@ -16,6 +16,8 @@
     <label>{{ _("Farm") }}<select id="f-farm"></select></label>
     <label>{{ _("Protocol version") }}<select id="f-version"></select></label>
     <label>{{ _("Production plan") }}<select id="f-plan"></select></label>
+    <label>{{ _("Year") }}<select id="f-year"></select></label>
+    <label>{{ _("Week") }}<select id="f-week"></select></label>
     <span class="pl-asof" id="asof"></span>
   </div>
 
@@ -68,6 +70,7 @@
           </div>
         </div>
         <div class="pl-tiles pl-tiles-sm" id="dm-tiles"></div>
+        <p class="pl-callout" id="dm-note" hidden></p>
         <div id="dm-table" class="pl-scroll pl-tall"></div>
       </div>
     </section>
@@ -684,7 +687,8 @@ input.pin.tgt.manual{border-color:var(--warning);
               dv: null, deriv: null, pp: null, bf: null, cal: null, ls: null, pr: null,
               ppFilter: "all", dmFilter: "all", bfBlock: "", calYear: null,
               bfOpen: new Set(), cyc: null, cycle: null, det: null, rv: null,
-              plan: "", plans: null, bg: null, chain: null };
+              plan: "", plans: null, bg: null, chain: null,
+              year: "", week: "" };
 
   const KIND_COLOR = { stick: "--violet", plant: "--series-1", pinch: "--warning",
     harvest: "--good", uproot: "--critical", tc_order: "--serious",
@@ -795,13 +799,29 @@ input.pin.tgt.manual{border-color:var(--warning);
     let rows = w;
     if (S.dmFilter === "short") rows = def;
     if (S.dmFilter === "over") rows = sur;
+    // The cumulative column is a running total of the whole plan, so it is
+    // computed before narrowing -- otherwise a filtered view would restart it
+    // at zero and read as though nothing came before.
+    const cumAt = {};
+    let acc = 0;
+    w.forEach((r) => { acc += r.variance; cumAt[r.label] = acc; });
+    const shown = rows.filter((r) => inPeriod(r.year, r.week_no));
+    if (periodOn()) {
+      $("dm-note").hidden = false;
+      $("dm-note").textContent =
+        `Showing ${shown.length} of ${rows.length} weeks — ${periodLabel()}. ` +
+        `Totals above are for the whole plan.`;
+    } else {
+      $("dm-note").hidden = true;
+    }
+    rows = shown;
     let cum = 0;
     $("dm-table").innerHTML = rows.length
       ? '<table class="pl-t"><thead><tr><th>Week</th><th>Starts</th><th class="n">Demand</th>' +
         '<th class="n">Production</th><th class="n">Variance</th><th class="n">Cumulative</th>' +
         '<th class="n">Area ha</th></tr></thead><tbody>' +
         rows.map((r) => {
-          cum += r.variance;
+          cum = cumAt[r.label];
           const c = r.variance < 0 ? "var(--critical)" : r.variance > 0 ? "var(--good)" : "";
           return `<tr class="${r.production ? "" : "zero"}"><td>${esc(r.label)}</td>` +
             `<td>${esc(r.date)}</td><td class="n">${num(r.demand)}</td>` +
@@ -872,6 +892,9 @@ input.pin.tgt.manual{border-color:var(--warning);
     if (S.ppFilter === "flag") {
       rows = rows.filter((r) => r.below_minimum || r.in_past || r.unallocated);
     }
+    // A proposal is placed against its planting week, so that is what the period
+    // filter matches on.
+    rows = rows.filter((r) => inPeriod(r.planting_year, r.planting_week));
     const shown = rows.slice(0, 200);
     $("pp-table").innerHTML =
       '<table class="pl-t"><thead><tr><th>#</th><th>Stick</th><th>Plant</th><th>1st harvest</th>' +
@@ -936,7 +959,8 @@ input.pin.tgt.manual{border-color:var(--warning);
     bindTips($("bf-util"));
 
     // Overlay chart: stems bars with a demand line, same unit so one axis.
-    const rows = ov.filter((r) => r.stems || r.demand);
+    const rows = ov.filter((r) => (r.stems || r.demand)
+                                  && inPeriod(r.year, r.week_no));
     if (!rows.length) { $("bf-overlay").innerHTML = '<p class="pl-empty">Nothing standing and no demand in view.</p>'; return; }
     const W = 980, H = 240, L = 58, R = 8, T = 10, B = 30;
     const max = Math.max(...rows.map((r) => Math.max(r.stems, r.demand))) || 1;
@@ -992,6 +1016,46 @@ input.pin.tgt.manual{border-color:var(--warning);
         ? `${num(Math.round(u.net_sqm_used))} of ${num(Math.round(u.net_sqm_total))} m² net`
         : `area recorded on ${u.beds_measured}/${u.beds_total} beds only`) +
       `</span></div><div class="bg-grid">${cells}</div></div>`;
+  }
+
+  // ══════════════════════════ PERIOD FILTER ══════════════════════════
+  // Applied in the browser to data already loaded, so narrowing to a week is
+  // instant and does not refetch three years of grid to show one row of it.
+  const inPeriod = (year, week) => {
+    if (S.year && String(year) !== String(S.year)) return false;
+    if (S.week && String(week) !== String(S.week)) return false;
+    return true;
+  };
+  const periodOn = () => Boolean(S.year || S.week);
+  const periodLabel = () => S.year && S.week ? `${S.year}-W${String(S.week).padStart(2, "0")}`
+    : S.year ? String(S.year) : S.week ? `week ${S.week} of every year` : "";
+
+  function buildPeriodPickers() {
+    const weeks = (S.dv && S.dv.weeks) || [];
+    const ys = $("f-year"), ws = $("f-week");
+    const years = [...new Set(weeks.map((r) => r.year))].sort();
+    const keepY = S.year, keepW = S.week;
+    ys.innerHTML = "";
+    ys.add(new Option("All years", ""));
+    years.forEach((y) => ys.add(new Option(y, y)));
+    S.year = years.some((y) => String(y) === String(keepY)) ? keepY : "";
+    ys.value = S.year;
+
+    // Weeks offered are the ones the selected year actually has, so a 53-week
+    // year shows W53 and a 52-week year does not offer a week with no data.
+    const pool = weeks.filter((r) => !S.year || String(r.year) === String(S.year));
+    const wks = [...new Set(pool.map((r) => r.week_no))].sort((a, b) => a - b);
+    ws.innerHTML = "";
+    ws.add(new Option("All weeks", ""));
+    wks.forEach((w) => ws.add(new Option("W" + String(w).padStart(2, "0"), w)));
+    S.week = wks.some((w) => String(w) === String(keepW)) ? keepW : "";
+    ws.value = S.week;
+  }
+
+  function renderAllPanes() {
+    renderOverview(); renderDemand(); renderPlanting();
+    renderBlocks(); renderCalendar();
+    if (S.det) renderDetail();
   }
 
   // ══════════════════════════ HARVEST ══════════════════════════
@@ -1589,7 +1653,7 @@ input.pin.tgt.manual{border-color:var(--warning);
 
       const body = b.plantings.length ? b.plantings.map((p) => {
         const harv = p.weeks.filter((w) => w.is_harvest_week);
-        const cells = p.weeks.map((w) =>
+        const cells = p.weeks.filter((w) => inPeriod(w.year, w.week_no)).map((w) =>
           `<div class="bf-w ${w.is_actual ? "actual" : w.is_harvest_week ? "harv" : ""}"
             data-tip="${esc(`<b>${w.label}</b><br>${w.date}<br>` +
               (w.is_harvest_week
@@ -1728,7 +1792,10 @@ input.pin.tgt.manual{border-color:var(--warning);
       `<span class="pl-key"><i class="sw" style="background:var(${KIND_COLOR[k] || "--text-muted"})"></i>` +
       `${esc(label)}${c.counts[k] ? " (" + c.counts[k] + ")" : ""}</span>`).join("");
 
-    const yr = S.calYear || (c.years[0] || new Date().getFullYear());
+    // The filter bar's year wins when it is set, so the two cannot disagree.
+    const yr = (S.year ? +S.year : S.calYear) || (c.years[0] || new Date().getFullYear());
+    const ysel = $("cal-year");
+    if (ysel && String(ysel.value) !== String(yr)) ysel.value = String(yr);
     const MN = ["January", "February", "March", "April", "May", "June", "July",
                 "August", "September", "October", "November", "December"];
     const DOW = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
@@ -2124,6 +2191,7 @@ input.pin.tgt.manual{border-color:var(--warning);
       S.deriv = deriv; S.pp = pp; S.bf = bf; S.cal = cal; S.pr = pr;
       if (deriv && deriv.version) { S.version = deriv.version; $("f-version").value = S.version; }
 
+      buildPeriodPickers();
       const bsel = $("bf-block");
       bsel.innerHTML = '<option value="">All blocks</option>';
       (bf.blocks || []).forEach((b) => bsel.add(new Option(b.block_code, b.block)));
@@ -2371,6 +2439,15 @@ input.pin.tgt.manual{border-color:var(--warning);
       toggleGroup([["pp-all", "all"], ["pp-alloc", "alloc"], ["pp-flag", "flag"]],
         "ppFilter", renderPlanting);
 
+      $("f-year").addEventListener("change", (e) => {
+        S.year = e.target.value;
+        // Rebuild the week list: a 53-week year offers W53, a 52-week one does not.
+        buildPeriodPickers();
+        renderAllPanes();
+      });
+      $("f-week").addEventListener("change", (e) => {
+        S.week = e.target.value; renderAllPanes();
+      });
       $("bf-block").addEventListener("change", (e) => { S.bfBlock = e.target.value; renderBlocks(); });
       $("hv-cycle").addEventListener("change", (e) => {
         S.cycle = e.target.value; renderCycles(); loadDetail();

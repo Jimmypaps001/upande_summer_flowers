@@ -321,6 +321,12 @@ def planting_plan(plan=None, variety=None, farm=None):
 			if b.sticking_year and b.sticking_week else None,
 			"plant": f"{b.planting_year}-W{b.planting_week:02d}"
 			if b.planting_year and b.planting_week else None,
+			# Year and week as numbers too, so the dashboard can filter on a period
+			# without parsing the label back apart.
+			"planting_year": b.planting_year,
+			"planting_week": b.planting_week,
+			"sticking_year": b.sticking_year,
+			"sticking_week": b.sticking_week,
 			"planting_date": str(b.planting_date) if b.planting_date else None,
 			"pinch_date": str(b.pinch_date) if b.pinch_date else None,
 			"first_harvest": f"{b.first_harvest_year}-W{b.first_harvest_week:02d}"
@@ -331,6 +337,7 @@ def planting_plan(plan=None, variety=None, farm=None):
 			"below_minimum": bool(b.below_minimum),
 			"in_past": bool(b.planting_in_past),
 			"unallocated": bool(b.is_new_planting and not b.block),
+			"not_placed": bool(b.get("not_placed")),
 			"notes": b.notes,
 		})
 
