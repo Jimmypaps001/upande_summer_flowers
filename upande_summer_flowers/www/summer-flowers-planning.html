@@ -46,6 +46,20 @@
 
     <!-- ══ OVERVIEW ══ -->
     <section class="pl-pane is-on" data-pane="overview">
+
+      <!-- The whole process on one screen. Each tab answers one question well and
+           none of them answered "where is this crop": which stages have what they
+           need, and which one is holding the rest up. -->
+      <div class="pl-card">
+        <div class="pl-card-head">
+          <div><h2>{{ _("From the demand register to the field") }}</h2>
+               <p class="pl-note" id="po-sub">{{ _("Every stage of the process, read off the documents that carry it. A stage is green when it has what it needs, amber when something has to happen first.") }}</p></div>
+          <span id="po-count" class="pl-actions"></span>
+        </div>
+        <div id="po-verdict"></div>
+        <div id="po-flow"></div>
+      </div>
+
       <div class="pl-tiles" id="tiles"></div>
       <div class="pl-card">
         <div class="pl-card-head">
@@ -727,6 +741,25 @@ table.hc tbody tr:hover td:not(.hc-k):not(.hc-m){background:var(--surface-2)}
 .pl-bar-col{width:96px;padding-left:0!important}
 .pl-bar{display:block;height:7px;border-radius:4px;background:var(--seq-200);
   min-width:2px}
+/* A process reads as a sequence, so the stages are numbered and connected rather
+   than laid out as an unordered grid of cards. */
+.po-flow{display:flex;flex-wrap:wrap;gap:0;align-items:stretch;margin:4px 0 2px}
+.po-st{flex:1 1 155px;min-width:155px;background:var(--surface-2);
+  border:1px solid var(--border);border-top:3px solid var(--text-muted);
+  border-radius:9px;padding:9px 11px;margin:0 5px 8px 0;position:relative}
+.po-st.done{border-top-color:var(--good)}
+.po-st.blocked{border-top-color:var(--warning);background:var(--warn-bg,rgba(217,119,6,.06))}
+.po-st.stuck{border-top-color:var(--critical);box-shadow:0 0 0 1px var(--critical)}
+.po-n{position:absolute;top:7px;right:9px;font-size:.62rem;font-weight:700;
+  color:var(--text-muted)}
+.po-k{font-size:.64rem;text-transform:uppercase;letter-spacing:.05em;
+  color:var(--text-muted);font-weight:700;padding-right:16px}
+.po-v{font-size:.95rem;font-weight:650;margin:3px 0 1px}
+.po-doc{font-size:.68rem;color:var(--accent);word-break:break-all}
+.po-s{font-size:.7rem;color:var(--text-secondary);margin-top:2px}
+.po-d{font-size:.68rem;color:var(--text-muted);margin-top:3px;line-height:1.35}
+.po-b{font-size:.68rem;color:var(--critical);margin-top:4px;line-height:1.35}
+.po-tick{font-size:.68rem;color:var(--good);font-weight:700}
 .ch-flow{display:grid;gap:10px;grid-template-columns:repeat(auto-fit,minmax(210px,1fr))}
 .ch-step{background:var(--surface-2);border:1px solid var(--border);border-radius:9px;
   padding:11px 13px;border-left:3px solid var(--border)}
@@ -977,6 +1010,53 @@ table.hc tbody tr:hover td:not(.hc-k):not(.hc-m){background:var(--surface-2)}
     s += `<line class="baseline" x1="${padL}" x2="${w - padR}" y1="${padT + plotH}"
       y2="${padT + plotH}"/></svg>`;
     el.innerHTML = s; bindTips(el);
+  }
+
+  function loadProcess() {
+    return callOp("process_overview", { variety: S.variety, farm: S.farm,
+                                        plan: S.plan || null })
+      .then((r) => { S.po = r; renderProcess(); })
+      .catch((e) => { S.po = { error: e.message }; renderProcess(); });
+  }
+
+  function renderProcess() {
+    const r = S.po;
+    if (!r || r.error || !r.stages) {
+      $("po-flow").innerHTML = `<p class="pl-empty">${esc(
+        (r && r.error) || "Nothing in scope.")}</p>`;
+      $("po-verdict").innerHTML = ""; $("po-count").innerHTML = "";
+      return;
+    }
+    $("po-count").innerHTML =
+      `<span class="pill">${r.done_count} of ${r.total_count} stages ready</span>`;
+    $("po-sub").textContent = r.variety
+      ? `${r.variety} at ${r.farm}` + (r.plan ? ` · ${r.plan}` : "")
+      : "Every stage of the process, read off the documents that carry it.";
+    $("po-verdict").innerHTML = r.verdict
+      ? `<div class="pl-callout">${esc(r.verdict)}</div>` : "";
+
+    // Clicking a stage goes to the tab that acts on it, so the summary is a way in
+    // and not just a picture.
+    const TAB = { demand: "demand", plan: "plan", budget: "review",
+                  propagation: "propagation", tc: "plan", motherstock: "motherstock",
+                  plantings: "planting", cycles: "harvest", harvest: "harvest",
+                  inputs: "review" };
+    $("po-flow").innerHTML = '<div class="po-flow">' + r.stages.map((st, i) => {
+      const cls = st.key === r.stuck ? "stuck" : st.blocked ? "blocked"
+                                              : st.done ? "done" : "";
+      const tab = TAB[st.key];
+      return `<div class="po-st ${cls}"${tab ? ` data-po="${esc(tab)}"` +
+        ` role="button" tabindex="0" style="cursor:pointer"` : ""}>` +
+        `<span class="po-n">${i + 1}${st.done ? ' <span class="po-tick">✓</span>' : ""}</span>` +
+        `<div class="po-k">${esc(st.label)}</div>` +
+        `<div class="po-v">${esc(st.value || "—")}</div>` +
+        (st.doc ? `<div class="po-doc">${esc(st.doc)}</div>` : "") +
+        (st.state ? `<div class="po-s">${esc(st.state)}` +
+          (st.count && st.count > 1 ? ` · ${st.count}` : "") + `</div>` : "") +
+        (st.detail ? `<div class="po-d">${esc(st.detail)}</div>` : "") +
+        (st.blocked ? `<div class="po-b">${esc(st.blocked)}</div>` : "") +
+        `</div>`;
+    }).join("") + "</div>";
   }
 
   function renderOverview() {
@@ -1848,7 +1928,7 @@ table.hc tbody tr:hover td:not(.hc-k):not(.hc-m){background:var(--surface-2)}
   function renderAllPanes() {
     renderOverview(); renderDemand(); renderPlanting();
     renderBlocks(); renderCalendar(); renderScopeLine();
-    renderPlanTab();
+    renderPlanTab(); renderProcess();
     if (S.pg) renderPropagation();
     if (S.det) renderDetail();
   }
@@ -3503,6 +3583,9 @@ table.hc tbody tr:hover td:not(.hc-k):not(.hc-m){background:var(--surface-2)}
       // Keep the picker honest about which plan the page is actually showing.
       if (dv && dv.plan) { S.plan = dv.plan; const ps = $("f-plan"); if (ps) ps.value = dv.plan; }
       loadPlanState();
+      // The process summary is the first thing on the page, so it loads with the
+      // scope rather than waiting for its tab to be opened.
+      loadProcess();
       const pv = $("pr-version");
       pv.innerHTML = "";
       ((pr && pr.versions) || []).forEach((x) => pv.add(new Option(
@@ -3795,6 +3878,10 @@ table.hc tbody tr:hover td:not(.hc-k):not(.hc-m){background:var(--surface-2)}
         S.week = e.target.value; renderAllPanes();
       });
       $("bf-block").addEventListener("change", (e) => { S.bfBlock = e.target.value; renderBlocks(); });
+      $("po-flow").addEventListener("click", (e) => {
+        const st = e.target.closest("[data-po]");
+        if (st) setTab(st.dataset.po);
+      });
       $("wi-body").addEventListener("click", (e) => {
         const cell = e.target.closest(".ls-edit");
         if (cell) wiEdit(cell);

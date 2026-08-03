@@ -33,6 +33,7 @@ def _has_role(roles=APPROVER_ROLES):
 class SummerFlowerPropagationPlan(Document):
 	def validate(self):
 		self.pull_header()
+		self.count_outputs()
 		self.note_protocol_provenance()
 		self.build_requirement()
 		self.apply_existing_motherstock()
@@ -55,6 +56,21 @@ class SummerFlowerPropagationPlan(Document):
 		# weekly figure below is scaled by this, which is what the protocol's
 		# ramp_profile has always meant and what nothing outside the simulator used.
 		self._ramp = self._version.ramp_ratios()
+
+	def count_outputs(self):
+		"""Count what exists, rather than remembering what was made.
+
+		These two were incremented when a batch or a request was created, so
+		deleting one left the count claiming it was still there -- and the process
+		overview then reported the TC order as placed while the motherstock stage
+		said no batch had been raised.
+		"""
+		self.motherstock_batches_created = frappe.db.count(
+			"Summer Flower Motherstock Batch",
+			{"production_plan": self.production_plan, "docstatus": ["<", 2]})
+		if frappe.db.exists("DocType", "Seedling Request"):
+			self.seedling_requests_created = frappe.db.count(
+				"Seedling Request", {"custom_propagation_plan": self.name})
 
 	def note_protocol_provenance(self):
 		"""Every header field here is the production plan's answer, not a choice.
@@ -453,8 +469,9 @@ class SummerFlowerPropagationPlan(Document):
 		b.flags.ignore_permissions = True
 		b.insert()
 		frappe.db.commit()
-		self.db_set("motherstock_batches_created",
-		            cint(self.motherstock_batches_created) + 1)
+		self.db_set("motherstock_batches_created", frappe.db.count(
+			"Summer Flower Motherstock Batch",
+			{"production_plan": self.production_plan, "docstatus": ["<", 2]}))
 		for r in self.sources:
 			if r.source_type == "New Motherstock (TC)" and not r.motherstock_batch:
 				frappe.db.set_value("Summer Flower Propagation Source", r.name,
@@ -511,8 +528,8 @@ class SummerFlowerPropagationPlan(Document):
 			sr.insert()
 			made.append(sr.name)
 		frappe.db.commit()
-		self.db_set("seedling_requests_created",
-		            cint(self.seedling_requests_created) + len(made))
+		self.db_set("seedling_requests_created", frappe.db.count(
+			"Seedling Request", {"custom_propagation_plan": self.name}))
 		# Every name, not the first ten: a caller that has just created these has to
 		# be able to act on them -- link them, cancel them, clean them up.
 		return {"created": len(made), "names": made}
