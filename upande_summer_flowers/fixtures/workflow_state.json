@@ -3,6 +3,42 @@
   "docstatus": 0,
   "doctype": "Workflow State",
   "icon": "",
+  "modified": "2026-07-30 14:50:33.700348",
+  "name": "Active",
+  "style": "Success",
+  "workflow_state_name": "Active"
+ },
+ {
+  "docstatus": 0,
+  "doctype": "Workflow State",
+  "icon": "",
+  "modified": "2026-07-30 14:50:33.774468",
+  "name": "Superseded",
+  "style": "Info",
+  "workflow_state_name": "Superseded"
+ },
+ {
+  "docstatus": 0,
+  "doctype": "Workflow State",
+  "icon": "",
+  "modified": "2026-07-30 22:38:26.165418",
+  "name": "Planted",
+  "style": "Success",
+  "workflow_state_name": "Planted"
+ },
+ {
+  "docstatus": 0,
+  "doctype": "Workflow State",
+  "icon": "",
+  "modified": "2026-07-30 22:38:26.171248",
+  "name": "Uprooted",
+  "style": "Info",
+  "workflow_state_name": "Uprooted"
+ },
+ {
+  "docstatus": 0,
+  "doctype": "Workflow State",
+  "icon": "",
   "modified": "2025-06-27 16:12:41.379987",
   "name": "Draft",
   "style": "",
@@ -34,5 +70,14 @@
   "name": "Rejected",
   "style": "Danger",
   "workflow_state_name": "Rejected"
+ },
+ {
+  "docstatus": 0,
+  "doctype": "Workflow State",
+  "icon": "",
+  "modified": "2025-05-29 10:17:34.070278",
+  "name": "Cancelled",
+  "style": "Danger",
+  "workflow_state_name": "Cancelled"
  }
 ]

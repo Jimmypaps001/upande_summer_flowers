@@ -2,6 +2,27 @@
  {
   "docstatus": 0,
   "doctype": "Workflow Action Master",
+  "modified": "2026-07-30 22:38:26.248056",
+  "name": "Mark Planted",
+  "workflow_action_name": "Mark Planted"
+ },
+ {
+  "docstatus": 0,
+  "doctype": "Workflow Action Master",
+  "modified": "2026-07-30 22:38:26.253818",
+  "name": "Mark Uprooted",
+  "workflow_action_name": "Mark Uprooted"
+ },
+ {
+  "docstatus": 0,
+  "doctype": "Workflow Action Master",
+  "modified": "2026-07-30 22:38:26.255540",
+  "name": "Cancel Planting",
+  "workflow_action_name": "Cancel Planting"
+ },
+ {
+  "docstatus": 0,
+  "doctype": "Workflow Action Master",
   "modified": "2026-07-29 14:14:25.929584",
   "name": "Reopen",
   "workflow_action_name": "Reopen"

@@ -17,16 +17,27 @@ required_apps = ["erpnext", "upande_core"]
 
 fixtures = [
 	{
+		# All three workflows this module owns, not just the plan's. The other two
+		# govern doctypes this app defines, and widening them for the manager roles
+		# would not have travelled to another site while only one was listed.
 		"dt": "Workflow",
-		"filters": [["name", "in", ["Summer Flower Production Plan Approval"]]],
+		"filters": [["name", "in", [
+			"Summer Flower Production Plan Approval",
+			"Planting Calendar Approval",
+			"Crop Protocol Version Approval",
+		]]],
 	},
 	{
 		"dt": "Workflow State",
-		"filters": [["name", "in", ["Draft", "Pending Approval", "Approved", "Rejected"]]],
+		"filters": [["name", "in", ["Draft", "Pending Approval", "Approved",
+		                            "Rejected", "Active", "Superseded", "Planted",
+		                            "Uprooted", "Cancelled"]]],
 	},
 	{
 		"dt": "Workflow Action Master",
-		"filters": [["name", "in", ["Submit for Approval", "Approve", "Reject", "Reopen"]]],
+		"filters": [["name", "in", ["Submit for Approval", "Approve", "Reject",
+		                            "Reopen", "Mark Planted", "Mark Uprooted",
+		                            "Cancel Planting"]]],
 	},
 	# The Workspace itself is NOT a fixture: it belongs to the module, so
 	# developer_mode exports it to summer_flowers/workspace/ and migrate syncs it
