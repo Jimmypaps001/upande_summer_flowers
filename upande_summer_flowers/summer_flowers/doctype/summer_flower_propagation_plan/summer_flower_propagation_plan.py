@@ -445,6 +445,10 @@ class SummerFlowerPropagationPlan(Document):
 		b.company = self.company
 		b.production_plan = self.production_plan
 		b.peak_weekly_cuttings = peak
+		# Same reason as _probe_batch: peak is already in cuttings, grossed up once
+		# by cuttings_for_plants. Leaving apply_losses on its default made the real
+		# batch order 14% more than the probe had just quoted on the same document.
+		b.apply_losses = 0
 		b.first_sticking_date = first
 		b.flags.ignore_permissions = True
 		b.insert()
@@ -460,11 +464,19 @@ class SummerFlowerPropagationPlan(Document):
 		return b.name
 
 	def _peak_from_rows(self):
-		return max([cint(r.from_new_ms) for r in self.weeks] or [0])
+		"""The peak the new pool was asked to cover, not what it managed to supply.
+
+		from_new_ms on its own is the allocation after the ramp, so sizing a batch
+		from it sizes the pool from its own ramped output -- circular, and it
+		under-orders. The requirement is what the pool had to cover in that week:
+		what it did supply plus what was left uncovered. Without this the batch
+		ordered 9,949 mother plants against the 11,192 the same document asked for.
+		"""
+		return max([cint(r.from_new_ms) + cint(r.shortfall) for r in self.weeks] or [0])
 
 	def _first_from_rows(self):
 		dates = [getdate(r.week_start_date) for r in self.weeks
-		         if cint(r.from_new_ms) > 0]
+		         if cint(r.from_new_ms) + cint(r.shortfall) > 0]
 		return min(dates) if dates else None
 
 	@frappe.whitelist()
@@ -501,7 +513,9 @@ class SummerFlowerPropagationPlan(Document):
 		frappe.db.commit()
 		self.db_set("seedling_requests_created",
 		            cint(self.seedling_requests_created) + len(made))
-		return {"created": len(made), "names": made[:10]}
+		# Every name, not the first ten: a caller that has just created these has to
+		# be able to act on them -- link them, cancel them, clean them up.
+		return {"created": len(made), "names": made}
 
 
 @frappe.whitelist()

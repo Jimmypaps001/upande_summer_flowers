@@ -362,6 +362,13 @@ class PlantingCalendar(Document):
 		cycle.company = self.company
 
 		cycle.custom_is_summer_flower_cycle = 1
+		# Say the scope outright. is_block_scoped() reads custom_cycle_scope first and
+		# only falls back to "has a block", so leaving it unset left the cycle looking
+		# greenhouse-scoped -- and greenhouse-scoped cycles must carry a greenhouse,
+		# which a block planting deliberately does not. Every attempt to build a cycle
+		# from a calendar failed on that, which is why the site has no summer flower
+		# crop cycles at all.
+		cycle.custom_cycle_scope = "Block"
 		cycle.custom_block = self.block
 		cycle.custom_planting_calendar = self.name
 		cycle.custom_sf_variety = self.variety
