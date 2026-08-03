@@ -127,7 +127,7 @@ def build_cycles(p, tc_qty, order_date, num_cycles):
 	return cycles
 
 
-def _ramp_ratio(week_in_pool, ramp):
+def ramp_ratio(week_in_pool, ramp):
 	if week_in_pool < 0:
 		return 0.0
 	return ramp[week_in_pool] if week_in_pool < len(ramp) else ramp[-1]
@@ -199,7 +199,7 @@ def simulate(p, tc_qty, order_date, num_cycles=4, farm_overrides=None,
 		for c in cycles:
 			if c["first_cut_sw"] <= sw < c["expiry_sw"]:
 				w = sw - c["first_cut_sw"]
-				ramp_pct = _ramp_ratio(w, ramp)
+				ramp_pct = ramp_ratio(w, ramp)
 				base_cap = int(round(c["tc_qty"] * per_plant * ramp_pct))
 				phase = (f"Ramp {w + 1} ({int(round(ramp_pct * 100))}%)"
 				         if w < len(ramp) else "Full")
@@ -236,7 +236,7 @@ def simulate(p, tc_qty, order_date, num_cycles=4, farm_overrides=None,
 			w = sw - pool["start_sw"]
 			if w < 0 or w >= life:
 				continue
-			pct = _ramp_ratio(w, ramp)
+			pct = ramp_ratio(w, ramp)
 			cap = int(round(pool["plants"] * per_plant * pct))
 			if not cap:
 				continue

@@ -13,7 +13,7 @@ import math
 import frappe
 from frappe import _
 from frappe.model.document import Document
-from frappe.utils import add_days, getdate, now_datetime, nowdate
+from frappe.utils import add_days, cint, getdate, now_datetime, nowdate
 
 WEEKS_PER_YEAR = 52
 
@@ -167,14 +167,38 @@ class CropProtocolVersion(Document):
 		self.max_multiplication_factor = 1 + (cycles * factor)
 		self.lead_time_weeks = self.lead_time_for_cycles(cycles)
 
+	def ramp_ratios(self):
+		"""The climb to full cutting capacity, as one ratio per week.
+
+		A new pool does not cut at its full rate the week it starts. ramp_profile
+		records the shape ("25,50,75,100"); ramp_weeks its length. Falls back to
+		weeks_to_max_pc where only that was filled in, so a protocol written before
+		the profile existed still ramps instead of jumping to 100%.
+		"""
+		from upande_summer_flowers.summer_flowers.lifecycle_sim import parse_ramp
+
+		return parse_ramp(self.ramp_profile,
+		                  cint(self.ramp_weeks) or cint(self.weeks_to_max_pc))
+
+	def weeks_tc_to_first_cut(self):
+		"""Weeks from a TC plantlet arriving to the first cutting off it.
+
+		Tray and pot only. The ramp is not waited through -- it is cut through, at
+		the reducing rate ramp_profile describes, which is the whole point of having
+		a profile. Hardening is not in here either: it belongs to the cutting that
+		goes to the field, not to the mother plant that stays on the bench. This is
+		the same definition ms_establishment_weeks already documents, less the ramp.
+		"""
+		return (self.weeks_on_tray or 0) + (self.weeks_on_pot or 0)
+
 	def lead_time_for_cycles(self, cycles):
-		"""Weeks from receiving TC plantlets to a motherstock at max PC.
+		"""Weeks from receiving TC plantlets to the first cutting.
 
 		With no build-up it is a single establishment. With build-up the multiplied
 		generation needs its own establishment on top, so there is no cheap middle
 		option between 0 and 1 cycle.
 		"""
-		est = self.establishment_weeks or 0
+		est = self.weeks_tc_to_first_cut()
 		if not cycles:
 			return est
 		return est + (cycles * (self.cycle_time_weeks or 0)) + est

@@ -14,6 +14,8 @@
   "cuttings_required",
   "from_existing_ms",
   "from_new_ms",
+  "capacity_available",
+  "ramp_pct",
   "shortfall",
   "plant_week",
   "notes"
@@ -68,6 +70,20 @@
    "fieldtype": "Int",
    "in_list_view": 1,
    "label": "From New MS"
+  },
+  {
+   "fieldname": "capacity_available",
+   "fieldtype": "Int",
+   "label": "Capacity Available",
+   "in_list_view": 1,
+   "read_only": 1,
+   "description": "Cuttings every live pool can actually take this week, after the ramp to full capacity."
+  },
+  {
+   "fieldname": "ramp_pct",
+   "fieldtype": "Percent",
+   "label": "Of Full Capacity",
+   "read_only": 1
   },
   {
    "columns": 1,

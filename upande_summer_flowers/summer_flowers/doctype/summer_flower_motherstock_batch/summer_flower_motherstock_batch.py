@@ -71,8 +71,14 @@ class SummerFlowerMotherstockBatch(Document):
 		p = self.protocol_doc
 		stick = getdate(self.first_sticking_date)
 
-		# The motherstock must be at max PC by the week the first cuttings are stuck.
-		self.max_pc_date = stick
+		# The first cutting week and full capacity are not the same week. The pool
+		# climbs the ramp while it is being cut, so max PC lands ramp_weeks - 1 weeks
+		# after the first cut -- the last ramp step is the 100% one. Setting these
+		# equal, as this did, is what made the ramp invisible and every plan read as
+		# though a new pool delivered its full rate from day one.
+		ramp = p.ramp_ratios()
+		self.ramp_weeks = len(ramp)
+		self.max_pc_date = add_days(stick, 7 * (len(ramp) - 1))
 		self.tc_on_farm_date = add_days(stick, -7 * (self.lead_time_weeks or 0))
 		self.tc_order_date = add_days(stick, -7 * (self.total_lead_time_weeks or 0))
 		self.expiry_date = add_days(stick, 7 * (p.motherstock_life_weeks or 0))
@@ -96,6 +102,20 @@ class SummerFlowerMotherstockBatch(Document):
 			warnings.append(
 				_("The renewal order for the next generation was already due on {0}.").format(
 					frappe.format(self.renewal_tc_order_date, {"fieldtype": "Date"})
+				)
+			)
+		if len(ramp) > 1:
+			first_cap = int(round((self.mother_plants or 0)
+			                      * (p.cuttings_per_plant_per_week or 1) * ramp[0]))
+			warnings.append(
+				_("{0} mother plants reach full capacity on {1}, not on {2}. The "
+				  "first cutting week yields about {3} cuttings ({4}% of {5}), so "
+				  "any requirement inside those {6} weeks is only partly covered.").format(
+					self.mother_plants,
+					frappe.format(self.max_pc_date, {"fieldtype": "Date"}),
+					frappe.format(stick, {"fieldtype": "Date"}),
+					first_cap, int(round(ramp[0] * 100)),
+					self.effective_peak_cuttings, len(ramp),
 				)
 			)
 		if (self.lead_time_weeks or 0) > (p.motherstock_life_weeks or 0):
@@ -145,16 +165,19 @@ class SummerFlowerMotherstockBatch(Document):
 
 		tc_plants = self.tc_plants_required or 0
 		cycles = self.build_up_cycles or 0
-		est = p.establishment_weeks or 0
+		# The same definition the lead time uses, or the step dates drift away from
+		# tc_on_farm_date + lead_time_weeks and the two disagree on the same batch.
+		est = p.weeks_tc_to_first_cut()
 
 		step(_("Place TC order"), self.tc_order_date, tc_plants,
 		     _("Includes {0} weeks lab turnaround.").format(lab_turnaround_weeks()))
 		step(_("TC plantlets on farm"), self.tc_on_farm_date, tc_plants)
 
 		cursor = add_days(self.tc_on_farm_date, 7 * est)
-		step(_("TC generation productive"), cursor, tc_plants,
-		     _("{0} weeks establishment: tray {1}, pot {2}, max PC {3}, hardening {4}.").format(
-			     est, p.weeks_on_tray, p.weeks_on_pot, p.weeks_to_max_pc, p.hardening_weeks))
+		step(_("TC generation cuttable"), cursor, tc_plants,
+		     _("{0} weeks to first cut: tray {1}, pot {2}. Full capacity a further "
+		       "{3} weeks on.").format(est, p.weeks_on_tray, p.weeks_on_pot,
+		                               max(0, (self.ramp_weeks or 1) - 1)))
 
 		plants = tc_plants
 		for c in range(1, cycles + 1):
@@ -168,7 +191,11 @@ class SummerFlowerMotherstockBatch(Document):
 			     _("Second establishment period — this is why build-up jumps from "
 			       "{0} to {1} weeks at the first cycle.").format(est, est * 2 + 1))
 
-		step(_("Cutting run starts"), self.max_pc_date, self.mother_plants,
+		step(_("First cutting, ramp begins"), self.first_sticking_date,
+		     self.mother_plants,
+		     _("{0}-week ramp to full capacity: {1}% of the full rate in week one.")
+		     .format(self.ramp_weeks or 0, int(round((p.ramp_ratios() or [1])[0] * 100))))
+		step(_("Full cutting capacity"), self.max_pc_date, self.mother_plants,
 		     _("{0} cuttings per week for {1} weeks.").format(
 			     self.effective_peak_cuttings, p.motherstock_life_weeks))
 		step(_("Order renewal TC"), self.renewal_tc_order_date, tc_plants,

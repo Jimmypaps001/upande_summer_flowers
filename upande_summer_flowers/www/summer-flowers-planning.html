@@ -462,6 +462,10 @@ table.pl-t tr.zero td{color:var(--text-muted)}
 /* Fixed layout so the week columns stay put and the trailing free-text
    column cannot pull the figures away from their headers. */
 table.pl-t-cols{table-layout:fixed}
+/* A week that cannot be supplied is the point of this table, so it is marked
+   rather than muted -- reusing .zero greyed out exactly the rows to read. */
+table.pl-t tr.short td{background:var(--warn-bg,rgba(217,119,6,.07))}
+table.pl-t tr.short td:first-child{box-shadow:inset 2px 0 0 var(--warning)}
 table.pl-t-cols td:last-child{color:var(--text-muted);font-size:.72rem;
   overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .pl-scroll{overflow-x:auto}
@@ -1303,7 +1307,20 @@ input.pin.tgt.manual{border-color:var(--warning);
         m: `${t.bench_sqm} m² of bench${whole}` },
       { k: "TC plantlets", v: num(t.tc_plants),
         m: (t.tc_order_date ? "order by " + t.tc_order_date : "none needed") + whole },
-      { k: "Uncovered", v: num(p.uncovered), m: "no source",
+      { k: "Ramp to full capacity", v: `${t.ramp_weeks || 0} wk`,
+        m: t.full_capacity_date
+          ? `full rate from ${t.full_capacity_date}` : "no new pool needed",
+        c: t.lost_to_ramp ? "--serious" : "" },
+      { k: "Short during ramp", v: num(t.lost_to_ramp),
+        m: t.lost_to_ramp
+          ? `cuttings over ${t.ramp_short_weeks} week` +
+            (t.ramp_short_weeks === 1 ? "" : "s") + whole
+          : "the climb is covered",
+        c: t.lost_to_ramp ? "--critical" : "--good" },
+      { k: "Uncovered", v: num(p.uncovered),
+        m: t.plants_short
+          ? `${num(t.plants_short)} plants short → ${num(t.stems_at_risk)} stems${whole}`
+          : "no source",
         c: p.uncovered ? "--critical" : "--good" },
       { k: "Cost", v: num(Math.round(t.total_cost)),
         m: `${esc(r.currency || "")} · TC ${num(Math.round(t.tc_cost))}${whole}` },
@@ -1356,22 +1373,31 @@ input.pin.tgt.manual{border-color:var(--warning);
     }
 
     html += `<h3 class="pl-h3">Sticking week by week</h3>` +
+      `<p class="pl-note">Capacity is what the standing and new pools can actually ` +
+      `cut that week. Ramp is how much of their full rate that is: a pool climbs to ` +
+      `100% over ${t.ramp_weeks || 0} weeks from its first cut, so the early weeks ` +
+      `are short even when the pool is sized correctly for the peak.</p>` +
       (on ? `<p class="pl-note">Showing ${scoped.length} of ${r.weeks.length} ` +
         `sticking weeks — ${esc(periodLabel())}.</p>` : "") +
       (scoped.length
         ? '<div class="pl-scroll pl-tall">' +
           '<table class="pl-t pl-t-cols"><colgroup>' +
-          '<col style="width:82px"><col style="width:92px"><col style="width:80px">' +
-          '<col style="width:88px"><col style="width:96px"><col style="width:84px">' +
-          '<col style="width:92px"><col></colgroup>' +
+          '<col style="width:82px"><col style="width:92px"><col style="width:74px">' +
+          '<col style="width:84px"><col style="width:86px"><col style="width:62px">' +
+          '<col style="width:92px"><col style="width:78px">' +
+          '<col style="width:88px"><col></colgroup>' +
           '<thead><tr><th>Week</th>' +
           '<th>Starts</th><th class="n">Plants</th><th class="n">Cuttings</th>' +
+          '<th class="n">Capacity</th><th class="n">Ramp</th>' +
           '<th class="n">Existing MS</th><th class="n">New MS</th>' +
           '<th class="n">Uncovered</th><th>Planted in</th></tr></thead><tbody>' +
-          scoped.map((x) => `<tr${x.shortfall ? ' class="zero"' : ""}>` +
+          scoped.map((x) => `<tr${x.shortfall ? ' class="short"' : ""}>` +
             `<td>${esc(x.label)}</td><td>${esc(x.week_start_date)}</td>` +
             `<td class="n">${num(x.plants_to_stick)}</td>` +
             `<td class="n">${num(x.cuttings_required)}</td>` +
+            `<td class="n">${num(x.capacity)}</td>` +
+            `<td class="n"${x.ramp_pct < 100 ? ' style="color:var(--warning)"' : ""}>` +
+            `${x.ramp_pct ? x.ramp_pct.toFixed(0) + "%" : "—"}</td>` +
             `<td class="n">${num(x.from_existing_ms)}</td>` +
             `<td class="n">${num(x.from_new_ms)}</td>` +
             `<td class="n"${x.shortfall ? ' style="color:var(--critical)"' : ""}>` +

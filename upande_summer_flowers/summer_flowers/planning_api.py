@@ -1133,6 +1133,13 @@ def propagation_detail(plan=None, propagation_plan=None, variety=None, farm=None
 			"tc_cost": flt(d.tc_cost), "total_cost": flt(d.total_cost),
 			"batches_created": cint(d.motherstock_batches_created),
 			"requests_created": cint(d.seedling_requests_created),
+			"ramp_weeks": cint(d.ramp_weeks),
+			"full_capacity_date": str(d.full_capacity_date or ""),
+			"lost_to_ramp": cint(d.cuttings_lost_to_ramp),
+			"ramp_short_weeks": cint(d.ramp_short_weeks),
+			"mother_plants_to_cover_ramp": cint(d.mother_plants_to_cover_ramp),
+			"plants_short": cint(d.plants_short),
+			"stems_at_risk": cint(d.stems_at_risk),
 		},
 		"warning": d.schedule_warning,
 		"weeks": [{
@@ -1144,6 +1151,8 @@ def propagation_detail(plan=None, propagation_plan=None, variety=None, farm=None
 			"from_existing_ms": cint(r.from_existing_ms),
 			"from_new_ms": cint(r.from_new_ms),
 			"shortfall": cint(r.shortfall),
+			"capacity": cint(r.capacity_available),
+			"ramp_pct": flt(r.ramp_pct),
 			"plant_week": r.plant_week,
 		} for r in d.weeks],
 		"sources": [{

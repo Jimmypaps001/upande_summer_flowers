@@ -30,10 +30,17 @@
   "cuttings_from_existing",
   "cuttings_from_new",
   "cuttings_uncovered",
+  "plants_short",
+  "stems_at_risk",
   "cb3",
   "existing_cover_pct",
   "mother_plants_required",
   "peak_bench_sqm",
+  "ramp_weeks",
+  "full_capacity_date",
+  "cuttings_lost_to_ramp",
+  "ramp_short_weeks",
+  "mother_plants_to_cover_ramp",
   "sec_tc",
   "tc_plants_required",
   "tc_order_date",
@@ -210,6 +217,20 @@
    "read_only": 1
   },
   {
+   "fieldname": "plants_short",
+   "fieldtype": "Int",
+   "label": "Plants That Cannot Be Stuck",
+   "read_only": 1,
+   "description": "Uncovered cuttings converted back to plants. This is what the ramp and any other shortfall cost in the field, not just on the bench."
+  },
+  {
+   "fieldname": "stems_at_risk",
+   "fieldtype": "Int",
+   "label": "Stems At Risk",
+   "read_only": 1,
+   "description": "Those plants over their whole life in the ground, at the protocol's stems per plant. The production plan still counts them; this says what is behind them."
+  },
+  {
    "fieldname": "cb3",
    "fieldtype": "Column Break"
   },
@@ -231,6 +252,39 @@
    "label": "Bench m\u00b2 at Peak",
    "precision": "1",
    "read_only": 1
+  },
+  {
+   "fieldname": "ramp_weeks",
+   "fieldtype": "Int",
+   "label": "Ramp Weeks to Full Capacity",
+   "read_only": 1,
+   "description": "A new pool climbs to its full cutting rate over these weeks. It does not start at 100%."
+  },
+  {
+   "fieldname": "full_capacity_date",
+   "fieldtype": "Date",
+   "label": "New Pool at Full Capacity",
+   "read_only": 1
+  },
+  {
+   "fieldname": "cuttings_lost_to_ramp",
+   "fieldtype": "Int",
+   "label": "Cuttings Short During Ramp",
+   "read_only": 1,
+   "description": "Cuttings the new pool cannot take while it is still climbing. This is the cost of the ramp, not a sizing error."
+  },
+  {
+   "fieldname": "ramp_short_weeks",
+   "fieldtype": "Int",
+   "label": "Weeks Short During Ramp",
+   "read_only": 1
+  },
+  {
+   "fieldname": "mother_plants_to_cover_ramp",
+   "fieldtype": "Int",
+   "label": "Mother Plants to Cover the Ramp",
+   "read_only": 1,
+   "description": "Plants needed for even the first ramp week to be fully covered. Larger than the peak sizing, and idle once the ramp is done -- a decision, not a default."
   },
   {
    "fieldname": "sec_tc",

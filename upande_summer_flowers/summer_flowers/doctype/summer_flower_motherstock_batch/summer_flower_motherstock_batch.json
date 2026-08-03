@@ -42,6 +42,7 @@
   "schedule_section",
   "first_sticking_date",
   "max_pc_date",
+  "ramp_weeks",
   "tc_on_farm_date",
   "cb_sched",
   "tc_order_date",
@@ -275,6 +276,13 @@
    "fieldtype": "Date",
    "label": "Motherstock Productive By",
    "read_only": 1
+  },
+  {
+   "fieldname": "ramp_weeks",
+   "fieldtype": "Int",
+   "label": "Ramp Weeks to Full Capacity",
+   "read_only": 1,
+   "description": "Weeks of reduced cutting capacity from the first cut. Full capacity lands on Motherstock Productive By."
   },
   {
    "fieldname": "tc_on_farm_date",
