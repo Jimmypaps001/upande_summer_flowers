@@ -11,7 +11,7 @@ import math
 
 import frappe
 from frappe import _
-from frappe.utils import cint, flt, getdate, nowdate
+from frappe.utils import add_days, cint, flt, getdate, nowdate
 
 from upande_summer_flowers.summer_flowers.doctype.summer_flower_production_plan.summer_flower_production_plan import (
 	protocol_freshness,
@@ -22,7 +22,11 @@ from upande_summer_flowers.summer_flowers.motherstock_sim import (
 	simulate,
 	tc_needed_for,
 )
-from upande_summer_flowers.summer_flowers.planning import iso_monday, iso_year_week
+from upande_summer_flowers.summer_flowers.planning import (
+	iso_monday,
+	iso_year_week,
+	week_sequence,
+)
 
 
 def _guard():
@@ -293,6 +297,227 @@ def _first_sticking_for(plan):
 	return iso_monday(row[0].y, row[0].w) if row else None
 
 
+
+# ---------------------------------------------------------------------------
+# What a TC quantity actually produces
+# ---------------------------------------------------------------------------
+
+def _tc_production(plan_doc, version, tc_qty, order_date, to_prop_pct=0,
+                   max_bench_sqm=None):
+	"""Roll a TC quantity all the way through to stems against demand.
+
+	The chain has always been TC -> pool -> cuttings -> plants stuck -> plantings
+	-> flushes -> stems, but nothing walked it: a smaller order changed a
+	percentage on a tile and left production untouched. Here the cuttings a pool
+	can actually cut in a given week are what limit the plantings whose sticking
+	week that is, and only the plants that get stuck are folded into the weekly
+	grid. Buy less and the plantings shrink, so the stems shrink, so the coverage
+	shrinks.
+
+	Uses the plan's own flush arithmetic -- flush_offsets against the planting
+	date -- so with cuttings unlimited this reproduces the plan's stored numbers
+	rather than a second opinion about them.
+	"""
+	from upande_summer_flowers.summer_flowers import lifecycle_sim as ls
+
+	v = version
+	offsets = v.flush_offsets()
+	if not offsets:
+		return None
+
+	grid = week_sequence(plan_doc.from_year, plan_doc.from_week,
+	                     cint(plan_doc.weeks_covered))
+	index = {(y, w): i for i, (y, w, _d) in enumerate(grid)}
+	demand_map = {(r.year, r.week_no): cint(r.demand_stems)
+	              for r in frappe.get_all(
+	                  "Summer Flower Demand Week",
+	                  filters={"parent": plan_doc.market_demand},
+	                  fields=["year", "week_no", "demand_stems"])
+	              if (r.year, r.week_no) in index}
+
+	# Weekly cuttings the farm can actually take, from the pool this order builds.
+	# The horizon is measured from the ORDER date to the last week the plan needs a
+	# cutting, not the plan's own week count: the order goes in more than a year
+	# before the plan starts, so counting weeks_covered from it stopped the run
+	# short and the last sticking weeks had no capacity row at all -- which read as
+	# plantings that no order size could supply.
+	p = ls.params_from_version(v.name)
+	last_stick = max(
+		(iso_monday(cint(b.sticking_year), cint(b.sticking_week))
+		 for b in plan_doc.plan_blocks
+		 if cint(b.is_new_planting) and cint(b.sticking_year) and cint(b.sticking_week)),
+		default=None)
+	span = cint(plan_doc.weeks_covered)
+	if last_stick:
+		span = max(span, ((getdate(last_stick) - getdate(order_date)).days // 7) + 4)
+	sim = ls.simulate(p, cint(tc_qty), order_date,
+	                  default_to_prop_pct=flt(to_prop_pct),
+	                  max_bench_sqm=max_bench_sqm,
+	                  horizon_weeks=span)
+	capacity = {}
+	for r in sim["rows"]:
+		capacity[(r["year"], r["week_no"])] = capacity.get(
+			(r["year"], r["week_no"]), 0) + cint(r["to_farm"])
+
+	production = {k: 0 for k in index}
+	standing = 0
+	for b in plan_doc.plan_blocks:
+		if cint(b.is_new_planting):
+			continue
+		# Already in the ground: no cutting is needed for it, so no TC decision can
+		# touch it. Taken from the plan's own stored contribution.
+		if not b.existing_planting:
+			continue
+		from upande_summer_flowers.summer_flowers.doctype.planting_calendar \
+			.planting_calendar import production_by_week
+		pl = frappe.get_doc("Planting Calendar", b.existing_planting)
+		for (y, w), stems in production_by_week(pl).items():
+			if (y, w) in index:
+				production[(y, w)] += stems
+				standing += stems
+
+	# New plantings draw on their sticking week, earliest first.
+	rows = sorted(
+		[b for b in plan_doc.plan_blocks
+		 if cint(b.is_new_planting) and not cint(b.get("not_placed"))
+		 and cint(b.sticking_year) and cint(b.sticking_week)],
+		key=lambda b: (cint(b.sticking_year), cint(b.sticking_week)))
+
+	# The first week any pool built by this order can cut. A planting whose
+	# sticking week is before that cannot be supplied by it at any size, which is a
+	# different answer from "buy more" and has to read differently.
+	first_cut = min((( r["year"], r["week_no"]) for r in sim["rows"]
+	                 if cint(r["total_cap"])), default=None)
+
+	left = dict(capacity)
+	full = trimmed = dropped = 0
+	dropped_too_early = 0
+	plants_wanted = plants_stuck = 0
+	detail = []
+	for b in rows:
+		key = (cint(b.sticking_year), cint(b.sticking_week))
+		want_plants = cint(b.plants)
+		plants_wanted += want_plants
+		need = v.cuttings_for_plants(want_plants)
+		have = left.get(key, 0)
+		if have <= 0:
+			dropped += 1
+			too_early = bool(first_cut and key < first_cut)
+			if too_early:
+				dropped_too_early += 1
+			detail.append({"stick": "%s-W%02d" % key, "block": b.block,
+			               "wanted": want_plants, "got": 0,
+			               "state": "before first cut" if too_early else "dropped"})
+			continue
+		if have >= need:
+			got = want_plants
+			left[key] = have - need
+			full += 1
+			state = "full"
+		else:
+			# Partial: as many plants as the cuttings allow.
+			per_plant = (need / want_plants) if want_plants else 1
+			got = int(have / per_plant) if per_plant else 0
+			left[key] = 0
+			if got <= 0:
+				dropped += 1
+				detail.append({"stick": "%s-W%02d" % key, "block": b.block,
+				               "wanted": want_plants, "got": 0, "state": "dropped"})
+				continue
+			trimmed += 1
+			state = "trimmed"
+		plants_stuck += got
+		if state != "full":
+			detail.append({"stick": "%s-W%02d" % key, "block": b.block,
+			               "wanted": want_plants, "got": got, "state": state})
+
+		# Fold this planting's flushes in, at the plants that were actually stuck.
+		pdate = getdate(b.planting_date) if b.planting_date else None
+		if not pdate:
+			continue
+		uproot = pdate + datetime.timedelta(weeks=cint(v.total_weeks_in_ground))
+		for off, spp in offsets:
+			hd = pdate + datetime.timedelta(weeks=off)
+			if hd > uproot:
+				break
+			hy, hw = iso_year_week(hd)
+			if (hy, hw) in index:
+				production[(hy, hw)] += int(round(spp * got))
+
+	weeks = []
+	total_prod = total_dem = deficit_weeks = unmet = 0
+	for (y, w, _d) in grid:
+		dem = demand_map.get((y, w), 0)
+		prod = production.get((y, w), 0)
+		total_prod += prod
+		total_dem += dem
+		if prod < dem:
+			deficit_weeks += 1
+			unmet += dem - prod
+		weeks.append({"year": y, "week_no": w, "label": "%s-W%02d" % (y, w),
+		              "demand": dem, "production": prod, "variance": prod - dem,
+		              "capacity": capacity.get((y, w), 0)})
+
+	return {
+		"tc_qty": cint(tc_qty),
+		"order_date": str(order_date),
+		"weeks": weeks,
+		"production_stems": total_prod,
+		"demand_stems": total_dem,
+		"standing_stems": standing,
+		"coverage_pct": round(total_prod * 100.0 / total_dem, 2) if total_dem else 0,
+		"weeks_in_deficit": deficit_weeks,
+		"unmet_stems": unmet,
+		"plantings_full": full,
+		"plantings_trimmed": trimmed,
+		"plantings_dropped": dropped,
+		"dropped_too_early": dropped_too_early,
+		"dropped_no_capacity": dropped - dropped_too_early,
+		"first_cut_week": "%s-W%02d" % first_cut if first_cut else None,
+		"plants_wanted": plants_wanted,
+		"plants_stuck": plants_stuck,
+		"generations": sim.get("generations"),
+		"num_cycles": sim.get("num_cycles"),
+		"detail": detail[:40],
+	}
+
+
+def _solve_tc_for_demand(plan_doc, version, order_date, target_pct=100.0,
+                         tolerance_pct=10.0, ceiling=None):
+	"""Smallest TC order whose production lands within tolerance of demand.
+
+	Coverage rises with the order size but not smoothly -- a planting is whole beds
+	and either happens or does not -- so this bisects rather than inverting a
+	formula, and reports the coverage it actually reached instead of assuming the
+	target was hit.
+	"""
+	lo, hi = 0, cint(ceiling) or 200_000
+	floor_pct = target_pct - flt(tolerance_pct)
+	best = None
+	# Is the ceiling even enough? If not, say so rather than returning it silently.
+	top = _tc_production(plan_doc, version, hi, order_date)
+	if not top:
+		return None
+	if top["coverage_pct"] < floor_pct:
+		top["solved"] = False
+		top["reason"] = "even %s plantlets only reaches %.1f%%" % (
+			f"{hi:,}", top["coverage_pct"])
+		return top
+	for _ in range(18):
+		mid = (lo + hi) // 2
+		if mid == lo:
+			break
+		res = _tc_production(plan_doc, version, mid, order_date)
+		if res["coverage_pct"] >= floor_pct:
+			best = res
+			hi = mid
+		else:
+			lo = mid
+	best = best or top
+	best["solved"] = True
+	return best
+
+
 @frappe.whitelist()
 def tc_purchase(plan=None, variety=None, farm=None, tc_qty=None, tolerance_pct=10):
 	"""What to buy on the first TC order, and what buying differently does.
@@ -336,9 +561,45 @@ def tc_purchase(plan=None, variety=None, farm=None, tc_qty=None, tolerance_pct=1
 	factor = 1 + (cycles * flt(v.multiplication_factor_per_cycle))
 	pool_for = lambda tc: int(round(cint(tc) * factor))
 	cover_of_peak = (pool_for(chosen) * per_week / cuttings * 100) if cuttings else 0
-	base = cint(prop.tc_plants_required) if prop else recommended
+
+	# The order date decides which weeks the pool can supply at all, so it comes
+	# from the propagation plan where one exists rather than being invented.
+	order_date = (prop.tc_order_date if prop and prop.tc_order_date
+	              else _first_sticking_for(plan))
+	if order_date:
+		order_date = add_days(getdate(order_date),
+		                      0 if (prop and prop.tc_order_date)
+		                      else -7 * cint(v.lead_time_weeks))
+
+	# What this quantity actually grows, and the smallest quantity that lands the
+	# demand. Buying less is now a production number, not a percentage on a tile.
+	built = solved = None
+	if order_date:
+		built = _tc_production(p, v, chosen, order_date)
+		solved = _solve_tc_for_demand(p, v, order_date, tolerance_pct=tol,
+		                              ceiling=max(recommended * 40, 200_000))
+	base = cint(solved["tc_qty"]) if (solved and solved.get("solved")) else (
+		cint(prop.tc_plants_required) if prop else recommended)
 
 	return {
+		"order_date_used": str(order_date or ""),
+		"built": built,
+		"solved": solved,
+		"tc_for_demand": cint(solved["tc_qty"]) if solved else 0,
+		"tc_for_demand_solved": bool(solved and solved.get("solved")),
+		"tc_for_demand_coverage": flt(solved["coverage_pct"]) if solved else 0,
+		"tc_for_demand_reason": (solved or {}).get("reason"),
+		"built_coverage_pct": flt(built["coverage_pct"]) if built else None,
+		"built_production": cint(built["production_stems"]) if built else 0,
+		"built_unmet": cint(built["unmet_stems"]) if built else 0,
+		"built_deficit_weeks": cint(built["weeks_in_deficit"]) if built else 0,
+		"built_full": cint(built["plantings_full"]) if built else 0,
+		"built_trimmed": cint(built["plantings_trimmed"]) if built else 0,
+		"built_dropped": cint(built["plantings_dropped"]) if built else 0,
+		"built_dropped_too_early": cint(built["dropped_too_early"]) if built else 0,
+		"built_first_cut_week": (built or {}).get("first_cut_week"),
+		"built_plants": cint(built["plants_stuck"]) if built else 0,
+		"built_plants_wanted": cint(built["plants_wanted"]) if built else 0,
 		"plan": plan, "variety": p.variety, "farm": p.farm, "version": v.name,
 		"tolerance_pct": tol,
 		"peak_plants": peak_plants,
@@ -359,7 +620,7 @@ def tc_purchase(plan=None, variety=None, farm=None, tc_qty=None, tolerance_pct=1
 		"chosen_tc": chosen,
 		"chosen_pool": pool_for(chosen),
 		"chosen_cover_pct": round(cover_of_peak, 1),
-		"in_band": bool(base and abs(chosen - base) <= base * tol / 100),
+		"in_band": bool(built and abs(flt(built["coverage_pct"]) - 100) <= tol),
 		"band_low": int(round(base * (1 - tol / 100))) if base else 0,
 		"band_high": int(round(base * (1 + tol / 100))) if base else 0,
 		"rate_per_plantlet": flt(_rate_for(chosen)),

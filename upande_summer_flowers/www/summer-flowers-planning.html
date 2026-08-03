@@ -2362,23 +2362,29 @@ table.hc tbody tr:hover td:not(.hc-k):not(.hc-m){background:var(--surface-2)}
     const input = $("tc-qty");
     if (input && document.activeElement !== input) input.value = t.chosen_tc || "";
 
+    const cov = t.built_coverage_pct;
     $("tc-tiles").innerHTML = [
       { k: "Buy", v: num(t.chosen_tc),
-        m: `plantlets · ${num(Math.round(t.cost))} at ${t.rate_per_plantlet}/plantlet`,
-        c: t.in_band ? "--good" : "--critical" },
+        m: `plantlets · ${num(Math.round(t.cost))} at ${t.rate_per_plantlet}/plantlet` },
+      // This is the tile that was missing: what buying that quantity grows.
+      { k: "Demand it meets", v: cov === null ? "—" : cov.toFixed(1) + "%",
+        m: `${num(t.built_production)} stems, ${num(t.built_unmet)} short`,
+        c: cov === null ? "" : Math.abs(cov - 100) <= t.tolerance_pct ? "--good"
+           : cov >= 100 - t.tolerance_pct * 2 ? "--serious" : "--critical" },
       { k: `Inside ±${t.tolerance_pct}%`, v: t.in_band ? "yes" : "no",
-        m: `band ${num(t.band_low)} – ${num(t.band_high)}`,
+        m: t.tc_for_demand_solved
+          ? `${num(t.tc_for_demand)} plantlets lands it`
+          : `nothing lands it — best ${t.tc_for_demand_coverage.toFixed(1)}%`,
         c: t.in_band ? "--good" : "--critical" },
-      { k: "Covers the peak week", v: t.chosen_cover_pct.toFixed(1) + "%",
-        m: `${esc(t.peak_week || "—")} needs ${num(t.peak_cuttings)} cuttings`,
-        c: t.chosen_cover_pct >= 100 ? "--good"
-           : t.chosen_cover_pct >= 90 ? "--serious" : "--critical" },
+      { k: "Plantings it supplies", v: `${num(t.built_full)} full`,
+        m: `${num(t.built_trimmed)} part-planted, ${num(t.built_dropped)} not planted`,
+        c: t.built_dropped ? "--critical" : "--good" },
+      { k: "Plants stuck", v: num(t.built_plants),
+        m: `of ${num(t.built_plants_wanted)} the plan wants`,
+        c: t.built_plants < t.built_plants_wanted ? "--serious" : "--good" },
       { k: "Pool it builds", v: num(t.chosen_pool),
-        m: `×${t.multiplication_factor} over ${t.build_up_cycles} build-up cycles` },
-      { k: "Recommended", v: num(t.propagation_tc || t.recommended_tc),
-        m: t.propagation_plan
-          ? `${esc(t.propagation_plan)} — after standing motherstock`
-          : "with no standing motherstock" },
+        m: `×${t.multiplication_factor} over ${t.build_up_cycles} build-up cycles · ` +
+           `covers ${t.chosen_cover_pct.toFixed(0)}% of the peak week` },
       { k: "MS starts cutting", v: esc(t.first_cut_date || "—"),
         m: t.full_capacity_date
           ? `full rate ${esc(t.full_capacity_date)} after ${t.ramp_weeks} weeks`
@@ -2386,15 +2392,26 @@ table.hc tbody tr:hover td:not(.hc-k):not(.hc-m){background:var(--surface-2)}
     ].map(tile).join("");
 
     const notes = [];
-    if (!t.in_band) {
-      const under = t.chosen_tc < (t.propagation_tc || t.recommended_tc);
-      notes.push(`${num(t.chosen_tc)} plantlets is outside the ±${t.tolerance_pct}% ` +
-        `band around ${num(t.propagation_tc || t.recommended_tc)}. It builds a pool of ` +
-        `${num(t.chosen_pool)}, which covers ${t.chosen_cover_pct.toFixed(1)}% of the ` +
-        `peak week's ${num(t.peak_cuttings)} cuttings — ` +
-        (under
-          ? `so the plantings that week are short by the same fraction.`
-          : `so there is capacity standing idle outside the peak.`));
+    if (cov !== null && Math.abs(cov - 100) > t.tolerance_pct) {
+      notes.push(`${num(t.chosen_tc)} plantlets grows ${num(t.built_production)} stems ` +
+        `against ${num(t.built_production + t.built_unmet)} of demand — ` +
+        `<b>${cov.toFixed(1)}%</b>. ${num(t.built_trimmed)} plantings are part-planted ` +
+        `and ${num(t.built_dropped)} do not happen for want of cuttings, which is ` +
+        `${num(t.built_plants_wanted - t.built_plants)} plants never stuck.`);
+    }
+    if (t.built_dropped_too_early) {
+      notes.push(`${num(t.built_dropped_too_early)} of those plantings stick before ` +
+        `${esc(t.built_first_cut_week || "the first cut")}, which is the earliest week ` +
+        `any pool from this order can be cut. No order size reaches them — they need ` +
+        `either an earlier order or cuttings bought in already rooted.`);
+    }
+    if (!t.tc_for_demand_solved && t.tc_for_demand_reason) {
+      notes.push(`No order size lands the demand: ${esc(t.tc_for_demand_reason)}. ` +
+        `The limit is when the pool can cut, not how big it is.`);
+    } else if (t.tc_for_demand) {
+      notes.push(`${num(t.tc_for_demand)} plantlets is the smallest order that lands ` +
+        `within ±${t.tolerance_pct}% of demand, reaching ` +
+        `${t.tc_for_demand_coverage.toFixed(1)}%.`);
     }
     if (t.order_date) {
       notes.push(`This order has to be placed by ${esc(t.order_date)} to be on farm ` +

@@ -23,7 +23,7 @@ a what-if slider.
 import datetime
 
 import frappe
-from frappe.utils import flt, getdate
+from frappe.utils import cint, flt, getdate
 
 from upande_summer_flowers.summer_flowers.planning import iso_year_week
 
@@ -64,6 +64,21 @@ def params_from_version(version, overrides=None):
 		"weeks_on_pot": int(v.weeks_on_pot or 0),
 		"ramp_weeks": int(v.ramp_weeks or 0),
 		"ms_establishment_weeks": int(v.ms_establishment_weeks or 0),
+		# Delivery to first cut, the same figure the Motherstock Batch dates its
+		# schedule from: tray and pot, and a second establishment when the order is
+		# multiplied up first. NOT ms_establishment_weeks, which includes the ramp --
+		# the simulator then ramps capacity from the first cut as well, so using it
+		# waited out the ramp and reduced capacity for it, counting the same weeks
+		# twice and putting the first cut 11 weeks later than the batch does.
+		"tc_to_first_cut_weeks": int(
+			v.lead_time_for_cycles(cint(v.max_multiplication_cycles)) or 0),
+		# Plantlets are multiplied up before they become mother plants, which is what
+		# the build-up cycles in the lead time are for. The simulator used to treat
+		# one plantlet as one mother while still waiting out the build-up, so an
+		# order sized by the Motherstock Batch produced a fifth of the capacity that
+		# batch had sized it for.
+		"multiplication_factor": 1 + (cint(v.max_multiplication_cycles)
+		                              * flt(v.multiplication_factor_per_cycle)),
 		"ms_life_weeks": int(v.motherstock_life_weeks or 0),
 		"hardening_weeks": int(v.hardening_weeks or 0),
 		"weeks_to_pinch": int(v.weeks_to_pinch or 0),
@@ -88,10 +103,11 @@ def params_from_version(version, overrides=None):
 def build_cycles(p, tc_qty, order_date, num_cycles):
 	"""The repeating TC loop, each cycle timed off the previous one's expiry."""
 	lead = p["supplier_lead_weeks"]
-	estab = p["ms_establishment_weeks"]
+	estab = p.get("tc_to_first_cut_weeks") or p["ms_establishment_weeks"]
 	life = p["ms_life_weeks"]
 	ramp_w = max(1, p["ramp_weeks"])
 
+	factor = flt(p.get("multiplication_factor")) or 1.0
 	cycles = []
 	sw = 0
 	order = getdate(order_date)
@@ -102,6 +118,9 @@ def build_cycles(p, tc_qty, order_date, num_cycles):
 		c = {
 			"cycle": i + 1,
 			"tc_qty": int(tc_qty),
+			# The mother plants this order becomes, after build-up.
+			"ms_plants": int(round(int(tc_qty) * factor)),
+			"multiplication_factor": factor,
 			"order_sw": sw,
 			"arrive_sw": arrive_sw,
 			"first_cut_sw": first_cut_sw,
@@ -124,8 +143,14 @@ def build_cycles(p, tc_qty, order_date, num_cycles):
 		}
 		c["next_order_date"] = c["expiry_date"] - datetime.timedelta(weeks=lead + estab)
 		cycles.append(c)
+		# The next cycle starts at the week its own order date says it does. Setting
+		# this to expiry_sw put the replacement order in at the moment the previous
+		# motherstock died, so its first cut landed a full lead-plus-establishment
+		# later -- 53 weeks with no cutting capacity at all, while next_order_date
+		# said the opposite. The dates and the week indices have to agree, or the
+		# renewal that the schedule promises never happens in the simulation.
 		order = c["next_order_date"]
-		sw = expiry_sw
+		sw = c["next_order_sw"]
 	return cycles
 
 
@@ -229,7 +254,7 @@ def simulate(p, tc_qty, order_date, num_cycles=None, farm_overrides=None,
 			if c["first_cut_sw"] <= sw < c["expiry_sw"]:
 				w = sw - c["first_cut_sw"]
 				ramp_pct = ramp_ratio(w, ramp)
-				base_cap = int(round(c["tc_qty"] * per_plant * ramp_pct))
+				base_cap = int(round(c["ms_plants"] * per_plant * ramp_pct))
 				phase = (f"Ramp {w + 1} ({int(round(ramp_pct * 100))}%)"
 				         if w < len(ramp) else "Full")
 				source = f"MS{c['cycle']}"
@@ -401,7 +426,7 @@ def _pool_plants(cycles, prop_pools, sw, life):
 	total = 0
 	for c in cycles:
 		if c["first_cut_sw"] <= sw < c["expiry_sw"]:
-			total += c["tc_qty"]
+			total += c["ms_plants"]
 	for pool in prop_pools:
 		if pool["start_sw"] <= sw < pool["start_sw"] + life:
 			total += pool["plants"]

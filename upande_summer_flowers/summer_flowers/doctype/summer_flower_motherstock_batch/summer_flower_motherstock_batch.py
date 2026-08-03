@@ -6,7 +6,7 @@ import math
 import frappe
 from frappe import _
 from frappe.model.document import Document
-from frappe.utils import add_days, flt, getdate, nowdate
+from frappe.utils import add_days, cint, flt, getdate, nowdate
 
 from upande_summer_flowers.summer_flowers.planning import iso_year_week
 
@@ -64,7 +64,7 @@ class SummerFlowerMotherstockBatch(Document):
 		self.multiplication_factor = 1 + (cycles * (p.multiplication_factor_per_cycle or 0))
 		self.tc_plants_required = int(math.ceil(p.tc_plants_for(self.mother_plants, cycles)))
 		self.lead_time_weeks = p.lead_time_for_cycles(cycles)
-		self.total_lead_time_weeks = (self.lead_time_weeks or 0) + lab_turnaround_weeks()
+		self.total_lead_time_weeks = (self.lead_time_weeks or 0) + lab_lead_weeks(p)
 
 	# --------------------------------------------------------------- schedule
 	def build_schedule(self):
@@ -170,7 +170,7 @@ class SummerFlowerMotherstockBatch(Document):
 		est = p.weeks_tc_to_first_cut()
 
 		step(_("Place TC order"), self.tc_order_date, tc_plants,
-		     _("Includes {0} weeks lab turnaround.").format(lab_turnaround_weeks()))
+		     _("Includes {0} weeks lab turnaround.").format(lab_lead_weeks(p)))
 		step(_("TC plantlets on farm"), self.tc_on_farm_date, tc_plants)
 
 		cursor = add_days(self.tc_on_farm_date, 7 * est)
@@ -204,6 +204,20 @@ class SummerFlowerMotherstockBatch(Document):
 
 
 # ---------------------------------------------------------------------------
+
+def lab_lead_weeks(version):
+	"""Order-to-delivery at the TC lab, from one place.
+
+	The protocol carries supplier_lead_weeks per variety per farm and is versioned;
+	Summer Flower Settings carries a single global figure. Both were in use -- the
+	batch read the Setting, the lifecycle simulator read the protocol -- so the two
+	engines dated the same order differently and their coverage numbers could not be
+	reconciled. The protocol wins because it is the more specific and the auditable
+	one; the Setting remains the fallback for a protocol that has not filled it in.
+	"""
+	weeks = cint(getattr(version, "supplier_lead_weeks", 0))
+	return weeks or lab_turnaround_weeks()
+
 
 def lab_turnaround_weeks():
 	return frappe.db.get_single_value("Summer Flower Settings", "lab_turnaround_weeks") or 0
