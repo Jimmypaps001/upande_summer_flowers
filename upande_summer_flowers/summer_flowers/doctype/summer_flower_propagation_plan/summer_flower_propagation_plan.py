@@ -85,9 +85,12 @@ class SummerFlowerPropagationPlan(Document):
 		a planting has to be started.
 		"""
 		v = self._version
-		per_plant = flt(v.cuttings_per_plant_required) or 1.0
-		self.cuttings_per_plant = per_plant
-
+		# One definition of "cuttings for these plants", the protocol's own, which
+		# applies the rooting and field losses and then the cutting reject rate on
+		# top. This used to take cuttings_per_plant_required raw while the planning
+		# API used cuttings_for_plants(), so the two documents quoted different
+		# cutting counts for the same plantings -- and the pool was sized off the
+		# smaller one, short by the reject rate.
 		by_week = {}
 		for b in self._plan.plan_blocks:
 			if not cint(b.is_new_planting):
@@ -110,9 +113,14 @@ class SummerFlowerPropagationPlan(Document):
 			self.append("weeks", {
 				"year": y, "week_no": w, "week_start_date": iso_monday(y, w),
 				"plants_to_stick": slot["plants"],
-				"cuttings_required": int(round(slot["plants"] * per_plant)),
+				"cuttings_required": v.cuttings_for_plants(slot["plants"]),
 				"plant_week": ", ".join(sorted(slot["out"]))[:140],
 			})
+
+		plants = sum(cint(r.plants_to_stick) for r in self.weeks)
+		cuttings = sum(cint(r.cuttings_required) for r in self.weeks)
+		self.cuttings_per_plant = (cuttings / plants) if plants else (
+			flt(v.cuttings_per_plant_required) or 1.0)
 
 	# ------------------------------------------------- existing motherstock
 	def apply_existing_motherstock(self):

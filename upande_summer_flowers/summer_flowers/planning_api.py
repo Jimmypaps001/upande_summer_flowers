@@ -194,13 +194,94 @@ def tc_derivation(plan=None, variety=None, farm=None):
 		{"step": "Mother plants required", "value": mothers, "unit": "plants",
 		 "note": f"at {per_week:g} cutting per plant per week"},
 	]
-	return {
+	# The TC order is the long pole in this whole chain -- 22 to 26 weeks of lead
+	# before a single cutting exists -- so the derivation carries it through to the
+	# order itself rather than stopping at mother plants. The propagation plan's
+	# numbers win where one exists, so the overview cannot disagree with the
+	# document that actually gets approved.
+	tc = {"tc_plants": 0, "tc_order_date": "", "tc_on_farm_date": "",
+	      "first_sticking_date": "", "tc_source": None, "tc_cost": 0,
+	      "ramp_weeks": 0, "full_capacity_date": "", "lost_to_ramp": 0}
+	rows = frappe.get_all(
+		"Summer Flower Propagation Plan",
+		filters={"production_plan": dv["plan"], "status": ["!=", "Rejected"]},
+		fields=["name", "tc_plants_required", "tc_order_date", "tc_on_farm_date",
+		        "first_sticking_date", "mother_plants_required", "peak_bench_sqm",
+		        "ramp_weeks", "full_capacity_date", "cuttings_lost_to_ramp",
+		        "tc_cost", "status"],
+		order_by="creation desc", limit=1)
+	if rows:
+		r = rows[0]
+		tc.update({
+			"tc_plants": cint(r.tc_plants_required),
+			"tc_order_date": str(r.tc_order_date or ""),
+			"tc_on_farm_date": str(r.tc_on_farm_date or ""),
+			"first_sticking_date": str(r.first_sticking_date or ""),
+			"tc_source": r.name, "tc_status": r.status,
+			"tc_cost": flt(r.tc_cost),
+			"ramp_weeks": cint(r.ramp_weeks),
+			"full_capacity_date": str(r.full_capacity_date or ""),
+			"lost_to_ramp": cint(r.cuttings_lost_to_ramp),
+		})
+		if cint(r.mother_plants_required):
+			# The plan nets off standing motherstock and sizes on the worst uncovered
+			# week, so its figure is the one to act on. Say where the difference from
+			# the raw derivation comes from rather than showing two numbers.
+			if cint(r.mother_plants_required) != mothers:
+				steps[-1]["note"] += _(
+					" — {0} says {1} after netting off standing motherstock"
+				).format(r.name, cint(r.mother_plants_required))
+				steps[-1]["value"] = cint(r.mother_plants_required)
+			mothers = cint(r.mother_plants_required)
+	elif mothers:
+		# No propagation plan yet, so size the order the same way one would: run an
+		# unsaved batch through its own controller instead of repeating its maths.
+		probe = frappe.new_doc("Summer Flower Motherstock Batch")
+		probe.variety, probe.farm, probe.protocol = dv["variety"], dv["farm"], v.name
+		probe.peak_weekly_cuttings = cuttings
+		probe.first_sticking_date = _first_sticking_for(dv["plan"])
+		if probe.first_sticking_date:
+			probe.run_method("validate")
+			tc.update({
+				"tc_plants": cint(probe.tc_plants_required),
+				"tc_order_date": str(probe.tc_order_date or ""),
+				"tc_on_farm_date": str(probe.tc_on_farm_date or ""),
+				"first_sticking_date": str(probe.first_sticking_date or ""),
+				"tc_source": "sized here — no propagation plan yet",
+				"tc_cost": flt(probe.tc_cost),
+				"ramp_weeks": cint(probe.ramp_weeks),
+				"full_capacity_date": str(probe.max_pc_date or ""),
+			})
+
+	steps.append({
+		"step": "TC plantlets to order", "value": tc["tc_plants"], "unit": "plantlets",
+		"note": ("order by %s, on farm %s, first cut %s"
+		         % (tc["tc_order_date"] or "?", tc["tc_on_farm_date"] or "?",
+		            tc["first_sticking_date"] or "?")) if tc["tc_plants"]
+		        else "nothing sized yet",
+	})
+	tc["tc_late"] = bool(tc["tc_order_date"]
+	                     and getdate(tc["tc_order_date"]) < getdate(nowdate()))
+
+	out = {
 		"plan": dv["plan"], "variety": dv["variety"], "farm": dv["farm"],
 		"version": v.name, "steps": steps, "mothers_required": mothers,
 		"pots_required": int(round(mothers / (v.plants_per_pot or 1))) if mothers else 0,
 		"bench_sqm": round(mothers / v.plants_per_sqm_bench, 1)
 		if v.plants_per_sqm_bench else 0,
 	}
+	out.update(tc)
+	return out
+
+
+def _first_sticking_for(plan):
+	"""Earliest sticking week the plan proposes, as a date."""
+	row = frappe.db.sql("""select sticking_year y, sticking_week w
+		from `tabSummer Flower Plan Block`
+		where parent = %s and is_new_planting = 1 and ifnull(not_placed, 0) = 0
+		  and ifnull(sticking_year, 0) > 0
+		order by sticking_year asc, sticking_week asc limit 1""", (plan,), as_dict=True)
+	return iso_monday(row[0].y, row[0].w) if row else None
 
 
 @frappe.whitelist()

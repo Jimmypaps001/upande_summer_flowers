@@ -33,9 +33,10 @@
     <nav class="pl-tabs" role="tablist" aria-label="{{ _('Sections') }}">
       <button role="tab" data-tab="overview" class="is-on" aria-selected="true">{{ _("Overview") }}</button>
       <button role="tab" data-tab="demand" aria-selected="false">{{ _("Market Demand") }}</button>
+      <button role="tab" data-tab="plan" aria-selected="false">{{ _("Production Plan") }}</button>
+      <button role="tab" data-tab="propagation" aria-selected="false">{{ _("Propagation") }}</button>
       <button role="tab" data-tab="planting" aria-selected="false">{{ _("Planting Plan") }}</button>
       <button role="tab" data-tab="blocks" aria-selected="false">{{ _("Block Forecast") }}</button>
-      <button role="tab" data-tab="propagation" aria-selected="false">{{ _("Propagation") }}</button>
       <button role="tab" data-tab="harvest" aria-selected="false">{{ _("Harvest") }}</button>
       <button role="tab" data-tab="review" aria-selected="false">{{ _("Review") }}<span id="rv-badge" class="pl-badge" hidden></span></button>
       <button role="tab" data-tab="protocol" aria-selected="false">{{ _("Protocol") }}</button>
@@ -129,6 +130,31 @@
         <div id="bf-overlay"></div>
       </div>
 
+      <!-- The same thing as a calendar grid. The stacked bar strips were asked
+           about directly: they are hard to read because a block's whole cycle is
+           one row of lines with no week to anchor it to. Here every column is a
+           week and every row a planting, which is how the farm's own planning
+           sheet is laid out. -->
+      <div class="pl-card">
+        <div class="pl-card-head">
+          <div><h2>{{ _("Harvest calendar") }}</h2>
+               <p class="pl-note">{{ _("Every planting as a row, every week as a column, the flush in the cell. The bands underneath sum the same weeks: total production, the grade split it breaks into, the demand for that week and the gap between them.") }}</p></div>
+          <span class="pl-actions">
+            <label class="pl-inline">{{ _("Show") }}
+              <select id="hc-scope">
+                <option value="harvest">{{ _("Harvest weeks only") }}</option>
+                <option value="all">{{ _("Every week in the cycle") }}</option>
+              </select></label>
+            <label class="pl-inline">{{ _("Cells") }}
+              <select id="hc-unit">
+                <option value="stems">{{ _("Stems") }}</option>
+                <option value="pct">{{ _("% of the week's demand") }}</option>
+              </select></label>
+          </span>
+        </div>
+        <div id="hc-body"></div>
+      </div>
+
       <!-- then the individuals -->
       <div class="pl-card">
         <div class="pl-card-head">
@@ -150,6 +176,44 @@
     </section>
 
     <!-- ══ PROPAGATION ══ -->
+    <!-- ══ PRODUCTION PLAN ══ -->
+    <!-- The middle of the chain, and until now the only step with no home of its
+         own: demand went straight to propagation in the tab order even though the
+         production plan is what sits between them, is what the motherstock is
+         checked against, and is what has to be agreed before a budget or a
+         propagation plan exists. -->
+    <section class="pl-pane" data-pane="plan">
+      <div class="pl-card">
+        <div class="pl-card-head">
+          <div><h2>{{ _("Demand to budget") }}</h2>
+               <p class="pl-note">{{ _("The chain for this variety. Each step runs from here using the same methods the doctypes use, so a plan created here is the same document as one created on the desk.") }}</p></div>
+          <span id="pn-actions" class="pl-actions"></span>
+        </div>
+        <div id="ch-steps"></div>
+      </div>
+
+      <div class="pl-card">
+        <div class="pl-card-head">
+          <div><h2>{{ _("What this plan asks for") }}</h2>
+               <p class="pl-note">{{ _("Change the plan and regenerate as often as you like: nothing is committed until it is approved, and approval is what posts the budget and lets the propagation plan be built.") }}</p></div>
+        </div>
+        <div class="pl-tiles pl-tiles-sm" id="pn-tiles"></div>
+        <h3 class="pl-h3">{{ _("Space required") }}</h3>
+        <div class="pl-tiles pl-tiles-sm" id="ch-space"></div>
+        <div id="ch-space-note"></div>
+      </div>
+
+      <div class="pl-card">
+        <div class="pl-card-head">
+          <div><h2>{{ _("Motherstock check") }}</h2>
+               <p class="pl-note">{{ _("Read off this plan, before it is agreed: the peak sticking week sizes the pool, the pool sizes the TC order, and the TC order is the longest lead time in the process. If that order date has already passed, the plan cannot be executed as it stands.") }}</p></div>
+        </div>
+        <div class="pl-tiles pl-tiles-sm" id="pn-ms"></div>
+        <div id="pn-ms-note"></div>
+        <div id="pn-steps" class="pl-scroll"></div>
+      </div>
+    </section>
+
     <section class="pl-pane" data-pane="propagation">
       <div class="pl-card">
         <div class="pl-card-head">
@@ -198,16 +262,6 @@
 
     <!-- ══ REVIEW ══ -->
     <section class="pl-pane" data-pane="review">
-      <div class="pl-card">
-        <div class="pl-card-head">
-          <div><h2>{{ _("Demand to budget") }}</h2>
-               <p class="pl-note">{{ _("The chain for this variety, and the space it asks the farm for. Each step can be run from here; they are the same methods the doctypes use.") }}</p></div>
-        </div>
-        <div id="ch-steps"></div>
-        <h3 class="pl-h3">{{ _("Space required") }}</h3>
-        <div class="pl-tiles pl-tiles-sm" id="ch-space"></div>
-        <div id="ch-space-note"></div>
-      </div>
 
       <div class="pl-card">
         <div class="pl-card-head">
@@ -566,6 +620,39 @@ input.pin.tgt.manual{border-color:var(--warning);
   color:var(--text-muted);font-weight:600}
 .pg-v{font-size:.9rem;font-weight:640}
 .pg-arrow{color:var(--text-muted);font-size:1.1rem}
+/* The harvest calendar is deliberately wide -- 53 week columns and more -- so it
+   scrolls inside its own box with the identifying columns and the week header
+   pinned. Without that, a cell in week 40 has nothing on screen to name it. */
+.hc-wrap{overflow:auto;max-height:70vh;border:1px solid var(--gridline);
+  border-radius:8px;background:var(--surface)}
+table.hc{border-collapse:separate;border-spacing:0;font-size:.72rem;
+  font-variant-numeric:tabular-nums}
+table.hc th,table.hc td{padding:3px 6px;white-space:nowrap;
+  border-bottom:1px solid var(--gridline);border-right:1px solid var(--gridline)}
+table.hc thead th{position:sticky;top:0;z-index:3;background:var(--surface-2);
+  font-size:.62rem;text-transform:uppercase;letter-spacing:.4px;
+  color:var(--text-muted);font-weight:600;text-align:right}
+table.hc thead tr.hc-year th{top:0}
+table.hc thead tr.hc-week th{top:20px}
+table.hc thead tr.hc-date th{top:40px;font-weight:400;text-transform:none;
+  letter-spacing:0}
+table.hc .hc-k{position:sticky;left:0;z-index:2;background:var(--surface);
+  text-align:left;font-weight:600;min-width:118px;box-shadow:1px 0 0 var(--gridline)}
+table.hc thead .hc-k{z-index:4;background:var(--surface-2)}
+table.hc .hc-m{text-align:right;color:var(--text-muted);font-size:.68rem}
+table.hc td.hc-c{text-align:right;color:var(--text-muted)}
+table.hc td.hc-c.on{color:var(--text);background:var(--seq-100,rgba(37,99,235,.07))}
+table.hc td.hc-c.act{background:var(--good-bg,rgba(5,150,105,.12));color:var(--text)}
+table.hc td.hc-c.pk{font-weight:700}
+table.hc tr.hc-band td,table.hc tr.hc-band th{background:var(--surface-2);
+  font-weight:600;border-top:1px solid var(--border)}
+table.hc tr.hc-band.sub td,table.hc tr.hc-band.sub th{font-weight:400;
+  background:var(--surface);color:var(--text-muted)}
+table.hc td.neg{color:var(--critical)}
+table.hc td.pos{color:var(--good)}
+table.hc tbody tr:hover td:not(.hc-k):not(.hc-m){background:var(--surface-2)}
+.hc-legend{display:flex;flex-wrap:wrap;gap:14px;margin:10px 0 6px;
+  font-size:.72rem;color:var(--text-muted)}
 .pl-scopeline{margin:-4px 0 14px;font-size:.78rem;color:var(--text-muted);
   display:flex;flex-wrap:wrap;gap:6px;align-items:center}
 .pl-scopeline b{color:var(--text);font-weight:600}
@@ -833,18 +920,33 @@ input.pin.tgt.manual{border-color:var(--warning);
 
   function renderOverview() {
     const t = S.dv && S.dv.totals;
+    const q = scoped();
+    const tc = S.deriv || {};
     $("tiles").innerHTML = t ? [
-      { k: "Demand", v: num(t.demand_stems), m: "stems over the plan" },
-      { k: "Planned production", v: num(t.production_stems),
-        m: t.coverage_pct.toFixed(1) + "% of demand", why: "coverage_pct",
-        c: t.coverage_pct >= 100 ? "--good" : "--serious" },
-      { k: "Weeks in deficit", v: num(t.weeks_in_deficit), m: "of " + S.dv.weeks.length,
-        why: "weeks_in_deficit", c: t.weeks_in_deficit ? "--serious" : "--good" },
-      { k: "Plants required", v: num(t.plants_required), m: num(t.beds_required) + " beds",
+      { k: "Demand", v: num(q.demand),
+        m: q.on ? `stems in ${esc(q.label)}` : "stems over the plan" },
+      { k: "Planned production", v: num(q.production),
+        m: q.coverage.toFixed(1) + "% of demand", why: "coverage_pct",
+        c: q.coverage >= 100 ? "--good" : "--serious" },
+      { k: "Weeks in deficit", v: num(q.deficitWeeks.length),
+        m: "of " + q.weeks.length + (q.on ? ` in ${esc(q.label)}` : ""),
+        why: "weeks_in_deficit",
+        c: q.deficitWeeks.length ? "--serious" : "--good" },
+      { k: "Plants required", v: num(q.plants), m: num(q.beds) + " beds",
         why: "plants_required" },
-      { k: "Peak sticking week", v: num(t.peak_weekly_sticking),
-        m: (t.peak_sticking_week || "—") + " — sizes the motherstock",
+      { k: "Peak sticking week", v: num(q.peakStick),
+        m: (q.peakStickWeek || "—") + " — sizes the motherstock",
         why: "peak_weekly_sticking" },
+      // The TC order is the long pole in this whole process -- 22 to 26 weeks of
+      // lead before a single cutting exists -- so it belongs on the first screen,
+      // not three tabs in.
+      { k: "TC plantlets", v: num(tc.tc_plants || 0),
+        m: tc.tc_order_date
+          ? `order by ${esc(tc.tc_order_date)}${tc.tc_late ? " — already past" : ""}`
+          : "no TC order sized yet",
+        c: tc.tc_late ? "--critical" : (tc.tc_plants ? "" : "--serious") },
+      { k: "Mother plants", v: num(tc.mothers_required || 0),
+        m: `${tc.bench_sqm || 0} m² of bench${wholePlan()}` },
     ].map(tile).join("") : '<p class="pl-empty">No plan in this scope.</p>';
     $("dv-sub").textContent = S.dv
       ? `${S.dv.plan} · ${S.dv.variety} at ${S.dv.farm} · ${S.dv.period} · ${S.dv.status}`
@@ -854,14 +956,16 @@ input.pin.tgt.manual{border-color:var(--warning);
 
   function renderDemand() {
     if (!S.dv) { $("dm-table").innerHTML = '<p class="pl-empty">No plan.</p>'; return; }
-    const t = S.dv.totals, w = S.dv.weeks;
-    const def = w.filter((r) => r.variance < 0), sur = w.filter((r) => r.variance > 0);
+    const q = scoped();
+    const w = q.weeks, def = q.deficitWeeks, sur = q.surplusWeeks;
     $("dm-tiles").innerHTML = [
-      { k: "Total demand", v: num(t.demand_stems), m: w.length + " weeks" },
-      { k: "Total production", v: num(t.production_stems), m: t.coverage_pct.toFixed(1) + "%",
+      { k: "Total demand", v: num(q.demand),
+        m: q.on ? `${w.length} of ${q.weeksTotal} weeks — ${esc(q.label)}`
+                : w.length + " weeks" },
+      { k: "Total production", v: num(q.production), m: q.coverage.toFixed(1) + "%",
         why: "coverage_pct" },
-      { k: "Net variance", v: sgn(t.variance_stems), m: "production − demand",
-        c: t.variance_stems >= 0 ? "--good" : "--critical" },
+      { k: "Net variance", v: sgn(q.variance), m: "production − demand",
+        c: q.variance >= 0 ? "--good" : "--critical" },
       { k: "Deficit weeks", v: num(def.length), why: "weeks_in_deficit",
         m: def.length ? "worst " + num(Math.min(...def.map((r) => r.variance))) : "none",
         c: def.length ? "--serious" : "--good" },
@@ -873,17 +977,19 @@ input.pin.tgt.manual{border-color:var(--warning);
     if (S.dmFilter === "short") rows = def;
     if (S.dmFilter === "over") rows = sur;
     // The cumulative column is a running total of the whole plan, so it is
-    // computed before narrowing -- otherwise a filtered view would restart it
-    // at zero and read as though nothing came before.
+    // computed off the unfiltered weeks -- otherwise a filtered view would
+    // restart it at zero and read as though nothing came before.
     const cumAt = {};
     let acc = 0;
-    w.forEach((r) => { acc += r.variance; cumAt[r.label] = acc; });
-    const shown = rows.filter((r) => inPeriod(r.year, r.week_no));
+    (S.dv.weeks || []).forEach((r) => { acc += r.variance; cumAt[r.label] = acc; });
+    // rows is already inside the period: scoped() narrowed it.
+    const shown = rows;
     if (periodOn()) {
       $("dm-note").hidden = false;
       $("dm-note").textContent =
-        `Showing ${shown.length} of ${rows.length} weeks — ${periodLabel()}. ` +
-        `Totals above are for the whole plan.`;
+        `Showing ${shown.length} of ${q.weeksTotal} weeks — ${periodLabel()}. ` +
+        `The totals above are for this period too; only the cumulative column ` +
+        `still counts from the start of the plan.`;
     } else {
       $("dm-note").hidden = true;
     }
@@ -1134,6 +1240,177 @@ input.pin.tgt.manual{border-color:var(--warning);
       `${seg(u.beds_uprooted, "var(--warning)", "Uprooted")}` +
       `${seg(u.beds_free, "var(--surface-2)", "Unused")}</span>` +
       `<span class="ub-num">${u.beds_used}/${u.beds_total} · ${u.pct_used.toFixed(0)}%</span></div>`;
+  }
+
+  // ═══════════════════════ HARVEST CALENDAR ═══════════════════════
+  // The farm's own sheet: plantings down, weeks across, the flush in the cell,
+  // then bands that sum the same columns. Built from the block forecast, so the
+  // rows are real plantings on real blocks, not proposals.
+  function renderHarvestCalendar() {
+    const bf = S.bf;
+    const el = $("hc-body");
+    if (!el) return;
+    if (!bf || !bf.blocks) { el.innerHTML = '<p class="pl-empty">No blocks.</p>'; return; }
+
+    // One row per planting, and the union of their weeks as columns.
+    const rows = [];
+    (bf.blocks || []).forEach((b) => {
+      if (S.bfBlock && b.block !== S.bfBlock) return;
+      (b.plantings || []).forEach((p) => rows.push({ b, p }));
+    });
+    if (!rows.length) {
+      el.innerHTML = '<p class="pl-empty">Nothing planted in this scope.</p>';
+      return;
+    }
+
+    const varieties = [...new Set(rows.map(({ p }) => p.variety).filter(Boolean))].sort();
+    const harvestOnly = ($("hc-scope") || {}).value !== "all";
+    const asPct = ($("hc-unit") || {}).value === "pct";
+
+    const colKey = (w) => `${w.year}-${String(w.week_no).padStart(2, "0")}`;
+    const cols = {};
+    rows.forEach(({ p }) => p.weeks.forEach((w) => {
+      if (!inPeriod(w.year, w.week_no)) return;
+      if (harvestOnly && !w.is_harvest_week) return;
+      cols[colKey(w)] = { year: w.year, week_no: w.week_no, date: w.date };
+    }));
+    const keys = Object.keys(cols).sort();
+    if (!keys.length) {
+      el.innerHTML = `<p class="pl-empty">No ${harvestOnly ? "harvest " : ""}weeks ` +
+        `in this period.</p>`;
+      return;
+    }
+
+    // Demand for the same weeks, so the gap band is against the real ask and not
+    // a re-derived one.
+    const demandAt = {};
+    ((S.dv && S.dv.weeks) || []).forEach((w) => {
+      demandAt[`${w.year}-${String(w.week_no).padStart(2, "0")}`] = w.demand || 0;
+    });
+
+    const cellAt = {};   // row index -> key -> {stems, actual}
+    const colTotal = {};
+    rows.forEach(({ p }, i) => {
+      cellAt[i] = {};
+      p.weeks.forEach((w) => {
+        const k = colKey(w);
+        if (!(k in cols)) return;
+        if (!w.stems && !w.is_harvest_week) return;
+        cellAt[i][k] = { stems: w.stems || 0, actual: w.is_actual,
+                         flush: w.flush_number };
+        colTotal[k] = (colTotal[k] || 0) + (w.stems || 0);
+      });
+    });
+    const peakCol = keys.reduce((a, k) =>
+      (colTotal[k] || 0) > (colTotal[a] || 0) ? k : a, keys[0]);
+
+    // Grade split comes from the protocol, so the bands add back to the total.
+    const grades = ((S.pr && S.pr.grades) || []).filter((g) => g.pct);
+
+    const yearSpan = [];
+    keys.forEach((k) => {
+      const y = cols[k].year;
+      const last = yearSpan[yearSpan.length - 1];
+      if (last && last.year === y) last.n += 1;
+      else yearSpan.push({ year: y, n: 1 });
+    });
+
+    const fmt = (v, k) => {
+      if (!v) return "";
+      if (!asPct) return num(v);
+      const d = demandAt[k] || 0;
+      return d ? (v / d * 100).toFixed(0) + "%" : "—";
+    };
+
+    const head =
+      '<thead>' +
+      `<tr class="hc-year"><th class="hc-k">Planting</th>` +
+      `<th class="hc-m">Variety</th><th class="hc-m">Beds</th><th class="hc-m">Plants</th>` +
+      yearSpan.map((y) => `<th colspan="${y.n}" style="text-align:center">${y.year}</th>`)
+        .join("") + `<th class="n">Total</th></tr>` +
+      `<tr class="hc-week"><th class="hc-k">Block</th>` +
+      `<th class="hc-m"></th><th class="hc-m"></th><th class="hc-m"></th>` +
+      keys.map((k) => `<th>W${String(cols[k].week_no).padStart(2, "0")}</th>`).join("") +
+      `<th></th></tr>` +
+      `<tr class="hc-date"><th class="hc-k">Planted</th>` +
+      `<th class="hc-m">Pinch</th><th class="hc-m">Uproot</th>` +
+      `<th class="hc-m">Stems</th>` +
+      keys.map((k) => `<th>${esc((cols[k].date || "").slice(5))}</th>`).join("") +
+      `<th></th></tr></thead>`;
+
+    const body = rows.map(({ b, p }, i) => {
+      const tot = Object.values(cellAt[i]).reduce((a, c) => a + c.stems, 0);
+      return `<tr><td class="hc-k" title="${esc(p.name)} · planted ` +
+        `${esc(p.planting_date || "")} · uproot ${esc(p.uproot_date || "")}">` +
+        `${esc(b.block_code)}</td>` +
+        `<td class="hc-m">${esc(p.variety || "")}</td>` +
+        `<td class="hc-m">${num(p.beds)}</td>` +
+        `<td class="hc-m">${num(p.plants)}</td>` +
+        keys.map((k) => {
+          const c = cellAt[i][k];
+          return `<td class="hc-c${c ? (c.actual ? " act" : " on") : ""}"` +
+            (c && c.flush ? ` title="Flush ${c.flush}${c.actual ? " — harvested" : ""}"` : "") +
+            `>${c ? fmt(c.stems, k) : "-"}</td>`;
+        }).join("") +
+        `<td class="n"><b>${num(tot)}</b></td></tr>`;
+    }).join("");
+
+    const bandRow = (label, meta, values, cls, fmtv) =>
+      `<tr class="hc-band ${cls || ""}"><th class="hc-k">${esc(label)}</th>` +
+      `<th class="hc-m" colspan="3">${meta || ""}</th>` +
+      keys.map((k) => {
+        const v = values[k] || 0;
+        const c = fmtv ? fmtv(v) : { txt: v ? num(v) : "-", cls: "" };
+        return `<td class="${c.cls}">${c.txt}</td>`;
+      }).join("") +
+      `<td class="n"><b>${num(keys.reduce((a, k) => a + (values[k] || 0), 0))}</b></td></tr>`;
+
+    const gradeBands = grades.map((g) => {
+      const vals = {};
+      keys.forEach((k) => {
+        vals[k] = Math.round((colTotal[k] || 0) * g.pct / 100);
+      });
+      return bandRow(g.grade, `${g.pct}%`, vals, "sub");
+    }).join("");
+
+    const dem = {}, diff = {};
+    keys.forEach((k) => {
+      dem[k] = demandAt[k] || 0;
+      diff[k] = (colTotal[k] || 0) - dem[k];
+    });
+
+    const foot = '<tbody>' +
+      bandRow("Weekly production", `${rows.length} plantings`, colTotal, "",
+              (v) => ({ txt: v ? num(v) : "-", cls: "" })) +
+      gradeBands +
+      bandRow("Market demand", "from the register", dem, "sub") +
+      bandRow("Difference", "production − demand", diff, "",
+              (v) => ({ txt: v ? sgn(v) : "-", cls: v < 0 ? "neg" : v > 0 ? "pos" : "" })) +
+      '</tbody>';
+
+    el.innerHTML =
+      '<div class="hc-legend">' +
+      '<span><i class="sw" style="background:var(--seq-100,rgba(37,99,235,.2))"></i>' +
+      'forecast flush</span>' +
+      '<span><i class="sw" style="background:var(--good-bg,rgba(5,150,105,.25))"></i>' +
+      'harvested</span>' +
+      `<span>peak week <b>${esc(peakCol)}</b> at ${num(colTotal[peakCol] || 0)} stems</span>` +
+      `<span>${keys.length} week${keys.length === 1 ? "" : "s"} shown` +
+      (periodOn() ? ` — ${esc(periodLabel())}` : "") + '</span>' +
+      '</div>' +
+      // Two things that would otherwise be read wrong off this grid.
+      (harvestOnly
+        ? '<p class="pl-note">Only the weeks something flushes are columns here, so ' +
+          'the demand and difference bands cover those weeks alone. Switch Show to ' +
+          '"Every week in the cycle" for a total that reconciles against the ' +
+          'register.</p>'
+        : "") +
+      (varieties.length > 1
+        ? `<p class="pl-callout">These rows cover ${esc(varieties.join(", "))}, but ` +
+          `the demand band is ${esc((S.dv && S.dv.variety) || "one variety")} only. ` +
+          `Pick a variety in the scope bar to compare like with like.</p>`
+        : "") +
+      `<div class="hc-wrap"><table class="hc">${head}${body ? "<tbody>" + body + "</tbody>" : ""}${foot}</table></div>`;
   }
 
   function renderOverlay() {
@@ -1439,6 +1716,49 @@ input.pin.tgt.manual{border-color:var(--warning);
     return true;
   };
   const periodOn = () => Boolean(S.year || S.week);
+
+  // Every tile on the page answers for the selected period, not for the whole
+  // plan. A headline reading three years while the table under it shows one week
+  // is the dashboard contradicting itself, which is how this was reported.
+  function scoped() {
+    const dv = S.dv || {};
+    const weeks = (dv.weeks || []).filter((r) => inPeriod(r.year, r.week_no));
+    const plantings = ((S.pp && S.pp.plantings) || []).filter(
+      (r) => inPeriod(r.planting_year, r.planting_week));
+    const sticks = ((S.pp && S.pp.plantings) || []).filter(
+      (r) => inPeriod(r.sticking_year, r.sticking_week));
+    const sum = (rows, k) => rows.reduce((a, x) => a + (x[k] || 0), 0);
+    const demand = sum(weeks, "demand"), production = sum(weeks, "production");
+
+    // Sticking is what sizes the motherstock, and it is a peak, not a total: the
+    // busiest single week in scope, with the week it falls in.
+    const byStick = {};
+    sticks.forEach((r) => {
+      const k = `${r.sticking_year}-W${String(r.sticking_week).padStart(2, "0")}`;
+      byStick[k] = (byStick[k] || 0) + (r.plants || 0);
+    });
+    let peakWeek = null, peak = 0;
+    Object.keys(byStick).forEach((k) => {
+      if (byStick[k] > peak) { peak = byStick[k]; peakWeek = k; }
+    });
+
+    return {
+      on: periodOn(), label: periodLabel(),
+      weeks, plantings, sticks,
+      weeksTotal: (dv.weeks || []).length,
+      demand, production,
+      variance: production - demand,
+      coverage: demand ? production / demand * 100 : 0,
+      deficitWeeks: weeks.filter((r) => (r.variance || 0) < 0),
+      surplusWeeks: weeks.filter((r) => (r.variance || 0) > 0),
+      plants: sum(plantings, "plants"),
+      beds: sum(plantings, "beds"),
+      cuttings: sum(sticks, "cuttings"),
+      peakStick: peak, peakStickWeek: peakWeek,
+    };
+  }
+  // Appended to a tile's sub-label when the number could not be narrowed.
+  const wholePlan = () => (periodOn() ? " · whole plan" : "");
   const periodLabel = () => S.year && S.week ? `${S.year}-W${String(S.week).padStart(2, "0")}`
     : S.year ? String(S.year) : S.week ? `week ${S.week} of every year` : "";
 
@@ -1467,6 +1787,7 @@ input.pin.tgt.manual{border-color:var(--warning);
   function renderAllPanes() {
     renderOverview(); renderDemand(); renderPlanting();
     renderBlocks(); renderCalendar(); renderScopeLine();
+    renderPlanTab();
     if (S.pg) renderPropagation();
     if (S.det) renderDetail();
   }
@@ -1815,7 +2136,8 @@ input.pin.tgt.manual{border-color:var(--warning);
 
   // ══════════════════════════ REVIEW ══════════════════════════
   function loadChain() {
-    return callOp("chain_status", { variety: S.variety, farm: S.farm })
+    return callOp("chain_status", { variety: S.variety, farm: S.farm,
+                                   plan: S.plan || null })
       .then((r) => { S.chain = r; renderChain(); })
       .catch((e) => { S.chain = { error: e.message }; renderChain(); });
   }
@@ -1885,6 +2207,89 @@ input.pin.tgt.manual{border-color:var(--warning);
     }
     $("ch-space-note").innerHTML = notes.length
       ? notes.map((n) => `<div class="pl-callout">${n}</div>`).join("") : "";
+  }
+
+  // The plan tab: what it asks for, and whether the motherstock behind it is
+  // buildable. Deliberately reads the same numbers the doctypes store rather than
+  // recomputing, so agreeing the plan here and on the desk cannot differ.
+  function renderPlanTab() {
+    const q = scoped();
+    const dv = S.dv, tc = S.deriv || {}, sp = (S.chain || {}).space;
+    if (!dv) {
+      $("pn-tiles").innerHTML = '<p class="pl-empty">No production plan in scope.</p>';
+      $("pn-ms").innerHTML = ""; $("pn-ms-note").innerHTML = "";
+      $("pn-steps").innerHTML = ""; $("pn-actions").innerHTML = "";
+      return;
+    }
+    const budget = ((S.chain || {}).budget || {}).name;
+    const st = S.plans && (S.plans.plans || []).find((x) => x.name === dv.plan);
+    const draft = !st || /Draft|Rejected/i.test(st.state || st.label || "");
+
+    $("pn-actions").innerHTML = [
+      `<button type="button" class="pl-btn" data-pn="regen">Regenerate from demand</button>`,
+      draft
+        ? `<button type="button" class="pl-btn primary" data-pn="submit">Submit for approval</button>`
+        : "",
+      `<a class="pl-btn" href="/app/summer-flower-production-plan/${encodeURIComponent(dv.plan)}"` +
+      ` target="_blank" rel="noopener">Open the document</a>`,
+    ].filter(Boolean).join(" ");
+
+    $("pn-tiles").innerHTML = [
+      { k: "Demand", v: num(q.demand),
+        m: q.on ? `stems in ${esc(q.label)}` : `stems over ${dv.period || "the plan"}` },
+      { k: "Production", v: num(q.production), m: q.coverage.toFixed(1) + "% covered",
+        c: q.coverage >= 100 ? "--good" : "--serious" },
+      { k: "Plants to raise", v: num(q.plants), m: num(q.beds) + " beds of planting" },
+      { k: "Cuttings to stick", v: num(q.cuttings), m: "after rooting and field loss" },
+      { k: "Peak sticking week", v: num(q.peakStick),
+        m: (q.peakStickWeek || "—") + " — sizes the pool" },
+      { k: "Status", v: esc(dv.status || "—"),
+        m: budget
+          ? `budget ${esc(budget)}`
+          : (/Approved/i.test(dv.status || "")
+              ? "approved, no budget posted yet"
+              : "a budget is posted when this is approved") },
+    ].map(tile).join("");
+
+    $("pn-ms").innerHTML = [
+      { k: "Mother plants", v: num(tc.mothers_required || 0),
+        m: `${tc.bench_sqm || 0} m² of bench${wholePlan()}` },
+      { k: "TC plantlets", v: num(tc.tc_plants || 0),
+        m: tc.tc_source ? esc(String(tc.tc_source)) : "not sized yet" },
+      { k: "Order TC by", v: esc(tc.tc_order_date || "—"),
+        m: tc.tc_late ? "already past" : "still achievable",
+        c: tc.tc_late ? "--critical" : "--good" },
+      { k: "On farm", v: esc(tc.tc_on_farm_date || "—"), m: "plantlets delivered" },
+      { k: "First cutting", v: esc(tc.first_sticking_date || "—"),
+        m: tc.ramp_weeks
+          ? `full capacity ${esc(tc.full_capacity_date || "—")} after a ` +
+            `${tc.ramp_weeks}-week ramp`
+          : "no ramp recorded" },
+      { k: "Short during ramp", v: num(tc.lost_to_ramp || 0), m: "cuttings",
+        c: tc.lost_to_ramp ? "--serious" : "--good" },
+    ].map(tile).join("");
+
+    const notes = [];
+    if (tc.tc_late) {
+      notes.push(`The TC order for this plan was due on ${esc(tc.tc_order_date)}. ` +
+        `Ordering today moves the first cutting out by the same margin, so either ` +
+        `the early plantings slip or the cuttings are bought in already rooted.`);
+    }
+    if (!tc.tc_plants) {
+      notes.push("No TC order has been sized yet. Create the propagation plan to " +
+        "size it against standing motherstock.");
+    }
+    $("pn-ms-note").innerHTML = notes.length
+      ? notes.map((n) => `<div class="pl-callout">${n}</div>`).join("") : "";
+
+    $("pn-steps").innerHTML = (tc.steps || []).length
+      ? '<table class="pl-t"><thead><tr><th>Step</th><th class="n">Value</th>' +
+        '<th>Unit</th><th>Why</th></tr></thead><tbody>' +
+        tc.steps.map((x) => `<tr><td>${esc(x.step)}</td>` +
+          `<td class="n">${num(x.value)}</td><td>${esc(x.unit || "")}</td>` +
+          `<td class="bf-meta">${esc(x.note || "")}</td></tr>`).join("") +
+        "</tbody></table>"
+      : "";
   }
 
   function loadReview() {
@@ -2065,6 +2470,7 @@ input.pin.tgt.manual{border-color:var(--warning);
   function renderBlocks() {
     const bf = S.bf; if (!bf) return;
     renderOverlay();
+    renderHarvestCalendar();
     const t = bf.totals;
     $("bf-tiles").innerHTML = [
       { k: "Blocks", v: num(t.blocks), m: "in scope" },
@@ -2672,7 +3078,7 @@ input.pin.tgt.manual{border-color:var(--warning);
     });
   }
 
-  const TABS = ["overview", "demand", "planting", "blocks", "propagation",
+  const TABS = ["overview", "demand", "plan", "propagation", "planting", "blocks",
                "harvest", "review", "protocol", "motherstock", "calendar"];
 
   function setTab(name, fromHash) {
@@ -2695,6 +3101,10 @@ input.pin.tgt.manual{border-color:var(--warning);
     if (name === "motherstock" && S.ls) drawPool($("ls-chart"), S.ls.rows);
     // The transactional tabs read live state, so they refetch on reveal rather
     // than showing whatever was true when the page first loaded.
+    if (name === "plan") {
+      loadChain().then(renderPlanTab)
+        .catch((e) => toast(esc(e.message), true));
+    }
     if (name === "propagation") loadPropagation().catch((e) => toast(esc(e.message), true));
     if (name === "harvest") loadCycles().catch((e) => toast(esc(e.message), true));
     if (name === "review") {
@@ -2794,6 +3204,25 @@ input.pin.tgt.manual{border-color:var(--warning);
                         requests: "create_seedling_requests" };
           run("act", { doctype: "Summer Flower Propagation Plan", name: nm,
                        action: map[k] }, after(() => `${nm}: ${k} done.`));
+        }
+        return;
+      }
+      // Alter and re-agree the plan without leaving the tab. Regenerate is only
+      // allowed on a draft server-side, so a submitted plan gets the refusal from
+      // the controller rather than a button that lies about being available.
+      const pn = ev.target.closest("[data-pn]");
+      if (pn && S.dv && S.dv.plan) {
+        const k = pn.dataset.pn;
+        if (k === "regen") {
+          run("plan_action", { plan: S.dv.plan, action: "regenerate" }, (r) => {
+            toast(`${S.dv.plan} rebuilt from current demand and standing plantings.`);
+            refreshAfterWrite();
+          });
+        } else if (k === "submit") {
+          run("plan_action", { plan: S.dv.plan, action: "Submit for Approval" }, () => {
+            toast(`${S.dv.plan} submitted for approval.`);
+            refreshAfterWrite();
+          });
         }
         return;
       }
@@ -2926,6 +3355,8 @@ input.pin.tgt.manual{border-color:var(--warning);
         S.week = e.target.value; renderAllPanes();
       });
       $("bf-block").addEventListener("change", (e) => { S.bfBlock = e.target.value; renderBlocks(); });
+      $("hc-scope").addEventListener("change", renderHarvestCalendar);
+      $("hc-unit").addEventListener("change", renderHarvestCalendar);
       $("hv-cycle").addEventListener("change", (e) => {
         S.cycle = e.target.value; renderCycles(); loadDetail();
       });

@@ -498,7 +498,7 @@ def act(doctype, name, action, reason=None):
 # ---------------------------------------------------------------------------
 
 @frappe.whitelist()
-def chain_status(variety=None, farm=None, demand=None):
+def chain_status(variety=None, farm=None, demand=None, plan=None):
 	"""Where a variety has got to along the chain, and what the next step is.
 
 	One call rather than four, so the dashboard cannot show a plan from one
@@ -533,7 +533,14 @@ def chain_status(variety=None, farm=None, demand=None):
 		        "peak_concurrent_beds", "peak_beds_week", "plantings_not_placed",
 		        "unmet_stems", "blocks_used"],
 		order_by="creation desc")
-	plan = plans[0] if plans else None
+	# Describe the plan the dashboard is showing. Falling back to the newest is
+	# what made the chain card name a draft while every tile beside it described
+	# the approved plan the scope bar had selected.
+	wanted = plan
+	plan = next((p for p in plans if p["name"] == wanted), None) \
+		if wanted else (plans[0] if plans else None)
+	if plan is None and plans:
+		plan = plans[0]
 
 	prop = None
 	if plan:
@@ -730,10 +737,24 @@ def budget_detail(plan=None, budget=None):
 
 @frappe.whitelist()
 def plan_action(plan, action):
-	"""Apply a workflow transition to a Production Plan."""
+	"""Apply a workflow transition to a Production Plan, or rebuild a draft."""
 	_guard()
 	from frappe.model.workflow import apply_workflow, get_transitions
 	doc = frappe.get_doc("Summer Flower Production Plan", plan)
+
+	if action == "regenerate":
+		# Not a workflow transition: rebuilding is an edit, and the controller
+		# refuses it on anything already submitted. Exposed here so a plan can be
+		# altered and re-agreed from the dashboard, which is where it is read.
+		doc.regenerate()
+		frappe.db.commit()
+		doc.reload()
+		return {"plan": doc.name, "state": doc.workflow_state,
+		        "budget": doc.get("budget"),
+		        "coverage_pct": flt(doc.coverage_pct),
+		        "new_beds_required": cint(doc.new_beds_required),
+		        "transitions": [t.action for t in get_transitions(doc)]}
+
 	available = [t.action for t in get_transitions(doc)]
 	if action not in available:
 		frappe.throw(_("{0} is not available on {1}. Available: {2}").format(
