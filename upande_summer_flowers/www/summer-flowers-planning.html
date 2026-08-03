@@ -565,6 +565,11 @@ table.pl-t-cols{table-layout:fixed}
 /* A week that cannot be supplied is the point of this table, so it is marked
    rather than muted -- reusing .zero greyed out exactly the rows to read. */
 table.pl-t tr.short td{background:var(--warn-bg,rgba(217,119,6,.07))}
+/* An edited week is marked where it sits. It is not moved, re-sorted or pulled to
+   the top: the row you just changed should still be under the cursor. */
+table.pl-t tr.edited td{background:var(--edit-bg,rgba(37,99,235,.09))}
+table.pl-t tr.edited td:first-child{box-shadow:inset 2px 0 0 var(--accent)}
+table.pl-t tr.edited.short td{background:var(--edit-bg,rgba(124,58,237,.10))}
 table.pl-t tr.short td:first-child{box-shadow:inset 2px 0 0 var(--warning)}
 table.pl-t-cols td:last-child{color:var(--text-muted);font-size:.72rem;
   overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
@@ -675,6 +680,9 @@ table.hc{border-collapse:separate;border-spacing:0;font-size:.72rem;
   font-variant-numeric:tabular-nums}
 table.hc th,table.hc td{padding:3px 6px;white-space:nowrap;
   border-bottom:1px solid var(--gridline);border-right:1px solid var(--gridline)}
+/* Fixed layout clips a header that does not fit rather than wrapping it, which
+   turned "Plants wanted" into "PLANTS WANTE". Let headers wrap instead. */
+table.pl-t-cols th{white-space:normal;line-height:1.25}
 table.hc thead th{position:sticky;top:0;z-index:3;background:var(--surface-2);
   font-size:.62rem;text-transform:uppercase;letter-spacing:.4px;
   color:var(--text-muted);font-weight:600;text-align:right}
@@ -2451,15 +2459,15 @@ table.hc tbody tr:hover td:not(.hc-k):not(.hc-m){background:var(--surface-2)}
         ? '<div class="pl-scroll pl-tall"><table class="pl-t pl-t-cols"><colgroup>' +
           '<col style="width:86px"><col style="width:92px"><col style="width:92px">' +
           '<col style="width:88px"><col style="width:84px"><col style="width:70px">' +
-          '<col style="width:92px"><col style="width:88px"><col></colgroup>' +
+          '<col style="width:112px"><col style="width:88px"><col></colgroup>' +
           '<thead><tr><th>Stick week</th><th>Starts</th><th class="n">Capacity</th>' +
           '<th class="n">To field</th><th class="n">To prop</th><th class="n">Plantings</th>' +
           '<th class="n">Plants wanted</th><th class="n">Stuck</th><th>Blocks</th>' +
           '</tr></thead><tbody>' +
           rows.map((x) => {
             const short = x.plants_stuck < x.plants_wanted;
-            return `<tr class="${short ? "short" : ""}">` +
-              `<td>${esc(x.label)}${x.overridden ? ' <span class="pill">edited</span>' : ""}</td>` +
+            return `<tr class="${short ? "short" : ""}${x.overridden ? " edited" : ""}">` +
+              `<td>${esc(x.label)}</td>` +
               `<td>${esc(x.week_start_date)}</td>` +
               `<td class="n">${num(x.capacity)}</td>` +
               `<td class="n"><span class="ls-edit" data-wk="${esc(x.label)}" ` +
@@ -2474,7 +2482,64 @@ table.hc tbody tr:hover td:not(.hc-k):not(.hc-m){background:var(--surface-2)}
               `<td class="bf-meta">${esc((x.blocks || []).join(", "))}</td></tr>`;
           }).join("") +
           "</tbody></table></div>"
-        : '<p class="pl-empty">No sticking weeks in this period.</p>');
+        : '<p class="pl-empty">No sticking weeks in this period.</p>') +
+      returnsHtml(b);
+  }
+
+  // The answer to "if I send half to propagation, when does it join production".
+  // Every diverted week becomes a pool of its own: the protocol's tray and pot
+  // weeks to become a mother plant, then its ramp, then a full life of cutting.
+  function returnsHtml(b) {
+    const rets = b.prop_returns || [];
+    const gained = (b.sticking || []).filter((x) => x.returned_capacity);
+    if (!rets.length) {
+      return '<h3 class="pl-h3">What propagation gives back</h3>' +
+        '<p class="pl-empty">Nothing is being diverted, so nothing comes back. ' +
+        'Hold cuttings back above and they appear here with the week they start ' +
+        'cutting.</p>';
+    }
+    const totalPlants = rets.reduce((a, x) => a + x.plants, 0);
+    const totalCap = rets.reduce((a, x) => a + x.weekly_capacity, 0);
+    return '<h3 class="pl-h3">What propagation gives back</h3>' +
+      `<p class="pl-note">${rets.length} pool${rets.length === 1 ? "" : "s"} from ` +
+      `${num(totalPlants)} diverted cuttings. Each takes ` +
+      `<b>${b.prop_returns[0].establishment_weeks} weeks</b> to become a mother plant ` +
+      `— the protocol's ${b.tc_to_first_cut_weeks ? "tray and pot" : "establishment"} ` +
+      `— then climbs to full rate over ${b.ramp_weeks} weeks and cuts for a full life. ` +
+      `Together they add ${num(totalCap)} cuttings a week once established.</p>` +
+      '<div class="pl-scroll"><table class="pl-t pl-t-cols"><colgroup>' +
+      '<col style="width:104px"><col style="width:92px"><col style="width:76px">' +
+      '<col style="width:104px"><col style="width:104px"><col style="width:104px">' +
+      '<col style="width:110px"><col></colgroup>' +
+      '<thead><tr><th>Held back in</th><th class="n">Cuttings</th>' +
+      '<th class="n">Weeks</th><th>Cuts from</th><th>Full rate</th><th>Life ends</th>' +
+      '<th class="n">Cuttings / week</th><th>Effect</th></tr></thead><tbody>' +
+      rets.map((x) => `<tr><td>${esc(x.src_date)}</td>` +
+        `<td class="n">${num(x.plants)}</td>` +
+        `<td class="n">${x.establishment_weeks}</td>` +
+        `<td>${esc(x.ready_date)}</td><td>${esc(x.full_date)}</td>` +
+        `<td>${esc(x.ends_date)}</td>` +
+        `<td class="n" style="color:var(--violet)">${num(x.weekly_capacity)}</td>` +
+        `<td class="bf-meta">joins production from ${esc(x.ready_date)}</td></tr>`).join("") +
+      "</tbody></table></div>" +
+      (gained.length
+        ? '<h3 class="pl-h3">Sticking weeks it lifts</h3>' +
+          '<p class="pl-note">Capacity in these weeks that exists only because ' +
+          'cuttings were held back earlier.</p>' +
+          '<div class="pl-scroll pl-tall"><table class="pl-t pl-t-cols"><colgroup>' +
+          '<col style="width:96px"><col style="width:104px"><col style="width:112px">' +
+          '<col style="width:96px"><col style="width:96px"><col></colgroup>' +
+          '<thead><tr><th>Stick week</th><th class="n">From the TC pool</th>' +
+          '<th class="n">Back from propagation</th><th class="n">Total</th>' +
+          '<th class="n">Stuck</th><th class="n">Wanted</th></tr></thead><tbody>' +
+          gained.map((x) => `<tr><td>${esc(x.label)}</td>` +
+            `<td class="n">${num(x.base_capacity)}</td>` +
+            `<td class="n" style="color:var(--violet)">${num(x.returned_capacity)}</td>` +
+            `<td class="n"><b>${num(x.capacity)}</b></td>` +
+            `<td class="n">${num(x.plants_stuck)}</td>` +
+            `<td class="n">${num(x.plants_wanted)}</td></tr>`).join("") +
+          "</tbody></table></div>"
+        : "");
   }
 
   function wiEdit(el) {
@@ -2490,9 +2555,14 @@ table.hc tbody tr:hover td:not(.hc-k):not(.hc-m){background:var(--surface-2)}
       if (v > cap) v = cap;
       S.wiOverrides = S.wiOverrides || {};
       S.wiOverrides[wk] = v;
+      // Put the scroll back exactly where it was. scrollIntoView jerked the edited
+      // row to the middle of the box, so the row you were working on moved and the
+      // rows around it changed -- the edit is marked with a tint instead.
+      const box = el.closest(".pl-scroll");
+      const top = box ? box.scrollTop : null;
       loadWhatIf().then(() => {
-        const again = document.querySelector(`.ls-edit[data-wk="${wk}"]`);
-        if (again) again.scrollIntoView({ block: "center" });
+        const again = document.querySelector(`#wi-body .pl-scroll`);
+        if (again && top !== null) again.scrollTop = top;
       });
     };
     inp.addEventListener("keydown", (e) => {
@@ -2968,9 +3038,12 @@ table.hc tbody tr:hover td:not(.hc-k):not(.hc-m){background:var(--surface-2)}
       if (v > cap) v = cap;
       S.lsOverrides = S.lsOverrides || {};
       S.lsOverrides[sw] = v;
+      const box = el.closest(".pl-scroll, .pl-tall");
+      const top = box ? box.scrollTop : null;
       runLifecycle().then(() => {
-        const again = document.querySelector(`.ls-edit[data-sw="${sw}"]`);
-        if (again) again.scrollIntoView({ block: "center" });
+        const again = $("ls-table").querySelector(".pl-scroll, .pl-tall")
+          || $("ls-table").closest(".pl-tall");
+        if (again && top !== null) again.scrollTop = top;
       });
     };
     inp.addEventListener("keydown", (e) => {

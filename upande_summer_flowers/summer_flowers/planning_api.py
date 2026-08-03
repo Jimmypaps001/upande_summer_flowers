@@ -404,9 +404,13 @@ def _tc_production(plan_doc, version, tc_qty, order_date, to_prop_pct=0,
 	                 if cint(r["total_cap"])), default=None)
 
 	total_cap_at = {}
+	base_cap_at = {}
+	prop_cap_at = {}
 	for r in sim["rows"]:
 		k = (r["year"], r["week_no"])
 		total_cap_at[k] = total_cap_at.get(k, 0) + cint(r["total_cap"])
+		base_cap_at[k] = base_cap_at.get(k, 0) + cint(r["base_cap"])
+		prop_cap_at[k] = prop_cap_at.get(k, 0) + cint(r["prop_cap"])
 
 	left = dict(capacity)
 	stick_rows = {}
@@ -422,6 +426,10 @@ def _tc_production(plan_doc, version, tc_qty, order_date, to_prop_pct=0,
 			"label": "%s-W%02d" % key,
 			"week_start_date": str(iso_monday(*key)),
 			"capacity": total_cap_at.get(key, 0),
+			"base_capacity": base_cap_at.get(key, 0),
+			# Capacity that exists this week only because cuttings were diverted
+			# earlier and have finished establishing.
+			"returned_capacity": prop_cap_at.get(key, 0),
 			"to_farm": capacity.get(key, 0),
 			"to_prop": total_cap_at.get(key, 0) - capacity.get(key, 0),
 			"overridden": 1 if (
@@ -519,6 +527,10 @@ def _tc_production(plan_doc, version, tc_qty, order_date, to_prop_pct=0,
 		"detail": detail[:40],
 		"sticking": [stick_rows[k] for k in sorted(stick_rows)],
 		"overrides": len(overrides),
+		"prop_returns": sim.get("prop_pool_rows", []),
+		"establishment_weeks": cint(p.get("ms_establishment_weeks")),
+		"tc_to_first_cut_weeks": cint(p.get("tc_to_first_cut_weeks")),
+		"ramp_weeks": len(p.get("ramp") or []),
 	}
 
 

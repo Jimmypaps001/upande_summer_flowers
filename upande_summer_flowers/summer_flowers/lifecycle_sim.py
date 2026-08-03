@@ -79,6 +79,11 @@ def params_from_version(version, overrides=None):
 		# batch had sized it for.
 		"multiplication_factor": 1 + (cint(v.max_multiplication_cycles)
 		                              * flt(v.multiplication_factor_per_cycle)),
+		# A cutting diverted to the propagation unit becomes a mother plant after
+		# tray and pot, then ramps. Not ms_establishment_weeks, which folds the ramp
+		# in and would wait it out before ramping again; and not the TC path either,
+		# because a cutting off the farm is not multiplied up in a lab first.
+		"cutting_to_mother_weeks": (cint(v.weeks_on_tray) + cint(v.weeks_on_pot)),
 		"ms_life_weeks": int(v.motherstock_life_weeks or 0),
 		"hardening_weeks": int(v.hardening_weeks or 0),
 		"weeks_to_pinch": int(v.weeks_to_pinch or 0),
@@ -204,7 +209,9 @@ def simulate(p, tc_qty, order_date, num_cycles=None, farm_overrides=None,
 	cycles = build_cycles(p, tc_qty, order_date, int(num_cycles))
 	base = getdate(order_date)
 	ramp = p["ramp"]
-	estab = p["ms_establishment_weeks"]
+	# Establishment for a DIVERTED CUTTING, which is the only thing this figure is
+	# used for below. The TC cycles have their own, longer path in build_cycles.
+	estab = p.get("cutting_to_mother_weeks") or p["ms_establishment_weeks"]
 	life = p["ms_life_weeks"]
 	per_plant = p["cuttings_per_plant_per_week"]
 	cut2harv = p["cutting_to_harvest_weeks"]
@@ -392,6 +399,24 @@ def simulate(p, tc_qty, order_date, num_cycles=None, farm_overrides=None,
 		"rows": rows,
 		"horizon_weeks": horizon,
 		"prop_pools": len(prop_pools),
+		# The pools themselves, not just how many. What was diverted in which week,
+		# when the protocol's establishment brings it back, and what it then cuts --
+		# which is the whole answer to "if I send half to propagation, when does it
+		# join production".
+		"prop_pool_rows": [{
+			"src_sw": x["src_sw"],
+			"src_date": str(base + datetime.timedelta(weeks=x["src_sw"])),
+			"plants": x["plants"],
+			"ready_sw": x["start_sw"],
+			"ready_date": str(base + datetime.timedelta(weeks=x["start_sw"])),
+			"full_sw": x["start_sw"] + len(ramp) - 1,
+			"full_date": str(base + datetime.timedelta(
+				weeks=x["start_sw"] + len(ramp) - 1)),
+			"ends_sw": x["start_sw"] + life,
+			"ends_date": str(base + datetime.timedelta(weeks=x["start_sw"] + life)),
+			"weekly_capacity": int(round(x["plants"] * per_plant)),
+			"establishment_weeks": x["start_sw"] - x["src_sw"],
+		} for x in prop_pools],
 		"num_cycles": len(cycles),
 		"cycles_derived": True,
 		# A diverted batch that matures is a generation in its own right: it cuts,
