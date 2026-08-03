@@ -376,6 +376,14 @@ class SummerFlowerPropagationPlan(Document):
 		b.protocol = self.protocol
 		b.company = self.company
 		b.peak_weekly_cuttings = cint(self._peak_shortfall)
+		# _peak_shortfall is already CUTTINGS: build_requirement put the plants
+		# through the protocol's cuttings_for_plants, which applies the rooting and
+		# field losses and then the reject rate. apply_losses defaults on and would
+		# multiply by cuttings_per_plant_required a second time -- 8,400 plants
+		# became 10,446 cuttings, then 11,951, and the order came out 14% larger
+		# than the pool this plan had just sized. The flag is for a peak given in
+		# plants; this one is not.
+		b.apply_losses = 0
 		b.first_sticking_date = self._first_needed
 		b.run_method("validate")
 		return b

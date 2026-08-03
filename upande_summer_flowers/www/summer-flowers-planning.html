@@ -2378,6 +2378,15 @@ table.hc tbody tr:hover td:not(.hc-k):not(.hc-m){background:var(--surface-2)}
     const o = opts || {};
     if (!(S.dv && S.dv.plan)) { S.wi = null; renderWhatIf(); return Promise.resolve(); }
     if (o.reset) { S.wiOverrides = {}; S.wiTc = null; S.wiProp = 0; }
+    // Read the boxes on every run. Typing a quantity and then clicking a week --
+    // rather than pressing Recalculate -- used to throw the typed figure away and
+    // snap the box back to the plan's own order, which read as the number being
+    // reimposed.
+    else {
+      const tcIn = $("wi-tc"), prIn = $("wi-prop");
+      if (tcIn && tcIn.value !== "") S.wiTc = parseInt(tcIn.value, 10) || null;
+      if (prIn && prIn.value !== "") S.wiProp = parseInt(prIn.value, 10) || 0;
+    }
     return call("plan_whatif", {
       plan: S.dv.plan,
       tc_qty: S.wiTc || null,

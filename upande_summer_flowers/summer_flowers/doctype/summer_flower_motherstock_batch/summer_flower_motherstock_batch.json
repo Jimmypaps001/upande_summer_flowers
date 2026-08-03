@@ -174,10 +174,10 @@
   },
   {
    "default": "1",
-   "description": "Uplift the requirement by the protocol's rooting and field establishment losses.",
+   "description": "Tick only when Peak Weekly Cuttings is a count of PLANTS. It grosses the figure up by the protocol's cuttings per plant, so ticking it against a figure already in cuttings applies the rooting and field losses twice.",
    "fieldname": "apply_losses",
    "fieldtype": "Check",
-   "label": "Apply Losses"
+   "label": "Peak Is In Plants (Apply Losses)"
   },
   {
    "fieldname": "sizing_section",
