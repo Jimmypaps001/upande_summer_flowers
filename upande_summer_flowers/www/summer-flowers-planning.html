@@ -547,6 +547,16 @@ input.pin.tgt.manual{border-color:var(--warning);
   color:var(--text-muted);font-weight:600}
 .pg-v{font-size:.9rem;font-weight:640}
 .pg-arrow{color:var(--text-muted);font-size:1.1rem}
+.pl-t-narrow{max-width:660px}
+.pl-t-narrow td,.pl-t-narrow th{padding:5px 10px}
+.pl-t-narrow tbody tr:not(.pl-grp):hover{background:var(--surface-2)}
+.pl-grp th{background:var(--surface-2);font-size:.72rem;text-transform:uppercase;
+  letter-spacing:.04em;border-bottom:1px solid var(--border);padding-top:9px}
+.pl-grp-n{font-weight:400;text-transform:none;letter-spacing:0;
+  color:var(--text-muted);margin-left:8px;font-size:.7rem}
+.pl-bar-col{width:96px;padding-left:0!important}
+.pl-bar{display:block;height:7px;border-radius:4px;background:var(--seq-200);
+  min-width:2px}
 .ch-flow{display:grid;gap:10px;grid-template-columns:repeat(auto-fit,minmax(210px,1fr))}
 .ch-step{background:var(--surface-2);border:1px solid var(--border);border-radius:9px;
   padding:11px 13px;border-left:3px solid var(--border)}
@@ -1905,14 +1915,39 @@ input.pin.tgt.manual{border-color:var(--warning);
             : '<span class="bf-meta">not posted</span>'}</td></tr>`;
       }).join("") + "</tbody></table>";
 
+    // Grouped by fiscal year rather than repeating the year on all twelve rows,
+    // and held to a readable width: stretched across the whole card the numbers sat
+    // a long way from their headers with nothing tying them together.
+    const byFy = {};
+    b.months.forEach((m) => {
+      (byFy[m.fiscal_year || "—"] = byFy[m.fiscal_year || "—"] || []).push(m);
+    });
+    const peak = Math.max(...b.months.map((m) => m.pct_of_fiscal_year), 1);
     const months = '<h3 class="pl-h3">Monthly split</h3>' +
-      '<table class="pl-t"><thead><tr><th>Month</th><th>FY</th><th class="n">Stems</th>' +
-      '<th class="n">Value</th><th class="n">% of FY</th></tr></thead><tbody>' +
-      b.months.map((m) => `<tr><td>${esc(m.month_name)} ${String(m.year).slice(2)}</td>` +
-        `<td>${esc(m.fiscal_year || "")}</td><td class="n">${num(m.stems)}</td>` +
-        `<td class="n">${num(Math.round(m.value))}</td>` +
-        `<td class="n">${m.pct_of_fiscal_year.toFixed(2)}</td></tr>`).join("") +
-      "</tbody></table>";
+      '<table class="pl-t pl-t-narrow"><thead><tr><th>Month</th>' +
+      '<th class="n">Stems</th><th class="n">Value</th>' +
+      '<th class="n">Share of year</th><th class="pl-bar-col"></th>' +
+      '</tr></thead><tbody>' +
+      Object.keys(byFy).sort().map((fyKey) => {
+        const rows = byFy[fyKey];
+        const stems = rows.reduce((a, m) => a + m.stems, 0);
+        const value = rows.reduce((a, m) => a + m.value, 0);
+        // The subtotals must sit under Stems and Value, so the label spans one
+        // column and the trailing two are closed off.
+        return `<tr class="pl-grp"><th>FY ${esc(fyKey)}` +
+          `<span class="pl-grp-n">${rows.length} month${rows.length === 1 ? "" : "s"}</span></th>` +
+          `<th class="n">${num(stems)}</th><th class="n">${num(Math.round(value))}</th>` +
+          `<th class="n">100%</th><th class="pl-bar-col"></th></tr>` +
+          rows.map((m) => {
+            const pct = m.pct_of_fiscal_year;
+            return `<tr><td>${esc(m.month_name)}</td>` +
+              `<td class="n">${num(m.stems)}</td>` +
+              `<td class="n">${num(Math.round(m.value))}</td>` +
+              `<td class="n">${pct.toFixed(1)}%</td>` +
+              `<td class="pl-bar-col"><span class="pl-bar" style="width:${
+                (pct / peak * 100).toFixed(1)}%"></span></td></tr>`;
+          }).join("");
+      }).join("") + "</tbody></table>";
 
     $("bg-body").innerHTML = fy + months;
   }
