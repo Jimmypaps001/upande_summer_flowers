@@ -303,7 +303,7 @@ def _first_sticking_for(plan):
 # ---------------------------------------------------------------------------
 
 def _tc_production(plan_doc, version, tc_qty, order_date, to_prop_pct=0,
-                   max_bench_sqm=None):
+                   max_bench_sqm=None, week_overrides=None):
 	"""Roll a TC quantity all the way through to stems against demand.
 
 	The chain has always been TC -> pool -> cuttings -> plants stuck -> plantings
@@ -342,6 +342,19 @@ def _tc_production(plan_doc, version, tc_qty, order_date, to_prop_pct=0,
 	# short and the last sticking weeks had no capacity row at all -- which read as
 	# plantings that no order size could supply.
 	p = ls.params_from_version(v.name)
+	# Overrides arrive keyed by the week a grower reads -- "2026-W06" -- and the
+	# simulation counts weeks from the order date, so they are translated here
+	# rather than making the caller do sim-week arithmetic.
+	overrides = {}
+	for key, value in (week_overrides or {}).items():
+		try:
+			y, w = str(key).split("-W")
+			sw = (getdate(iso_monday(int(y), int(w))) - getdate(order_date)).days // 7
+		except Exception:
+			continue
+		if sw >= 0:
+			overrides[sw] = cint(value)
+
 	last_stick = max(
 		(iso_monday(cint(b.sticking_year), cint(b.sticking_week))
 		 for b in plan_doc.plan_blocks
@@ -351,6 +364,7 @@ def _tc_production(plan_doc, version, tc_qty, order_date, to_prop_pct=0,
 	if last_stick:
 		span = max(span, ((getdate(last_stick) - getdate(order_date)).days // 7) + 4)
 	sim = ls.simulate(p, cint(tc_qty), order_date,
+	                  farm_overrides=overrides,
 	                  default_to_prop_pct=flt(to_prop_pct),
 	                  max_bench_sqm=max_bench_sqm,
 	                  horizon_weeks=span)
@@ -389,7 +403,13 @@ def _tc_production(plan_doc, version, tc_qty, order_date, to_prop_pct=0,
 	first_cut = min((( r["year"], r["week_no"]) for r in sim["rows"]
 	                 if cint(r["total_cap"])), default=None)
 
+	total_cap_at = {}
+	for r in sim["rows"]:
+		k = (r["year"], r["week_no"])
+		total_cap_at[k] = total_cap_at.get(k, 0) + cint(r["total_cap"])
+
 	left = dict(capacity)
+	stick_rows = {}
 	full = trimmed = dropped = 0
 	dropped_too_early = 0
 	plants_wanted = plants_stuck = 0
@@ -398,7 +418,24 @@ def _tc_production(plan_doc, version, tc_qty, order_date, to_prop_pct=0,
 		key = (cint(b.sticking_year), cint(b.sticking_week))
 		want_plants = cint(b.plants)
 		plants_wanted += want_plants
+		sr = stick_rows.setdefault(key, {
+			"label": "%s-W%02d" % key,
+			"week_start_date": str(iso_monday(*key)),
+			"capacity": total_cap_at.get(key, 0),
+			"to_farm": capacity.get(key, 0),
+			"to_prop": total_cap_at.get(key, 0) - capacity.get(key, 0),
+			"overridden": 1 if (
+				(getdate(iso_monday(*key)) - getdate(order_date)).days // 7
+			) in overrides else 0,
+			"plantings": 0, "plants_wanted": 0, "plants_stuck": 0,
+			"cuttings_needed": 0, "blocks": [],
+		})
+		sr["plantings"] += 1
+		sr["plants_wanted"] += want_plants
+		if b.block:
+			sr["blocks"].append(b.block)
 		need = v.cuttings_for_plants(want_plants)
+		sr["cuttings_needed"] += need
 		have = left.get(key, 0)
 		if have <= 0:
 			dropped += 1
@@ -427,6 +464,7 @@ def _tc_production(plan_doc, version, tc_qty, order_date, to_prop_pct=0,
 			trimmed += 1
 			state = "trimmed"
 		plants_stuck += got
+		sr["plants_stuck"] += got
 		if state != "full":
 			detail.append({"stick": "%s-W%02d" % key, "block": b.block,
 			               "wanted": want_plants, "got": got, "state": state})
@@ -479,6 +517,8 @@ def _tc_production(plan_doc, version, tc_qty, order_date, to_prop_pct=0,
 		"generations": sim.get("generations"),
 		"num_cycles": sim.get("num_cycles"),
 		"detail": detail[:40],
+		"sticking": [stick_rows[k] for k in sorted(stick_rows)],
+		"overrides": len(overrides),
 	}
 
 
@@ -626,6 +666,73 @@ def tc_purchase(plan=None, variety=None, farm=None, tc_qty=None, tolerance_pct=1
 		"rate_per_plantlet": flt(_rate_for(chosen)),
 		"cost": round(flt(_rate_for(chosen)) * chosen, 2),
 		"plan_coverage_pct": flt(p.coverage_pct),
+	}
+
+
+@frappe.whitelist()
+def plan_whatif(plan=None, variety=None, farm=None, tc_qty=None, week_overrides=None,
+                to_prop_pct=0):
+	"""Try a different order size or a different weekly split, before committing.
+
+	Same walk as tc_purchase, but it also hands back the per-sticking-week rows the
+	numbers came from so they can be changed one week at a time. Nothing is saved:
+	the plan on file is untouched until it is regenerated or approved, so this is
+	the place to find out whether the plan is worth going on with.
+	"""
+	_guard()
+	plan = resolve_plan(variety, farm, plan)
+	if not plan:
+		return {"plan": None}
+	if isinstance(week_overrides, str):
+		week_overrides = frappe.parse_json(week_overrides or "{}")
+
+	p = frappe.get_doc("Summer Flower Production Plan", plan)
+	v = frappe.get_cached_doc("Crop Protocol Version", p.protocol)
+
+	prop = frappe.get_all(
+		"Summer Flower Propagation Plan",
+		filters={"production_plan": plan, "status": ["!=", "Rejected"]},
+		fields=["name", "tc_plants_required", "tc_order_date"],
+		order_by="creation desc", limit=1)
+	prop = prop[0] if prop else None
+
+	order_date = prop.tc_order_date if prop and prop.tc_order_date else None
+	if not order_date:
+		first = _first_sticking_for(plan)
+		if first:
+			order_date = add_days(getdate(first), -7 * (
+				cint(v.supplier_lead_weeks)
+				+ cint(v.lead_time_for_cycles(cint(v.max_multiplication_cycles)))))
+	if not order_date:
+		return {"plan": plan, "error": "No sticking weeks to plan cuttings for."}
+
+	chosen = cint(tc_qty) or (cint(prop.tc_plants_required) if prop else 0)
+	if not chosen:
+		peak = v.cuttings_for_plants(cint(p.peak_weekly_sticking))
+		per_week = flt(v.cuttings_per_plant_per_week) or 1.0
+		factor = 1 + (cint(v.max_multiplication_cycles)
+		              * flt(v.multiplication_factor_per_cycle))
+		chosen = int(math.ceil(peak / per_week / factor)) if per_week and factor else 0
+
+	built = _tc_production(p, v, chosen, order_date, to_prop_pct=flt(to_prop_pct),
+	                       week_overrides=week_overrides)
+	# The plan as it stands, for comparison: what changing anything is measured
+	# against. Read from the document, not recomputed, so the baseline is the plan.
+	return {
+		"plan": plan, "variety": p.variety, "farm": p.farm, "version": v.name,
+		"status": p.workflow_state or p.status,
+		"order_date": str(order_date),
+		"tc_qty": chosen,
+		"recommended_tc": cint(prop.tc_plants_required) if prop else 0,
+		"propagation_plan": prop.name if prop else None,
+		"baseline": {
+			"coverage_pct": flt(p.coverage_pct),
+			"production_stems": cint(p.total_production_stems),
+			"demand_stems": cint(p.total_demand_stems),
+			"weeks_in_deficit": cint(p.weeks_in_deficit),
+			"plants": cint(p.new_plants_required),
+		},
+		"built": built,
 	}
 
 

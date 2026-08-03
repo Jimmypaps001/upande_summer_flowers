@@ -229,6 +229,27 @@
         <div id="pn-weeks" class="pl-scroll pl-tall"></div>
       </div>
 
+      <!-- The decision card. Nothing here is saved: the plan on file is untouched
+           until it is regenerated or approved, so this is where to find out whether
+           it is worth going on with. -->
+      <div class="pl-card">
+        <div class="pl-card-head">
+          <div><h2>{{ _("Try it before you commit") }}</h2>
+               <p class="pl-note">{{ _("Change the order size or the weekly split and watch what it does to the plan. Cuttings you keep back from the field go to the propagation unit and come back as their own motherstock after establishment, so a week given up early can buy capacity later — this shows whether that trade is worth making.") }}</p></div>
+          <span class="pl-actions">
+            <label class="pl-inline">{{ _("TC to buy") }}
+              <input type="number" id="wi-tc" min="0" step="50"></label>
+            <label class="pl-inline">{{ _("Divert %") }}
+              <input type="number" id="wi-prop" min="0" max="90" step="5" value="0"></label>
+            <button type="button" class="pl-btn primary" data-wi="run">{{ _("Recalculate") }}</button>
+            <button type="button" class="pl-btn" data-wi="reset">{{ _("Back to the plan") }}</button>
+          </span>
+        </div>
+        <div id="wi-verdict"></div>
+        <div class="pl-tiles pl-tiles-sm" id="wi-tiles"></div>
+        <div id="wi-body"></div>
+      </div>
+
       <div class="pl-card">
         <div class="pl-card-head">
           <div><h2>{{ _("Motherstock check") }}</h2>
@@ -2344,6 +2365,147 @@ table.hc tbody tr:hover td:not(.hc-k):not(.hc-m){background:var(--surface-2)}
       : "";
   }
 
+  // ═══════════════════════ PLAN WHAT-IF ═══════════════════════
+  function loadWhatIf(opts) {
+    const o = opts || {};
+    if (!(S.dv && S.dv.plan)) { S.wi = null; renderWhatIf(); return Promise.resolve(); }
+    if (o.reset) { S.wiOverrides = {}; S.wiTc = null; S.wiProp = 0; }
+    return call("plan_whatif", {
+      plan: S.dv.plan,
+      tc_qty: S.wiTc || null,
+      to_prop_pct: S.wiProp || 0,
+      week_overrides: JSON.stringify(S.wiOverrides || {}),
+    }).then((r) => { S.wi = r; renderWhatIf(); })
+      .catch((e) => { S.wi = { error: e.message }; renderWhatIf(); });
+  }
+
+  function renderWhatIf() {
+    const r = S.wi;
+    if (!r || r.error || !r.plan) {
+      $("wi-verdict").innerHTML = "";
+      $("wi-tiles").innerHTML = "";
+      $("wi-body").innerHTML = `<p class="pl-empty">${esc(
+        (r && r.error) || "No plan in scope.")}</p>`;
+      return;
+    }
+    const b = r.built, base = r.baseline;
+    const tcIn = $("wi-tc"), prIn = $("wi-prop");
+    if (tcIn && document.activeElement !== tcIn) tcIn.value = r.tc_qty || "";
+    if (prIn && document.activeElement !== prIn) prIn.value = S.wiProp || 0;
+
+    const delta = b.coverage_pct - base.coverage_pct;
+    const changed = (b.overrides || 0) > 0 || (S.wiTc && S.wiTc !== r.recommended_tc)
+                    || S.wiProp;
+    // The one line the decision turns on.
+    // With nothing changed this is not "the plan as it stands": the plan's stored
+    // coverage assumes every proposed planting gets its cuttings, and this walk
+    // checks that. Where they differ, the difference is the plan over-stating
+    // itself, and saying "as it stands" would hide exactly what this card is for.
+    $("wi-verdict").innerHTML =
+      `<div class="pl-callout">` +
+      `<b>${b.coverage_pct.toFixed(1)}% of demand</b> with these numbers` +
+      (changed
+        ? ` — the plan on file says ${base.coverage_pct.toFixed(1)}%, so this is ` +
+          `<b style="color:var(${delta < 0 ? "--critical" : "--good"})">` +
+          `${delta >= 0 ? "+" : ""}${delta.toFixed(1)} points</b>.`
+        : Math.abs(delta) < 0.05
+          ? ` — the same as the plan on file.`
+          : ` at the plan's own order of ${num(r.tc_qty)} plantlets. The plan on file ` +
+            `claims <b>${base.coverage_pct.toFixed(1)}%</b>, which assumes every ` +
+            `planting gets its cuttings; counting the cuttings it is ` +
+            `<b style="color:var(--serious)">${delta.toFixed(1)} points</b> lower.`) +
+      ` ${num(b.production_stems)} stems against ${num(b.demand_stems)} of demand, ` +
+      `${num(b.unmet_stems)} short across ${num(b.weeks_in_deficit)} weeks.` +
+      (changed
+        ? ` Nothing is saved: regenerate the plan to make this the plan.`
+        : "") +
+      `</div>`;
+
+    $("wi-tiles").innerHTML = [
+      { k: "TC to buy", v: num(r.tc_qty),
+        m: r.recommended_tc ? `plan's own order is ${num(r.recommended_tc)}` : "sized here" },
+      { k: "Coverage", v: b.coverage_pct.toFixed(1) + "%",
+        m: `plan on file ${base.coverage_pct.toFixed(1)}%`,
+        c: delta < -0.05 ? "--critical" : delta > 0.05 ? "--good" : "" },
+      { k: "Plantings", v: `${num(b.plantings_full)} full`,
+        m: `${num(b.plantings_trimmed)} part, ${num(b.plantings_dropped)} none`,
+        c: b.plantings_dropped ? "--critical" : "--good" },
+      { k: "Plants stuck", v: num(b.plants_stuck),
+        m: `of ${num(b.plants_wanted)} wanted` },
+      { k: "Generations", v: num(b.generations),
+        m: `${num(b.num_cycles)} from TC orders` },
+      { k: "Weeks changed", v: num(b.overrides || 0),
+        m: b.overrides ? "your splits" : "none — the plan as sized" },
+    ].map(tile).join("");
+
+    const rows = b.sticking.filter((x) => inPeriod(
+      +x.label.slice(0, 4), +x.label.slice(6)));
+    $("wi-body").innerHTML =
+      '<p class="pl-note">Click a <b>To field</b> figure to hold cuttings back that ' +
+      'week. What you hold back goes to propagation and returns as motherstock later, ' +
+      'so the weeks after it gain capacity. <b>Stuck</b> is what the plan actually ' +
+      'achieves that week once the cuttings are counted.</p>' +
+      (periodOn() ? `<p class="pl-note">Showing ${rows.length} of ${b.sticking.length} ` +
+        `sticking weeks — ${esc(periodLabel())}.</p>` : "") +
+      (rows.length
+        ? '<div class="pl-scroll pl-tall"><table class="pl-t pl-t-cols"><colgroup>' +
+          '<col style="width:86px"><col style="width:92px"><col style="width:92px">' +
+          '<col style="width:88px"><col style="width:84px"><col style="width:70px">' +
+          '<col style="width:92px"><col style="width:88px"><col></colgroup>' +
+          '<thead><tr><th>Stick week</th><th>Starts</th><th class="n">Capacity</th>' +
+          '<th class="n">To field</th><th class="n">To prop</th><th class="n">Plantings</th>' +
+          '<th class="n">Plants wanted</th><th class="n">Stuck</th><th>Blocks</th>' +
+          '</tr></thead><tbody>' +
+          rows.map((x) => {
+            const short = x.plants_stuck < x.plants_wanted;
+            return `<tr class="${short ? "short" : ""}">` +
+              `<td>${esc(x.label)}${x.overridden ? ' <span class="pill">edited</span>' : ""}</td>` +
+              `<td>${esc(x.week_start_date)}</td>` +
+              `<td class="n">${num(x.capacity)}</td>` +
+              `<td class="n"><span class="ls-edit" data-wk="${esc(x.label)}" ` +
+              `data-cap="${x.capacity}" role="button" tabindex="0" ` +
+              `title="Cuttings to the field this week. Max ${num(x.capacity)}.">` +
+              `${num(x.to_farm)}</span></td>` +
+              `<td class="n" style="color:var(--violet)">${x.to_prop ? num(x.to_prop) : "—"}</td>` +
+              `<td class="n">${num(x.plantings)}</td>` +
+              `<td class="n">${num(x.plants_wanted)}</td>` +
+              `<td class="n" style="color:var(${short ? "--critical" : "--good"})">` +
+              `${num(x.plants_stuck)}</td>` +
+              `<td class="bf-meta">${esc((x.blocks || []).join(", "))}</td></tr>`;
+          }).join("") +
+          "</tbody></table></div>"
+        : '<p class="pl-empty">No sticking weeks in this period.</p>');
+  }
+
+  function wiEdit(el) {
+    if (el.querySelector("input")) return;
+    const wk = el.dataset.wk, cap = +el.dataset.cap;
+    const inp = document.createElement("input");
+    inp.type = "number"; inp.min = 0; inp.max = cap; inp.step = 100;
+    inp.value = el.textContent.replace(/[^0-9]/g, "");
+    inp.className = "ls-input";
+    const commit = () => {
+      let v = parseInt(inp.value, 10);
+      if (isNaN(v) || v < 0) v = 0;
+      if (v > cap) v = cap;
+      S.wiOverrides = S.wiOverrides || {};
+      S.wiOverrides[wk] = v;
+      loadWhatIf().then(() => {
+        const again = document.querySelector(`.ls-edit[data-wk="${wk}"]`);
+        if (again) again.scrollIntoView({ block: "center" });
+      });
+    };
+    inp.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") { e.preventDefault(); commit(); }
+      if (e.key === "Escape") renderWhatIf();
+    });
+    inp.addEventListener("blur", commit);
+    el.textContent = "";
+    el.appendChild(inp);
+    inp.focus();
+    inp.select();
+  }
+
   function loadTc(qty) {
     if (!(S.dv && S.dv.plan)) { S.tc = null; renderTc(); return Promise.resolve(); }
     return call("tc_purchase", { plan: S.dv.plan, tc_qty: qty || null })
@@ -3298,7 +3460,7 @@ table.hc tbody tr:hover td:not(.hc-k):not(.hc-m){background:var(--surface-2)}
     // The transactional tabs read live state, so they refetch on reveal rather
     // than showing whatever was true when the page first loaded.
     if (name === "plan") {
-      Promise.all([loadChain(), loadTc()]).then(renderPlanTab)
+      Promise.all([loadChain(), loadTc(), loadWhatIf()]).then(renderPlanTab)
         .catch((e) => toast(esc(e.message), true));
     }
     if (name === "propagation") loadPropagation().catch((e) => toast(esc(e.message), true));
@@ -3551,6 +3713,18 @@ table.hc tbody tr:hover td:not(.hc-k):not(.hc-m){background:var(--surface-2)}
         S.week = e.target.value; renderAllPanes();
       });
       $("bf-block").addEventListener("change", (e) => { S.bfBlock = e.target.value; renderBlocks(); });
+      $("wi-body").addEventListener("click", (e) => {
+        const cell = e.target.closest(".ls-edit");
+        if (cell) wiEdit(cell);
+      });
+      $("wi-tiles").parentElement.addEventListener("click", (e) => {
+        const b = e.target.closest("[data-wi]");
+        if (!b) return;
+        if (b.dataset.wi === "reset") { loadWhatIf({ reset: true }); return; }
+        S.wiTc = parseInt($("wi-tc").value, 10) || null;
+        S.wiProp = parseInt($("wi-prop").value, 10) || 0;
+        loadWhatIf();
+      });
       $("tc-tiles").parentElement.addEventListener("click", (e) => {
         const b = e.target.closest("[data-tc]");
         if (!b) return;
