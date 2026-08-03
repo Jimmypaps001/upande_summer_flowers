@@ -18,6 +18,7 @@ from upande_summer_flowers.summer_flowers.planning import (
 
 class SummerFlowerMarketDemand(Document):
 	def validate(self):
+		self.check_one_per_variety()
 		self.normalise_weeks()
 		self.set_horizon()
 		self.set_totals()
@@ -45,6 +46,32 @@ class SummerFlowerMarketDemand(Document):
 		)
 		for idx, row in enumerate(self.demand_weeks, start=1):
 			row.idx = idx
+
+	def check_one_per_variety(self):
+		"""One register per variety at a farm, and only one.
+
+		The register is the statement of what the market wants for this crop here.
+		A second one for the same crop makes every downstream question ambiguous --
+		which demand did this plan come from, which is the demand -- and nothing
+		reads more than one of them anyway. Extend the horizon or edit the weeks
+		instead of starting another.
+		"""
+		if not (self.variety and self.farm):
+			return
+		# Not "name != self.name": autoname runs before validate, so a new document
+		# already carries the name it is about to collide with and would exclude the
+		# very record it duplicates -- leaving a raw "Duplicate entry" from MySQL
+		# instead of an explanation.
+		filters = {"variety": self.variety, "farm": self.farm}
+		if not self.is_new():
+			filters["name"] = ["!=", self.name]
+		dupe = frappe.db.get_value("Summer Flower Market Demand", filters, "name")
+		if dupe:
+			frappe.throw(_(
+				"{0} is already the demand register for {1} at {2}. Edit it or "
+				"extend its horizon rather than creating a second one -- a variety "
+				"has one demand."
+			).format(dupe, self.variety, self.farm), title=_("Register exists"))
 
 	def set_horizon(self):
 		rows = self.demand_weeks

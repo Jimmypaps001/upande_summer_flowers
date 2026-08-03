@@ -203,6 +203,32 @@
         <div id="ch-space-note"></div>
       </div>
 
+      <!-- What to buy, and what buying differently does. Asked for directly: the
+           first TC purchase should be the one that makes the plan work, with room
+           to move either way and a statement of what moving costs. -->
+      <div class="pl-card">
+        <div class="pl-card-head">
+          <div><h2>{{ _("TC to buy") }}</h2>
+               <p class="pl-note">{{ _("The recommended order is the one that makes the pool exactly meet this plan's peak sticking week. Everything downstream is proportional to the pool, so a purchase inside ±10% still lands the plan; below that band, the peak week is short by the same fraction and those plantings do not happen.") }}</p></div>
+          <span class="pl-actions">
+            <label class="pl-inline">{{ _("Buy") }}
+              <input type="number" id="tc-qty" min="0" step="50"></label>
+            <button type="button" class="pl-btn" data-tc="apply">{{ _("Check this quantity") }}</button>
+            <button type="button" class="pl-btn" data-tc="reset">{{ _("Use the recommendation") }}</button>
+          </span>
+        </div>
+        <div class="pl-tiles pl-tiles-sm" id="tc-tiles"></div>
+        <div id="tc-note"></div>
+      </div>
+
+      <div class="pl-card">
+        <div class="pl-card-head">
+          <div><h2>{{ _("Week by week") }}</h2>
+               <p class="pl-note">{{ _("The same weekly read as the demand register, against what this plan produces: the gap each week, and the running total of the gap.") }}</p></div>
+        </div>
+        <div id="pn-weeks" class="pl-scroll pl-tall"></div>
+      </div>
+
       <div class="pl-card">
         <div class="pl-card-head">
           <div><h2>{{ _("Motherstock check") }}</h2>
@@ -384,9 +410,8 @@
           <label>{{ _("Protocol version") }}<select id="ls-version"></select></label>
           <label>{{ _("TC quantity") }}<input type="number" id="ls-qty" min="500" step="500"></label>
           <label>{{ _("TC order date") }}<input type="date" id="ls-date"></label>
-          <label>{{ _("Cycles") }}
-            <select id="ls-cycles"><option>2</option><option selected>3</option>
-              <option>4</option><option>5</option></select></label>
+          <span class="pl-inline"><label>{{ _("MS generations") }}</label>
+            <output id="ls-gens" class="ls-out">—</output></span>
           <label>{{ _("% diverted to propagation") }}
             <input type="range" id="ls-prop" min="0" max="60" step="5" value="0">
             <output id="ls-prop-out">0%</output></label>
@@ -651,6 +676,13 @@ table.hc tr.hc-band.sub td,table.hc tr.hc-band.sub th{font-weight:400;
 table.hc td.neg{color:var(--critical)}
 table.hc td.pos{color:var(--good)}
 table.hc tbody tr:hover td:not(.hc-k):not(.hc-m){background:var(--surface-2)}
+.ls-out{font-size:.78rem;font-weight:600;color:var(--text);padding:5px 0}
+.ls-edit{cursor:pointer;border-bottom:1.5px dashed var(--text-muted);padding:0 3px;
+  display:inline-block;min-width:44px;text-align:right;color:var(--good);font-weight:600}
+.ls-edit:hover{background:var(--surface-2);border-color:var(--accent)}
+.ls-input{width:86px;padding:1px 5px;border:1.5px solid var(--accent);border-radius:4px;
+  font-size:.76rem;text-align:right;font-variant-numeric:tabular-nums;
+  background:var(--surface);color:var(--text)}
 .hc-legend{display:flex;flex-wrap:wrap;gap:14px;margin:10px 0 6px;
   font-size:.72rem;color:var(--text-muted)}
 .pl-scopeline{margin:-4px 0 14px;font-size:.78rem;color:var(--text-muted);
@@ -2282,6 +2314,26 @@ table.hc tbody tr:hover td:not(.hc-k):not(.hc-m){background:var(--surface-2)}
     $("pn-ms-note").innerHTML = notes.length
       ? notes.map((n) => `<div class="pl-callout">${n}</div>`).join("") : "";
 
+    // The same weekly table as the demand register, so the plan can be read the
+    // way the demand it answers is read.
+    const cum = {};
+    let acc = 0;
+    ((dv.weeks) || []).forEach((r) => { acc += r.variance; cum[r.label] = acc; });
+    $("pn-weeks").innerHTML = q.weeks.length
+      ? '<table class="pl-t"><thead><tr><th>Week</th><th>Starts</th>' +
+        '<th class="n">Demand</th><th class="n">Production</th>' +
+        '<th class="n">Variance</th><th class="n">Cumulative</th>' +
+        '</tr></thead><tbody>' +
+        q.weeks.map((r) => `<tr class="${r.variance < 0 ? "short" : ""}">` +
+          `<td>${esc(r.label)}</td><td>${esc(r.week_start_date || "")}</td>` +
+          `<td class="n">${num(r.demand)}</td>` +
+          `<td class="n">${num(r.production)}</td>` +
+          `<td class="n" style="color:var(${r.variance < 0 ? "--critical" : "--good"})">` +
+          `${sgn(r.variance)}</td>` +
+          `<td class="n">${sgn(cum[r.label] || 0)}</td></tr>`).join("") +
+        "</tbody></table>"
+      : '<p class="pl-empty">No weeks in this period.</p>';
+
     $("pn-steps").innerHTML = (tc.steps || []).length
       ? '<table class="pl-t"><thead><tr><th>Step</th><th class="n">Value</th>' +
         '<th>Unit</th><th>Why</th></tr></thead><tbody>' +
@@ -2290,6 +2342,66 @@ table.hc tbody tr:hover td:not(.hc-k):not(.hc-m){background:var(--surface-2)}
           `<td class="bf-meta">${esc(x.note || "")}</td></tr>`).join("") +
         "</tbody></table>"
       : "";
+  }
+
+  function loadTc(qty) {
+    if (!(S.dv && S.dv.plan)) { S.tc = null; renderTc(); return Promise.resolve(); }
+    return call("tc_purchase", { plan: S.dv.plan, tc_qty: qty || null })
+      .then((r) => { S.tc = r; renderTc(); })
+      .catch((e) => { S.tc = { error: e.message }; renderTc(); });
+  }
+
+  function renderTc() {
+    const t = S.tc;
+    if (!t || t.error || !t.plan) {
+      $("tc-tiles").innerHTML = `<p class="pl-empty">${esc(
+        (t && t.error) || "No plan in scope.")}</p>`;
+      $("tc-note").innerHTML = "";
+      return;
+    }
+    const input = $("tc-qty");
+    if (input && document.activeElement !== input) input.value = t.chosen_tc || "";
+
+    $("tc-tiles").innerHTML = [
+      { k: "Buy", v: num(t.chosen_tc),
+        m: `plantlets · ${num(Math.round(t.cost))} at ${t.rate_per_plantlet}/plantlet`,
+        c: t.in_band ? "--good" : "--critical" },
+      { k: `Inside ±${t.tolerance_pct}%`, v: t.in_band ? "yes" : "no",
+        m: `band ${num(t.band_low)} – ${num(t.band_high)}`,
+        c: t.in_band ? "--good" : "--critical" },
+      { k: "Covers the peak week", v: t.chosen_cover_pct.toFixed(1) + "%",
+        m: `${esc(t.peak_week || "—")} needs ${num(t.peak_cuttings)} cuttings`,
+        c: t.chosen_cover_pct >= 100 ? "--good"
+           : t.chosen_cover_pct >= 90 ? "--serious" : "--critical" },
+      { k: "Pool it builds", v: num(t.chosen_pool),
+        m: `×${t.multiplication_factor} over ${t.build_up_cycles} build-up cycles` },
+      { k: "Recommended", v: num(t.propagation_tc || t.recommended_tc),
+        m: t.propagation_plan
+          ? `${esc(t.propagation_plan)} — after standing motherstock`
+          : "with no standing motherstock" },
+      { k: "MS starts cutting", v: esc(t.first_cut_date || "—"),
+        m: t.full_capacity_date
+          ? `full rate ${esc(t.full_capacity_date)} after ${t.ramp_weeks} weeks`
+          : "no schedule yet" },
+    ].map(tile).join("");
+
+    const notes = [];
+    if (!t.in_band) {
+      const under = t.chosen_tc < (t.propagation_tc || t.recommended_tc);
+      notes.push(`${num(t.chosen_tc)} plantlets is outside the ±${t.tolerance_pct}% ` +
+        `band around ${num(t.propagation_tc || t.recommended_tc)}. It builds a pool of ` +
+        `${num(t.chosen_pool)}, which covers ${t.chosen_cover_pct.toFixed(1)}% of the ` +
+        `peak week's ${num(t.peak_cuttings)} cuttings — ` +
+        (under
+          ? `so the plantings that week are short by the same fraction.`
+          : `so there is capacity standing idle outside the peak.`));
+    }
+    if (t.order_date) {
+      notes.push(`This order has to be placed by ${esc(t.order_date)} to be on farm ` +
+        `for a first cut on ${esc(t.first_cut_date || "?")}.`);
+    }
+    $("tc-note").innerHTML = notes.length
+      ? notes.map((n) => `<div class="pl-callout">${n}</div>`).join("") : "";
   }
 
   function loadReview() {
@@ -2607,27 +2719,90 @@ table.hc tbody tr:hover td:not(.hc-k):not(.hc-m){background:var(--surface-2)}
 
     drawPool($("ls-chart"), r.rows);
 
-    const rows = r.rows.filter((x) => x.total_cap || x.events.length).slice(0, 300);
+    // How many generations this run actually produced. Not a control: a generation
+    // exists because the one before it expired, or because cuttings were diverted
+    // and came back as their own pool. Divert more and there are more of them.
+    const gens = $("ls-gens");
+    if (gens) {
+      gens.textContent = `${r.num_cycles} TC` +
+        (r.prop_pools ? ` + ${r.prop_pools} from propagation = ${r.generations}` : "") +
+        ` over ${r.horizon_weeks} weeks`;
+    }
+
+    const rows = r.rows.filter((x) => x.total_cap || x.events.length).slice(0, 400);
     $("ls-table").innerHTML =
-      '<table class="pl-t"><thead><tr><th>Wk</th><th>Week</th><th>Phase</th><th>Source</th>' +
-      '<th class="n">Base</th><th class="n">Prop-MS</th><th class="n">Total/wk</th>' +
-      '<th class="n">To farm</th><th class="n">To prop</th><th class="n">MS plants</th>' +
-      '<th class="n">Bench m²</th><th>Harvest</th><th>Event</th></tr></thead><tbody>' +
+      '<p class="pl-note">Click any <b>To farm</b> figure to change the split for that ' +
+      'week. What you leave behind goes to the propagation unit and comes back as its ' +
+      'own motherstock pool after establishment, ramping to full capacity like any ' +
+      'other — so it shows up in Prop-MS and in the total from then on.</p>' +
+      '<table class="pl-t pl-t-cols"><thead><tr><th>Wk</th><th>Week</th><th>Date</th>' +
+      '<th>Phase</th><th>Source</th>' +
+      '<th class="n">Base MS</th><th class="n">Prop-MS</th><th class="n">Total/wk</th>' +
+      '<th class="n">To farm</th><th class="n">To prop</th><th class="n">To prop %</th>' +
+      '<th class="n">MS plants</th><th class="n">Bench m²</th>' +
+      '<th>Harvest wk</th><th>Harvest date</th><th>Event</th></tr></thead><tbody>' +
       rows.map((x) =>
         `<tr class="${x.total_cap ? "" : "zero"}"><td>${x.sw}</td><td>${esc(x.label)}</td>` +
+        `<td>${esc(x.date || "")}</td>` +
         `<td>${esc(x.phase || "—")}</td><td>${esc(x.source || "—")}` +
         `${x.prop_cap ? ' <span class="pill">+prop</span>' : ""}</td>` +
         `<td class="n">${x.base_cap ? num(x.base_cap) : "—"}</td>` +
         `<td class="n" style="color:var(--violet)">${x.prop_cap ? num(x.prop_cap) : "—"}</td>` +
         `<td class="n"><b>${x.total_cap ? num(x.total_cap) : "—"}</b></td>` +
-        `<td class="n" style="color:var(--good)">${x.to_farm ? num(x.to_farm) : "—"}</td>` +
+        (x.total_cap
+          ? `<td class="n"><span class="ls-edit" data-sw="${x.sw}" ` +
+            `data-cap="${x.total_cap}" role="button" tabindex="0" ` +
+            `title="Change what goes to the field this week. Max ${num(x.total_cap)}.">` +
+            `${num(x.to_farm)}</span></td>`
+          : `<td class="n">—</td>`) +
         `<td class="n" style="color:var(--violet)">${x.to_prop ? num(x.to_prop) : "—"}</td>` +
+        `<td class="n"${x.to_prop ? ' style="color:var(--warning)"' : ""}>` +
+        `${x.total_cap ? x.to_prop_pct + "%" : "—"}</td>` +
         `<td class="n">${x.ms_plants ? num(x.ms_plants) : "—"}</td>` +
         `<td class="n"${x.bench_limited ? ' style="color:var(--critical)"' : ""}>` +
         `${x.bench_sqm || "—"}${x.bench_limited ? " ⚠" : ""}</td>` +
         `<td>${esc(x.harvest_label || "—")}</td>` +
-        `<td style="font-size:.72rem">${esc(x.events.join(" · "))}</td></tr>`).join("") +
-      "</tbody></table>";
+        `<td>${esc(x.harvest_date || "—")}</td>` +
+        `<td style="font-size:.72rem;white-space:normal">${esc(x.events.join(" · "))}</td>` +
+        "</tr>").join("") +
+      "</tbody></table>" +
+      (Object.keys(S.lsOverrides || {}).length
+        ? `<p class="pl-note">${Object.keys(S.lsOverrides).length} week` +
+          `${Object.keys(S.lsOverrides).length === 1 ? "" : "s"} overridden. ` +
+          `<button type="button" class="pl-btn" data-ls="reset">Clear overrides</button></p>`
+        : "");
+  }
+
+  // Editing one week changes every week after it, because what is diverted becomes
+  // capacity later -- so the whole run is recomputed rather than the cell patched.
+  function lsEditFarm(el) {
+    if (el.querySelector("input")) return;
+    const sw = +el.dataset.sw, cap = +el.dataset.cap;
+    const cur = (S.lsOverrides || {})[sw];
+    const inp = document.createElement("input");
+    inp.type = "number"; inp.min = 0; inp.max = cap; inp.step = 100;
+    inp.value = cur === undefined ? el.textContent.replace(/[^0-9]/g, "") : cur;
+    inp.className = "ls-input";
+    const commit = () => {
+      let v = parseInt(inp.value, 10);
+      if (isNaN(v) || v < 0) v = 0;
+      if (v > cap) v = cap;
+      S.lsOverrides = S.lsOverrides || {};
+      S.lsOverrides[sw] = v;
+      runLifecycle().then(() => {
+        const again = document.querySelector(`.ls-edit[data-sw="${sw}"]`);
+        if (again) again.scrollIntoView({ block: "center" });
+      });
+    };
+    inp.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") { e.preventDefault(); commit(); }
+      if (e.key === "Escape") renderLifecycle();
+    });
+    inp.addEventListener("blur", commit);
+    el.textContent = "";
+    el.appendChild(inp);
+    inp.focus();
+    inp.select();
   }
 
   function renderCalendar() {
@@ -3018,8 +3193,12 @@ table.hc tbody tr:hover td:not(.hc-k):not(.hc-m){background:var(--surface-2)}
     $("ls-prop-out").textContent = $("ls-prop").value + "%";
     return call("simulate_lifecycle", {
       version: S.version, tc_qty: $("ls-qty").value || 20000,
-      order_date: $("ls-date").value, num_cycles: $("ls-cycles").value,
+      order_date: $("ls-date").value,
       to_prop_pct: $("ls-prop").value, max_bench_sqm: $("ls-bench").value || null,
+      // The horizon comes from the plan, which is what decides how many
+      // generations are needed. No cycle count is sent.
+      plan: S.plan || null,
+      farm_overrides: JSON.stringify(S.lsOverrides || {}),
     }).then((r) => { S.ls = r; renderLifecycle(); });
   }
 
@@ -3102,7 +3281,7 @@ table.hc tbody tr:hover td:not(.hc-k):not(.hc-m){background:var(--surface-2)}
     // The transactional tabs read live state, so they refetch on reveal rather
     // than showing whatever was true when the page first loaded.
     if (name === "plan") {
-      loadChain().then(renderPlanTab)
+      Promise.all([loadChain(), loadTc()]).then(renderPlanTab)
         .catch((e) => toast(esc(e.message), true));
     }
     if (name === "propagation") loadPropagation().catch((e) => toast(esc(e.message), true));
@@ -3355,6 +3534,18 @@ table.hc tbody tr:hover td:not(.hc-k):not(.hc-m){background:var(--surface-2)}
         S.week = e.target.value; renderAllPanes();
       });
       $("bf-block").addEventListener("change", (e) => { S.bfBlock = e.target.value; renderBlocks(); });
+      $("tc-tiles").parentElement.addEventListener("click", (e) => {
+        const b = e.target.closest("[data-tc]");
+        if (!b) return;
+        if (b.dataset.tc === "reset") { loadTc(null); return; }
+        loadTc($("tc-qty").value || null);
+      });
+      $("ls-table").addEventListener("click", (e) => {
+        const cell = e.target.closest(".ls-edit");
+        if (cell) { lsEditFarm(cell); return; }
+        const rst = e.target.closest('[data-ls="reset"]');
+        if (rst) { S.lsOverrides = {}; runLifecycle(); }
+      });
       $("hc-scope").addEventListener("change", renderHarvestCalendar);
       $("hc-unit").addEventListener("change", renderHarvestCalendar);
       $("hv-cycle").addEventListener("change", (e) => {
@@ -3375,7 +3566,7 @@ table.hc tbody tr:hover td:not(.hc-k):not(.hc-m){background:var(--surface-2)}
           S.pr = r; prEditing = false; PR_FLUSH.rows = null; renderProtocol(); });
       });
       $("cal-year").addEventListener("change", (e) => { S.calYear = +e.target.value; renderCalendar(); });
-      ["ls-qty", "ls-date", "ls-cycles", "ls-bench"].forEach((id) =>
+      ["ls-qty", "ls-date", "ls-bench"].forEach((id) =>
         $(id).addEventListener("change", runLifecycle));
       $("ls-prop").addEventListener("input", () => {
         $("ls-prop-out").textContent = $("ls-prop").value + "%";

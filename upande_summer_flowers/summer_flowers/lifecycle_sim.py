@@ -31,6 +31,8 @@ DEFAULT_RAMP = [0.25, 0.50, 0.75, 1.00]
 # Guard against a misconfigured protocol producing an unbounded simulation.
 MAX_WEEKS = 1040
 MAX_POOLS = 4000
+# A backstop on the derived generation count, not a modelling choice.
+MAX_CYCLES = 40
 
 
 def parse_ramp(profile, ramp_weeks=None):
@@ -127,14 +129,36 @@ def build_cycles(p, tc_qty, order_date, num_cycles):
 	return cycles
 
 
+def cycles_for_horizon(p, tc_qty, order_date, horizon_weeks):
+	"""How many TC generations the horizon actually needs.
+
+	The count used to be picked from a dropdown, which is the wrong question: a
+	generation exists because the one before it expires and something has to
+	replace it. Renewal is already chained -- each cycle carries the week the next
+	order must go in -- so the count falls out of how far ahead you are looking.
+	Diverted cuttings add generations on top of these, and those are counted from
+	the pools the simulation actually creates rather than guessed at here.
+	"""
+	horizon = max(1, int(horizon_weeks or 0))
+	n = 1
+	while n < MAX_CYCLES:
+		cycles = build_cycles(p, tc_qty, order_date, n)
+		# Enough when the last generation is still cutting at the horizon.
+		if cycles[-1]["expiry_sw"] >= horizon:
+			return n
+		n += 1
+	return MAX_CYCLES
+
+
 def ramp_ratio(week_in_pool, ramp):
 	if week_in_pool < 0:
 		return 0.0
 	return ramp[week_in_pool] if week_in_pool < len(ramp) else ramp[-1]
 
 
-def simulate(p, tc_qty, order_date, num_cycles=4, farm_overrides=None,
-             default_to_prop_pct=0.0, extra_weeks=None, max_bench_sqm=None):
+def simulate(p, tc_qty, order_date, num_cycles=None, farm_overrides=None,
+             default_to_prop_pct=0.0, extra_weeks=None, max_bench_sqm=None,
+             horizon_weeks=None):
 	"""Walk every week forward, letting diverted cuttings build new pools.
 
 	`farm_overrides` is {sim_week: plants_to_field}; anything not overridden falls
@@ -147,7 +171,12 @@ def simulate(p, tc_qty, order_date, num_cycles=4, farm_overrides=None,
 	bench is full the diversion is trimmed to what fits and the week is flagged.
 	"""
 	farm_overrides = {int(k): int(v) for k, v in (farm_overrides or {}).items()}
-	cycles = build_cycles(p, tc_qty, order_date, num_cycles)
+	# Derived unless a caller insists, so the answer to "how many cycles" comes
+	# from the period being planned instead of from a control on a page.
+	if not num_cycles:
+		num_cycles = cycles_for_horizon(p, tc_qty, order_date,
+		                                horizon_weeks or extra_weeks or 156)
+	cycles = build_cycles(p, tc_qty, order_date, int(num_cycles))
 	base = getdate(order_date)
 	ramp = p["ramp"]
 	estab = p["ms_establishment_weeks"]
@@ -338,6 +367,12 @@ def simulate(p, tc_qty, order_date, num_cycles=4, farm_overrides=None,
 		"rows": rows,
 		"horizon_weeks": horizon,
 		"prop_pools": len(prop_pools),
+		"num_cycles": len(cycles),
+		"cycles_derived": True,
+		# A diverted batch that matures is a generation in its own right: it cuts,
+		# and what it cuts can be diverted again. Counted from the pools the run
+		# created rather than asserted up front.
+		"generations": len(cycles) + len(prop_pools),
 		"truncated": truncated,
 		"max_bench_sqm": flt(max_bench_sqm) if max_bench_sqm else None,
 		"max_ms_plants": max_plants,

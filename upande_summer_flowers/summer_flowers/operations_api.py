@@ -627,15 +627,40 @@ def _space_for(plan, farm):
 
 
 @frappe.whitelist()
-def create_production_plan(demand):
-	"""Build the production plan for a demand register."""
+def create_production_plan(demand, force_new=0):
+	"""Build the production plan for a demand register.
+
+	An open draft is rebuilt rather than joined by another one. Pressing this a few
+	times used to leave a row of identically named drafts with nothing to tell them
+	apart, which is exactly the confusion this is meant to resolve: a demand has one
+	plan being worked on at a time. Pass force_new to keep a draft and start a
+	separate scenario beside it.
+	"""
 	_guard()
+	if not cint(force_new):
+		open_draft = frappe.get_all(
+			"Summer Flower Production Plan",
+			filters={"market_demand": demand, "docstatus": 0,
+			         "workflow_state": ["in", ["Draft", "Rejected"]]},
+			pluck="name", order_by="creation desc", limit=1)
+		if open_draft:
+			doc = frappe.get_doc("Summer Flower Production Plan", open_draft[0])
+			doc.regenerate()
+			frappe.db.commit()
+			doc.reload()
+			return {"name": doc.name, "weeks_covered": cint(doc.weeks_covered),
+			        "coverage_pct": flt(doc.coverage_pct),
+			        "new_beds_required": cint(doc.new_beds_required),
+			        "weeks_in_deficit": cint(doc.weeks_in_deficit),
+			        "reused": 1}
+
 	d = frappe.get_doc("Summer Flower Market Demand", demand)
 	name = d.create_production_plan()
 	frappe.db.commit()
 	p = frappe.db.get_value("Summer Flower Production Plan", name,
 	                        ["name", "weeks_covered", "coverage_pct",
 	                         "new_beds_required", "weeks_in_deficit"], as_dict=True)
+	p["reused"] = 0
 	return p
 
 

@@ -7,6 +7,7 @@ the same calls back both the current plan and a what-if slider.
 """
 
 import datetime
+import math
 
 import frappe
 from frappe import _
@@ -72,13 +73,21 @@ def plans(variety=None, farm=None):
 		        "new_beds_required", "creation"],
 		order_by="creation desc",
 	)
+	# Every plan carried the same period label, so eighteen of them read as
+	# eighteen copies of one thing. Name the crop and the coverage instead: that is
+	# what tells them apart.
 	for r in rows:
-		r["label"] = "%s · %dW%02d-%dW%02d · %s%s" % (
-			r.name, r.from_year or 0, r.from_week or 0, r.to_year or 0,
-			r.to_week or 0, r.workflow_state or r.status or "?",
-			" · budget" if r.budget else "")
+		r["label"] = "%s · %s · %s%s · %.0f%% of demand" % (
+			r.name, r.variety or "?", r.workflow_state or r.status or "?",
+			" + budget" if r.budget else "", flt(r.coverage_pct))
 		r["is_authoritative"] = r.docstatus == 1
-	return {"plans": rows, "default": resolve_plan(variety, farm)}
+	drafts = [r for r in rows if r.docstatus == 0]
+	return {
+		"plans": rows,
+		"default": resolve_plan(variety, farm),
+		"draft_count": len(drafts),
+		"approved_count": len(rows) - len(drafts),
+	}
 
 
 @frappe.whitelist()
@@ -282,6 +291,81 @@ def _first_sticking_for(plan):
 		  and ifnull(sticking_year, 0) > 0
 		order by sticking_year asc, sticking_week asc limit 1""", (plan,), as_dict=True)
 	return iso_monday(row[0].y, row[0].w) if row else None
+
+
+@frappe.whitelist()
+def tc_purchase(plan=None, variety=None, farm=None, tc_qty=None, tolerance_pct=10):
+	"""What to buy on the first TC order, and what buying differently does.
+
+	The recommendation is the amount that makes the pool exactly meet the plan's
+	peak sticking week -- the order for a plan that works. Everything downstream is
+	proportional to the pool, so the tolerance is expressed in plantlets and the
+	stems follow: buy 10% under and the peak week is 10% short, which is 10% of the
+	plantings that week not happening.
+	"""
+	_guard()
+	plan = resolve_plan(variety, farm, plan)
+	if not plan:
+		return {"plan": None}
+
+	p = frappe.get_doc("Summer Flower Production Plan", plan)
+	v = frappe.get_cached_doc("Crop Protocol Version", p.protocol)
+	tol = flt(tolerance_pct) or 10.0
+
+	peak_plants = cint(p.peak_weekly_sticking)
+	cuttings = v.cuttings_for_plants(peak_plants) if peak_plants else 0
+	per_week = flt(v.cuttings_per_plant_per_week) or 1.0
+	mothers = int(math.ceil(cuttings / per_week)) if cuttings else 0
+	cycles = cint(v.max_multiplication_cycles)
+	recommended = int(math.ceil(v.tc_plants_for(mothers, cycles))) if mothers else 0
+
+	# The propagation plan nets off standing motherstock, so where one exists its
+	# order is the one to place. The recommendation above is what the plan would
+	# need with no motherstock at all, which is the number to sanity-check against.
+	prop = frappe.get_all(
+		"Summer Flower Propagation Plan",
+		filters={"production_plan": plan, "status": ["!=", "Rejected"]},
+		fields=["name", "tc_plants_required", "mother_plants_required",
+		        "tc_order_date", "tc_on_farm_date", "first_sticking_date",
+		        "full_capacity_date", "ramp_weeks", "cuttings_uncovered",
+		        "total_cuttings_required", "tc_cost", "status"],
+		order_by="creation desc", limit=1)
+	prop = prop[0] if prop else None
+
+	chosen = cint(tc_qty) or (cint(prop.tc_plants_required) if prop else recommended)
+	factor = 1 + (cycles * flt(v.multiplication_factor_per_cycle))
+	pool_for = lambda tc: int(round(cint(tc) * factor))
+	cover_of_peak = (pool_for(chosen) * per_week / cuttings * 100) if cuttings else 0
+	base = cint(prop.tc_plants_required) if prop else recommended
+
+	return {
+		"plan": plan, "variety": p.variety, "farm": p.farm, "version": v.name,
+		"tolerance_pct": tol,
+		"peak_plants": peak_plants,
+		"peak_week": p.peak_sticking_week,
+		"peak_cuttings": cuttings,
+		"mothers_for_peak": mothers,
+		"build_up_cycles": cycles,
+		"multiplication_factor": factor,
+		"recommended_tc": recommended,
+		"propagation_plan": prop.name if prop else None,
+		"propagation_tc": cint(prop.tc_plants_required) if prop else 0,
+		"propagation_status": prop.status if prop else None,
+		"order_date": str(prop.tc_order_date or "") if prop else "",
+		"on_farm_date": str(prop.tc_on_farm_date or "") if prop else "",
+		"first_cut_date": str(prop.first_sticking_date or "") if prop else "",
+		"full_capacity_date": str(prop.full_capacity_date or "") if prop else "",
+		"ramp_weeks": cint(prop.ramp_weeks) if prop else len(v.ramp_ratios()),
+		"chosen_tc": chosen,
+		"chosen_pool": pool_for(chosen),
+		"chosen_cover_pct": round(cover_of_peak, 1),
+		"in_band": bool(base and abs(chosen - base) <= base * tol / 100),
+		"band_low": int(round(base * (1 - tol / 100))) if base else 0,
+		"band_high": int(round(base * (1 + tol / 100))) if base else 0,
+		"rate_per_plantlet": flt(_rate_for(chosen)),
+		"cost": round(flt(_rate_for(chosen)) * chosen, 2),
+		"plan_coverage_pct": flt(p.coverage_pct),
+	}
 
 
 @frappe.whitelist()
@@ -507,9 +591,16 @@ def planting_plan(plan=None, variety=None, farm=None):
 
 
 @frappe.whitelist()
-def simulate_lifecycle(version, tc_qty, order_date, num_cycles=4, to_prop_pct=0,
-                       farm_overrides=None, max_bench_sqm=None):
-	"""The weekly TC -> motherstock -> cuttings lifecycle, with propagation feedback."""
+def simulate_lifecycle(version, tc_qty, order_date, num_cycles=None, to_prop_pct=0,
+                       farm_overrides=None, max_bench_sqm=None, plan=None,
+                       horizon_weeks=None):
+	"""The weekly TC -> motherstock -> cuttings lifecycle, with propagation feedback.
+
+	num_cycles is derived from the horizon unless a caller insists on a number: a
+	generation exists because the previous one expires, and diverted cuttings add
+	generations of their own. The horizon comes from the plan being looked at, so
+	the run covers the period being planned and no further.
+	"""
 	_guard()
 	from upande_summer_flowers.summer_flowers import lifecycle_sim as ls
 
@@ -518,13 +609,18 @@ def simulate_lifecycle(version, tc_qty, order_date, num_cycles=4, to_prop_pct=0,
 	if max_bench_sqm in (None, ""):
 		max_bench_sqm = frappe.db.get_single_value("Summer Flower Settings", "max_bench_sqm")
 
+	if not horizon_weeks and plan:
+		horizon_weeks = frappe.db.get_value("Summer Flower Production Plan", plan,
+		                                    "weeks_covered")
+
 	p = ls.params_from_version(version)
 	res = ls.simulate(
 		p, frappe.utils.cint(tc_qty), order_date,
-		num_cycles=frappe.utils.cint(num_cycles),
+		num_cycles=frappe.utils.cint(num_cycles) or None,
 		farm_overrides=farm_overrides,
 		default_to_prop_pct=flt(to_prop_pct),
 		max_bench_sqm=max_bench_sqm,
+		horizon_weeks=cint(horizon_weeks) or None,
 	)
 	# Trim the row payload: the table only needs weeks where something happens.
 	res["rows"] = [
