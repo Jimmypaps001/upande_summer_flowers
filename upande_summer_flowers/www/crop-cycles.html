@@ -602,9 +602,11 @@
         { name: "from_bed", label: "From bed", type: "number", value: "", required: true },
         { name: "to_bed", label: "To bed", type: "number", value: "", required: true,
           note: "Bed numbers are unique within a greenhouse, so a block's beds are a range like 201-240." },
+        // Same list the Uprooting Log accepts -- the finished job writes its
+        // summary row there, so an unknown label would be refused on completion.
         { name: "reason", label: "Reason (uprooting)", type: "select",
           options: ["", "Low Yield", "Disease", "Variety Change",
-                    "Age (End of Cycle)", "Replanting", "Other"], value: "" },
+                    "Age (End of Life)", "Storm Damage", "Other"], value: "" },
       ],
       submitLabel: "Open job",
       onSubmit(v) {

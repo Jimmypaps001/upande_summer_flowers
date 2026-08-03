@@ -189,18 +189,38 @@ class BedWorkOrder(Document):
 				vals["custom_uproot_date"] = self.last_worked_on
 			frappe.db.set_value("Bed", b, vals, update_modified=False)
 
+	def _log_reason(self):
+		"""A reason the Uprooting Log will actually accept.
+
+		The job and the log each carry their own Select list, and a value valid on
+		one but not the other used to surface only when the job completed and the
+		summary row was written -- the worst moment to discover it. Anything the log
+		does not recognise is recorded as Other with the original kept in the
+		remarks, so finishing a job can never be blocked by a label.
+		"""
+		wanted = self.reason or ""
+		allowed = (frappe.get_meta("Uprooting Log").get_field("reason").options
+		           or "").split("\n")
+		if wanted in allowed:
+			return wanted, None
+		return "Other", _("Reason recorded as {0}.").format(wanted or _("blank"))
+
 	def write_cycle_log(self):
 		"""Put the summary row on the cycle's own replanting or uprooting tab."""
 		cyc = frappe.get_doc("Crop Cycle", self.crop_cycle)
 		if self.work_type == "Uprooting":
+			reason, carried = self._log_reason()
 			cyc.append("uprooting_logs", {
 				"uproot_date": self.completed_on or self.last_worked_on,
 				"from_bed": cint(self.from_bed), "to_bed": cint(self.to_bed),
-				"reason": self.reason or "Other",
+				"reason": reason,
 				"qty_uprooted": cint(self.plants_affected),
-				"remarks": _("{0}: {1} beds over {2} day(s), {3} labour hours.").format(
-					self.name, flt(self.beds_done), cint(self.days_worked),
-					flt(self.total_labour_hours)),
+				"remarks": " ".join(filter(None, [
+					_("{0}: {1} beds over {2} day(s), {3} labour hours.").format(
+						self.name, flt(self.beds_done), cint(self.days_worked),
+						flt(self.total_labour_hours)),
+					carried,
+				])),
 			})
 		else:
 			cyc.append("replanting_logs", {

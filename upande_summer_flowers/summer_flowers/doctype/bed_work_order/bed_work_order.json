@@ -167,10 +167,11 @@
   },
   {
    "depends_on": "eval:doc.work_type=='Uprooting'",
+   "description": "Taken from the Uprooting Log, which is where the finished job writes its summary row.",
    "fieldname": "reason",
    "fieldtype": "Select",
    "label": "Reason",
-   "options": "\nLow Yield\nDisease\nVariety Change\nAge (End of Cycle)\nReplanting\nOther"
+   "options": "\nLow Yield\nDisease\nVariety Change\nAge (End of Life)\nStorm Damage\nOther"
   },
   {
    "depends_on": "eval:doc.work_type=='Replanting'",
@@ -340,7 +341,7 @@
  "grid_page_length": 50,
  "index_web_pages_for_search": 1,
  "links": [],
- "modified": "2026-07-31 22:48:56.914107",
+ "modified": "2026-08-03 07:39:40.844428",
  "modified_by": "Administrator",
  "module": "Summer Flowers",
  "name": "Bed Work Order",
