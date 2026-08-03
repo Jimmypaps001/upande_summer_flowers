@@ -16,6 +16,10 @@
   "variety",
   "farm",
   "protocol",
+  "protocol_status",
+  "protocol_stale",
+  "protocol_note",
+  "protocol_built_on",
   "cb_ident",
   "company",
   "currency",
@@ -101,7 +105,8 @@
    "in_list_view": 1,
    "label": "Variety",
    "options": "Item",
-   "read_only": 1
+   "read_only": 1,
+   "fetch_from": "market_demand.variety"
   },
   {
    "fieldname": "farm",
@@ -110,14 +115,51 @@
    "in_standard_filter": 1,
    "label": "Farm",
    "options": "Farm",
-   "read_only": 1
+   "read_only": 1,
+   "fetch_from": "market_demand.farm"
   },
   {
    "fieldname": "protocol",
    "fieldtype": "Link",
-   "label": "Protocol",
+   "label": "Crop Protocol Version",
    "options": "Crop Protocol Version",
-   "read_only": 1
+   "description": "The agronomic assumptions this plan is built on: density, cycle length, flush curve. Change it and Regenerate to see the effect on the numbers."
+  },
+  {
+   "fieldname": "protocol_status",
+   "fieldtype": "Data",
+   "label": "Protocol Status",
+   "read_only": 1,
+   "no_copy": 1,
+   "description": "Which version the numbers below were built from.",
+   "allow_on_submit": 1
+  },
+  {
+   "fieldname": "protocol_stale",
+   "fieldtype": "Check",
+   "label": "Protocol Changed Since Build",
+   "read_only": 1,
+   "no_copy": 1,
+   "default": "0",
+   "allow_on_submit": 1
+  },
+  {
+   "fieldname": "protocol_note",
+   "fieldtype": "Small Text",
+   "label": "Protocol Note",
+   "read_only": 1,
+   "no_copy": 1,
+   "depends_on": "eval:doc.protocol_stale",
+   "allow_on_submit": 1
+  },
+  {
+   "fieldname": "protocol_built_on",
+   "fieldtype": "Datetime",
+   "label": "Protocol Read At",
+   "read_only": 1,
+   "no_copy": 1,
+   "hidden": 1,
+   "allow_on_submit": 1
   },
   {
    "fieldname": "cb_ident",

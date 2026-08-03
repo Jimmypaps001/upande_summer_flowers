@@ -4,13 +4,6 @@
 frappe.ui.form.on("Summer Flower Market Demand", {
 	refresh(frm) {
 		frm.set_query("variety", () => ({ filters: { item_group: "Summer Flowers" } }));
-		frm.set_query("protocol", () => ({
-			filters: {
-				variety: frm.doc.variety,
-				farm: frm.doc.farm,
-				protocol_status: "Active",
-			},
-		}));
 
 		if (frm.is_new()) return;
 
@@ -38,14 +31,6 @@ frappe.ui.form.on("Summer Flower Market Demand", {
 		if (frm.doc.weeks_covered) {
 			frm.add_custom_button(__("Create Production Plan"), () => create_plan(frm));
 		}
-	},
-
-	farm(frm) {
-		frm.set_value("protocol", null);
-	},
-
-	variety(frm) {
-		frm.set_value("protocol", null);
 	},
 });
 

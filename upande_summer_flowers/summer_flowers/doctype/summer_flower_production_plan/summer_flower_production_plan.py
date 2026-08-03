@@ -8,8 +8,11 @@ from collections import defaultdict
 import frappe
 from frappe import _
 from frappe.model.document import Document
-from frappe.utils import cint, getdate, nowdate
+from frappe.utils import cint, get_datetime, getdate, nowdate
 
+from upande_summer_flowers.summer_flowers.doctype.crop_protocol_version.crop_protocol_version import (
+	current_version,
+)
 from upande_summer_flowers.summer_flowers.doctype.planting_calendar.planting_calendar import (
 	RESERVING_STATES,
 	production_by_week,
@@ -32,6 +35,7 @@ class SummerFlowerProductionPlan(Document):
 		self.set_period_end()
 		self.roll_up_months()
 		self.set_totals()
+		self.check_protocol_freshness()
 		self.sync_status()
 
 	def on_submit(self):
@@ -44,12 +48,19 @@ class SummerFlowerProductionPlan(Document):
 
 	# ------------------------------------------------------------------ header
 	def pull_header_from_demand(self):
+		"""What the market wants comes from the demand. What the crop does does not.
+
+		The demand register used to carry a protocol version too, which meant the
+		same fact was stored twice and could disagree with itself. The version is
+		an assumption of *this plan* -- density, cycle length, flush curve -- so it
+		is chosen here, and changing it is a change to the plan that Regenerate
+		then acts on.
+		"""
 		if not self.market_demand:
 			return
 		d = frappe.get_cached_doc("Summer Flower Market Demand", self.market_demand)
 		self.variety = d.variety
 		self.farm = d.farm
-		self.protocol = d.protocol
 		# The demand register is authoritative. Do not fall back to whatever
 		# frappe.new_doc pre-filled from the global default company -- on a
 		# multi-company site that silently plans against the wrong entity.
@@ -57,6 +68,46 @@ class SummerFlowerProductionPlan(Document):
 		self.currency = d.currency or self.currency
 		if not self.price_per_stem:
 			self.price_per_stem = d.price_per_stem
+		self.resolve_protocol()
+
+	def resolve_protocol(self):
+		"""Default to the version in force, and refuse another crop's protocol."""
+		if not self.protocol:
+			self.protocol = current_version(self.variety, self.farm)
+			if not self.protocol:
+				frappe.throw(_(
+					"No Active Crop Protocol Version for {0} at {1}. Approve one "
+					"before planning against this demand."
+				).format(self.variety, self.farm))
+
+		v = frappe.get_cached_doc("Crop Protocol Version", self.protocol)
+		if v.variety != self.variety or v.farm != self.farm:
+			frappe.throw(_(
+				"{0} is the protocol for {1} at {2}, but this plan is for {3} at "
+				"{4}. A plan cannot be built on another crop's protocol."
+			).format(v.name, v.variety, v.farm, self.variety, self.farm))
+		self._version = v
+
+	def check_protocol_freshness(self):
+		"""Store the freshness verdict so drafts and the list view carry it."""
+		if not self.protocol_built_on and not self.is_new():
+			# Plans that predate this watermark still have to be judged. The last
+			# time the document was written is the best available lower bound on
+			# when its rows were built, so adopt it once instead of accusing every
+			# older plan of being stale. Read it from the database: by the time
+			# validate runs, self.modified has already been moved to now.
+			self.protocol_built_on = frappe.db.get_value(
+				self.doctype, self.name, "modified")
+
+		f = protocol_freshness(self)
+		self.protocol_status = f["status"]
+		self.protocol_stale = f["stale"]
+		self.protocol_note = f["note"]
+
+	@frappe.whitelist()
+	def get_protocol_freshness(self):
+		"""Live verdict, for a form that cannot rely on the stored one."""
+		return protocol_freshness(self)
 
 	def set_period_end(self):
 		if not (self.from_year and self.from_week and self.weeks_covered):
@@ -237,6 +288,55 @@ class SummerFlowerProductionPlan(Document):
 
 
 # ---------------------------------------------------------------------------
+# Protocol freshness
+# ---------------------------------------------------------------------------
+
+def protocol_freshness(plan):
+	"""Whether a plan's stored numbers still match the protocol they cite.
+
+	plan_weeks and plan_blocks are stored rows built by Regenerate -- nothing
+	recomputes on its own. So editing a protocol value, or activating a newer
+	version, leaves the numbers citing a version that no longer says what they
+	were built from. Left silent that reads as "I changed the protocol and
+	nothing happened", which is how this was found.
+
+	Computed rather than read back from the document because Frappe does not run
+	validate on a submitted one, and an approved plan is exactly the plan a
+	manager is looking at.
+	"""
+	blank = {"status": None, "stale": 0, "note": None, "in_force": None}
+	if not plan.protocol:
+		return blank
+
+	v = frappe.get_cached_doc("Crop Protocol Version", plan.protocol)
+	status = "v%s · %s%s" % (v.version, v.version_status,
+	                         " · in force" if v.is_current else "")
+	in_force = current_version(plan.variety, plan.farm)
+	if not plan.get("plan_weeks"):
+		return {"status": status, "stale": 0, "note": None, "in_force": in_force}
+
+	notes = []
+	built = get_datetime(plan.protocol_built_on) if plan.protocol_built_on else None
+	if built and get_datetime(v.modified) > built:
+		notes.append(_("{0} was edited on {1}. This plan was built on {2}.")
+		             .format(v.name, frappe.format(v.modified, "Datetime"),
+		                     frappe.format(built, "Datetime")))
+	if in_force and in_force != plan.protocol:
+		notes.append(_("{0} is now the version in force for {1} at {2}.")
+		             .format(in_force, plan.variety, plan.farm))
+
+	return {
+		"status": status,
+		"stale": 1 if notes else 0,
+		"in_force": in_force,
+		"note": "\n".join(notes + [
+			_("Regenerate to rebuild the weekly grid and the planting proposals "
+			  "from the protocol as it stands now.")
+		]) if notes else None,
+	}
+
+
+# ---------------------------------------------------------------------------
 # Generation
 # ---------------------------------------------------------------------------
 
@@ -272,7 +372,12 @@ def _populate(plan):
 	count towards those weeks and we do not plant for them twice.
 	"""
 	demand = frappe.get_doc("Summer Flower Market Demand", plan.market_demand)
+	if not plan.protocol:
+		plan.resolve_protocol()
 	protocol = frappe.get_cached_doc("Crop Protocol Version", plan.protocol)
+	# Watermark the version as it stands at this moment, so a later edit to it can
+	# be told apart from one that predates these rows.
+	plan.protocol_built_on = protocol.modified
 
 	grid = week_sequence(plan.from_year, plan.from_week, plan.weeks_covered)
 	index = {(y, w): i for i, (y, w, _d) in enumerate(grid)}

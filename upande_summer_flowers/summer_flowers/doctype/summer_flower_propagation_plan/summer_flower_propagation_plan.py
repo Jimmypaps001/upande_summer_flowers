@@ -30,6 +30,7 @@ def _has_role(roles=APPROVER_ROLES):
 class SummerFlowerPropagationPlan(Document):
 	def validate(self):
 		self.pull_header()
+		self.note_protocol_provenance()
 		self.build_requirement()
 		self.apply_existing_motherstock()
 		self.size_new_motherstock()
@@ -47,6 +48,26 @@ class SummerFlowerPropagationPlan(Document):
 		self.currency = p.currency
 		self._plan = p
 		self._version = frappe.get_cached_doc("Crop Protocol Version", p.protocol)
+
+	def note_protocol_provenance(self):
+		"""Every header field here is the production plan's answer, not a choice.
+
+		The protocol decides cuttings per plant, the multiplication rate and the TC
+		lead time, so a propagation plan built on a different version than its
+		production plan would size the motherstock for a crop nobody is planting.
+		It is fetched, never set -- and if the plan itself reports the version moved
+		under it, that is said here rather than buried on the other document.
+		"""
+		p = self._plan
+		v = self._version
+		notes = [_("Protocol {0} (v{1}, {2}) comes from production plan {3}.")
+		         .format(v.name, v.version, v.version_status, p.name)]
+		if cint(p.get("protocol_stale")):
+			notes.append("")
+			notes.append(_("That plan reports its protocol changed since it was "
+			               "built, so these numbers inherit the same gap:"))
+			notes.append(p.protocol_note or "")
+		self.protocol_note = "\n".join(x for x in notes if x is not None)
 
 	# ---------------------------------------------------------- requirement
 	def build_requirement(self):

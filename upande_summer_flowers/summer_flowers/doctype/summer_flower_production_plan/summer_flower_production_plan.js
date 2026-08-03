@@ -3,6 +3,16 @@
 
 frappe.ui.form.on("Summer Flower Production Plan", {
 	refresh(frm) {
+		// Only this crop at this farm. A protocol version for another variety would
+		// produce numbers that look fine and mean nothing, so it is not offered.
+		frm.set_query("protocol", () => ({
+			filters: {
+				variety: frm.doc.variety,
+				farm: frm.doc.farm,
+				version_status: ["in", ["Active", "Superseded"]],
+			},
+		}));
+
 		if (frm.is_new()) return;
 
 		if (frm.doc.docstatus === 0) {
@@ -57,11 +67,46 @@ frappe.ui.form.on("Summer Flower Production Plan", {
 		}
 
 		set_headline(frm);
+		// A submitted plan never runs validate again, so its stored verdict is
+		// frozen at approval. Ask for the live one.
+		if (frm.doc.docstatus === 1) {
+			frm.call({ doc: frm.doc, method: "get_protocol_freshness" }).then((r) => {
+				const f = r.message || {};
+				if (f.stale) {
+					frm.dashboard.add_comment(f.note.replace(/\n/g, " "), "orange", true);
+				}
+			});
+		}
+	},
+
+	protocol(frm) {
+		// Changing the version does not change a single stored row until the plan is
+		// rebuilt, so say so at the moment of the change rather than letting the old
+		// numbers sit there under a new protocol name.
+		if (frm.doc.protocol && frm.doc.plan_weeks && frm.doc.plan_weeks.length) {
+			frm.dashboard.clear_headline();
+			frappe.show_alert({
+				message: __("Save, then Regenerate, to rebuild the plan on {0}.", [
+					frm.doc.protocol,
+				]),
+				indicator: "orange",
+			});
+		}
 	},
 });
 
 function set_headline(frm) {
 	const parts = [];
+
+	if (frm.doc.protocol_stale) {
+		frm.dashboard.add_comment(
+			__("These numbers were built on an older reading of {0}. Regenerate to apply it.", [
+				frm.doc.protocol,
+			]),
+			"orange",
+			true
+		);
+	}
 
 	if (frm.doc.total_demand_stems) {
 		parts.push(

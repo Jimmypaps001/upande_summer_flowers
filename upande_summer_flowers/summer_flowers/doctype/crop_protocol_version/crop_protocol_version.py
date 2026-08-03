@@ -327,6 +327,25 @@ class CropProtocolVersion(Document):
 # ---------------------------------------------------------------------------
 
 @frappe.whitelist()
+def current_version(variety, farm):
+	"""The Active version a plan for this crop at this farm should start from.
+
+	`refresh_current_flag` keeps exactly one Active version per (protocol, farm)
+	flagged as current, so this is a lookup and not a judgement. It orders by the
+	flag first so a site where the flag was never refreshed still answers with
+	the newest effective version rather than an arbitrary row.
+	"""
+	rows = frappe.get_all(
+		"Crop Protocol Version",
+		filters={"variety": variety, "farm": farm, "version_status": "Active"},
+		fields=["name"],
+		order_by="is_current desc, effective_from desc, version desc",
+		limit=1,
+	)
+	return rows[0].name if rows else None
+
+
+@frappe.whitelist()
 def resolve_version(crop_protocol, farm, on_date=None):
 	"""The version in force for a variety at a farm on a given date.
 

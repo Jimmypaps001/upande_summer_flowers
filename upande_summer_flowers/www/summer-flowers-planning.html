@@ -14,12 +14,18 @@
   <div class="pl-filters" role="group" aria-label="{{ _('Scope') }}">
     <label>{{ _("Variety") }}<select id="f-variety"></select></label>
     <label>{{ _("Farm") }}<select id="f-farm"></select></label>
-    <label>{{ _("Protocol version") }}<select id="f-version"></select></label>
     <label>{{ _("Production plan") }}<select id="f-plan"></select></label>
     <label>{{ _("Year") }}<select id="f-year"></select></label>
     <label>{{ _("Week") }}<select id="f-week"></select></label>
     <span class="pl-asof" id="asof"></span>
   </div>
+
+  <!-- The protocol version used to be a picker here, beside the plan. It could not
+       change a single figure on the page -- every number is built and stored by the
+       plan, against the version the plan was built on -- so offering it as a control
+       promised something it could not do. It is now stated as what it is: a property
+       of the selected plan. Change it on the plan and regenerate. -->
+  <p class="pl-scopeline" id="f-derived"></p>
 
   <p id="pl-loading" class="pl-note">{{ _("Loading…") }}</p>
 
@@ -321,6 +327,7 @@
                <p class="pl-note" id="ls-sub"></p></div>
         </div>
         <div class="pl-controls">
+          <label>{{ _("Protocol version") }}<select id="ls-version"></select></label>
           <label>{{ _("TC quantity") }}<input type="number" id="ls-qty" min="500" step="500"></label>
           <label>{{ _("TC order date") }}<input type="date" id="ls-date"></label>
           <label>{{ _("Cycles") }}
@@ -448,7 +455,15 @@ table.pl-t th{text-align:left;font-size:.64rem;text-transform:uppercase;letter-s
   white-space:nowrap;position:sticky;top:0;background:var(--surface-1);z-index:2}
 table.pl-t td{padding:5px 8px;border-bottom:1px solid var(--gridline);vertical-align:middle}
 table.pl-t td.n{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+/* A numeric header left-aligned over right-aligned figures reads as a
+   different column once the table is wide, so it follows its own data. */
+table.pl-t th.n{text-align:right}
 table.pl-t tr.zero td{color:var(--text-muted)}
+/* Fixed layout so the week columns stay put and the trailing free-text
+   column cannot pull the figures away from their headers. */
+table.pl-t-cols{table-layout:fixed}
+table.pl-t-cols td:last-child{color:var(--text-muted);font-size:.72rem;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .pl-scroll{overflow-x:auto}
 .pl-tall{max-height:560px;overflow-y:auto}
 
@@ -547,6 +562,9 @@ input.pin.tgt.manual{border-color:var(--warning);
   color:var(--text-muted);font-weight:600}
 .pg-v{font-size:.9rem;font-weight:640}
 .pg-arrow{color:var(--text-muted);font-size:1.1rem}
+.pl-scopeline{margin:-4px 0 14px;font-size:.78rem;color:var(--text-muted);
+  display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.pl-scopeline b{color:var(--text);font-weight:600}
 .pl-t-narrow{max-width:660px}
 .pl-t-narrow td,.pl-t-narrow th{padding:5px 10px}
 .pl-t-narrow tbody tr:not(.pl-grp):hover{background:var(--surface-2)}
@@ -1224,7 +1242,11 @@ input.pin.tgt.manual{border-color:var(--warning);
     }
     const t = r.totals;
     $("pg-sub").innerHTML = `${esc(r.propagation_plan)} · from ${esc(r.plan)} · ` +
-      `${esc(r.variety)} at ${esc(r.farm)} · status <b>${esc(r.status)}</b>`;
+      `${esc(r.variety)} at ${esc(r.farm)} · status <b>${esc(r.status)}</b>` +
+      (r.protocol ? ` · protocol ${esc(r.protocol)}` : "") +
+      (r.protocol_stale
+        ? ' <span class="pill"><i class="dot2" style="background:var(--warning)"></i>' +
+          'protocol changed since build</span>' : "");
     $("pg-actions").innerHTML = [
       r.status === "Draft" || r.status === "Rejected"
         ? `<button type="button" class="pl-btn" data-pg="submit">Submit for approval</button>` : "",
@@ -1238,24 +1260,53 @@ input.pin.tgt.manual{border-color:var(--warning);
         ? `<button type="button" class="pl-btn" data-pg="requests">Create seedling requests</button>` : "",
     ].filter(Boolean).join(" ");
 
+    // The year/week pickers have to reach the tiles, not just the table below
+    // them: a headline reading 344,400 plants while the table under it shows one
+    // filtered week is the dashboard contradicting itself.
+    //
+    // Only the figures that are a sum or a max over sticking weeks can be
+    // narrowed. Mother plants, TC plantlets and cost are sized on the plan's own
+    // peak week -- a cutting cannot be banked, so the pool is built for the
+    // busiest week of the whole plan and does not shrink because you are looking
+    // at a quieter one. Those tiles stay whole-plan and say so.
+    const scoped = r.weeks.filter((x) => inPeriod(x.year, x.week_no));
+    const on = periodOn();
+    const sum = (k) => scoped.reduce((a, x) => a + (x[k] || 0), 0);
+    const top = scoped.reduce(
+      (b, x) => (!b || (x.cuttings_required || 0) > (b.cuttings_required || 0) ? x : b),
+      null);
+    const p = on
+      ? { plants: sum("plants_to_stick"), cuttings: sum("cuttings_required"),
+          existing: sum("from_existing_ms"), uncovered: sum("shortfall"),
+          peak: top ? top.cuttings_required || 0 : 0,
+          peak_week: top ? top.label : "", weeks: scoped.length }
+      : { plants: t.plants_to_stick, cuttings: t.cuttings_required,
+          existing: t.from_existing, uncovered: t.uncovered,
+          peak: t.peak_weekly_cuttings, peak_week: t.peak_week,
+          weeks: t.weeks_sticking };
+    const cover = p.cuttings ? (p.existing / p.cuttings * 100) : 0;
+    const whole = on ? " · whole plan" : "";
+
     $("pg-tiles").innerHTML = [
-      { k: "Plants to stick", v: num(t.plants_to_stick),
-        m: `over ${t.weeks_sticking} weeks` },
-      { k: "Cuttings needed", v: num(t.cuttings_required),
+      { k: "Plants to stick", v: num(p.plants),
+        m: on ? `over ${p.weeks} of ${t.weeks_sticking} weeks — ${esc(periodLabel())}`
+              : `over ${p.weeks} weeks` },
+      { k: "Cuttings needed", v: num(p.cuttings),
         m: `${t.cuttings_per_plant.toFixed(3)} per plant after losses` },
-      { k: "Peak week", v: num(t.peak_weekly_cuttings),
-        m: `${t.peak_week || "—"} — this sizes the motherstock` },
-      { k: "From existing MS", v: num(t.from_existing),
-        m: `${t.existing_cover_pct.toFixed(1)}% cover`,
-        c: t.existing_cover_pct > 0 ? "--good" : "--serious" },
+      { k: "Peak week", v: num(p.peak),
+        m: `${p.peak_week || "—"} — ${on ? "busiest week shown"
+                                          : "this sizes the motherstock"}` },
+      { k: "From existing MS", v: num(p.existing),
+        m: `${cover.toFixed(1)}% cover`,
+        c: cover > 0 ? "--good" : "--serious" },
       { k: "New mother plants", v: num(t.mother_plants),
-        m: `${t.bench_sqm} m² of bench` },
+        m: `${t.bench_sqm} m² of bench${whole}` },
       { k: "TC plantlets", v: num(t.tc_plants),
-        m: t.tc_order_date ? "order by " + t.tc_order_date : "none needed" },
-      { k: "Uncovered", v: num(t.uncovered), m: "no source",
-        c: t.uncovered ? "--critical" : "--good" },
+        m: (t.tc_order_date ? "order by " + t.tc_order_date : "none needed") + whole },
+      { k: "Uncovered", v: num(p.uncovered), m: "no source",
+        c: p.uncovered ? "--critical" : "--good" },
       { k: "Cost", v: num(Math.round(t.total_cost)),
-        m: `${esc(r.currency || "")} · TC ${num(Math.round(t.tc_cost))}` },
+        m: `${esc(r.currency || "")} · TC ${num(Math.round(t.tc_cost))}${whole}` },
     ].map(tile).join("");
 
     $("pg-warn").innerHTML = r.warning
@@ -1304,26 +1355,53 @@ input.pin.tgt.manual{border-color:var(--warning);
         "</tbody></table>";
     }
 
-    const weeks = r.weeks.filter((x) => inPeriod(x.year, x.week_no));
     html += `<h3 class="pl-h3">Sticking week by week</h3>` +
-      (periodOn() ? `<p class="pl-note">Showing ${weeks.length} of ${r.weeks.length} ` +
+      (on ? `<p class="pl-note">Showing ${scoped.length} of ${r.weeks.length} ` +
         `sticking weeks — ${esc(periodLabel())}.</p>` : "") +
-      (weeks.length
-        ? '<div class="pl-scroll pl-tall"><table class="pl-t"><thead><tr><th>Week</th>' +
+      (scoped.length
+        ? '<div class="pl-scroll pl-tall">' +
+          '<table class="pl-t pl-t-cols"><colgroup>' +
+          '<col style="width:82px"><col style="width:92px"><col style="width:80px">' +
+          '<col style="width:88px"><col style="width:96px"><col style="width:84px">' +
+          '<col style="width:92px"><col></colgroup>' +
+          '<thead><tr><th>Week</th>' +
           '<th>Starts</th><th class="n">Plants</th><th class="n">Cuttings</th>' +
           '<th class="n">Existing MS</th><th class="n">New MS</th>' +
-          '<th class="n">Uncovered</th><th>Plants out</th></tr></thead><tbody>' +
-          weeks.map((x) => `<tr${x.shortfall ? ' class="zero"' : ""}>` +
+          '<th class="n">Uncovered</th><th>Planted in</th></tr></thead><tbody>' +
+          scoped.map((x) => `<tr${x.shortfall ? ' class="zero"' : ""}>` +
             `<td>${esc(x.label)}</td><td>${esc(x.week_start_date)}</td>` +
             `<td class="n">${num(x.plants_to_stick)}</td>` +
             `<td class="n">${num(x.cuttings_required)}</td>` +
             `<td class="n">${num(x.from_existing_ms)}</td>` +
             `<td class="n">${num(x.from_new_ms)}</td>` +
             `<td class="n"${x.shortfall ? ' style="color:var(--critical)"' : ""}>` +
-            `${num(x.shortfall)}</td><td>${esc(x.plant_week || "")}</td></tr>`).join("") +
+            `${num(x.shortfall)}</td>` +
+            `<td title="${esc(x.plant_week || "")}">${esc(x.plant_week || "—")}</td>` +
+            "</tr>").join("") +
           "</tbody></table></div>"
         : '<p class="pl-empty">No sticking weeks in this period.</p>');
     $("pg-body").innerHTML = html;
+  }
+
+  // Variety, farm and protocol are properties of the selected plan, not separate
+  // dials. Stated here so it is obvious where the numbers on every tab come from.
+  function renderScopeLine() {
+    const el = $("f-derived");
+    if (!el) return;
+    const d = S.dv || {};
+    const pr = S.pp || {};
+    if (!d.plan && !S.plan) { el.innerHTML = ""; return; }
+    const stale = pr.protocol_stale || (S.pg && S.pg.protocol_stale);
+    el.innerHTML =
+      `Showing <b>${esc(S.plan || d.plan || "—")}</b>` +
+      (d.variety || S.variety ? ` · ${esc(d.variety || S.variety)}` : "") +
+      (d.farm || S.farm ? ` at ${esc(d.farm || S.farm)}` : "") +
+      (S.version ? ` · built on protocol <b>${esc(S.version)}</b>` : "") +
+      (pr.protocol_status ? ` (${esc(pr.protocol_status)})` : "") +
+      (stale
+        ? ' <span class="pill"><i class="dot2" style="background:var(--warning)"></i>' +
+          "protocol changed since this plan was built — regenerate to apply</span>"
+        : "");
   }
 
   // ══════════════════════════ PERIOD FILTER ══════════════════════════
@@ -1362,7 +1440,7 @@ input.pin.tgt.manual{border-color:var(--warning);
 
   function renderAllPanes() {
     renderOverview(); renderDemand(); renderPlanting();
-    renderBlocks(); renderCalendar();
+    renderBlocks(); renderCalendar(); renderScopeLine();
     if (S.pg) renderPropagation();
     if (S.det) renderDetail();
   }
@@ -2523,7 +2601,18 @@ input.pin.tgt.manual{border-color:var(--warning);
     ]).then(([dv, deriv, pp, bf, cal, pr]) => {
       S.dv = dv && dv.plan ? dv : null;
       S.deriv = deriv; S.pp = pp; S.bf = bf; S.cal = cal; S.pr = pr;
-      if (deriv && deriv.version) { S.version = deriv.version; $("f-version").value = S.version; }
+      // The simulator's own picker defaults to the plan's version, but it is free
+      // to wander from there -- that card is a what-if, not a statement about the
+      // plan.
+      if (deriv && deriv.version) {
+        S.version = deriv.version;
+        const lv = $("ls-version");
+        // A select always has a value -- its first option -- so following the plan
+        // has to be gated on whether anyone has actually chosen a version, not on
+        // whether the control looks empty.
+        if (lv && !S.versionPicked) lv.value = S.version;
+      }
+      renderScopeLine();
 
       buildPeriodPickers();
       const bsel = $("bf-block");
@@ -2772,7 +2861,7 @@ input.pin.tgt.manual{border-color:var(--warning);
     });
 
     call("scope").then((sc) => {
-      const vs = $("f-variety"), fs = $("f-farm"), vr = $("f-version");
+      const vs = $("f-variety"), fs = $("f-farm"), vr = $("ls-version");
       vs.add(new Option("All varieties", ""));
       (sc.varieties || []).forEach((x) => vs.add(new Option(x, x)));
       fs.add(new Option("All farms", ""));
@@ -2788,7 +2877,11 @@ input.pin.tgt.manual{border-color:var(--warning);
       fs.addEventListener("change", () => {
         S.farm = fs.value; S.plan = ""; loadPlans().then(loadScope);
       });
-      vr.addEventListener("change", () => { S.version = vr.value; runLifecycle(); });
+      // Scoped to the simulator: it re-runs the what-if and changes nothing that
+      // the plan asserts.
+      vr.addEventListener("change", () => {
+        S.version = vr.value; S.versionPicked = true; runLifecycle();
+      });
 
       toggleGroup([["g-month", "month"], ["g-week", "week"]], "grain", () =>
         drawGrouped($("dv-chart"), S.grain === "month" ? S.dv.months : S.dv.weeks));

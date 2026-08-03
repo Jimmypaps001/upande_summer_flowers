@@ -12,6 +12,9 @@ import frappe
 from frappe import _
 from frappe.utils import cint, flt, getdate, nowdate
 
+from upande_summer_flowers.summer_flowers.doctype.summer_flower_production_plan.summer_flower_production_plan import (
+	protocol_freshness,
+)
 from upande_summer_flowers.summer_flowers.motherstock_sim import (
 	params_from_version,
 	rounds_that_fit,
@@ -391,10 +394,17 @@ def planting_plan(plan=None, variety=None, farm=None):
 	blocks_available = frappe.db.count("Block", {
 		"custom_is_summer_flower_block": 1, **({"farm": p.farm} if p.farm else {})
 	})
+	# Every tab is showing this plan's stored rows, so the page states which
+	# protocol version they were built on and whether it has moved since.
+	fresh = protocol_freshness(p)
 	return {
 		"plan": p.name,
 		"variety": p.variety,
 		"farm": p.farm,
+		"protocol": p.protocol,
+		"protocol_status": fresh["status"],
+		"protocol_stale": cint(fresh["stale"]),
+		"protocol_note": fresh["note"],
 		"plantings": plantings,
 		"occupancy": occupancy,
 		"totals": {
@@ -1089,11 +1099,20 @@ def propagation_detail(plan=None, propagation_plan=None, variety=None, farm=None
 		fields=["name", "batch_status", "mother_plants", "tc_plants_required",
 		        "tc_order_date", "tc_on_farm_date", "first_sticking_date",
 		        "expiry_date", "total_cost", "currency", "bench_sqm"])
+	# The protocol is the production plan's, and so is the question of whether it
+	# has moved since the numbers were built. Judged live: an approved plan never
+	# runs validate again, so its stored verdict would be frozen at approval.
+	pp = protocol_freshness(
+		frappe.get_doc("Summer Flower Production Plan", d.production_plan))
 	return {
 		"propagation_plan": d.name,
 		"plan": d.production_plan,
 		"variety": d.variety, "farm": d.farm, "status": d.status,
 		"currency": d.currency,
+		"protocol": d.protocol,
+		"protocol_status": pp["status"],
+		"protocol_stale": cint(pp["stale"]),
+		"protocol_note": pp["note"],
 		"totals": {
 			"plants_to_stick": cint(d.total_plants_to_stick),
 			"cuttings_required": cint(d.total_cuttings_required),

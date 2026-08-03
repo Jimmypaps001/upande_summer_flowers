@@ -43,6 +43,7 @@
   "tc_cost",
   "total_cost",
   "schedule_warning",
+  "protocol_note",
   "sec_weeks",
   "weeks",
   "sec_sources",
@@ -78,14 +79,16 @@
    "fieldtype": "Link",
    "label": "Market Demand",
    "options": "Summer Flower Market Demand",
-   "read_only": 1
+   "read_only": 1,
+   "fetch_from": "production_plan.market_demand"
   },
   {
    "fieldname": "variety",
    "fieldtype": "Link",
    "label": "Variety",
    "options": "Item",
-   "read_only": 1
+   "read_only": 1,
+   "fetch_from": "production_plan.variety"
   },
   {
    "fieldname": "farm",
@@ -93,7 +96,8 @@
    "in_standard_filter": 1,
    "label": "Farm",
    "options": "Farm",
-   "read_only": 1
+   "read_only": 1,
+   "fetch_from": "production_plan.farm"
   },
   {
    "fieldname": "cb1",
@@ -104,21 +108,25 @@
    "fieldtype": "Link",
    "label": "Crop Protocol Version",
    "options": "Crop Protocol Version",
-   "read_only": 1
+   "read_only": 1,
+   "fetch_from": "production_plan.protocol",
+   "description": "Comes from the production plan. To plan against a different version, change it there and regenerate -- a propagation plan cannot assume a protocol its production plan was not built on."
   },
   {
    "fieldname": "company",
    "fieldtype": "Link",
    "label": "Company",
    "options": "Company",
-   "read_only": 1
+   "read_only": 1,
+   "fetch_from": "production_plan.company"
   },
   {
    "fieldname": "currency",
    "fieldtype": "Link",
    "label": "Currency",
    "options": "Currency",
-   "read_only": 1
+   "read_only": 1,
+   "fetch_from": "production_plan.currency"
   },
   {
    "default": "Draft",
@@ -348,6 +356,13 @@
    "fieldtype": "Small Text",
    "label": "Schedule Warning",
    "read_only": 1
+  },
+  {
+   "fieldname": "protocol_note",
+   "fieldtype": "Small Text",
+   "label": "Protocol Note",
+   "read_only": 1,
+   "no_copy": 1
   }
  ],
  "grid_page_length": 50,
