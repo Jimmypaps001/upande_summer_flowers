@@ -238,7 +238,7 @@
    "in_list_view": 0,
    "in_preview": 0,
    "in_standard_filter": 0,
-   "insert_after": "average_stem_length_cm",
+   "insert_after": "weeks_in_propagation",
    "is_system_generated": 0,
    "is_virtual": 0,
    "label": "Summer Flowers",
@@ -344,7 +344,7 @@
    "fieldname": "custom_sf_geometry_section",
    "fieldtype": "Section Break",
    "label": "Summer Flower \u2014 planting geometry",
-   "insert_after": "custom_version_count",
+   "insert_after": "spacing_row_cm",
    "collapsible": 1,
    "depends_on": "eval:doc.custom_is_summer_flower",
    "dt": "Crop Protocol",
@@ -540,7 +540,7 @@
    "fieldname": "custom_sf_prop_section",
    "fieldtype": "Section Break",
    "label": "Summer Flower \u2014 propagation house and bench",
-   "insert_after": "custom_sf_yield_variance_pct",
+   "insert_after": "custom_farms_with_versions",
    "collapsible": 1,
    "depends_on": "eval:doc.custom_is_summer_flower",
    "dt": "Crop Protocol",
@@ -579,7 +579,10 @@
    "dt": "Crop Protocol",
    "name": "Crop Protocol-custom_sf_weeks_to_max_pc",
    "module": "Summer Flowers",
-   "doctype": "Custom Field"
+   "doctype": "Custom Field",
+   "read_only": 1,
+   "hidden": 1,
+   "description": "Follows Ramp Weeks: they are the same span. Kept because the establishment total is built from it."
   },
   {
    "fieldname": "custom_sf_hardening_weeks",
@@ -698,13 +701,15 @@
    "dt": "Crop Protocol",
    "name": "Crop Protocol-custom_sf_weeks_to_max_production",
    "module": "Summer Flowers",
-   "doctype": "Custom Field"
+   "doctype": "Custom Field",
+   "hidden": 1,
+   "read_only": 1
   },
   {
    "fieldname": "custom_sf_ms_section",
    "fieldtype": "Section Break",
    "label": "Summer Flower \u2014 motherstock and TC",
-   "insert_after": "custom_sf_weeks_to_max_production",
+   "insert_after": "custom_sf_cutting_to_harvest_weeks",
    "collapsible": 1,
    "depends_on": "eval:doc.custom_is_summer_flower",
    "dt": "Crop Protocol",
@@ -833,7 +838,7 @@
    "fieldname": "custom_sf_grade_section",
    "fieldtype": "Section Break",
    "label": "Summer Flower \u2014 grades and losses",
-   "insert_after": "custom_sf_lead_time_weeks",
+   "insert_after": "custom_sf_yield_variance_pct",
    "collapsible": 1,
    "depends_on": "eval:doc.custom_is_summer_flower",
    "dt": "Crop Protocol",
@@ -1054,6 +1059,37 @@
    "table_fieldname": null
   }
  ],
- "property_setters": [],
+ "property_setters": [
+  {
+   "doc_type": "Crop Protocol",
+   "doctype_or_field": "DocField",
+   "field_name": "length_distribution",
+   "property": "depends_on",
+   "property_type": "Text",
+   "value": "eval:!doc.custom_is_summer_flower",
+   "name": "Crop Protocol-length_distribution-depends_on",
+   "doctype": "Property Setter"
+  },
+  {
+   "doc_type": "Crop Protocol",
+   "doctype_or_field": "DocField",
+   "field_name": "length_distribution_total",
+   "property": "depends_on",
+   "property_type": "Text",
+   "value": "eval:!doc.custom_is_summer_flower",
+   "name": "Crop Protocol-length_distribution_total-depends_on",
+   "doctype": "Property Setter"
+  },
+  {
+   "doc_type": "Crop Protocol",
+   "doctype_or_field": "DocField",
+   "field_name": "flush_schedule",
+   "property": "depends_on",
+   "property_type": "Text",
+   "value": "eval:!doc.custom_is_summer_flower",
+   "name": "Crop Protocol-flush_schedule-depends_on",
+   "doctype": "Property Setter"
+  }
+ ],
  "sync_on_migrate": 1
 }

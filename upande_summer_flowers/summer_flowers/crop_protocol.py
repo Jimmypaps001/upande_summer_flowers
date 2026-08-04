@@ -22,6 +22,16 @@ import frappe
 from frappe import _
 from frappe.utils import cint, flt
 
+# Natives the protocol is EDITED in. Read from, never written back to: they are the
+# inputs. Writing to them is what wiped a brand-new protocol's variety, because the
+# version derives its own variety from its parent protocol and on a first insert that
+# parent does not exist yet, so the write-back put None over what had just been typed.
+INPUT_NATIVE = {"farm", "variety", "plants_per_sqm", "weeks_to_pinch",
+                "weeks_between_flushes", "yield_stems_per_ha"}
+# Natives the protocol DERIVES into. These sat at zero for summer flowers before.
+DERIVED_NATIVE = {"total_weeks_in_ground", "total_flushes",
+                  "total_stems_per_plant_life", "life_expectancy_years"}
+
 # our field name  ->  where it lives on Crop Protocol
 NATIVE = {
 	"farm": "farm",
@@ -99,7 +109,14 @@ def derive(doc):
 	for f in _fields():
 		if not f.read_only or f.fieldtype == "Table":
 			continue
-		doc.set(source_field(f.fieldname), probe.get(f.fieldname))
+		target = source_field(f.fieldname)
+		# Only our own fields and the four natives this protocol is meant to derive.
+		# Anything else on Crop Protocol belongs to whoever typed it.
+		if target in INPUT_NATIVE or (
+			not target.startswith("custom_sf_") and target not in DERIVED_NATIVE
+		):
+			continue
+		doc.set(target, probe.get(f.fieldname))
 	# The flush rows gain their derived columns too.
 	rows = {cint(r.flush_number): r for r in probe.flush_schedule}
 	for row in (doc.get("custom_sf_flush_schedule") or []):
@@ -212,8 +229,43 @@ def set_native_flush_schedule(doc):
 		prev = frm_pinch
 
 
+def fill_native_gaps(doc):
+	"""Give the natives our own numbers instead of leaving them at zero.
+
+	These are Crop Protocol's own fields that a rose protocol fills in by hand. For
+	a summer flower they are all derivable, and leaving them at zero beside our
+	populated ones is the repetition that makes the form unreadable.
+	"""
+	if not is_summer_flower(doc):
+		return
+	rows = sorted((doc.get("custom_sf_flush_schedule") or []),
+	              key=lambda r: cint(r.flush_number))
+	if rows:
+		# The native field asks for pinch to first harvest, which is our first
+		# flush's own offset from the pinch.
+		doc.weeks_pinch_to_first_harvest = cint(rows[0].weeks_from_pinch)
+	grades = doc.get("custom_sf_grade_allocation") or []
+	total = sum(flt(g.allocation_pct) for g in grades)
+	if grades and total:
+		# Weighted mean of the grade bands: 60cm at 30%, 70 at 40%, 80 at 30% is 71.
+		acc = 0.0
+		for g in grades:
+			digits = "".join(ch for ch in (g.grade or "") if ch.isdigit())
+			if digits:
+				acc += float(digits) * flt(g.allocation_pct)
+		doc.average_stem_length_cm = round(acc / total, 2) if acc else 0
+	# Weeks to max PC and the ramp are the same span; the ramp is the one typed.
+	if cint(doc.get("custom_sf_ramp_weeks")):
+		doc.custom_sf_weeks_to_max_pc = cint(doc.get("custom_sf_ramp_weeks"))
+
+
 def validate(doc, method=None):
+	# The ramp drives weeks-to-max-PC, and the establishment total is built from
+	# that, so it is squared away before anything is derived.
+	if is_summer_flower(doc) and cint(doc.get("custom_sf_ramp_weeks")):
+		doc.custom_sf_weeks_to_max_pc = cint(doc.get("custom_sf_ramp_weeks"))
 	derive(doc)
+	fill_native_gaps(doc)
 	set_growth_stages(doc)
 	set_length_distribution(doc)
 	set_native_flush_schedule(doc)
