@@ -336,11 +336,31 @@ class SummerFlowerProductionPlan(Document):
 			self.space_required_ha / self.space_stated_ha * 100
 			if self.space_stated_ha else 0)
 
+		# Land at this farm that belongs to no block. A bed sits under a block or
+		# directly under a greenhouse, never both, so this is the rest of the farm --
+		# and it is where the answer to "we have no space" usually is. Chepsito has no
+		# blocks at all and 14.4 ha of beds, which is a different problem from having
+		# no land, and needs a different thing done about it.
+		unblocked = frappe.db.sql('''
+			select count(*) n, ifnull(sum(b.bed_area), 0) sqm
+			from tabBed b join tabWarehouse w on w.name = b.greenhouse
+			where w.custom_farm = %s and ifnull(b.custom_block, '') = ''
+		''', self.farm, as_dict=True)[0]
+		self.beds_unblocked = cint(unblocked.n)
+		self.space_unblocked_ha = flt(unblocked.sqm) / 10_000
+
 		notes = []
-		if not blocks:
+		if not blocks and self.beds_unblocked:
 			notes.append(_(
-				"{0} has no summer flower blocks, so it has no space to plan into. "
-				"Nothing can be planted there whatever the demand says."
+				"{0} has no summer flower blocks, so nothing can be placed there -- but "
+				"it does have {1} beds ({2} ha) in its greenhouses belonging to no "
+				"block. The land is there; draw blocks over it and this plan can be "
+				"planted."
+			).format(self.farm, self.beds_unblocked, round(self.space_unblocked_ha, 3)))
+		elif not blocks:
+			notes.append(_(
+				"{0} has no summer flower blocks and no beds in its greenhouses, so it "
+				"has no space to plan into at all."
 			).format(self.farm))
 		elif self.space_utilisation_pct > 100:
 			notes.append(_(
@@ -356,6 +376,14 @@ class SummerFlowerProductionPlan(Document):
 				"planting's life, so the free beds are not free at the same time."
 			).format(round(self.space_required_ha, 3),
 			         round(self.space_stated_ha, 3), cint(self.plantings_not_placed)))
+		# Its own note, not part of the chain above. Land the plan cannot reach is
+		# worth saying, but never at the price of suppressing the reason plantings
+		# failed -- that line is the one a planner acts on.
+		if blocks and self.beds_unblocked:
+			notes.append(_(
+				"A further {0} beds ({1} ha) at this farm belong to no block, so the "
+				"plan cannot reach them."
+			).format(self.beds_unblocked, round(self.space_unblocked_ha, 3)))
 		if self.beds_available_measured < self.beds_available_stated:
 			notes.append(_(
 				"The bed register accounts for {0} of the {1} beds these blocks claim. "

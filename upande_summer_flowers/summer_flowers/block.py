@@ -19,11 +19,12 @@ def _has_role(roles=APPROVER_ROLES):
 	return bool(set(roles) & set(frappe.get_roles(frappe.session.user)))
 
 
-# A bed smaller than this is not a bed, and one larger than this is not a bed
-# either -- both are data entry. The measured area of a block full of 2 sqm beds
-# would otherwise read as real capacity and the planner would believe it.
-MIN_CREDIBLE_BED_SQM = 5.0
-MAX_CREDIBLE_BED_SQM = 400.0
+from upande_summer_flowers.summer_flowers.bed import (
+	MAX_CREDIBLE_BED_SQM,
+	MIN_CREDIBLE_BED_SQM,
+	area_verdict,
+	is_credible,
+)
 
 
 def validate_block(doc, method=None):
@@ -125,31 +126,27 @@ def revise_area(block, effective_from, net_area_ha, total_beds=None, reason=None
 
 # --------------------------------------------------------------- bed inventory
 def bed_rows(block, greenhouse=None):
-	"""The Bed records that belong to a block.
+	"""The Bed records that belong to a block. Only those.
 
-	By custom_block, which is the only link a Bed has to a Block. Where nothing is
-	linked the greenhouse is a last resort so a block in a house full of beds does
-	not report itself as empty land -- but it is reported as a guess, because a
-	greenhouse holds many blocks and claiming all of its beds would overstate this
-	one enormously.
+	By custom_block, which is the only link a Bed has to a Block. An earlier version
+	fell back to the unassigned beds in the block's greenhouse so that a block with
+	nothing linked would not read as empty land, and that was wrong twice over: a bed
+	belongs to a block or to a greenhouse and not to both, and those same beds were
+	counted again under every other block in the house. A block with no beds linked
+	reports no measured area, and the note says to link them.
 	"""
 	fields = ["name", "bed", "bed_length", "bed_width", "bed_area", "variety",
 	          "custom_plants", "custom_bed_status", "custom_active", "greenhouse"]
-	rows = frappe.get_all("Bed", filters={"custom_block": block},
+	return frappe.get_all("Bed", filters={"custom_block": block},
 	                      fields=fields, order_by="bed asc")
-	if rows:
-		return rows, False
-	if not greenhouse:
-		return [], False
-	return frappe.get_all("Bed", filters={"greenhouse": greenhouse, "custom_block": ["is", "not set"]},
-	                      fields=fields, order_by="bed asc"), True
 
 
 def measured_sqm(row):
-	"""Length x width. Bed.bed_area is not read.
+	"""Length x width, which is now also what bed_area holds.
 
-	It is 0.0 on all 20,668 beds on this site -- never computed by whatever writes
-	Bed -- so trusting it would make every block zero hectares.
+	Computed rather than read even so: bed_area is backfilled and maintained by
+	Bed's own validate, but a block should not go to zero hectares if a bed is
+	written by something that bypasses it.
 	"""
 	return flt(row.get("bed_length")) * flt(row.get("bed_width"))
 
@@ -163,13 +160,13 @@ def measure_beds(doc):
 	a question for a farm manager, not for a planner reading whichever was written
 	last.
 	"""
-	rows, guessed = bed_rows(doc.name, doc.get("greenhouse"))
+	rows = bed_rows(doc.name)
 	doc.set("custom_beds", [])
 	measured = ok_count = in_service = 0.0
 	credible = 0
 	for r in rows:
 		sqm = measured_sqm(r)
-		ok = MIN_CREDIBLE_BED_SQM <= sqm <= MAX_CREDIBLE_BED_SQM
+		ok = is_credible(sqm)
 		measured += sqm
 		if ok:
 			credible += 1
@@ -186,21 +183,13 @@ def measure_beds(doc):
 			"measured_area_sqm": sqm,
 			"variety": r.get("variety"),
 			"plants": r.get("custom_plants"),
-			"area_verdict": (
-				_("ok") if ok else
-				_("no dimensions") if not sqm else
-				_("{0} sqm -- not credible").format(round(sqm, 1))
-			),
+			"area_verdict": area_verdict(sqm),
 		})
 
-	# A guess is shown but never totalled. The unassigned beds in a greenhouse are
-	# the same beds for every block in it, so counting them per block added the same
-	# 66 beds twice and made a farm's measured area exceed its stated area -- the one
-	# thing the measured column exists to contradict.
-	doc.custom_measured_beds = 0 if guessed else len(rows)
-	doc.custom_beds_in_service = 0 if guessed else int(in_service)
-	doc.custom_beds_measured_ok = 0 if guessed else credible
-	doc.custom_measured_net_area_ha = 0 if guessed else measured / 10_000
+	doc.custom_measured_beds = len(rows)
+	doc.custom_beds_in_service = int(in_service)
+	doc.custom_beds_measured_ok = credible
+	doc.custom_measured_net_area_ha = measured / 10_000
 	stated = flt(doc.get("custom_net_area_ha"))
 	doc.custom_area_disagreement_pct = (
 		doc.custom_measured_net_area_ha / stated * 100 if stated else 0)
@@ -210,15 +199,15 @@ def measure_beds(doc):
 		notes.append(_("No Bed records point at this block. Set custom_block on its "
 		               "beds, or the measured area stays zero and only the stated "
 		               "area is available to plan with."))
-	if guessed:
-		notes.append(_("These beds are the unassigned beds in {0}, not beds linked to "
-		               "this block. A greenhouse holds several blocks, so treat the "
-		               "measured area as an upper bound.").format(doc.greenhouse))
-	if credible < len(rows):
-		notes.append(_("{0} of {1} beds have dimensions that cannot be a bed (under "
-		               "{2} or over {3} sqm), so the measured area understates this "
-		               "block.").format(len(rows) - credible, len(rows),
-		                                MIN_CREDIBLE_BED_SQM, MAX_CREDIBLE_BED_SQM))
+	blank = len([r for r in rows if not measured_sqm(r)])
+	if blank:
+		notes.append(_("{0} of {1} beds have no length or width recorded, so the "
+		               "measured area understates this block by whatever they are. "
+		               "Nothing can compute it for them.").format(blank, len(rows)))
+	if credible < len(rows) - blank:
+		notes.append(_("{0} beds measure outside {1}-{2} sqm, which is not a bed."
+		               ).format(len(rows) - blank - credible,
+		                        MIN_CREDIBLE_BED_SQM, MAX_CREDIBLE_BED_SQM))
 	if stated and rows and abs(doc.custom_area_disagreement_pct - 100) > 20:
 		notes.append(_("Measured area is {0}% of the stated {1} ha. One of the two is "
 		               "wrong and the plan will believe the stated figure.").format(

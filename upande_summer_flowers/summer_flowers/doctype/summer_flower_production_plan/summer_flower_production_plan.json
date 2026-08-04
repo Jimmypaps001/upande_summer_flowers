@@ -73,6 +73,8 @@
   "beds_required_peak",
   "beds_available_stated",
   "beds_available_measured",
+  "beds_unblocked",
+  "space_unblocked_ha",
   "space_utilisation_pct",
   "space_verdict",
   "space_rows_section",
@@ -515,6 +517,20 @@
    "fieldtype": "Int",
    "read_only": 1,
    "label": "Beds Found in the Bed Register"
+  },
+  {
+   "fieldname": "beds_unblocked",
+   "fieldtype": "Int",
+   "read_only": 1,
+   "label": "Beds Not In Any Block",
+   "description": "Beds in this farm's greenhouses that belong to no block. Real land, but a planting is placed in a block, so none of it can be used until blocks are drawn over it."
+  },
+  {
+   "fieldname": "space_unblocked_ha",
+   "fieldtype": "Float",
+   "read_only": 1,
+   "precision": "4",
+   "label": "Space Not In Any Block (ha)"
   },
   {
    "fieldname": "space_utilisation_pct",

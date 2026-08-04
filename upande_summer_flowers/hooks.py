@@ -224,6 +224,12 @@ doc_events = {
 	"Block": {
 		"validate": "upande_summer_flowers.summer_flowers.block.validate_block",
 	},
+	# Bed is the unit of space, so its area has to be right and it has to have one
+	# owner. Unconditional, unlike the others: a wrong area or a bed claimed by both
+	# a block and a greenhouse miscounts the land for every crop, not just these.
+	"Bed": {
+		"validate": "upande_summer_flowers.summer_flowers.bed.validate_bed",
+	},
 	# Material Request IS the crop input order sheet -- there is no parallel
 	# doctype. This only derives quantities from area and application rate, and
 	# returns immediately unless custom_sf_block is set, which matters on a site
