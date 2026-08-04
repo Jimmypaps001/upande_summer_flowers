@@ -8,7 +8,11 @@ app_license = "mit"
 # Apps
 # ------------------
 
-required_apps = ["erpnext", "upande_core"]
+# Commented out so the app installs on a bench that does not carry these apps.
+# Both are still needed at runtime: erpnext for Item / Warehouse / Customer, and
+# upande_core for the doctypes this app links to. Put the line back once they are
+# installed on the target bench.
+# required_apps = ["erpnext", "upande_core"]
 
 # Fixtures
 # ------------------
