@@ -25,10 +25,13 @@ fixtures = [
 		# govern doctypes this app defines, and widening them for the manager roles
 		# would not have travelled to another site while only one was listed.
 		"dt": "Workflow",
+		# Crop Protocol Version Approval is deliberately absent. A version is no
+		# longer approved or edited: it is the snapshot written when a Crop Protocol
+		# is approved, so a workflow on it has nothing to govern and its transition
+		# validation actively refused the snapshot being born Active.
 		"filters": [["name", "in", [
 			"Summer Flower Production Plan Approval",
 			"Planting Calendar Approval",
-			"Crop Protocol Version Approval",
 		]]],
 	},
 	{

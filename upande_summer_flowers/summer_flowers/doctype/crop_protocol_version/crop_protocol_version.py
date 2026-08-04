@@ -19,7 +19,31 @@ WEEKS_PER_YEAR = 52
 
 
 class CropProtocolVersion(Document):
+	def guard_snapshot_only(self):
+		"""A version is written by approving a Crop Protocol, and by nothing else.
+
+		It is the history: a full copy of the protocol as it stood when a change was
+		approved, and the thing every plan, planting and crop cycle pins to. Letting
+		it be edited afterwards would rewrite what an approved plan says it was built
+		on, which is the one guarantee this doctype exists to give.
+
+		Migrations and patches are let through, because they have to be able to carry
+		old data forward.
+		"""
+		if self.flags.from_protocol_snapshot or self.flags.ignore_protocol_lock:
+			return
+		if (frappe.flags.in_migrate or frappe.flags.in_patch or frappe.flags.in_install
+				or frappe.flags.in_test):
+			return
+		frappe.throw(
+			_("{0} is a snapshot and cannot be edited. Change the protocol on Crop "
+			  "Protocol {1} and approve it — that writes a new version and leaves "
+			  "this one as the record of what came before.").format(
+				self.name, self.crop_protocol or ""),
+			title=_("Read-only history"))
+
 	def validate(self):
+		self.guard_snapshot_only()
 		self.set_variety()
 		self.set_geometry()
 		self.set_flush_schedule()

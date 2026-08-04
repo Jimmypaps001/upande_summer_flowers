@@ -20,7 +20,7 @@ so the two cannot disagree.
 
 import frappe
 from frappe import _
-from frappe.utils import cint, flt
+from frappe.utils import add_days, cint, flt, getdate, now_datetime, nowdate
 
 # Natives the protocol is EDITED in. Read from, never written back to: they are the
 # inputs. Writing to them is what wiped a brand-new protocol's variety, because the
@@ -102,7 +102,8 @@ def derive(doc):
 	probe.version = 1
 	probe.effective_from = frappe.utils.nowdate()
 	probe.change_reason = "derivation probe"
-	probe.flags.ignore_permissions = True
+	probe.flags.from_protocol_snapshot = True   # it is never saved; the lock would
+	probe.flags.ignore_permissions = True       # otherwise refuse the validate call
 	probe.flags.ignore_mandatory = True
 	probe.run_method("validate")
 
@@ -266,6 +267,166 @@ def validate(doc, method=None):
 		doc.custom_sf_weeks_to_max_pc = cint(doc.get("custom_sf_ramp_weeks"))
 	derive(doc)
 	fill_native_gaps(doc)
+	set_status(doc)
 	set_growth_stages(doc)
 	set_length_distribution(doc)
 	set_native_flush_schedule(doc)
+
+# ---------------------------------------------------------------------------
+# Approval, and the snapshot it writes
+# ---------------------------------------------------------------------------
+
+APPROVER_ROLES = ("Agriculture Manager", "Farm Manager", "System Manager")
+
+
+def _has_role():
+	return bool(set(APPROVER_ROLES) & set(frappe.get_roles(frappe.session.user)))
+
+
+def _comparable(doc_or_version, from_protocol):
+	"""The protocol's INPUTS, flattened, so two of them can be compared.
+
+	Derived figures are left out on purpose. They cannot move unless an input moves,
+	and they are stored at different precisions on the two doctypes -- life
+	expectancy is 2.13 on the protocol against 2.134615 on the snapshot -- so
+	including them reported a change on every protocol that had not been touched.
+	"""
+	out = {}
+	for f in _fields():
+		if f.read_only:
+			continue
+		name = source_field(f.fieldname) if from_protocol else f.fieldname
+		val = doc_or_version.get(name)
+		if f.fieldtype == "Table":
+			out[f.fieldname] = [
+				tuple(round(flt(r.get(k)), 4) if isinstance(r.get(k), (int, float))
+				      else r.get(k)
+				      for k in sorted(r.as_dict())
+				      if k not in ("name", "parent", "parenttype", "parentfield",
+				                   "doctype", "idx", "owner", "creation", "modified",
+				                   "modified_by", "docstatus"))
+				for r in (val or [])
+			]
+		elif isinstance(val, float):
+			out[f.fieldname] = round(val, 4)
+		else:
+			out[f.fieldname] = val
+	return out
+
+
+def diff_against_current(doc):
+	"""Which fields differ from the snapshot in force."""
+	current = doc.get("custom_sf_current_version")
+	if not current or not frappe.db.exists("Crop Protocol Version", current):
+		return None
+	v = frappe.get_doc("Crop Protocol Version", current)
+	mine, theirs = _comparable(doc, True), _comparable(v, False)
+	return sorted(k for k in mine if mine[k] != theirs[k])
+
+
+def set_status(doc):
+	"""Say plainly whether this protocol matches what was last approved."""
+	if not is_summer_flower(doc):
+		return
+	changed = diff_against_current(doc)
+	if changed is None:
+		doc.custom_sf_protocol_status = doc.get("custom_sf_protocol_status") or "Draft"
+		doc.custom_sf_pending_changes = None if doc.get("custom_sf_current_version") \
+			else _("Never approved. Approving writes the first snapshot.")
+		return
+	if changed:
+		# Anything unapproved puts it back to Draft: an approved status with different
+		# numbers behind it is the lie this whole restructure exists to prevent.
+		doc.custom_sf_protocol_status = "Draft"
+		doc.custom_sf_pending_changes = _("Differs from {0} in: {1}").format(
+			doc.get("custom_sf_current_version"), ", ".join(changed))
+	else:
+		doc.custom_sf_protocol_status = "Approved"
+		doc.custom_sf_pending_changes = None
+
+
+@frappe.whitelist()
+def submit_for_approval(protocol):
+	doc = frappe.get_doc("Crop Protocol", protocol)
+	if not is_summer_flower(doc):
+		frappe.throw(_("Not a summer flower protocol."))
+	if not doc.get("custom_sf_change_reason"):
+		frappe.throw(_("Give a reason for the change before submitting it."))
+	doc.db_set("custom_sf_protocol_status", "Pending Approval")
+	return doc.get("custom_sf_protocol_status")
+
+
+@frappe.whitelist()
+def approve(protocol):
+	"""Approve the protocol, which is the only thing that writes a version.
+
+	The snapshot is a full copy taken at this moment, marked Active and current, and
+	the one it replaces is superseded and dated closed. Plans, plantings and crop
+	cycles keep pointing at whichever snapshot they were built on, so approving here
+	never rewrites what an approved plan says it was built on.
+	"""
+	doc = frappe.get_doc("Crop Protocol", protocol)
+	if not is_summer_flower(doc):
+		frappe.throw(_("Not a summer flower protocol."))
+	if not _has_role():
+		frappe.throw(_("Only an Agriculture Manager or Farm Manager can approve a "
+		               "protocol."), frappe.PermissionError)
+	if not doc.get("farm"):
+		frappe.throw(_("Set the farm. A protocol is approved for a variety at a farm, "
+		               "because the same variety runs differently elsewhere."))
+	changed = diff_against_current(doc)
+	if changed == []:
+		frappe.throw(_("Nothing has changed since {0} was approved.").format(
+			doc.get("custom_sf_current_version")))
+	if not doc.get("custom_sf_change_reason"):
+		frappe.throw(_("A reason is required: it is what the history records."))
+
+	prior = frappe.db.get_value("Crop Protocol Version",
+	                            {"variety": doc.variety, "farm": doc.farm,
+	                             "version_status": "Active"},
+	                            ["name", "effective_from"], as_dict=True)
+	prior_name = prior.name if prior else None
+	last = frappe.db.sql("""select ifnull(max(version), 0) from `tabCrop Protocol Version`
+		where variety = %s and farm = %s""", (doc.variety, doc.farm))[0][0]
+
+	v = to_version(doc)
+	v.version = cint(last) + 1
+	v.farm = doc.farm
+	v.variety = doc.variety
+	# The version doctype requires each one to take effect after the one before it,
+	# and a version can legitimately be dated ahead -- v2 here starts 2027-01-01 --
+	# so a snapshot taken today would otherwise be refused.
+	effective = getdate(nowdate())
+	if prior and prior.effective_from and getdate(prior.effective_from) >= effective:
+		effective = add_days(getdate(prior.effective_from), 1)
+	v.effective_from = effective
+	v.change_reason = doc.get("custom_sf_change_reason")
+	v.supersedes = prior_name
+	v.version_status = "Active"
+	# No workflow_state: the version's workflow is retired, and setting a state its
+	# transitions do not allow is what refused the snapshot.
+	v.is_current = 1
+	v.approved_by = frappe.session.user
+	v.approved_on = now_datetime()
+	v.flags.from_protocol_snapshot = True
+	v.flags.ignore_permissions = True
+	v.flags.ignore_mandatory = True
+	v.insert()
+
+	if prior_name:
+		p = frappe.get_doc("Crop Protocol Version", prior_name)
+		p.db_set("superseded_by", v.name, update_modified=False)
+		p.db_set("version_status", "Superseded", update_modified=False)
+		p.db_set("is_current", 0, update_modified=False)
+		p.db_set("effective_to", add_days(effective, -1), update_modified=False)
+
+	doc.db_set("custom_sf_current_version", v.name, update_modified=False)
+	doc.db_set("custom_sf_protocol_status", "Approved", update_modified=False)
+	doc.db_set("custom_sf_approved_by", frappe.session.user, update_modified=False)
+	doc.db_set("custom_sf_approved_on", now_datetime(), update_modified=False)
+	doc.db_set("custom_sf_pending_changes", None, update_modified=False)
+	doc.db_set("custom_version_count", cint(last) + 1, update_modified=False)
+	frappe.db.commit()
+	return {"version": v.name, "version_no": v.version, "supersedes": prior_name,
+	        "effective_from": str(effective),
+	        "changed": changed}
