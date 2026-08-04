@@ -109,5 +109,93 @@ def derive(doc):
 			row.harvest_week_of_year = p.harvest_week_of_year
 
 
+GROWTH_STAGES = [
+	# label,                  from week expression,        to week expression
+	("Sticking to rooting", "0", "weeks_on_tray"),
+	("Rooted, on pot", "weeks_on_tray", "weeks_on_tray + weeks_on_pot"),
+	("Hardening", "weeks_on_tray + weeks_on_pot",
+	 "weeks_on_tray + weeks_on_pot + hardening_weeks"),
+	("Planted to pinch", "0", "weeks_to_pinch"),
+	("Pinch to first harvest", "weeks_to_pinch", "first_harvest"),
+	("Flushing", "first_harvest", "life"),
+]
+
+
+def set_growth_stages(doc):
+	"""Fill Crop Protocol's own growth stage table from the protocol's timeline.
+
+	Derived, not typed in: every boundary is a figure already on the protocol, so
+	the stages cannot drift from the weeks that drive the planner. The propagation
+	stages are measured from sticking, the field stages from planting -- they are
+	two different clocks and labelling them as one would misread both.
+	"""
+	if not is_summer_flower(doc):
+		return
+	g = lambda f: cint(doc.get("custom_sf_" + f))
+	env = {
+		"weeks_on_tray": g("weeks_on_tray"),
+		"weeks_on_pot": g("weeks_on_pot"),
+		"hardening_weeks": g("hardening_weeks"),
+		"weeks_to_pinch": cint(doc.get("weeks_to_pinch")),
+		"first_harvest": cint(doc.get("custom_sf_first_harvest_offset_weeks")),
+		"life": cint(doc.get("total_weeks_in_ground")),
+	}
+	if not any(env.values()):
+		return
+	rows = []
+	for order, (label, frm, to) in enumerate(GROWTH_STAGES, start=1):
+		try:
+			a, b = int(eval(frm, {}, env)), int(eval(to, {}, env))
+		except Exception:
+			continue
+		if b <= a:
+			continue
+		rows.append({
+			"stage_name": label,
+			"stage_order": order,
+			"days_from": a * 7,
+			"days_to": b * 7,
+			"weeks": b - a,
+			"description": _("Weeks {0} to {1} {2}").format(
+				a, b, _("from sticking") if order <= 3 else _("from planting")),
+		})
+	if not rows:
+		return
+	doc.set("growth_stages", [])
+	for r in rows:
+		doc.append("growth_stages", r)
+
+
+def set_length_distribution(doc):
+	"""Mirror the grade split into Crop Protocol's own length distribution table.
+
+	The split is authored once, in the summer flower grade table, because that is
+	what the planner, the budget and the crop cycle's weekly targets read and it
+	carries a price per stem. This copies it into the native field so a summer
+	flower protocol reads the same way as a rose one, and so the length
+	distribution lives on the protocol rather than being restated on the demand.
+	"""
+	if not is_summer_flower(doc):
+		return
+	grades = doc.get("custom_sf_grade_allocation") or []
+	if not grades:
+		return
+	life = flt(doc.get("total_stems_per_plant_life"))
+	doc.set("length_distribution", [])
+	for g in grades:
+		pct = flt(g.allocation_pct)
+		doc.append("length_distribution", {
+			"stem_length": g.grade,
+			"percentage": pct,
+			"stems_per_plant_life": round(life * pct / 100, 3) if life else 0,
+			# The child's own Select: Actual / Group Default / Manual. This split is
+			# authored on the protocol by hand, so Manual is the truthful one.
+			"basis": "Manual",
+		})
+	doc.length_distribution_total = sum(flt(g.allocation_pct) for g in grades)
+
+
 def validate(doc, method=None):
 	derive(doc)
+	set_growth_stages(doc)
+	set_length_distribution(doc)

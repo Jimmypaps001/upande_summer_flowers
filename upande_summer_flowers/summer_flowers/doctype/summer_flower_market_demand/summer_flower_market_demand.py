@@ -22,7 +22,6 @@ class SummerFlowerMarketDemand(Document):
 		self.normalise_weeks()
 		self.set_horizon()
 		self.set_totals()
-		self.set_grade_total()
 
 	# ------------------------------------------------------------------- weeks
 	def normalise_weeks(self):
@@ -120,9 +119,6 @@ class SummerFlowerMarketDemand(Document):
 		self.firm_demand_stems = sum((r.demand_stems or 0) for r in rows if r.is_firm)
 		self.peak_weekly_demand = max((r.demand_stems or 0) for r in rows) if rows else 0
 		self.average_weekly_demand = (self.total_demand_stems / len(rows)) if rows else 0
-
-	def set_grade_total(self):
-		self.grade_total_pct = sum((r.allocation_pct or 0) for r in self.demand_grades)
 
 	# ----------------------------------------------------------------- extend
 	@frappe.whitelist()

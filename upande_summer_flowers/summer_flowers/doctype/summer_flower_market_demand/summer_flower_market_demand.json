@@ -35,10 +35,7 @@
   "weeks_tab",
   "weeks_section",
   "demand_weeks",
-  "grades_tab",
-  "grade_section",
-  "demand_grades",
-  "grade_total_pct"
+  "grades_tab"
  ],
  "fields": [
   {
@@ -198,24 +195,6 @@
    "fieldname": "grades_tab",
    "fieldtype": "Tab Break",
    "label": "Grade Split"
-  },
-  {
-   "description": "How the customer wants the stems graded. May differ from what the crop actually produces -- the plan reports both.",
-   "fieldname": "grade_section",
-   "fieldtype": "Section Break",
-   "label": "Demand Grade Split"
-  },
-  {
-   "fieldname": "demand_grades",
-   "fieldtype": "Table",
-   "label": "Demand Grades",
-   "options": "Summer Flower Demand Grade"
-  },
-  {
-   "fieldname": "grade_total_pct",
-   "fieldtype": "Percent",
-   "label": "Total %",
-   "read_only": 1
   }
  ],
  "grid_page_length": 50,
