@@ -167,35 +167,53 @@ def set_growth_stages(doc):
 
 
 def set_length_distribution(doc):
-	"""Mirror the grade split into Crop Protocol's own length distribution table.
+	"""Deliberately does nothing: the native table is not the same thing.
 
-	The split is authored once, in the summer flower grade table, because that is
-	what the planner, the budget and the crop cycle's weekly targets read and it
-	carries a price per stem. This copies it into the native field so a summer
-	flower protocol reads the same way as a rose one, and so the length
-	distribution lives on the protocol rather than being restated on the demand.
+	Crop Protocol Length Distribution.stem_length is a Link to the Stem Length
+	master, whose records are 57, 62, 72, 82 and 92cm -- measured sampling bands
+	against a controlled list. Our grade split is 50/60/70/80cm with a price per
+	stem, a commercial allocation. Mirroring one into the other either invents
+	records in another app's master or writes dangling links, which is what it did
+	before this was reverted.
+
+	The grade split therefore stays in the summer flower grade table, which is the
+	one and only place it is authored and the one every consumer reads.
+	"""
+	return
+
+
+def set_native_flush_schedule(doc):
+	"""Mirror the flush schedule into Crop Protocol's own table.
+
+	The two child doctypes are not interchangeable -- ours carries weeks from pinch,
+	weeks from planting and the harvest week of the year, Crop Protocol Flush carries
+	the gap from the previous flush -- so the summer flower schedule is authored in
+	ours. Without this mirror the protocol showed an EMPTY flush schedule in its
+	standard layout while the real eight rows sat in the custom table below, which is
+	exactly the sort of two-places-one-fact this restructure is meant to remove.
 	"""
 	if not is_summer_flower(doc):
 		return
-	grades = doc.get("custom_sf_grade_allocation") or []
-	if not grades:
+	rows = sorted((doc.get("custom_sf_flush_schedule") or []),
+	              key=lambda r: cint(r.flush_number))
+	if not rows:
 		return
-	life = flt(doc.get("total_stems_per_plant_life"))
-	doc.set("length_distribution", [])
-	for g in grades:
-		pct = flt(g.allocation_pct)
-		doc.append("length_distribution", {
-			"stem_length": g.grade,
-			"percentage": pct,
-			"stems_per_plant_life": round(life * pct / 100, 3) if life else 0,
-			# The child's own Select: Actual / Group Default / Manual. This split is
-			# authored on the protocol by hand, so Manual is the truthful one.
-			"basis": "Manual",
+	doc.set("flush_schedule", [])
+	prev = 0
+	for r in rows:
+		frm_pinch = cint(r.weeks_from_pinch)
+		doc.append("flush_schedule", {
+			"flush_number": cint(r.flush_number),
+			"stems_per_plant": flt(r.stems_per_plant),
+			# Crop Protocol Flush measures the gap from the flush before it; the first
+			# gap is from the pinch, which is where our schedule starts counting.
+			"weeks_after_previous": frm_pinch - prev,
 		})
-	doc.length_distribution_total = sum(flt(g.allocation_pct) for g in grades)
+		prev = frm_pinch
 
 
 def validate(doc, method=None):
 	derive(doc)
 	set_growth_stages(doc)
 	set_length_distribution(doc)
+	set_native_flush_schedule(doc)
