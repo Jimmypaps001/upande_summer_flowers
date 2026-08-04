@@ -15,7 +15,7 @@
     <label>{{ _("Variety") }}<select id="f-variety"></select></label>
     <label>{{ _("Farm") }}<select id="f-farm"></select></label>
     <label>{{ _("Production plan") }}<select id="f-plan"></select></label>
-    <label>{{ _("Year") }}<select id="f-year"></select></label>
+    <label>{{ _("Season") }}<select id="f-season"></select></label>
     <label>{{ _("Week") }}<select id="f-week"></select></label>
     <span class="pl-asof" id="asof"></span>
   </div>
@@ -1286,8 +1286,15 @@ table.hc tbody tr:hover td:not(.hc-k):not(.hc-m){background:var(--surface-2)}
       put(r.first_harvest_date, "harvest", r);
       put(r.uproot_date, "uproot", r);
     });
-    const keys = Object.keys(buckets).sort()
-      .filter((k) => !S.year || k.slice(0, 4) === String(S.year));
+    // Buckets are YYYY-MM. A season runs July to June, so it covers the second half
+    // of its starting year and the first half of the next -- filtering on the first
+    // four characters would have shown half of it.
+    const inSeason = (k) => {
+      if (!S.season) return true;
+      const y = +k.slice(0, 4), mo = +k.slice(5, 7);
+      return (y === +S.season && mo >= 7) || (y === +S.season + 1 && mo <= 6);
+    };
+    const keys = Object.keys(buckets).sort().filter(inSeason);
     if (!keys.length) {
       el.innerHTML = '<p class="pl-empty">No dated plantings in this period.</p>';
       return;
@@ -1861,12 +1868,31 @@ table.hc tbody tr:hover td:not(.hc-k):not(.hc-m){background:var(--surface-2)}
   // ══════════════════════════ PERIOD FILTER ══════════════════════════
   // Applied in the browser to data already loaded, so narrowing to a week is
   // instant and does not refetch three years of grid to show one row of it.
+  // The Monday of an ISO week, so a week can be placed in a season. Same rule the
+  // production plan uses: a week belongs to the season its MONDAY falls in, because
+  // the week containing 30 June also contains 1 July and would otherwise sit in two.
+  function isoMonday(year, week) {
+    const jan4 = new Date(Date.UTC(+year, 0, 4));
+    const week1 = new Date(jan4);
+    week1.setUTCDate(jan4.getUTCDate() - ((jan4.getUTCDay() + 6) % 7));
+    const d = new Date(week1);
+    d.setUTCDate(week1.getUTCDate() + (+week - 1) * 7);
+    return d;
+  }
+  // The season a week falls in, named by the year it starts: July starts the season.
+  function seasonOf(year, week) {
+    const d = isoMonday(year, week);
+    return d.getUTCMonth() + 1 >= 7 ? d.getUTCFullYear() : d.getUTCFullYear() - 1;
+  }
+  const seasonLabel = (y) => `${y}-${String(+y + 1).slice(2)}`;
+
   const inPeriod = (year, week) => {
-    if (S.year && String(year) !== String(S.year)) return false;
+    if (!year || !week) return !S.season && !S.week;
+    if (S.season && String(seasonOf(year, week)) !== String(S.season)) return false;
     if (S.week && String(week) !== String(S.week)) return false;
     return true;
   };
-  const periodOn = () => Boolean(S.year || S.week);
+  const periodOn = () => Boolean(S.season || S.week);
 
   // Every tile on the page answers for the selected period, not for the whole
   // plan. A headline reading three years while the table under it shows one week
@@ -1910,23 +1936,26 @@ table.hc tbody tr:hover td:not(.hc-k):not(.hc-m){background:var(--surface-2)}
   }
   // Appended to a tile's sub-label when the number could not be narrowed.
   const wholePlan = () => (periodOn() ? " · whole plan" : "");
-  const periodLabel = () => S.year && S.week ? `${S.year}-W${String(S.week).padStart(2, "0")}`
-    : S.year ? String(S.year) : S.week ? `week ${S.week} of every year` : "";
+  const periodLabel = () => S.season && S.week
+    ? `W${String(S.week).padStart(2, "0")} of season ${seasonLabel(S.season)}`
+    : S.season ? `season ${seasonLabel(S.season)} (Jul ${S.season} – Jun ${+S.season + 1})`
+    : S.week ? `week ${S.week} of every season` : "";
 
   function buildPeriodPickers() {
     const weeks = (S.dv && S.dv.weeks) || [];
-    const ys = $("f-year"), ws = $("f-week");
-    const years = [...new Set(weeks.map((r) => r.year))].sort();
-    const keepY = S.year, keepW = S.week;
+    const ys = $("f-season"), ws = $("f-week");
+    const seasons = [...new Set(weeks.map((r) => seasonOf(r.year, r.week_no)))].sort();
+    const keepY = S.season, keepW = S.week;
     ys.innerHTML = "";
-    ys.add(new Option("All years", ""));
-    years.forEach((y) => ys.add(new Option(y, y)));
-    S.year = years.some((y) => String(y) === String(keepY)) ? keepY : "";
-    ys.value = S.year;
+    ys.add(new Option("All seasons", ""));
+    seasons.forEach((y) => ys.add(new Option(seasonLabel(y), y)));
+    S.season = seasons.some((y) => String(y) === String(keepY)) ? keepY : "";
+    ys.value = S.season;
 
-    // Weeks offered are the ones the selected year actually has, so a 53-week
-    // year shows W53 and a 52-week year does not offer a week with no data.
-    const pool = weeks.filter((r) => !S.year || String(r.year) === String(S.year));
+    // Weeks offered are the ones the selected season actually has, so a season with
+    // a 53rd ISO week shows it and one without does not offer a week with no data.
+    const pool = weeks.filter((r) => !S.season
+      || String(seasonOf(r.year, r.week_no)) === String(S.season));
     const wks = [...new Set(pool.map((r) => r.week_no))].sort((a, b) => a - b);
     ws.innerHTML = "";
     ws.add(new Option("All weeks", ""));
@@ -3162,8 +3191,10 @@ table.hc tbody tr:hover td:not(.hc-k):not(.hc-m){background:var(--surface-2)}
       `<span class="pl-key"><i class="sw" style="background:var(${KIND_COLOR[k] || "--text-muted"})"></i>` +
       `${esc(label)}${c.counts[k] ? " (" + c.counts[k] + ")" : ""}</span>`).join("");
 
-    // The filter bar's year wins when it is set, so the two cannot disagree.
-    const yr = (S.year ? +S.year : S.calYear) || (c.years[0] || new Date().getFullYear());
+    // The scope bar wins when a season is chosen, so the two cannot disagree. A
+    // season starts in July of its own year, so that is the calendar year to show.
+    const yr = (S.season ? +S.season : S.calYear)
+      || (c.years[0] || new Date().getFullYear());
     const ysel = $("cal-year");
     if (ysel && String(ysel.value) !== String(yr)) ysel.value = String(yr);
     const MN = ["January", "February", "March", "April", "May", "June", "July",
@@ -3884,9 +3915,9 @@ table.hc tbody tr:hover td:not(.hc-k):not(.hc-m){background:var(--surface-2)}
       toggleGroup([["pp-all", "all"], ["pp-alloc", "alloc"], ["pp-flag", "flag"]],
         "ppFilter", renderPlanting);
 
-      $("f-year").addEventListener("change", (e) => {
-        S.year = e.target.value;
-        // Rebuild the week list: a 53-week year offers W53, a 52-week one does not.
+      $("f-season").addEventListener("change", (e) => {
+        S.season = e.target.value;
+        // Rebuild the week list for the season just chosen.
         buildPeriodPickers();
         renderAllPanes();
       });

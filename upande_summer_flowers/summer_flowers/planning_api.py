@@ -71,7 +71,8 @@ def plans(variety=None, farm=None):
 	rows = frappe.get_all(
 		"Summer Flower Production Plan", filters=f,
 		fields=["name", "workflow_state", "status", "docstatus", "budget",
-		        "market_demand", "variety", "farm", "from_year", "from_week",
+		        "market_demand", "variety", "farm", "season", "season_start_year",
+		        "from_year", "from_week",
 		        "to_year", "to_week", "weeks_covered", "total_demand_stems",
 		        "total_production_stems", "coverage_pct", "weeks_in_deficit",
 		        "new_beds_required", "creation"],
@@ -81,8 +82,9 @@ def plans(variety=None, farm=None):
 	# eighteen copies of one thing. Name the crop and the coverage instead: that is
 	# what tells them apart.
 	for r in rows:
-		r["label"] = "%s · %s · %s%s · %.0f%% of demand" % (
-			r.name, r.variety or "?", r.workflow_state or r.status or "?",
+		r["label"] = "%s · %s · %s · %s%s · %.0f%% of demand" % (
+			r.name, r.season or _("no season"), r.variety or "?",
+			r.workflow_state or r.status or "?",
 			" + budget" if r.budget else "", flt(r.coverage_pct))
 		r["is_authoritative"] = r.docstatus == 1
 	drafts = [r for r in rows if r.docstatus == 0]
