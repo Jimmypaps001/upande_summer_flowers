@@ -620,8 +620,7 @@ def process_overview(variety=None, farm=None, plan=None):
 	f = {}
 	if variety:
 		f["variety"] = variety
-	if farm:
-		f["farm"] = farm
+	# No farm filter: the register is per variety.
 	dem = frappe.get_all("Summer Flower Market Demand", filters=f,
 	                     fields=["name", "variety", "farm", "weeks_covered",
 	                             "total_demand_stems", "horizon_start", "horizon_end",
@@ -632,7 +631,9 @@ def process_overview(variety=None, farm=None, plan=None):
 		return {"variety": variety, "farm": farm, "stages": stages,
 		        "blockers": blockers, "verdict": _("Nothing to show: no demand register.")}
 	d = dem[0]
-	variety, farm = d.variety, d.farm
+	# The register names the variety; the farm comes from the plan, since one
+	# variety's demand can be met from several farms.
+	variety = d.variety
 	stage("demand", "Market demand", d.name, d.horizon_status,
 	      "{:,}".format(cint(d.total_demand_stems)) + _(" stems"),
 	      _("{0} weeks, {1} to {2}").format(d.weeks_covered, d.horizon_start,
@@ -642,6 +643,8 @@ def process_overview(variety=None, farm=None, plan=None):
 	# ── 2. the plan
 	plan = resolve_plan(variety, farm, plan)
 	p = frappe.get_doc("Summer Flower Production Plan", plan) if plan else None
+	if p and not farm:
+		farm = p.farm
 	if not p:
 		stage("plan", "Production plan",
 		      blocked=_("No plan yet. Create one from the register."))

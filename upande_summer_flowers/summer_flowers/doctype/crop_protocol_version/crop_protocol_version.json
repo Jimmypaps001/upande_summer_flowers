@@ -2,7 +2,7 @@
  "actions": [],
  "allow_bulk_edit": 1,
  "allow_rename": 1,
- "autoname": "format:{crop_protocol}-{farm}-v{version}",
+ "autoname": "format:{variety}-{farm}-v{version}",
  "creation": "2026-07-30 14:48:53.032639",
  "description": "A versioned, per-farm parameter set for a variety's Crop Protocol. Prior versions are preserved with effective dates so a crop cycle stays linked to the version it actually ran under.",
  "doctype": "DocType",

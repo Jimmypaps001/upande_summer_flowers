@@ -115,8 +115,8 @@
    "in_standard_filter": 1,
    "label": "Farm",
    "options": "Farm",
-   "read_only": 1,
-   "fetch_from": "market_demand.farm"
+   "reqd": 1,
+   "description": "The farm this plan is grown on. It decides which blocks are available and which protocol version applies."
   },
   {
    "fieldname": "protocol",

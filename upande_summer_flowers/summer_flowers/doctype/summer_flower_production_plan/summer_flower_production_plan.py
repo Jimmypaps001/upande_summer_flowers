@@ -60,7 +60,12 @@ class SummerFlowerProductionPlan(Document):
 			return
 		d = frappe.get_cached_doc("Summer Flower Market Demand", self.market_demand)
 		self.variety = d.variety
-		self.farm = d.farm
+		# The farm is the plan's, not the register's. One variety's demand can be met
+		# from several farms, each with its own protocol and its own blocks, so the
+		# farm is chosen here and the protocol resolves against it.
+		if not self.farm:
+			frappe.throw(_("Choose the farm this plan is grown on. The demand is for "
+			               "the variety; the plan is what a farm commits to."))
 		# The demand register is authoritative. Do not fall back to whatever
 		# frappe.new_doc pre-filled from the global default company -- on a
 		# multi-company site that silently plans against the wrong entity.

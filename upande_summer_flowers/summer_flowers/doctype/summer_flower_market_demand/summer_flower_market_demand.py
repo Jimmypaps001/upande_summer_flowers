@@ -55,22 +55,22 @@ class SummerFlowerMarketDemand(Document):
 		reads more than one of them anyway. Extend the horizon or edit the weeks
 		instead of starting another.
 		"""
-		if not (self.variety and self.farm):
+		if not self.variety:
 			return
 		# Not "name != self.name": autoname runs before validate, so a new document
 		# already carries the name it is about to collide with and would exclude the
 		# very record it duplicates -- leaving a raw "Duplicate entry" from MySQL
 		# instead of an explanation.
-		filters = {"variety": self.variety, "farm": self.farm}
+		filters = {"variety": self.variety}
 		if not self.is_new():
 			filters["name"] = ["!=", self.name]
 		dupe = frappe.db.get_value("Summer Flower Market Demand", filters, "name")
 		if dupe:
 			frappe.throw(_(
-				"{0} is already the demand register for {1} at {2}. Edit it or "
-				"extend its horizon rather than creating a second one -- a variety "
-				"has one demand."
-			).format(dupe, self.variety, self.farm), title=_("Register exists"))
+				"{0} is already the demand register for {1}. Edit it or extend its "
+				"horizon rather than creating a second one -- a variety has one "
+				"demand, whichever farms grow it."
+			).format(dupe, self.variety), title=_("Register exists"))
 
 	def set_horizon(self):
 		rows = self.demand_weeks

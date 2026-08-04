@@ -2,7 +2,7 @@
  "actions": [],
  "allow_bulk_edit": 1,
  "allow_rename": 1,
- "autoname": "format:{variety}-{farm}",
+ "autoname": "format:{variety}",
  "creation": "2026-07-29 14:05:07.451190",
  "description": "Living weekly demand register for one variety at one farm. Extended progressively so the horizon always reaches the target years ahead.",
  "doctype": "DocType",
@@ -54,16 +54,20 @@
    "in_standard_filter": 1,
    "label": "Variety",
    "options": "Item",
-   "reqd": 1
+   "reqd": 1,
+   "description": "One register per variety. Several farms can grow against it, each with its own production plan and its own protocol."
   },
   {
    "fieldname": "farm",
    "fieldtype": "Link",
    "in_list_view": 1,
    "in_standard_filter": 1,
-   "label": "Farm",
+   "label": "Farm (not used)",
    "options": "Farm",
-   "reqd": 1
+   "reqd": 0,
+   "hidden": 1,
+   "read_only": 1,
+   "description": "The market wants stems of a variety; it does not care which farm grows them. The farm is chosen on the production plan, because that is what is executed on a farm's blocks and takes that farm's protocol."
   },
   {
    "fieldname": "cb_ident",
