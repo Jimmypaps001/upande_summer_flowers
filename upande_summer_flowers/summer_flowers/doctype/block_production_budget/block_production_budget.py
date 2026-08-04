@@ -72,7 +72,7 @@ class BlockProductionBudget(Document):
 			self.farm = frappe.db.get_value("Block", self.block, "farm")
 		if not flt(self.area_planted_sqm) and self.block:
 			self.area_planted_sqm = flt(frappe.db.get_value(
-				"Block", self.block, "custom_gross_area_ha")) * 10_000
+				"Block", self.block, "custom_net_area_ha")) * 10_000
 
 	def set_line_amounts(self):
 		for r in self.budget_lines:

@@ -66,7 +66,7 @@ def _pull_context(doc):
 		# Fall back to the whole block: better an obvious over-estimate than a
 		# silent zero, which would order nothing at all.
 		doc.custom_sf_area_ha = flt(frappe.db.get_value(
-			"Block", doc.custom_sf_block, "custom_gross_area_ha"))
+			"Block", doc.custom_sf_block, "custom_net_area_ha"))
 	if not doc.get("set_warehouse"):
 		doc.set_warehouse = _default_store(doc)
 

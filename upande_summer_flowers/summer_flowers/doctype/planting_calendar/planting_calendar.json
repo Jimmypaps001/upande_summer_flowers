@@ -25,7 +25,7 @@
   "beds",
   "plants",
   "cb_size",
-  "gross_area_ha",
+  "net_area_ha",
   "net_area_sqm",
   "dates_section",
   "planting_date",
@@ -179,11 +179,12 @@
    "fieldtype": "Column Break"
   },
   {
-   "fieldname": "gross_area_ha",
+   "fieldname": "net_area_ha",
    "fieldtype": "Float",
-   "label": "Gross Area (ha)",
+   "label": "Net Area (ha)",
    "precision": "5",
-   "read_only": 1
+   "read_only": 1,
+   "description": "Net bed area \u2014 the ground the crop occupies. Gross block area is no longer carried anywhere."
   },
   {
    "fieldname": "net_area_sqm",

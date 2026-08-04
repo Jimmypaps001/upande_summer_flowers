@@ -9,7 +9,7 @@
  "field_order": [
   "block_code",
   "existing_block",
-  "gross_area_ha",
+  "net_area_ha",
   "total_beds",
   "bed_from",
   "bed_to",
@@ -35,11 +35,12 @@
   },
   {
    "columns": 2,
-   "fieldname": "gross_area_ha",
+   "fieldname": "net_area_ha",
    "fieldtype": "Float",
    "in_list_view": 1,
-   "label": "Gross Area (ha)",
-   "reqd": 1
+   "label": "Net Area (ha)",
+   "reqd": 1,
+   "description": "Net bed area \u2014 the ground the crop occupies. Gross block area is no longer carried anywhere."
   },
   {
    "columns": 2,

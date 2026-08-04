@@ -404,7 +404,7 @@ def _populate(plan):
 				hit = True
 		footprints.append((
 			getdate(planting.planting_date), planting.end_date(),
-			planting.gross_area_ha or 0,
+			planting.net_area_ha or 0,
 		))
 		if hit:
 			fh_year, fh_week = planting.first_harvest()
@@ -421,7 +421,7 @@ def _populate(plan):
 				"first_harvest_year": fh_year,
 				"first_harvest_week": fh_week,
 				"harvest_week_family": planting.harvest_week_family,
-				"gross_area_ha": planting.gross_area_ha,
+				"net_area_ha": planting.net_area_ha,
 				"lifetime_stems": planting.expected_stems_life,
 				"planting_in_past": 1 if getdate(planting.planting_date) < getdate(nowdate()) else 0,
 			})
@@ -441,7 +441,9 @@ def _populate(plan):
 	life_weeks = protocol.total_weeks_in_ground or 0
 	stick_weeks = protocol.sticking_to_planting_weeks or 0
 	today = getdate(nowdate())
-	min_beds = cint(protocol.min_planting_beds) or 1
+	# The protocol states the minimum as net area; it has already rounded that up
+	# to whole beds, because a bed is the unit that gets planted.
+	min_beds = cint(protocol.min_planting_beds_derived) or 1
 	calendar = BlockCalendar(plan.farm, plan.variety)
 	block_capacity = calendar.capacity()
 	not_placed = unmet = 0
@@ -489,7 +491,7 @@ def _populate(plan):
 				"planting_year": p_year,
 				"planting_week": p_week,
 				"planting_date": planting_date,
-				"gross_area_ha": (beds * (protocol.sqm_gross_per_bed or 0)) / 10_000,
+				"net_area_ha": (beds * (protocol.sqm_net_per_bed or 0)) / 10_000,
 				"below_minimum": 0,
 				"not_placed": 1,
 				"planting_in_past": 1 if planting_date < today else 0,
@@ -513,8 +515,8 @@ def _populate(plan):
 				production[(hy, hw)] += int(round(spp * plants))
 				contributors[(hy, hw)].append(f"new {p_year}-W{p_week:02d} ({beds}b)")
 
-		gross_ha = (beds * (protocol.sqm_gross_per_bed or 0)) / 10_000
-		footprints.append((planting_date, uproot, gross_ha))
+		net_ha = (beds * (protocol.sqm_net_per_bed or 0)) / 10_000
+		footprints.append((planting_date, uproot, net_ha))
 
 		note = None
 		plan.append("plan_blocks", {
@@ -533,7 +535,7 @@ def _populate(plan):
 			"first_harvest_year": year,
 			"first_harvest_week": week,
 			"harvest_week_family": ", ".join(f"wk{w}" for w in sorted(family)),
-			"gross_area_ha": gross_ha,
+			"net_area_ha": net_ha,
 			"lifetime_stems": int(round(
 				(protocol.total_stems_per_plant_life or 0) * plants
 			)),

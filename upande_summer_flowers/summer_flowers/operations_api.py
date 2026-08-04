@@ -186,7 +186,7 @@ def crop_cycle_detail(cycle):
 		},
 		"geometry": {
 			"area_planted_sqm": flt(doc.custom_area_planted_sqm),
-			"block_gross_sqm": flt(doc.custom_block_gross_area_sqm),
+			"block_area_sqm": flt(doc.custom_block_area_sqm),
 			"utilisation_pct": flt(doc.custom_area_utilisation_pct),
 			"density": flt(doc.custom_planting_density_per_sqm),
 			"beds": cint(doc.custom_beds_planted),
@@ -857,18 +857,18 @@ def _space_for(plan, farm):
 	"""
 	blocks = frappe.get_all(
 		"Block", filters={"custom_is_summer_flower_block": 1, "farm": farm},
-		fields=["name", "custom_total_beds", "custom_gross_area_ha"])
+		fields=["name", "custom_total_beds", "custom_net_area_ha"])
 	beds_have = sum(cint(b.custom_total_beds) for b in blocks)
 	rows = frappe.get_all(
 		"Summer Flower Plan Block",
 		filters={"parent": plan["name"], "is_new_planting": 1},
-		fields=["beds", "plants", "block", "below_minimum", "gross_area_ha"])
+		fields=["beds", "plants", "block", "below_minimum", "net_area_ha"])
 	unallocated = len([r for r in rows if not r.block])
 	peak = cint(plan.get("peak_concurrent_beds"))
 	return {
 		"blocks": len(blocks),
 		"beds_available": beds_have,
-		"gross_area_ha": round(sum(flt(b.custom_gross_area_ha) for b in blocks), 3),
+		"net_area_ha": round(sum(flt(b.custom_net_area_ha) for b in blocks), 3),
 		"beds_wanted": cint(plan.get("new_beds_required")),
 		"plants_wanted": cint(plan.get("new_plants_required")),
 		"area_standing_ha": flt(plan.get("average_area_ha")),

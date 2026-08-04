@@ -143,7 +143,7 @@ def block_coverage(farm=None):
 	rows = frappe.get_all(
 		"Block",
 		filters=f,
-		fields=["name", "block", "farm", "greenhouse", "custom_gross_area_ha",
+		fields=["name", "block", "farm", "greenhouse", "custom_net_area_ha",
 		        "custom_total_beds", "custom_beds_occupied", "custom_beds_free",
 		        "custom_coverage_pct", "custom_plants_standing",
 		        "custom_current_planting"],
@@ -156,7 +156,7 @@ def block_coverage(farm=None):
 			"block_code": r.block,
 			"farm": r.farm,
 			"greenhouse": r.greenhouse,
-			"gross_area_ha": flt(r.custom_gross_area_ha),
+			"net_area_ha": flt(r.custom_net_area_ha),
 			"total_beds": r.custom_total_beds or 0,
 			"beds_occupied": r.custom_beds_occupied or 0,
 			"beds_free": r.custom_beds_free or 0,
@@ -170,7 +170,7 @@ def block_coverage(farm=None):
 		"blocks": len(blocks),
 		"beds": sum(b["total_beds"] for b in blocks),
 		"occupied": sum(b["beds_occupied"] for b in blocks),
-		"area_ha": sum(b["gross_area_ha"] for b in blocks),
+		"area_ha": sum(b["net_area_ha"] for b in blocks),
 		"plants": sum(b["plants_standing"] for b in blocks),
 	}
 	totals["coverage_pct"] = (
@@ -192,7 +192,7 @@ def on_ground(farm=None, variety=None):
 		"Planting Calendar",
 		filters=f,
 		fields=["name", "block", "farm", "variety", "beds", "plants",
-		        "gross_area_ha", "planting_date", "planting_year", "planting_week",
+		        "net_area_ha", "planting_date", "planting_year", "planting_week",
 		        "planned_uproot_date", "actual_uproot_date", "calendar_status",
 		        "harvest_week_family", "expected_stems_life", "actual_stems_harvested",
 		        "seedling_source", "crop_cycle"],

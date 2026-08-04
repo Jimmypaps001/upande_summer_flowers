@@ -185,7 +185,7 @@ def cycle(name):
 	if block_scoped:
 		out["geometry"] = {
 			"area_planted_sqm": flt(d.get("custom_area_planted_sqm")),
-			"block_gross_sqm": flt(d.get("custom_block_gross_area_sqm")),
+			"block_area_sqm": flt(d.get("custom_block_area_sqm")),
 			"utilisation_pct": flt(d.get("custom_area_utilisation_pct")),
 			"density": flt(d.get("custom_planting_density_per_sqm")),
 			"beds": cint(d.get("custom_beds_planted")),
@@ -196,9 +196,9 @@ def cycle(name):
 	else:
 		out["geometry"] = {
 			"area_planted_sqm": flt(d.get("area_planted")),
-			"block_gross_sqm": flt(d.get("gross_area")),
+			"block_area_sqm": flt(d.get("net_area")),
 			"utilisation_pct": (flt(d.get("area_planted")) * 100 /
-			                    flt(d.get("gross_area"))) if flt(d.get("gross_area"))
+			                    flt(d.get("net_area"))) if flt(d.get("net_area"))
 			                   else 0,
 			"density": flt(d.get("plants_per_sqm")),
 			"beds": cint(d.get("number_of_beds")),

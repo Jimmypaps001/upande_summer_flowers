@@ -106,7 +106,7 @@ class PlantingCalendar(Document):
 		v = self.version
 		self.plants = (self.beds or 0) * (v.plants_per_bed or 0)
 		self.net_area_sqm = (self.beds or 0) * (v.sqm_net_per_bed or 0)
-		self.gross_area_ha = ((self.beds or 0) * (v.sqm_gross_per_bed or 0)) / 10_000
+		self.net_area_ha = ((self.beds or 0) * (v.sqm_net_per_bed or 0)) / 10_000
 
 	def set_dates(self):
 		v = self.version
@@ -248,10 +248,9 @@ class PlantingCalendar(Document):
 		v = self.version
 		planted = getdate(self.planting_date)
 		end = self.end_date()
-		rounding = v.calendar_rounding_weeks or 0
 
 		offsets = [
-			((v.weeks_to_pinch or 0) + (r.weeks_from_pinch or 0) + rounding,
+			((v.weeks_to_pinch or 0) + (r.weeks_from_pinch or 0),
 			 r.stems_per_plant or 0)
 			for r in sorted(v.flush_schedule, key=lambda r: r.flush_number or 0)
 		]

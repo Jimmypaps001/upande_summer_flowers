@@ -35,14 +35,14 @@ class BlockChangeRequest(Document):
 		for r in self.sources:
 			info = frappe.db.get_value(
 				"Block", r.block,
-				["custom_gross_area_ha", "custom_total_beds", "farm"], as_dict=True)
+				["custom_net_area_ha", "custom_total_beds", "farm"], as_dict=True)
 			if not info:
 				continue
-			r.gross_area_ha = flt(info.custom_gross_area_ha)
+			r.net_area_ha = flt(info.custom_net_area_ha)
 			r.total_beds = int(info.custom_total_beds or 0)
 			r.standing_plantings = self._standing_count(r.block)
-		self.source_area_ha = sum(flt(r.gross_area_ha) for r in self.sources)
-		self.result_area_ha = sum(flt(r.gross_area_ha) for r in self.results)
+		self.source_area_ha = sum(flt(r.net_area_ha) for r in self.sources)
+		self.result_area_ha = sum(flt(r.net_area_ha) for r in self.results)
 		self.area_difference_ha = flt(self.result_area_ha) - flt(self.source_area_ha)
 
 	@staticmethod
@@ -169,7 +169,7 @@ class BlockChangeRequest(Document):
 			blk.custom_is_summer_flower_block = 1
 			blk.append("custom_area_history", {
 				"effective_from": getdate(self.effective_date),
-				"gross_area_ha": flt(r.gross_area_ha),
+				"net_area_ha": flt(r.net_area_ha),
 				"total_beds": int(r.total_beds or 0) or None,
 				"reason": _("{0} via {1}: {2}").format(
 					self.request_type, self.name, self.justification)[:140],

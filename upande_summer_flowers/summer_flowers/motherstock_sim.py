@@ -42,7 +42,7 @@ PARAM_FIELDS = (
 	"pots_per_sqm",
 	"plants_per_sqm_bench",
 	"plants_per_bed",
-	"sqm_gross_per_bed",
+	"sqm_net_per_bed",
 	"motherstock_life_weeks",
 	"cuttings_per_plant_required",
 	"cutting_reject_pct",

@@ -94,7 +94,7 @@ def params_from_version(version, overrides=None):
 		"pots_per_sqm": int(v.pots_per_sqm or 1),
 		"plants_per_sqm_bench": flt(v.plants_per_sqm_bench or 0),
 		"plants_per_bed": int(v.plants_per_bed or 1),
-		"sqm_gross_per_bed": flt(v.sqm_gross_per_bed or 0),
+		"sqm_net_per_bed": flt(v.sqm_net_per_bed or 0),
 		"total_stems_per_plant_life": flt(v.total_stems_per_plant_life or 0),
 		"ramp_profile": v.ramp_profile,
 	}

@@ -13,7 +13,7 @@ import math
 import frappe
 from frappe import _
 from frappe.model.document import Document
-from frappe.utils import add_days, cint, getdate, now_datetime, nowdate
+from frappe.utils import add_days, cint, flt, getdate, now_datetime, nowdate
 
 WEEKS_PER_YEAR = 52
 
@@ -73,15 +73,25 @@ class CropProtocolVersion(Document):
 
 	# ------------------------------------------------------------------ geometry
 	def set_geometry(self):
+		"""Everything geometric comes off net bed area.
+
+		Gross block area and the net:gross ratio are gone: the farm plans in the
+		ground the crop occupies, and carrying both invited every per-hectare figure
+		to be quoted against whichever one the reader assumed.
+		"""
 		if not self.plants_per_sqm_net:
-			frappe.throw(_("Plants per m² (net) is required."))
-		if not self.net_gross_ratio:
-			self.net_gross_ratio = 0.8
+			frappe.throw(_("Plants per m² of bed (net) is required."))
 
 		self.sqm_net_per_bed = (self.plants_per_bed or 0) / self.plants_per_sqm_net
-		self.sqm_gross_per_bed = self.sqm_net_per_bed / self.net_gross_ratio
-		self.plants_per_sqm_gross = self.plants_per_sqm_net * self.net_gross_ratio
-		self.min_planting_plants = (self.min_planting_beds or 0) * (self.plants_per_bed or 0)
+
+		# The minimum planting is an area. Beds are whole, so it rounds up to one.
+		beds = 0
+		if self.min_planting_area_sqm and self.sqm_net_per_bed:
+			beds = int(math.ceil(flt(self.min_planting_area_sqm)
+			                     / flt(self.sqm_net_per_bed)))
+		self.min_planting_beds_derived = max(beds, 1) if self.min_planting_area_sqm else 0
+		self.min_planting_plants = (self.min_planting_beds_derived or 0) \
+			* (self.plants_per_bed or 0)
 
 	# --------------------------------------------------------------------- flush
 	def set_flush_schedule(self):
@@ -94,9 +104,7 @@ class CropProtocolVersion(Document):
 			if not row.weeks_from_pinch and interval:
 				row.weeks_from_pinch = interval * idx
 			row.weeks_from_planting = (self.weeks_to_pinch or 0) + (row.weeks_from_pinch or 0)
-			row.harvest_week_of_year = "+{0}".format(
-				row.weeks_from_planting + (self.calendar_rounding_weeks or 0)
-			)
+			row.harvest_week_of_year = "+{0}".format(row.weeks_from_planting)
 
 		self.flush_schedule = rows
 
@@ -109,9 +117,10 @@ class CropProtocolVersion(Document):
 		self.total_weeks_in_ground = (self.weeks_to_pinch or 0) + last
 
 		first = min((r.weeks_from_pinch or 0) for r in rows) if rows else 0
-		self.first_harvest_offset_weeks = (
-			(self.weeks_to_pinch or 0) + first + (self.calendar_rounding_weeks or 0)
-		)
+		# Pinch plus the first flush, and nothing else. A rounding allowance used to
+		# be added here, which is why Aster read 21 weeks against a protocol that
+		# says 7 + 13.
+		self.first_harvest_offset_weeks = (self.weeks_to_pinch or 0) + first
 
 		# Where the flush interval divides the year, a planting returns to the same
 		# few weeks every year until it is uprooted.
@@ -125,10 +134,9 @@ class CropProtocolVersion(Document):
 
 		self.life_expectancy_years = years
 
-		# Plants per hectare is quoted on GROSS block area, not net bed area: 20/m²
-		# net over a 0.8 net:gross ratio is 16/m² gross, hence 160,000/ha. Using the
-		# net density here inflates every per-hectare figure by 25%.
-		plants_per_ha = (self.plants_per_sqm_gross or 0) * 10_000
+		# Per hectare means per hectare of BED. Quoting it on gross block area is
+		# what the net:gross ratio was for, and that is gone: one area, stated.
+		plants_per_ha = (self.plants_per_sqm_net or 0) * 10_000
 		self.stems_per_ha_life = (self.total_stems_per_plant_life or 0) * plants_per_ha
 		self.stems_per_ha_year = (self.stems_per_ha_life / years) if years else 0
 
@@ -225,15 +233,10 @@ class CropProtocolVersion(Document):
 
 	# ------------------------------------------------------------------ helpers
 	def flush_offsets(self):
-		"""[(weeks after planting the harvest lands, stems per plant), ...]
-
-		Includes the calendar rounding allowance, so offsets are usable directly
-		against a Monday-based planning grid.
-		"""
-		rounding = self.calendar_rounding_weeks or 0
+		"""[(weeks after planting the harvest lands, stems per plant), ...]"""
 		return [
 			(
-				(self.weeks_to_pinch or 0) + (r.weeks_from_pinch or 0) + rounding,
+				(self.weeks_to_pinch or 0) + (r.weeks_from_pinch or 0),
 				r.stems_per_plant or 0,
 			)
 			for r in sorted(self.flush_schedule, key=lambda r: r.flush_number or 0)

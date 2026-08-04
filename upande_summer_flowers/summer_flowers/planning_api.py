@@ -825,14 +825,13 @@ def simulate_buildup(version, tc_plants, tc_arrival_date, rounds=4, field_pct=0,
 		"factor": p["multiplication_factor_per_cycle"],
 		"plants_per_sqm_bench": p["plants_per_sqm_bench"],
 		"plants_per_bed": p["plants_per_bed"],
-		"sqm_gross_per_bed": p["sqm_gross_per_bed"],
 	}
 	# What the released plants turn into on the ground.
 	beds = (res["field_plants_released"] / p["plants_per_bed"]) if p.get("plants_per_bed") else 0
 	res["field_effect"] = {
 		"plants": res["field_plants_released"],
 		"beds": round(beds, 1),
-		"gross_area_ha": round(beds * flt(p.get("sqm_gross_per_bed")) / 10_000, 4),
+		"net_area_ha": round(beds * flt(p.get("sqm_net_per_bed")) / 10_000, 4),
 		"stems_over_life": int(round(
 			res["field_plants_released"] * flt(p.get("total_stems_per_plant_life"))
 		)),
@@ -891,7 +890,7 @@ def planting_plan(plan=None, variety=None, farm=None):
 			"first_harvest": f"{b.first_harvest_year}-W{b.first_harvest_week:02d}"
 			if b.first_harvest_year and b.first_harvest_week else None,
 			"harvest_family": b.harvest_week_family,
-			"gross_area_ha": flt(b.gross_area_ha),
+			"net_area_ha": flt(b.net_area_ha),
 			"lifetime_stems": b.lifetime_stems or 0,
 			"below_minimum": bool(b.below_minimum),
 			"in_past": bool(b.planting_in_past),
@@ -965,7 +964,7 @@ def planting_plan(plan=None, variety=None, farm=None):
 			"blocks_available": blocks_available,
 			"blocks_needed": len(new_rows),
 			"weeks_in_ground": life_weeks,
-			"min_planting_beds": v.min_planting_beds or 0,
+			"min_planting_beds": v.min_planting_beds_derived or 0,
 		},
 	}
 
@@ -1029,7 +1028,7 @@ def block_forecast(plan=None, variety=None, farm=None, blocks=None):
 		bfilters["farm"] = farm
 	all_blocks = frappe.get_all(
 		"Block", filters=bfilters,
-		fields=["name", "block", "farm", "custom_total_beds", "custom_gross_area_ha"],
+		fields=["name", "block", "farm", "custom_total_beds", "custom_net_area_ha"],
 		order_by="block asc",
 	)
 	if blocks:
@@ -1089,7 +1088,7 @@ def block_forecast(plan=None, variety=None, farm=None, blocks=None):
 			"block_code": b.block,
 			"farm": b.farm,
 			"total_beds": b.custom_total_beds or len(beds),
-			"gross_area_ha": flt(b.custom_gross_area_ha),
+			"net_area_ha": flt(b.custom_net_area_ha),
 			"plantings": [],
 			"status": "Not planted",
 			"beds": beds,
@@ -1212,7 +1211,7 @@ def block_forecast(plan=None, variety=None, farm=None, blocks=None):
 			"net_sqm_free": round(sum(x["net_sqm_free"] for x in u), 1),
 			"beds_measured": sum(x["beds_measured"] for x in u),
 			"blocks_area_incomplete": len([x for x in u if not x["area_complete"]]),
-			"gross_area_ha": round(sum(b["gross_area_ha"] for b in out), 3),
+			"net_area_ha": round(sum(b["net_area_ha"] for b in out), 3),
 			"plants_standing": sum(x["plants_standing"] for x in u),
 			"weeks_producing": len([r for r in overlay if r["stems"]]),
 			"weeks_in_deficit": len([r for r in overlay if r["variance"] < 0]),
@@ -1221,9 +1220,10 @@ def block_forecast(plan=None, variety=None, farm=None, blocks=None):
 
 
 EDITABLE_PROTOCOL_FIELDS = (
-	"plants_per_sqm_net", "net_gross_ratio", "plants_per_bed", "beds_per_block",
-	"min_planting_beds", "weeks_to_pinch", "flush_interval_weeks",
-	"sticking_to_planting_weeks", "calendar_rounding_weeks", "weeks_on_tray",
+	"plants_per_sqm_net", "plants_per_bed", "beds_per_block",
+	"min_planting_area_sqm",
+	"weeks_to_pinch", "flush_interval_weeks",
+	"sticking_to_planting_weeks", "weeks_on_tray",
 	"weeks_on_pot", "weeks_to_max_pc", "hardening_weeks", "ramp_weeks",
 	"ramp_profile", "supplier_lead_weeks", "weeks_to_max_production",
 	"cuttings_per_plant_per_week", "plants_per_pot", "pots_per_sqm",
@@ -1254,18 +1254,18 @@ def protocol_detail(version=None, variety=None, farm=None):
 
 	flushes = []
 	cum = 0
-	rounding = v.calendar_rounding_weeks or 0
-	# Gross, not net: 20/m² net over a 0.8 net:gross ratio is 16/m² gross, hence
-	# 160,000/ha. Using net here inflates every per-hectare figure by 25%.
-	plants_per_ha = (v.plants_per_sqm_gross or 0) * 10_000
+	# Per hectare of BED. Gross block area is no longer carried anywhere.
+	plants_per_ha = (v.plants_per_sqm_net or 0) * 10_000
 	for r in sorted(v.flush_schedule, key=lambda r: r.flush_number or 0):
 		cum += r.stems_per_plant or 0
 		flushes.append({
 			"flush": r.flush_number,
 			"weeks_from_pinch": r.weeks_from_pinch,
 			"weeks_from_planting": (v.weeks_to_pinch or 0) + (r.weeks_from_pinch or 0),
+			# Kept for callers that still read it; there is no grid allowance now, so
+			# it is the same figure. Aster reads 20 here, not 21.
 			"weeks_from_planting_gridded": (v.weeks_to_pinch or 0)
-			+ (r.weeks_from_pinch or 0) + rounding,
+			+ (r.weeks_from_pinch or 0),
 			"stems_per_plant": flt(r.stems_per_plant),
 			"stems_per_ha": int(round(flt(r.stems_per_plant) * plants_per_ha)),
 			"cumulative_stems_per_plant": round(cum, 2),
@@ -1323,11 +1323,11 @@ def protocol_detail(version=None, variety=None, farm=None):
 		"fields": {k: v.get(k) for k in EDITABLE_PROTOCOL_FIELDS},
 		"derived": {
 			"sqm_net_per_bed": flt(v.sqm_net_per_bed),
-			"sqm_gross_per_bed": flt(v.sqm_gross_per_bed),
-			"plants_per_sqm_gross": flt(v.plants_per_sqm_gross),
 			"plants_per_ha": plants_per_ha,
 			"plants_per_block": v.plants_per_block or 0,
 			"min_planting_plants": v.min_planting_plants or 0,
+			"min_planting_beds": v.min_planting_beds_derived or 0,
+			"min_planting_area_sqm": flt(v.min_planting_area_sqm),
 			"total_flushes": v.total_flushes or 0,
 			"total_stems_per_plant_life": flt(v.total_stems_per_plant_life),
 			"stems_per_ha_life": flt(v.stems_per_ha_life),

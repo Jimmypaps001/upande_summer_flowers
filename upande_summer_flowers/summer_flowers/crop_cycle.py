@@ -179,7 +179,7 @@ class SummerFlowerCropCycle(CropCycle):
 		"""Align a block-scoped cycle with the block it occupies.
 
 		Gross area is read from the block on every save rather than copied once,
-		because a block's gross area legitimately changes over time. The native
+		because a block's net area legitimately changes over time. The native
 		bed-range fields are left alone: a block cycle is described by the block's
 		own beds, not by ranges typed onto the cycle.
 		"""
@@ -196,24 +196,24 @@ class SummerFlowerCropCycle(CropCycle):
 		self.custom_greenhouse = frappe.db.get_value("Block", self.custom_block,
 		                                             "greenhouse")
 		ha = flt(frappe.db.get_value("Block", self.custom_block,
-		                             "custom_gross_area_ha"))
-		gross_sqm = ha * 10_000
-		self.custom_block_gross_area_sqm = gross_sqm
+		                             "custom_net_area_ha"))
+		area_sqm = ha * 10_000
+		self.custom_block_area_sqm = area_sqm
 
 		if not flt(self.custom_planting_density_per_sqm):
 			self.custom_planting_density_per_sqm = flt(
 				self._version.plants_per_sqm_net)
 
-		if flt(self.custom_area_planted_sqm) and gross_sqm and \
-				flt(self.custom_area_planted_sqm) > gross_sqm + 0.5:
+		if flt(self.custom_area_planted_sqm) and area_sqm and \
+				flt(self.custom_area_planted_sqm) > area_sqm + 0.5:
 			frappe.throw(_(
-				"Planted area {0} m² exceeds block {1}'s gross area of {2} m². "
+				"Planted area {0} m² exceeds block {1}'s net area of {2} m². "
 				"A planting can fill the block but cannot exceed it."
 			).format(flt(self.custom_area_planted_sqm), self.custom_block,
-			         round(gross_sqm, 2)))
+			         round(area_sqm, 2)))
 
 		self.custom_area_utilisation_pct = (
-			flt(self.custom_area_planted_sqm) * 100.0 / gross_sqm if gross_sqm else 0
+			flt(self.custom_area_planted_sqm) * 100.0 / area_sqm if area_sqm else 0
 		)
 		if not cint(self.custom_live_plant_count) and flt(self.custom_area_planted_sqm):
 			self.custom_live_plant_count = int(round(
@@ -326,12 +326,11 @@ class SummerFlowerCropCycle(CropCycle):
 		end = getdate(self.custom_actual_uproot_date or self.custom_planned_uproot_date) \
 			if (self.get("custom_actual_uproot_date")
 			    or self.get("custom_planned_uproot_date")) else None
-		rounding = cint(self._version.calendar_rounding_weeks)
 		plants = cint(self.custom_live_plant_count)
 
 		self.set("custom_flush_schedule", [])
 		for number, weeks_from_pinch, spp in self.protocol.flush_rows():
-			harvest = add_days(anchor, 7 * (weeks_from_pinch + rounding))
+			harvest = add_days(anchor, 7 * weeks_from_pinch)
 			if end and getdate(harvest) > end:
 				break
 			y, w = iso_year_week(getdate(harvest))

@@ -377,12 +377,22 @@
 
       <div class="pl-two">
         <div class="pl-card">
-          <div class="pl-card-head"><h2>{{ _("Production parameters") }}</h2></div>
+          <div class="pl-card-head">
+            <div><h2>{{ _("Growing cycle") }}</h2>
+                 <p class="pl-note">{{ _("Planting to uprooting. What happens before planting is on the propagation card below.") }}</p></div>
+          </div>
           <div id="pr-prod"></div>
         </div>
         <div class="pl-card">
-          <div class="pl-card-head"><h2>{{ _("Planting density") }}</h2></div>
+          <div class="pl-card-head"><h2>{{ _("Planting density and area") }}</h2></div>
           <div id="pr-density"></div>
+        </div>
+        <div class="pl-card">
+          <div class="pl-card-head">
+            <div><h2>{{ _("Propagation house and bench") }}</h2>
+                 <p class="pl-note">{{ _("Everything between taking a cutting and putting a plant in the ground, and the bench it occupies while that happens. These belong to the propagation unit, not to the growing cycle.") }}</p></div>
+          </div>
+          <div id="pr-prop"></div>
         </div>
       </div>
 
@@ -1332,7 +1342,7 @@ table.hc tbody tr:hover td:not(.hc-k):not(.hc-m){background:var(--surface-2)}
       { k: "Unallocated", v: num(t.unallocated), m: "no free block",
         c: t.unallocated ? "--serious" : "--good" },
       { k: "Below min block", v: num(t.below_minimum),
-        m: "under " + t.min_planting_beds + " beds", c: t.below_minimum ? "--warning" : "--good" },
+        m: "under the protocol's minimum area", c: t.below_minimum ? "--warning" : "--good" },
       { k: "Week passed", v: num(t.in_past), m: "cannot be planted",
         c: t.in_past ? "--critical" : "--good" },
     ].map(tile).join("");
@@ -1572,7 +1582,7 @@ table.hc tbody tr:hover td:not(.hc-k):not(.hc-m){background:var(--surface-2)}
     // Space: bed counts are reliable, areas are not — say which is which.
     let html = utilBar({ ...t, pct_used: t.pct_used }, "All blocks");
     html += `<div class="ub-area">Net bed area recorded: <b>${num(Math.round(t.net_sqm_used))} m²</b> used` +
-      ` of <b>${num(Math.round(t.net_sqm_total))} m²</b>, across ${t.gross_area_ha.toFixed(3)} ha gross.</div>`;
+      ` of <b>${num(Math.round(t.net_sqm_total))} m²</b>, across ${t.net_area_ha.toFixed(3)} ha net.</div>`;
     if (t.blocks_area_incomplete) {
       html += `<div class="pl-callout">Bed dimensions are missing on ${num(t.beds_total - t.beds_measured)}` +
         ` of ${num(t.beds_total)} beds (${t.blocks_area_incomplete} blocks affected), so the m² figures above` +
@@ -2319,7 +2329,7 @@ table.hc tbody tr:hover td:not(.hc-k):not(.hc-m){background:var(--surface-2)}
         m: "a block reused counts twice" },
       { k: "Plants to raise", v: num(sp.plants_wanted), m: "for placed plantings" },
       { k: "Area standing", v: sp.area_standing_ha.toFixed(3) + " ha",
-        m: `farm has ${sp.gross_area_ha} ha gross` },
+        m: `farm has ${sp.net_area_ha} ha net` },
       { k: "Plantings placed", v: `${num(sp.placed)} / ${num(sp.proposals)}`,
         m: `${sp.blocks_used} of ${sp.blocks} blocks used`,
         c: sp.unallocated ? "--serious" : "--good" },
@@ -2942,7 +2952,7 @@ table.hc tbody tr:hover td:not(.hc-k):not(.hc-m){background:var(--surface-2)}
         (b.plantings.length
           ? `<span class="pill"><i class="dot2" style="background:var(--seq-400)"></i>${esc(b.status)}</span>`
           : `<span class="pill"><i class="dot2" style="background:var(--serious)"></i>not planted</span>`) +
-        `<span class="bf-meta">${u.beds_total} beds · ${b.gross_area_ha.toFixed(3)} ha gross</span>` +
+        `<span class="bf-meta">${u.beds_total} beds · ${b.net_area_ha.toFixed(3)} ha net</span>` +
         `<span style="margin-left:auto;min-width:230px">${utilBar(u, "")}</span></div>`;
 
       const body = b.plantings.length ? b.plantings.map((p) => {
@@ -3281,7 +3291,7 @@ table.hc tbody tr:hover td:not(.hc-k):not(.hc-m){background:var(--surface-2)}
       { k: "Life expectancy", v: D.life_expectancy_years.toFixed(2) + " yrs",
         m: D.total_weeks_in_ground + " weeks in ground", why: "life_expectancy_years" },
       { k: "Plants / ha", v: num(D.plants_per_ha), why: "plants_per_ha",
-        m: `${F.plants_per_sqm_net}/m² net · ${D.plants_per_sqm_gross}/m² gross` },
+        m: `${F.plants_per_sqm_net}/m² of bed × 10,000` },
       { k: "Yield / ha / yr", v: num(D.stems_per_ha_year), why: "stems_per_ha_year",
         m: "stated " + num(D.stated_yield_stems_per_ha),
         c: Math.abs(D.yield_variance_pct) > 1 ? "--serious" : "--good" },
@@ -3315,47 +3325,53 @@ table.hc tbody tr:hover td:not(.hc-k):not(.hc-m){background:var(--surface-2)}
         { field: "flush_interval_weeks", value: F.flush_interval_weeks }) +
       prow("F1 from planting", d.flushes.length ? d.flushes[0].weeks_from_planting + " weeks" : "—",
         `pinch(${F.weeks_to_pinch}) + F1(${F.flush_interval_weeks})`) +
-      prow("On the planning grid", D.first_harvest_offset_weeks + " weeks",
-        `+${F.calendar_rounding_weeks}w rounding`,
-        { field: "calendar_rounding_weeks", value: F.calendar_rounding_weeks },
+      prow("Planting to first harvest", D.first_harvest_offset_weeks + " weeks",
+        `pinch(${F.weeks_to_pinch}) + first flush`, null,
         "first_harvest_offset_weeks") +
       prow("Total flushes", D.total_flushes + " flushes", "from the schedule below") +
       prow("Total weeks in ground", D.total_weeks_in_ground + " weeks",
-        D.life_expectancy_years.toFixed(2) + " yrs") +
-      prow("Cuttings per plant per week", F.cuttings_per_plant_per_week, null,
-        { field: "cuttings_per_plant_per_week", value: F.cuttings_per_plant_per_week, step: "0.1" }) +
+        D.life_expectancy_years.toFixed(2) + " yrs");
+
+    // The propagation side: taking a cutting through to a plantable plant, and the
+    // bench that costs. Kept apart from the growing cycle, which starts at planting.
+    $("pr-prop").innerHTML =
       prow("Hardening", F.hardening_weeks + " weeks", "cutting to plantable",
         { field: "hardening_weeks", value: F.hardening_weeks }) +
-      prow("Sticking to planting", F.sticking_to_planting_weeks + " weeks", null,
+      prow("Sticking to planting", F.sticking_to_planting_weeks + " weeks",
+        "cutting stuck to plant in the field",
         { field: "sticking_to_planting_weeks", value: F.sticking_to_planting_weeks }) +
       prow("Cutting to harvest", D.cutting_to_harvest_weeks + " weeks",
         `hard(${F.hardening_weeks}) + pinch(${F.weeks_to_pinch}) + F1(${F.flush_interval_weeks})`,
-        null, "cutting_to_harvest_weeks");
+        null, "cutting_to_harvest_weeks") +
+      prow("Cuttings per plant per week", F.cuttings_per_plant_per_week,
+        "what one mother plant yields",
+        { field: "cuttings_per_plant_per_week", value: F.cuttings_per_plant_per_week, step: "0.1" }) +
+      prow("Pots per m²", F.pots_per_sqm, "on the bench",
+        { field: "pots_per_sqm", value: F.pots_per_sqm }) +
+      prow("Plants per pot", F.plants_per_pot, null,
+        { field: "plants_per_pot", value: F.plants_per_pot }) +
+      prow("Plants per m² of bench", (D.plants_per_sqm_bench || 0).toFixed(1),
+        `${F.pots_per_sqm} × ${F.plants_per_pot}`);
 
     $("pr-density").innerHTML =
-      prow("Plants per m² (net)", F.plants_per_sqm_net + " pl/m²", "agronomic density",
+      prow("Plants per m² of bed", F.plants_per_sqm_net + " pl/m²",
+        "plants standing per m² of the ground the crop occupies",
         { field: "plants_per_sqm_net", value: F.plants_per_sqm_net }) +
-      prow("Net : gross ratio", F.net_gross_ratio, "bed area ÷ block area",
-        { field: "net_gross_ratio", value: F.net_gross_ratio, step: "0.01" }) +
-      prow("Plants per m² (gross)", D.plants_per_sqm_gross + " pl/m²", "what /ha uses") +
-      prow("Plants per ha", num(D.plants_per_ha) + " pl/ha", "on gross area",
-        null, "plants_per_ha") +
+      prow("Plants per ha of bed", num(D.plants_per_ha) + " pl/ha",
+        "per hectare of bed, not of block", null, "plants_per_ha") +
       prow("Plants per bed", num(F.plants_per_bed), null,
         { field: "plants_per_bed", value: F.plants_per_bed }) +
+      prow("m² per bed", D.sqm_net_per_bed.toFixed(1),
+        `${num(F.plants_per_bed)} ÷ ${F.plants_per_sqm_net}`, null,
+        "sqm_net_per_bed") +
       prow("Beds per block", F.beds_per_block, null,
         { field: "beds_per_block", value: F.beds_per_block }) +
       prow("Plants per block", num(D.plants_per_block),
         `${F.beds_per_block} × ${num(F.plants_per_bed)}`, null, "plants_per_block") +
-      prow("m² net per bed", D.sqm_net_per_bed.toFixed(1)) +
-      prow("m² gross per bed", D.sqm_gross_per_bed.toFixed(1), null, null,
-        "sqm_gross_per_bed") +
-      prow("Minimum planting", F.min_planting_beds + " beds",
-        num(D.min_planting_plants) + " plants",
-        { field: "min_planting_beds", value: F.min_planting_beds }) +
-      prow("Pots per m²", F.pots_per_sqm, null,
-        { field: "pots_per_sqm", value: F.pots_per_sqm }) +
-      prow("Plants per pot", F.plants_per_pot, null,
-        { field: "plants_per_pot", value: F.plants_per_pot });
+      prow("Minimum planting area", num(F.min_planting_area_sqm) + " m²",
+        `${D.min_planting_beds || 0} beds · ${num(D.min_planting_plants)} plants`,
+        { field: "min_planting_area_sqm", value: F.min_planting_area_sqm,
+          step: "10" });
 
     // flush schedule
     const fr = PR_FLUSH.rows || d.flushes;

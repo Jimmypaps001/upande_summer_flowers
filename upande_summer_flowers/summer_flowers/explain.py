@@ -69,27 +69,23 @@ def _m_spl(v):
 def _m_pph(v):
 	return {
 		"label": _("Plants per hectare"),
-		"value": flt(v.plants_per_sqm_gross) * 10_000, "unit": _("plants/ha"),
-		"formula": _("plants per m² gross × 10,000"),
+		"value": flt(v.plants_per_sqm_net) * 10_000, "unit": _("plants/ha"),
+		"formula": _("plants per m² of bed × 10,000"),
 		"steps": [
-			_step(_("Plants per m² (net)"), v.plants_per_sqm_net,
+			_step(_("Plants per m² of bed (net)"), v.plants_per_sqm_net,
 			      _("{0} → plants_per_sqm_net, the agronomic density").format(v.name)),
-			_step(_("Net : gross ratio"), flt(v.net_gross_ratio),
-			      _("bed area ÷ block area")),
-			_step(_("Plants per m² (gross)"), flt(v.plants_per_sqm_gross),
-			      _("{0} × {1}").format(v.plants_per_sqm_net, flt(v.net_gross_ratio))),
-			_step(_("× 10,000 m² per hectare"), flt(v.plants_per_sqm_gross) * 10_000),
+			_step(_("× 10,000 m² per hectare"), flt(v.plants_per_sqm_net) * 10_000),
 		],
 		"caveats": [
-			_("Quoted on GROSS block area, not net bed area. Using the net density "
-			  "here would overstate every per-hectare figure by 25%."),
+			_("A hectare of BED, not of block. Gross block area and the net:gross "
+			  "ratio are no longer carried, so there is one area and it is stated."),
 		],
 	}
 
 
 @protocol_metric("stems_per_ha_life")
 def _m_sphl(v):
-	pph = flt(v.plants_per_sqm_gross) * 10_000
+	pph = flt(v.plants_per_sqm_net) * 10_000
 	return {
 		"label": _("Life stems per hectare"),
 		"value": flt(v.stems_per_ha_life), "unit": _("stems/ha"),
@@ -97,8 +93,8 @@ def _m_sphl(v):
 		"steps": [
 			_step(_("Stems per plant life"), flt(v.total_stems_per_plant_life),
 			      _flush_source(v)),
-			_step(_("Plants per ha (gross)"), pph,
-			      _("{0}/m² gross × 10,000").format(flt(v.plants_per_sqm_gross))),
+			_step(_("Plants per ha of bed"), pph,
+			      _("{0}/m² of bed × 10,000").format(flt(v.plants_per_sqm_net))),
 			_step(_("Product"), flt(v.stems_per_ha_life)),
 		],
 		"caveats": [_("Over the full {0}-week life, not per year.")
@@ -163,20 +159,13 @@ def _m_fho(v):
 	return {
 		"label": _("Weeks from planting to first harvest"),
 		"value": v.first_harvest_offset_weeks, "unit": _("weeks"),
-		"formula": _("weeks to pinch + first flush from pinch + grid rounding"),
+		"formula": _("weeks to pinch + first flush from pinch"),
 		"steps": [
 			_step(_("Weeks to pinch"), v.weeks_to_pinch),
 			_step(_("First flush, weeks from pinch"), first),
-			_step(_("Calendar grid rounding"), v.calendar_rounding_weeks,
-			      _("allowance for plantings not landing on a week boundary")),
 			_step(_("Total"), v.first_harvest_offset_weeks),
 		],
-		"caveats": [
-			_("Without the rounding allowance this is {0} weeks. The extra week exists "
-			  "because a planting dated mid-week rounds forward to the next Monday "
-			  "column on the planning grid. Set the allowance to 0 if plantings are "
-			  "always Mondays.").format((v.weeks_to_pinch or 0) + first),
-		] if v.calendar_rounding_weeks else [],
+		"caveats": [],
 	}
 
 
@@ -288,18 +277,16 @@ def _m_ppblk(v):
 	}
 
 
-@protocol_metric("sqm_gross_per_bed")
-def _m_sgpb(v):
+@protocol_metric("sqm_net_per_bed")
+def _m_snpb(v):
 	return {
-		"label": _("m² gross per bed"),
-		"value": flt(v.sqm_gross_per_bed), "unit": "m²",
-		"formula": _("plants per bed ÷ plants per m² net ÷ net:gross ratio"),
+		"label": _("m² of bed per bed"),
+		"value": flt(v.sqm_net_per_bed), "unit": "m²",
+		"formula": _("plants per bed ÷ plants per m² of bed"),
 		"steps": [
 			_step(_("Plants per bed"), v.plants_per_bed),
-			_step(_("Plants per m² net"), v.plants_per_sqm_net),
-			_step(_("m² net per bed"), flt(v.sqm_net_per_bed)),
-			_step(_("Net : gross ratio"), flt(v.net_gross_ratio)),
-			_step(_("m² gross per bed"), flt(v.sqm_gross_per_bed)),
+			_step(_("Plants per m² of bed (net)"), v.plants_per_sqm_net),
+			_step(_("m² per bed"), flt(v.sqm_net_per_bed)),
 		],
 		"caveats": [],
 	}
