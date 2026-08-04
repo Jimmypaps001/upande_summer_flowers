@@ -39,10 +39,12 @@
   "weeks_covered",
   "outcome_section",
   "total_production_stems",
+  "planned_production_stems",
   "total_demand_stems",
   "cb_outcome",
   "total_variance_stems",
   "coverage_pct",
+  "planned_coverage_pct",
   "outcome2_section",
   "weeks_in_deficit",
   "worst_weekly_deficit",
@@ -55,6 +57,14 @@
   "cb_plant",
   "peak_weekly_sticking",
   "peak_sticking_week",
+  "peak_weekly_sticking_planned",
+  "tc_section",
+  "tc_plants_to_order",
+  "tc_order_by_date",
+  "cb_tc",
+  "tc_mother_plants",
+  "tc_cuttings_at_peak",
+  "tc_status",
   "budget_link_section",
   "budget",
   "weeks_tab",
@@ -291,6 +301,13 @@
    "read_only": 1
   },
   {
+   "fieldname": "planned_production_stems",
+   "fieldtype": "Int",
+   "label": "Planned Production (Stems)",
+   "read_only": 1,
+   "description": "Every proposed planting at protocol yield. Production above counts only the plantings a block was found for."
+  },
+  {
    "fieldname": "total_demand_stems",
    "fieldtype": "Int",
    "label": "Demand (stems)",
@@ -311,6 +328,13 @@
    "fieldtype": "Percent",
    "label": "Demand Coverage %",
    "read_only": 1
+  },
+  {
+   "fieldname": "planned_coverage_pct",
+   "fieldtype": "Percent",
+   "label": "Planned Coverage",
+   "read_only": 1,
+   "description": "Coverage if every proposed planting had somewhere to go."
   },
   {
    "fieldname": "outcome2_section",
@@ -378,6 +402,55 @@
    "fieldname": "peak_sticking_week",
    "fieldtype": "Data",
    "label": "Peak Sticking Week",
+   "read_only": 1
+  },
+  {
+   "fieldname": "peak_weekly_sticking_planned",
+   "fieldtype": "Int",
+   "label": "Peak Weekly Sticking (Planned)",
+   "read_only": 1,
+   "description": "Includes plantings with no block. This is what propagation would have to raise for the plan to be met in full."
+  },
+  {
+   "fieldname": "tc_section",
+   "fieldtype": "Section Break",
+   "label": "Tissue Culture to Order"
+  },
+  {
+   "fieldname": "tc_plants_to_order",
+   "fieldtype": "Int",
+   "label": "TC Plantlets to Order",
+   "read_only": 1,
+   "bold": 1,
+   "description": "Sized to the planned peak sticking week: cuttings cannot be banked, so the peak sets the motherstock and the motherstock sets the order."
+  },
+  {
+   "fieldname": "tc_order_by_date",
+   "fieldtype": "Date",
+   "label": "Order By",
+   "read_only": 1,
+   "description": "Lab lead time back from the first sticking week. Later than this and the first plantings cannot happen."
+  },
+  {
+   "fieldname": "cb_tc",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "tc_mother_plants",
+   "fieldtype": "Int",
+   "label": "Mother Plants Needed",
+   "read_only": 1
+  },
+  {
+   "fieldname": "tc_cuttings_at_peak",
+   "fieldtype": "Int",
+   "label": "Cuttings in Peak Week",
+   "read_only": 1
+  },
+  {
+   "fieldname": "tc_status",
+   "fieldtype": "Small Text",
+   "label": "TC Order Note",
    "read_only": 1
   },
   {

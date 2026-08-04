@@ -8,7 +8,7 @@ from collections import defaultdict
 import frappe
 from frappe import _
 from frappe.model.document import Document
-from frappe.utils import cint, get_datetime, getdate, nowdate
+from frappe.utils import cint, flt, get_datetime, getdate, nowdate
 
 from upande_summer_flowers.summer_flowers.doctype.crop_protocol_version.crop_protocol_version import (
 	current_version,
@@ -194,10 +194,16 @@ class SummerFlowerProductionPlan(Document):
 	def set_totals(self):
 		weeks = self.plan_weeks
 		self.total_production_stems = sum((w.production_stems or 0) for w in weeks)
+		self.planned_production_stems = sum(
+			(w.get("planned_production_stems") or 0) for w in weeks)
 		self.total_demand_stems = sum((w.demand_stems or 0) for w in weeks)
 		self.total_variance_stems = self.total_production_stems - self.total_demand_stems
 		self.coverage_pct = (
 			self.total_production_stems / self.total_demand_stems * 100
+			if self.total_demand_stems else 0
+		)
+		self.planned_coverage_pct = (
+			self.planned_production_stems / self.total_demand_stems * 100
 			if self.total_demand_stems else 0
 		)
 
@@ -239,6 +245,83 @@ class SummerFlowerProductionPlan(Document):
 		else:
 			self.peak_weekly_sticking = 0
 			self.peak_sticking_week = None
+
+		# The planned peak includes plantings with no block. That is the number the
+		# TC order is sized from: the order has to be placed months before anyone
+		# knows which block will be free, and ordering for the placed subset would
+		# guarantee the plan can never be met even after the blocks are sorted out.
+		planned_sticking = defaultdict(int)
+		for b in self.plan_blocks:
+			if not b.is_new_planting:
+				continue
+			if b.sticking_year and b.sticking_week:
+				planned_sticking[(b.sticking_year, b.sticking_week)] += b.plants or 0
+		self.peak_weekly_sticking_planned = (
+			max(planned_sticking.values()) if planned_sticking else 0)
+		self.set_tc_order(planned_sticking)
+
+	# ---------------------------------------------------------------- TC to order
+	def set_tc_order(self, planned_sticking):
+		"""What to buy, on the document that decides it.
+
+		The number was only ever on the dashboard, so a plan could be read, approved
+		and handed over without the one purchase it depends on appearing anywhere on
+		it. The arithmetic is the protocol version's own -- cuttings_for_plants and
+		tc_plants_for -- so this is the same figure the dashboard shows, not a second
+		opinion about it.
+		"""
+		self.tc_plants_to_order = 0
+		self.tc_mother_plants = 0
+		self.tc_cuttings_at_peak = 0
+		self.tc_order_by_date = None
+		self.tc_status = None
+
+		v = getattr(self, "_version", None)
+		peak = cint(self.peak_weekly_sticking_planned)
+		if not v or not peak:
+			self.tc_status = _("No plantings proposed, so nothing to order.")
+			return
+
+		cuttings = cint(v.cuttings_for_plants(peak))
+		per_week = flt(v.cuttings_per_plant_per_week) or 1.0
+		mothers = int(math.ceil(cuttings / per_week)) if cuttings else 0
+		cycles = cint(v.max_multiplication_cycles)
+		self.tc_cuttings_at_peak = cuttings
+		self.tc_mother_plants = mothers
+		self.tc_plants_to_order = int(math.ceil(v.tc_plants_for(mothers, cycles))) \
+			if mothers else 0
+
+		# Working back from the first sticking week. Two distinct waits, and only
+		# two: the lab's own order-to-delivery, then lead_time_weeks, which is
+		# already defined as arrival to first cutting including any multiplication
+		# cycles. Adding ms_establishment_weeks on top would count tray and pot
+		# twice, because lead_time_weeks contains them.
+		from upande_summer_flowers.summer_flowers.doctype.summer_flower_motherstock_batch.summer_flower_motherstock_batch import (
+			lab_lead_weeks,
+		)
+
+		first = min(planned_sticking) if planned_sticking else None
+		if first:
+			stick_monday = iso_monday(first[0], first[1])
+			weeks_back = cint(lab_lead_weeks(v)) + cint(v.lead_time_weeks)
+			self.tc_order_by_date = stick_monday - datetime.timedelta(weeks=weeks_back)
+
+		notes = []
+		if self.tc_order_by_date and self.tc_order_by_date < getdate(nowdate()):
+			notes.append(_(
+				"The order date has already passed ({0}), so the first sticking week "
+				"{1}-W{2:02d} cannot be met from a new TC order. Buy rooted cuttings "
+				"for the early weeks or move the demand later."
+			).format(self.tc_order_by_date, first[0], first[1]))
+		if cint(self.plantings_not_placed):
+			notes.append(_(
+				"{0} of the proposed plantings have no block. This order is sized for "
+				"the whole plan, so buying it commits to finding room for them."
+			).format(cint(self.plantings_not_placed)))
+		self.tc_status = "\n".join(notes) or _(
+			"{0} plantlets, {1} cycles of multiplication to {2} mother plants, "
+			"cutting {3} in the peak week."
+		).format(self.tc_plants_to_order, cycles, mothers, cuttings)
 
 	# ------------------------------------------------------------------ budget
 	def create_budget(self):
@@ -506,9 +589,23 @@ def _populate(plan):
 	calendar = BlockCalendar(plan.farm, plan.variety)
 	block_capacity = calendar.capacity()
 	not_placed = unmet = 0
+	# What the plan would deliver if every proposal had somewhere to go. Keeping only
+	# the placeable figure meant a plan whose blocks were all taken read zero
+	# production and looked identical to a plan that grows nothing, with the reason
+	# buried in thirteen row notes.
+	#
+	# This is the deficit each unplaceable proposal was meant to close, not that
+	# proposal's full yield. The loop retries a week it could not place, so summing
+	# the retries counted the same shortfall thirteen times over and reported 599%
+	# planned coverage against a demand of 114,000.
+	unmet_by_week = defaultdict(int)
 
 	proposed = 0
 	for (year, week, monday) in grid:
+		# Against what can actually be grown. Measuring against the proposals instead
+		# -- counting an unplaceable one as covering its week -- stopped the loop
+		# retrying that week, and the retries are how later proposals find a block
+		# that has come free: Aster at Karen fell from 70.7% coverage to 60.0%.
 		deficit = demand_map.get((year, week), 0) - production[(year, week)]
 		if deficit <= 0:
 			continue
@@ -540,6 +637,7 @@ def _populate(plan):
 		if not block:
 			not_placed += 1
 			unmet += deficit
+			unmet_by_week[(year, week)] += deficit
 			plan.append("plan_blocks", {
 				"is_new_planting": 1,
 				"block": None,
@@ -554,10 +652,15 @@ def _populate(plan):
 				"below_minimum": 0,
 				"not_placed": 1,
 				"planting_in_past": 1 if planting_date < today else 0,
-				"notes": _(
-					"No block is free for the whole life {0} to {1}. Not counted as "
-					"production."
-				).format(planting_date, uproot),
+				"notes": (
+					_("{0} has no summer flower blocks, so nothing can be planted "
+					  "there. Mark its blocks as summer flower blocks, or plan this "
+					  "variety at a farm that has them.").format(plan.farm)
+					if not calendar.block_count() else
+					_("Every block big enough for {0} beds is already held by another "
+					  "planting for some part of {1} to {2}. Not counted as "
+					  "production.").format(beds, planting_date, uproot)
+				),
 			})
 			proposed += 1
 			continue
@@ -647,6 +750,7 @@ def _populate(plan):
 			"week_start_date": monday,
 			"month_name": MONTH_NAMES[monday.month - 1],
 			"production_stems": prod,
+			"planned_production_stems": prod + unmet_by_week[(year, week)],
 			"demand_stems": dem,
 			"variance_stems": prod - dem,
 			"cumulative_variance": running,
@@ -724,6 +828,14 @@ class BlockCalendar:
 
 	def capacity(self):
 		return max((b["beds"] for b in self.blocks), default=0)
+
+	def block_count(self):
+		"""How many blocks exist at all, before anything is booked.
+
+		Zero is a different problem from all-of-them-busy and needs a different
+		message: no amount of rescheduling frees a block the farm does not have.
+		"""
+		return len(self.blocks)
 
 	def used(self):
 		return len([b for b in self.blocks if b["busy"]])

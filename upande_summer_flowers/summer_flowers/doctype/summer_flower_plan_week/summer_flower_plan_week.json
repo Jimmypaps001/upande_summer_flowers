@@ -11,6 +11,7 @@
   "week_no",
   "week_start_date",
   "month_name",
+  "planned_production_stems",
   "production_stems",
   "demand_stems",
   "variance_stems",
@@ -46,6 +47,14 @@
    "fieldtype": "Data",
    "label": "Month",
    "read_only": 1
+  },
+  {
+   "fieldname": "planned_production_stems",
+   "fieldtype": "Int",
+   "label": "Planned Stems",
+   "read_only": 1,
+   "in_list_view": 1,
+   "description": "What the protocol yields from every proposed planting, whether or not a block was found for it."
   },
   {
    "columns": 2,
