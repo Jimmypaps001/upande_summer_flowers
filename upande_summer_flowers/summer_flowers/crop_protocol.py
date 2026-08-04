@@ -260,6 +260,29 @@ def fill_native_gaps(doc):
 		doc.custom_sf_weeks_to_max_pc = cint(doc.get("custom_sf_ramp_weeks"))
 
 
+def on_update(doc, method=None):
+	"""When the workflow reaches Approved, write the snapshot.
+
+	The workflow drives custom_sf_protocol_status, but moving a field to "Approved"
+	is not the same as approving: the history only exists once a snapshot is written.
+	Without this the next save would see the protocol still differing from the old
+	snapshot and set the status back to Draft, so the workflow button would appear to
+	do nothing.
+	"""
+	if not is_summer_flower(doc):
+		return
+	if doc.get("custom_sf_protocol_status") != "Approved":
+		return
+	changed = diff_against_current(doc)
+	if changed is None or changed:
+		try:
+			approve(doc.name)
+		except frappe.ValidationError:
+			# approve() states its own reason -- no farm, no change reason. Leave the
+			# status where the workflow put it and let the message stand.
+			raise
+
+
 def validate(doc, method=None):
 	# The ramp drives weeks-to-max-PC, and the establishment total is built from
 	# that, so it is squared away before anything is derived.
@@ -337,7 +360,19 @@ def set_status(doc):
 	if changed:
 		# Anything unapproved puts it back to Draft: an approved status with different
 		# numbers behind it is the lie this whole restructure exists to prevent.
-		doc.custom_sf_protocol_status = "Draft"
+		#
+		# Two states are exempt. Pending Approval is a real state with unapproved
+		# changes behind it by definition. And the workflow moving this save's status
+		# INTO Approved is the approval itself -- on_update writes the snapshot
+		# immediately after, which is what makes the status true. Resetting it here
+		# meant the Approve button set Approved, this reset it to Draft, and on_update
+		# then saw Draft and did nothing, so the button appeared dead.
+		status = doc.get("custom_sf_protocol_status")
+		was = frappe.db.get_value("Crop Protocol", doc.name,
+		                          "custom_sf_protocol_status") if not doc.is_new() else None
+		approving_now = status == "Approved" and was != "Approved"
+		if status != "Pending Approval" and not approving_now:
+			doc.custom_sf_protocol_status = "Draft"
 		doc.custom_sf_pending_changes = _("Differs from {0} in: {1}").format(
 			doc.get("custom_sf_current_version"), ", ".join(changed))
 	else:

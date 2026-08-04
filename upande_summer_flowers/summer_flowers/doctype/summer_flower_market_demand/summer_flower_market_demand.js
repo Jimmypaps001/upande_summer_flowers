@@ -77,30 +77,32 @@ function extend_horizon(frm) {
 
 function create_plan(frm) {
 	const first = frm.doc.demand_weeks[0];
+	// A plan is one farm's commitment for one season. The register is per variety, so
+	// the farm is chosen here; the season decides the weekly grid, which is why the
+	// year and week are no longer asked for.
+	const startYear = first.week_start_date
+		? (new Date(first.week_start_date).getMonth() + 1 >= 7
+			? new Date(first.week_start_date).getFullYear()
+			: new Date(first.week_start_date).getFullYear() - 1)
+		: first.year;
 	const d = new frappe.ui.Dialog({
 		title: __("Create Production Plan"),
 		fields: [
 			{
-				fieldname: "from_year",
-				label: __("From Year"),
-				fieldtype: "Int",
-				default: first.year,
+				fieldname: "farm",
+				label: __("Farm"),
+				fieldtype: "Link",
+				options: "Farm",
 				reqd: 1,
+				description: __("Which farm grows this. It decides the blocks available and the protocol version that applies."),
 			},
 			{
-				fieldname: "from_week",
-				label: __("From Week"),
+				fieldname: "season_start_year",
+				label: __("Season (starting year)"),
 				fieldtype: "Int",
-				default: first.week_no,
+				default: startYear,
 				reqd: 1,
-			},
-			{
-				fieldname: "weeks",
-				label: __("Weeks to cover"),
-				fieldtype: "Int",
-				default: Math.min(frm.doc.weeks_covered, 156),
-				reqd: 1,
-				description: __("156 weeks covers the full 3-year horizon."),
+				description: __("{0} means 1 July {0} to 30 June {1}.", [startYear, startYear + 1]),
 			},
 		],
 		primary_action_label: __("Create"),

@@ -400,6 +400,12 @@ def build_from_demand(market_demand, farm=None, season_start_year=None,
 		frappe.throw(_("Demand register {0} has no weeks.").format(market_demand))
 
 	first = demand.demand_weeks[0]
+	if farm and not frappe.db.exists("Farm", farm):
+		# Caught a year arriving here as the farm once already, from a positional call
+		# made before this signature grew. Fail with the value rather than silently
+		# looking for a protocol at a farm that cannot exist.
+		frappe.throw(_("{0} is not a Farm. Name the farm this plan is grown on.")
+		             .format(farm))
 	plan = frappe.new_doc("Summer Flower Production Plan")
 	plan.market_demand = market_demand
 	if farm:

@@ -890,7 +890,7 @@ def _space_for(plan, farm):
 
 
 @frappe.whitelist()
-def create_production_plan(demand, force_new=0):
+def create_production_plan(demand, farm=None, season_start_year=None, force_new=0):
 	"""Build the production plan for a demand register.
 
 	An open draft is rebuilt rather than joined by another one. Pressing this a few
@@ -918,7 +918,7 @@ def create_production_plan(demand, force_new=0):
 			        "reused": 1}
 
 	d = frappe.get_doc("Summer Flower Market Demand", demand)
-	name = d.create_production_plan()
+	name = d.create_production_plan(farm=farm, season_start_year=season_start_year)
 	frappe.db.commit()
 	p = frappe.db.get_value("Summer Flower Production Plan", name,
 	                        ["name", "weeks_covered", "coverage_pct",

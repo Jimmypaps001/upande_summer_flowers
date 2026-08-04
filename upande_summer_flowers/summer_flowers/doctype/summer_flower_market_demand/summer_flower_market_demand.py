@@ -170,10 +170,18 @@ class SummerFlowerMarketDemand(Document):
 
 	# ------------------------------------------------------------------- plan
 	@frappe.whitelist()
-	def create_production_plan(self, from_year=None, from_week=None, weeks=None):
-		"""Build a Production Plan covering part or all of this demand register."""
+	def create_production_plan(self, farm=None, season_start_year=None,
+	                           from_year=None, from_week=None, weeks=None):
+		"""Build a Production Plan for one season of this demand register.
+
+		Keyword arguments, deliberately. build_from_demand grew a farm and a season in
+		front of its old positional list, and this call was still positional -- so the
+		year went into the farm and the planner looked for a protocol at farm "2026".
+		"""
 		from upande_summer_flowers.summer_flowers.doctype.summer_flower_production_plan.summer_flower_production_plan import (
 			build_from_demand,
 		)
 
-		return build_from_demand(self.name, from_year, from_week, weeks)
+		return build_from_demand(self.name, farm=farm,
+		                         season_start_year=season_start_year,
+		                         from_year=from_year, from_week=from_week, weeks=weeks)

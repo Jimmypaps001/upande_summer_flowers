@@ -32,6 +32,11 @@ fixtures = [
 		"filters": [["name", "in", [
 			"Summer Flower Production Plan Approval",
 			"Planting Calendar Approval",
+			# The protocol's own approval. Every state change to a protocol goes
+			# through it, including the automatic return to Draft when a number
+			# changes behind an approved protocol -- hence the Revise transition,
+			# without which that edit is refused outright.
+			"Crop Protocol Approval",
 		]]],
 	},
 	{
@@ -43,8 +48,8 @@ fixtures = [
 	{
 		"dt": "Workflow Action Master",
 		"filters": [["name", "in", ["Submit for Approval", "Approve", "Reject",
-		                            "Reopen", "Mark Planted", "Mark Uprooted",
-		                            "Cancel Planting"]]],
+		                            "Reopen", "Revise", "Mark Planted",
+		                            "Mark Uprooted", "Cancel Planting"]]],
 	},
 	# The Workspace itself is NOT a fixture: it belongs to the module, so
 	# developer_mode exports it to summer_flowers/workspace/ and migrate syncs it
@@ -212,6 +217,9 @@ doc_events = {
 	# Version is only ever the read-only snapshot taken when a change is approved.
 	"Crop Protocol": {
 		"validate": "upande_summer_flowers.summer_flowers.crop_protocol.validate",
+		# The workflow moves the status; this turns reaching Approved into an actual
+		# snapshot, which is the only thing that creates a Crop Protocol Version.
+		"on_update": "upande_summer_flowers.summer_flowers.crop_protocol.on_update",
 	},
 	"Block": {
 		"validate": "upande_summer_flowers.summer_flowers.block.validate_block",
