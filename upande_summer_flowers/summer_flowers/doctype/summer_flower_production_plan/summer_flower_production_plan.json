@@ -27,6 +27,10 @@
   "workflow_state",
   "status",
   "period_section",
+  "season_start_year",
+  "season",
+  "season_start_date",
+  "season_end_date",
   "from_year",
   "from_week",
   "cb_period",
@@ -209,16 +213,46 @@
    "label": "Plan Period"
   },
   {
+   "fieldname": "season_start_year",
+   "fieldtype": "Int",
+   "label": "Season (starting year)",
+   "reqd": 1,
+   "description": "The growing season this plan covers, by the year it starts in: 2026 means 1 July 2026 to 30 June 2027. This is the farm's season, not an ERPNext Fiscal Year -- those stay on the calendar year the accounts use, and the budget still posts against whichever of them each month falls in."
+  },
+  {
+   "fieldname": "season",
+   "fieldtype": "Data",
+   "label": "Season",
+   "read_only": 1,
+   "description": "Label for the season above."
+  },
+  {
+   "fieldname": "season_start_date",
+   "fieldtype": "Date",
+   "label": "Season Starts",
+   "read_only": 1
+  },
+  {
+   "fieldname": "season_end_date",
+   "fieldtype": "Date",
+   "label": "Season Ends",
+   "read_only": 1
+  },
+  {
    "fieldname": "from_year",
    "fieldtype": "Int",
    "label": "From Year",
-   "reqd": 1
+   "reqd": 0,
+   "read_only": 1,
+   "description": "Derived from the season above."
   },
   {
    "fieldname": "from_week",
    "fieldtype": "Int",
    "label": "From Week",
-   "reqd": 1
+   "reqd": 0,
+   "read_only": 1,
+   "description": "Derived from the season above."
   },
   {
    "fieldname": "cb_period",
@@ -238,11 +272,12 @@
   },
   {
    "default": "156",
-   "description": "156 weeks is the 3-year rolling horizon.",
+   "description": "Derived from the season above.",
    "fieldname": "weeks_covered",
    "fieldtype": "Int",
    "label": "Weeks Covered",
-   "reqd": 1
+   "reqd": 0,
+   "read_only": 1
   },
   {
    "fieldname": "outcome_section",

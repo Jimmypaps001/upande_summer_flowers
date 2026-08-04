@@ -32,6 +32,7 @@ MAX_NEW_PLANTINGS = 400
 class SummerFlowerProductionPlan(Document):
 	def validate(self):
 		self.pull_header_from_demand()
+		self.set_season()
 		self.set_period_end()
 		self.roll_up_months()
 		self.set_totals()
@@ -113,6 +114,45 @@ class SummerFlowerProductionPlan(Document):
 	def get_protocol_freshness(self):
 		"""Live verdict, for a form that cannot rely on the stored one."""
 		return protocol_freshness(self)
+
+	def set_season(self):
+		"""The plan covers one growing season: 1 July to 30 June.
+
+		This is the farm's season, deliberately not an ERPNext Fiscal Year. Those are
+		calendar years here and the accounts use them; creating July-to-June ones
+		beside them would leave every posting date resolving to two fiscal years,
+		which ERPNext refuses. The budget still posts against whichever calendar
+		fiscal year each month falls in, so accounting is untouched.
+
+		The weekly grid is derived from the season: the ISO week containing 1 July
+		through the one containing 30 June, which is 52 weeks most years and 53 when
+		the ISO calendar says so.
+		"""
+		year = cint(self.season_start_year)
+		if not year:
+			# Plans made before the season existed keep the grid they were built on
+			# rather than being silently re-scoped.
+			if self.from_year and self.from_week:
+				self.season = _("{0} weeks from {1}-W{2:02d}").format(
+					cint(self.weeks_covered), self.from_year, cint(self.from_week))
+			return
+
+		start = datetime.date(year, 7, 1)
+		end = datetime.date(year + 1, 6, 30)
+		self.season = "%s-%s" % (year, str(year + 1)[2:])
+		self.season_start_date = start
+		self.season_end_date = end
+
+		# A week belongs to the season its MONDAY falls in. Taking the week that
+		# CONTAINS 1 July and the one that contains 30 June counts the boundary week
+		# twice -- 30 June 2027 and 1 July 2027 are both in 2027-W26 -- which made
+		# every season 53 weeks and gave consecutive seasons a week in common.
+		first_monday = start + datetime.timedelta(days=(7 - start.weekday()) % 7)
+		next_start = datetime.date(year + 1, 7, 1)
+		last_monday = next_start + datetime.timedelta(days=(7 - next_start.weekday()) % 7) \
+			- datetime.timedelta(weeks=1)
+		self.from_year, self.from_week = iso_year_week(first_monday)
+		self.weeks_covered = ((last_monday - first_monday).days // 7) + 1
 
 	def set_period_end(self):
 		if not (self.from_year and self.from_week and self.weeks_covered):
@@ -345,9 +385,16 @@ def protocol_freshness(plan):
 # Generation
 # ---------------------------------------------------------------------------
 
+def season_for(date):
+	"""The season a date falls in, by its starting year. July starts the season."""
+	d = getdate(date)
+	return d.year if d.month >= 7 else d.year - 1
+
+
 @frappe.whitelist()
-def build_from_demand(market_demand, from_year=None, from_week=None, weeks=None):
-	"""Create a draft Production Plan covering a slice of a demand register."""
+def build_from_demand(market_demand, farm=None, season_start_year=None,
+                      from_year=None, from_week=None, weeks=None):
+	"""Create a draft Production Plan for one growing season of a demand register."""
 	demand = frappe.get_doc("Summer Flower Market Demand", market_demand)
 	if not demand.demand_weeks:
 		frappe.throw(_("Demand register {0} has no weeks.").format(market_demand))
@@ -355,13 +402,14 @@ def build_from_demand(market_demand, from_year=None, from_week=None, weeks=None)
 	first = demand.demand_weeks[0]
 	plan = frappe.new_doc("Summer Flower Production Plan")
 	plan.market_demand = market_demand
-	plan.from_year = frappe.utils.cint(from_year) or first.year
-	plan.from_week = frappe.utils.cint(from_week) or first.week_no
-	# Cover the whole register by default. A flat 156 (3 x 52) truncates a horizon that
-	# crosses a 53-week ISO year: a 3-financial-year forecast is 157 weeks, and capping
-	# it silently dropped the final week's demand from the plan.
-	plan.weeks_covered = frappe.utils.cint(weeks) or len(demand.demand_weeks)
+	if farm:
+		plan.farm = farm
+	# One plan covers one season. Defaults to the season the register opens in, so a
+	# three-year register is planned a season at a time rather than in one lump.
+	plan.season_start_year = cint(season_start_year) or season_for(
+		first.week_start_date or iso_monday(cint(first.year), cint(first.week_no)))
 	plan.pull_header_from_demand()
+	plan.set_season()
 
 	_populate(plan)
 	plan.insert()
