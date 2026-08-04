@@ -107,6 +107,14 @@ class CropProtocolVersion(Document):
 			frappe.throw(_("Plants per m² of bed (net) is required."))
 
 		self.sqm_net_per_bed = (self.plants_per_bed or 0) / self.plants_per_sqm_net
+		# Gross bed area is the floor the bed takes up: its planted surface plus paths
+		# and edges. Net is what the plants occupy and what the plant count comes off;
+		# gross is what the land is measured in and what the planning workbook quotes
+		# every per-hectare figure against. Both, explicitly, from one input -- the
+		# reason the pair was removed before was that each could be typed separately
+		# and then disagree.
+		self.sqm_gross_per_bed = flt(self.sqm_net_per_bed) * (
+			1 + flt(self.path_allowance_pct) / 100)
 
 		# The minimum planting is an area. Beds are whole, so it rounds up to one.
 		beds = 0
@@ -158,11 +166,31 @@ class CropProtocolVersion(Document):
 
 		self.life_expectancy_years = years
 
-		# Per hectare means per hectare of BED. Quoting it on gross block area is
-		# what the net:gross ratio was for, and that is gone: one area, stated.
+		# Per hectare, on both bases, each labelled. stems_per_ha_* stay net, which is
+		# what every other calculation here uses; the gross pair exists because that is
+		# how the yields are quoted on paper, and reconciling a plan against the sheet
+		# was impossible while only one basis existed. 1,742,703 net and 1,394,162
+		# gross are the same crop.
 		plants_per_ha = (self.plants_per_sqm_net or 0) * 10_000
+		self.plants_per_net_ha = int(round(plants_per_ha))
+		self.plants_per_gross_ha = int(round(
+			(self.plants_per_bed or 0) / flt(self.sqm_gross_per_bed) * 10_000
+		)) if self.sqm_gross_per_bed else 0
 		self.stems_per_ha_life = (self.total_stems_per_plant_life or 0) * plants_per_ha
 		self.stems_per_ha_year = (self.stems_per_ha_life / years) if years else 0
+		self.stems_per_gross_ha_life = (
+			(self.total_stems_per_plant_life or 0) * self.plants_per_gross_ha)
+		self.stems_per_gross_ha_year = (
+			self.stems_per_gross_ha_life / years) if years else 0
+
+		# The best year, not the average one. Flushes are not evenly spaced across a
+		# plant's life and the first ones are the heaviest, so the year a planting
+		# yields most is a different number from its lifetime average -- both are on
+		# the sheet and only the average was here.
+		self.best_year_stems_per_plant = self.best_year_per_plant()
+		self.best_year_stems_per_net_ha = self.best_year_stems_per_plant * plants_per_ha
+		self.best_year_stems_per_gross_ha = (
+			self.best_year_stems_per_plant * self.plants_per_gross_ha)
 
 		# A target yield and a computed one rarely agree; show the gap instead of
 		# quietly preferring one.
@@ -185,9 +213,14 @@ class CropProtocolVersion(Document):
 		# What a cutting actually needs to become a productive mother: tray, pot,
 		# then the ramp to full capacity. Hardening is not in here -- it belongs to
 		# the cutting-to-harvest path, where the cutting goes to the field instead.
+		# Establishment to a productive mother, and the weeks to the FIRST cutting are
+		# now two names for a decision the protocol makes rather than two hard-coded
+		# definitions that could not agree.
 		self.ms_establishment_weeks = (
 			(self.weeks_on_tray or 0) + (self.weeks_on_pot or 0) + (self.ramp_weeks or 0)
+			+ (cint(self.hardening_weeks) if self.establishment_includes_hardening else 0)
 		)
+		self.weeks_tc_to_first_cut_derived = self.weeks_tc_to_first_cut()
 		self.cutting_to_harvest_weeks = (
 			(self.hardening_weeks or 0) + (self.weeks_to_pinch or 0)
 			+ (self.flush_interval_weeks or 0)
@@ -212,16 +245,43 @@ class CropProtocolVersion(Document):
 		return parse_ramp(self.ramp_profile,
 		                  cint(self.ramp_weeks) or cint(self.weeks_to_max_pc))
 
+	def best_year_per_plant(self):
+		"""Most stems one plant gives in any 52 consecutive weeks of its life.
+
+		A rolling window over the flush schedule rather than the first four flushes:
+		which flushes fall in a year depends on the interval, and for Aster the
+		heaviest year is flushes 1 to 4 at 10.0 stems against a lifetime average of
+		8.7. Taking the average where the sheet means the best year understates a
+		planting's peak by 13%.
+		"""
+		rows = sorted(self.flush_schedule, key=lambda r: r.weeks_from_pinch or 0)
+		best = 0.0
+		for i, start in enumerate(rows):
+			window = 0.0
+			for r in rows[i:]:
+				if (r.weeks_from_pinch or 0) - (start.weeks_from_pinch or 0) >= WEEKS_PER_YEAR:
+					break
+				window += flt(r.stems_per_plant)
+			best = max(best, window)
+		return best
+
 	def weeks_tc_to_first_cut(self):
 		"""Weeks from a TC plantlet arriving to the first cutting off it.
 
-		Tray and pot only. The ramp is not waited through -- it is cut through, at
-		the reducing rate ramp_profile describes, which is the whole point of having
-		a profile. Hardening is not in here either: it belongs to the cutting that
-		goes to the field, not to the mother plant that stays on the bench. This is
-		the same definition ms_establishment_weeks already documents, less the ramp.
+		Tray and pot always; the ramp and hardening only if the protocol says they
+		count. Neither is obvious. The ramp is arguably cut through rather than waited
+		out, at the reducing rate ramp_profile describes; hardening arguably belongs to
+		the cutting that goes to the field, not to the mother that stays on the bench.
+		The planning workbook counts both -- 3 + 8 + 4 + 3 = 18 weeks, which is what
+		makes its lab lead time 40 and not 26 -- so this is a stated assumption on the
+		protocol rather than a decision buried in code.
 		"""
-		return (self.weeks_on_tray or 0) + (self.weeks_on_pot or 0)
+		weeks = (self.weeks_on_tray or 0) + (self.weeks_on_pot or 0)
+		if self.establishment_includes_ramp:
+			weeks += cint(self.ramp_weeks) or cint(self.weeks_to_max_pc)
+		if self.establishment_includes_hardening:
+			weeks += cint(self.hardening_weeks)
+		return weeks
 
 	def lead_time_for_cycles(self, cycles):
 		"""Weeks from receiving TC plantlets to the first cutting.

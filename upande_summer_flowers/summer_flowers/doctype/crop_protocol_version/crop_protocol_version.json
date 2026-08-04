@@ -38,6 +38,8 @@
   "geometry_tab",
   "density_section",
   "plants_per_sqm_net",
+  "path_allowance_pct",
+  "sqm_gross_per_bed",
   "cb_geo",
   "plants_per_bed",
   "min_planting_area_sqm",
@@ -65,6 +67,13 @@
   "cb_flush",
   "stems_per_ha_life",
   "stems_per_ha_year",
+  "plants_per_net_ha",
+  "plants_per_gross_ha",
+  "stems_per_gross_ha_life",
+  "stems_per_gross_ha_year",
+  "best_year_stems_per_plant",
+  "best_year_stems_per_net_ha",
+  "best_year_stems_per_gross_ha",
   "propagation_tab",
   "establishment_section",
   "weeks_on_tray",
@@ -106,6 +115,9 @@
   "ramp_weeks",
   "ramp_profile",
   "ms_establishment_weeks",
+  "establishment_includes_ramp",
+  "establishment_includes_hardening",
+  "weeks_tc_to_first_cut_derived",
   "cutting_to_harvest_weeks",
   "stated_yield_stems_per_ha",
   "yield_variance_pct",
@@ -308,6 +320,21 @@
    "description": "Plants standing per square metre of BED \u2014 the ground the crop actually occupies, not the block it sits in. This and Plants per Bed set the bed size, the plants per block and every per-hectare figure in the protocol."
   },
   {
+   "fieldname": "path_allowance_pct",
+   "fieldtype": "Percent",
+   "read_only": 1,
+   "label": "Path Allowance on Bed Area",
+   "description": "How much floor a bed occupies beyond its planted surface -- paths, edges, headland. Gross bed area is net plus this. The planning workbook quotes every per-hectare figure on gross area, so without it our yields read 25% higher than the sheet for the same crop."
+  },
+  {
+   "fieldname": "sqm_gross_per_bed",
+   "fieldtype": "Float",
+   "read_only": 1,
+   "precision": "4",
+   "label": "Gross m\u00b2 per Bed",
+   "description": "Net m\u00b2 per bed plus the path allowance."
+  },
+  {
    "fieldname": "cb_geo",
    "fieldtype": "Column Break"
   },
@@ -463,6 +490,54 @@
    "label": "Stems Per Ha Year",
    "precision": "0",
    "read_only": 1
+  },
+  {
+   "fieldname": "plants_per_net_ha",
+   "fieldtype": "Int",
+   "read_only": 1,
+   "label": "Plants per Net Hectare"
+  },
+  {
+   "fieldname": "plants_per_gross_ha",
+   "fieldtype": "Int",
+   "read_only": 1,
+   "label": "Plants per Gross Hectare"
+  },
+  {
+   "fieldname": "stems_per_gross_ha_life",
+   "fieldtype": "Float",
+   "read_only": 1,
+   "precision": "0",
+   "label": "Stems per Gross Hectare (Life)"
+  },
+  {
+   "fieldname": "stems_per_gross_ha_year",
+   "fieldtype": "Float",
+   "read_only": 1,
+   "precision": "0",
+   "label": "Stems per Gross Hectare per Year"
+  },
+  {
+   "fieldname": "best_year_stems_per_plant",
+   "fieldtype": "Float",
+   "read_only": 1,
+   "precision": "2",
+   "label": "Best Year: Stems per Plant",
+   "description": "The most stems one plant yields in any 52 consecutive weeks of its life. A plant's best year is not its average year, and the workbook quotes both."
+  },
+  {
+   "fieldname": "best_year_stems_per_net_ha",
+   "fieldtype": "Float",
+   "read_only": 1,
+   "precision": "0",
+   "label": "Best Year: Stems per Net Hectare"
+  },
+  {
+   "fieldname": "best_year_stems_per_gross_ha",
+   "fieldtype": "Float",
+   "read_only": 1,
+   "precision": "0",
+   "label": "Best Year: Stems per Gross Hectare"
   },
   {
    "fieldname": "propagation_tab",
@@ -701,6 +776,26 @@
    "fieldtype": "Int",
    "label": "MS Establishment (weeks)",
    "read_only": 1
+  },
+  {
+   "fieldname": "establishment_includes_ramp",
+   "fieldtype": "Check",
+   "read_only": 1,
+   "label": "TC Establishment Includes the Ramp",
+   "description": "Whether the weeks from a TC plantlet to its first cutting include the climb to full cutting rate. Off means the ramp is cut through at the reducing rate, not waited out."
+  },
+  {
+   "fieldname": "establishment_includes_hardening",
+   "fieldtype": "Check",
+   "read_only": 1,
+   "label": "TC Establishment Includes Hardening",
+   "description": "Whether hardening counts against the mother plant on the bench. The planning workbook counts it: tray 3 + pot 8 + ramp 4 + hardening 3 = 18 weeks, and its 40 week lab lead time depends on it."
+  },
+  {
+   "fieldname": "weeks_tc_to_first_cut_derived",
+   "fieldtype": "Int",
+   "read_only": 1,
+   "label": "Weeks from TC to First Cutting"
   },
   {
    "description": "Hardening + pinch + first flush.",

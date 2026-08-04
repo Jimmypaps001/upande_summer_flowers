@@ -83,6 +83,9 @@
   "budget",
   "weeks_tab",
   "weeks_section",
+  "sheet_section",
+  "matrix_json",
+  "matrix_html",
   "plan_weeks",
   "months_tab",
   "months_section",
@@ -578,6 +581,25 @@
   {
    "fieldname": "weeks_section",
    "fieldtype": "Section Break"
+  },
+  {
+   "fieldname": "sheet_section",
+   "fieldtype": "Section Break",
+   "label": "Planning Sheet",
+   "collapsible": 1,
+   "description": "The plan in the shape the planning workbook is read in: one row per planting, one column per week, with the summary, grade, demand and area rows underneath and the protocol's assumptions at the bottom."
+  },
+  {
+   "fieldname": "matrix_json",
+   "fieldtype": "Long Text",
+   "hidden": 1,
+   "read_only": 1,
+   "label": "Matrix Data"
+  },
+  {
+   "fieldname": "matrix_html",
+   "fieldtype": "HTML",
+   "label": "Sheet"
   },
   {
    "fieldname": "plan_weeks",
