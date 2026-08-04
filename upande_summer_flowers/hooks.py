@@ -203,6 +203,13 @@ override_doctype_class = {
 # Hook on document methods and events
 
 doc_events = {
+	# Crop Protocol is upande_agriculture's variety master. The summer flower
+	# parameters live on it as custom_sf_ fields and every derived figure is
+	# computed here, so the protocol is edited in one place and Crop Protocol
+	# Version is only ever the read-only snapshot taken when a change is approved.
+	"Crop Protocol": {
+		"validate": "upande_summer_flowers.summer_flowers.crop_protocol.validate",
+	},
 	"Block": {
 		"validate": "upande_summer_flowers.summer_flowers.block.validate_block",
 	},
