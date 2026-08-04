@@ -65,6 +65,18 @@
   "tc_mother_plants",
   "tc_cuttings_at_peak",
   "tc_status",
+  "space_section",
+  "space_required_ha",
+  "space_stated_ha",
+  "space_measured_ha",
+  "cb_space",
+  "beds_required_peak",
+  "beds_available_stated",
+  "beds_available_measured",
+  "space_utilisation_pct",
+  "space_verdict",
+  "space_rows_section",
+  "plan_space",
   "budget_link_section",
   "budget",
   "weeks_tab",
@@ -452,6 +464,82 @@
    "fieldtype": "Small Text",
    "label": "TC Order Note",
    "read_only": 1
+  },
+  {
+   "fieldname": "space_section",
+   "fieldtype": "Section Break",
+   "label": "Space: What This Plan Needs Against What We Have"
+  },
+  {
+   "fieldname": "space_required_ha",
+   "fieldtype": "Float",
+   "read_only": 1,
+   "precision": "4",
+   "label": "Space This Plan Needs (ha)",
+   "description": "Peak concurrent beds at the protocol's net area per bed. The peak, not the sum: a block that hosts two plantings in turn is one piece of land, not two."
+  },
+  {
+   "fieldname": "space_stated_ha",
+   "fieldtype": "Float",
+   "read_only": 1,
+   "precision": "4",
+   "label": "Space We Say We Have (ha)",
+   "description": "The summer flower blocks at this farm, from what each block states."
+  },
+  {
+   "fieldname": "space_measured_ha",
+   "fieldtype": "Float",
+   "read_only": 1,
+   "precision": "4",
+   "label": "Space We Actually Have (ha)",
+   "description": "The same blocks measured from their beds' own length and width."
+  },
+  {
+   "fieldname": "cb_space",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "beds_required_peak",
+   "fieldtype": "Int",
+   "read_only": 1,
+   "label": "Beds Needed at the Peak"
+  },
+  {
+   "fieldname": "beds_available_stated",
+   "fieldtype": "Int",
+   "read_only": 1,
+   "label": "Beds We Say We Have"
+  },
+  {
+   "fieldname": "beds_available_measured",
+   "fieldtype": "Int",
+   "read_only": 1,
+   "label": "Beds Found in the Bed Register"
+  },
+  {
+   "fieldname": "space_utilisation_pct",
+   "fieldtype": "Percent",
+   "read_only": 1,
+   "label": "Space Used by This Plan",
+   "description": "Needed as a percentage of stated. Over 100% and the plan cannot fit however the blocks are arranged."
+  },
+  {
+   "fieldname": "space_verdict",
+   "fieldtype": "Small Text",
+   "read_only": 1,
+   "label": "Space Verdict"
+  },
+  {
+   "fieldname": "space_rows_section",
+   "fieldtype": "Section Break",
+   "label": "Block by Block",
+   "collapsible": 1
+  },
+  {
+   "fieldname": "plan_space",
+   "fieldtype": "Table",
+   "options": "Summer Flower Plan Space",
+   "label": "Space by Block"
   },
   {
    "fieldname": "budget_link_section",

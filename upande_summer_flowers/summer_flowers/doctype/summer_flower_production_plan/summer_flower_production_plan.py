@@ -259,6 +259,116 @@ class SummerFlowerProductionPlan(Document):
 		self.peak_weekly_sticking_planned = (
 			max(planned_sticking.values()) if planned_sticking else 0)
 		self.set_tc_order(planned_sticking)
+		self.set_space()
+
+	# --------------------------------------------------------------------- space
+	def set_space(self):
+		"""What this plan needs against what the farm has, in beds and hectares.
+
+		Two capacity columns, deliberately, because they disagree. The stated figure
+		is what each block claims through its area history; the measured one is the
+		sum of its beds' own length and width. On this site most blocks have no beds
+		pointing at them at all, so the measured column reads low -- which is a
+		statement about the bed register, not about the land, and saying so is more
+		use than averaging the two into one number nobody can act on.
+
+		The planner already refuses a planting it cannot place, so
+		total_production_stems is what the space allows. This section is why.
+		"""
+		self.plan_space = []
+		self.space_required_ha = 0
+		self.space_stated_ha = 0
+		self.space_measured_ha = 0
+		self.beds_required_peak = cint(self.peak_concurrent_beds)
+		self.beds_available_stated = 0
+		self.beds_available_measured = 0
+		self.space_utilisation_pct = 0
+		self.space_verdict = None
+		if not self.farm:
+			return
+
+		v = getattr(self, "_version", None)
+		sqm_per_bed = flt(getattr(v, "sqm_net_per_bed", 0)) if v else 0
+		self.space_required_ha = (self.beds_required_peak * sqm_per_bed) / 10_000
+
+		blocks = frappe.get_all(
+			"Block", filters={"farm": self.farm, "custom_is_summer_flower_block": 1},
+			fields=["name", "custom_total_beds", "custom_net_area_ha",
+			        "custom_measured_beds", "custom_measured_net_area_ha"],
+			order_by="name asc")
+
+		# What this plan itself asked of each block, and what someone else holds.
+		mine = defaultdict(int)
+		for row in self.plan_blocks:
+			if row.get("block") and row.get("is_new_planting"):
+				mine[row.block] = max(mine[row.block], cint(row.beds))
+		others = defaultdict(int)
+		for pl in standing_plantings(self.farm, self.variety):
+			others[pl.block] += cint(pl.beds)
+
+		for b in blocks:
+			stated_beds = cint(b.custom_total_beds)
+			needed = mine.get(b.name, 0)
+			held = others.get(b.name, 0)
+			free = max(0, stated_beds - held)
+			self.space_stated_ha += flt(b.custom_net_area_ha)
+			self.space_measured_ha += flt(b.custom_measured_net_area_ha)
+			self.beds_available_stated += stated_beds
+			self.beds_available_measured += cint(b.custom_measured_beds)
+			self.append("plan_space", {
+				"block": b.name,
+				"beds_stated": stated_beds,
+				"beds_measured": cint(b.custom_measured_beds),
+				"area_stated_ha": flt(b.custom_net_area_ha),
+				"area_measured_ha": flt(b.custom_measured_net_area_ha),
+				"beds_needed_by_plan": needed,
+				"beds_held_by_others": held,
+				"beds_free": free,
+				"verdict": (
+					_("{0} beds to this plan").format(needed) if needed else
+					_("full -- held by another planting") if held and not free else
+					_("{0} beds free").format(free) if free else
+					_("no beds stated")
+				),
+			})
+
+		self.space_utilisation_pct = (
+			self.space_required_ha / self.space_stated_ha * 100
+			if self.space_stated_ha else 0)
+
+		notes = []
+		if not blocks:
+			notes.append(_(
+				"{0} has no summer flower blocks, so it has no space to plan into. "
+				"Nothing can be planted there whatever the demand says."
+			).format(self.farm))
+		elif self.space_utilisation_pct > 100:
+			notes.append(_(
+				"This plan needs {0} ha at its peak and {1} has {2} ha. It cannot fit "
+				"however the blocks are arranged -- {3} of the proposed plantings "
+				"already have nowhere to go."
+			).format(round(self.space_required_ha, 3), self.farm,
+			         round(self.space_stated_ha, 3), cint(self.plantings_not_placed)))
+		elif cint(self.plantings_not_placed):
+			notes.append(_(
+				"There is enough land in total ({0} ha needed of {1} ha) but {2} "
+				"plantings still have nowhere to go: a block is held for a whole "
+				"planting's life, so the free beds are not free at the same time."
+			).format(round(self.space_required_ha, 3),
+			         round(self.space_stated_ha, 3), cint(self.plantings_not_placed)))
+		if self.beds_available_measured < self.beds_available_stated:
+			notes.append(_(
+				"The bed register accounts for {0} of the {1} beds these blocks claim. "
+				"Planning uses the stated figure; until the beds are linked to their "
+				"blocks the measured column is not a second opinion, it is a gap."
+			).format(self.beds_available_measured, self.beds_available_stated))
+		if not sqm_per_bed:
+			notes.append(_("The protocol does not state a net area per bed, so the "
+			               "hectares this plan needs cannot be computed."))
+		self.space_verdict = "\n".join(notes) or _(
+			"{0} ha of {1} ha, {2} beds of {3} at the peak."
+		).format(round(self.space_required_ha, 3), round(self.space_stated_ha, 3),
+		         self.beds_required_peak, self.beds_available_stated)
 
 	# ---------------------------------------------------------------- TC to order
 	def set_tc_order(self, planned_sticking):
