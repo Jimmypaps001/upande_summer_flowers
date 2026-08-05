@@ -111,15 +111,21 @@ class SummerFlowerPropagationPlan(Document):
 		for b in self._plan.plan_blocks:
 			if not cint(b.is_new_planting):
 				continue
-			# A planting with no block will not happen, so raising cuttings for it
-			# would size the motherstock against work that cannot be done.
-			if cint(b.get("not_placed")):
-				continue
 			y, w = cint(b.sticking_year), cint(b.sticking_week)
 			if not (y and w):
 				continue
-			slot = by_week.setdefault((y, w), {"plants": 0, "out": set()})
+			slot = by_week.setdefault((y, w), {"plants": 0, "out": set(), "no_block": 0})
 			slot["plants"] += cint(b.plants)
+			# Counted, not skipped. Skipping them was defensible on its own terms --
+			# a planting with no block will not happen, so why raise cuttings for it
+			# -- but it broke the chain in two places. The TC order is sized on every
+			# proposed planting, because it goes to the lab months before anyone knows
+			# which block will be free; and the dashboard defers to this document once
+			# it exists, so a propagation plan built from a plan with nothing placed
+			# replaced a 10,046 plantlet order with zero. One basis, and the count of
+			# plantings still needing a block said out loud.
+			if cint(b.get("not_placed")):
+				slot["no_block"] += cint(b.plants)
 			if b.planting_year and b.planting_week:
 				slot["out"].add("%s-W%02d" % (b.planting_year, cint(b.planting_week)))
 
@@ -131,10 +137,14 @@ class SummerFlowerPropagationPlan(Document):
 				"plants_to_stick": slot["plants"],
 				"cuttings_required": v.cuttings_for_plants(slot["plants"]),
 				"plant_week": ", ".join(sorted(slot["out"]))[:140],
+				"notes": _("{0} of these plants have no block yet").format(
+					slot["no_block"]) if slot["no_block"] else None,
 			})
 
 		plants = sum(cint(r.plants_to_stick) for r in self.weeks)
 		cuttings = sum(cint(r.cuttings_required) for r in self.weeks)
+		self._plants_without_block = sum(
+			slot["no_block"] for slot in by_week.values())
 		self.cuttings_per_plant = (cuttings / plants) if plants else (
 			flt(v.cuttings_per_plant_required) or 1.0)
 
@@ -343,6 +353,17 @@ class SummerFlowerPropagationPlan(Document):
 		"""
 		today = getdate()
 		notes = []
+		# Sized on every proposed planting, including those with no block. Buying the
+		# plantlets is a commitment to finding the blocks, so the number of plants
+		# waiting on one belongs next to the order rather than three tabs away.
+		without = cint(getattr(self, "_plants_without_block", 0))
+		if without:
+			notes.append(_(
+				"{0} of the {1} plants this plan raises cuttings for have no block free "
+				"for their whole life yet. They are included because the TC order has "
+				"to be placed long before the blocks are settled -- so placing it "
+				"commits to finding room for them."
+			).format(without, cint(self.total_plants_to_stick)))
 		late = [r for r in self.weeks
 		        if getdate(r.week_start_date) < today and cint(r.plants_to_stick)]
 		if late:
