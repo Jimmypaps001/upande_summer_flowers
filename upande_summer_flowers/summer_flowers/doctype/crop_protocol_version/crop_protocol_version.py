@@ -295,11 +295,26 @@ class CropProtocolVersion(Document):
 			return est
 		return est + (cycles * (self.cycle_time_weeks or 0)) + est
 
-	def tc_plants_for(self, mother_plants, cycles=None):
+	def tc_plants_for(self, mother_plants, cycles=None, with_loss=True):
+		"""Plantlets to order for a target number of mother plants.
+
+		Two steps. The multiplication divides by 1 + cycles x factor, which is the
+		workbook's own model -- linear in the cycles, not compounding -- and matches
+		its TC sheet at every cycle count from 0 to 4. Then the order allowance
+		divides by what survives the lab-to-bench transfer, which is its separate TC
+		ORDER column: 4,000 plantlets needed is 4,444 ordered at 10%. Ordering the
+		requirement exactly means arriving short by the loss rate.
+
+		with_loss=False gives the bare requirement, for showing the two apart.
+		"""
 		if cycles is None:
 			cycles = self.max_multiplication_cycles or 0
 		factor = 1 + (cycles * (self.multiplication_factor_per_cycle or 0))
-		return (mother_plants / factor) if factor else mother_plants
+		needed = (mother_plants / factor) if factor else mother_plants
+		if not with_loss:
+			return needed
+		loss = flt(self.tc_order_loss_pct) / 100
+		return needed / (1 - loss) if 0 < loss < 1 else needed
 
 	# ---------------------------------------------------------- grades & losses
 	def set_grades_and_losses(self):

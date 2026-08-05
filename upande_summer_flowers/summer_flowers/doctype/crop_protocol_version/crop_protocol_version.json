@@ -93,6 +93,7 @@
   "multiplication_section",
   "max_multiplication_cycles",
   "multiplication_factor_per_cycle",
+  "tc_order_loss_pct",
   "cb_mult",
   "cycle_time_weeks",
   "motherstock_life_weeks",
@@ -322,7 +323,6 @@
   {
    "fieldname": "path_allowance_pct",
    "fieldtype": "Percent",
-   "read_only": 1,
    "label": "Path Allowance on Bed Area",
    "description": "How much floor a bed occupies beyond its planted surface -- paths, edges, headland. Gross bed area is net plus this. The planning workbook quotes every per-hectare figure on gross area, so without it our yields read 25% higher than the sheet for the same crop."
   },
@@ -649,6 +649,12 @@
    "precision": "3"
   },
   {
+   "fieldname": "tc_order_loss_pct",
+   "fieldtype": "Percent",
+   "label": "TC Order Loss Allowance",
+   "description": "Plantlets that do not survive the lab-to-bench transfer. The order is the requirement divided by (1 - this), which is the workbook's TC ORDER column: 4,000 needed is 4,444 ordered at 10%. Without it the order is the requirement exactly and arrives short."
+  },
+  {
    "fieldname": "cb_mult",
    "fieldtype": "Column Break"
   },
@@ -780,14 +786,12 @@
   {
    "fieldname": "establishment_includes_ramp",
    "fieldtype": "Check",
-   "read_only": 1,
    "label": "TC Establishment Includes the Ramp",
    "description": "Whether the weeks from a TC plantlet to its first cutting include the climb to full cutting rate. Off means the ramp is cut through at the reducing rate, not waited out."
   },
   {
    "fieldname": "establishment_includes_hardening",
    "fieldtype": "Check",
-   "read_only": 1,
    "label": "TC Establishment Includes Hardening",
    "description": "Whether hardening counts against the mother plant on the bench. The planning workbook counts it: tray 3 + pot 8 + ramp 4 + hardening 3 = 18 weeks, and its 40 week lab lead time depends on it."
   },
@@ -851,7 +855,7 @@
  "grid_page_length": 50,
  "index_web_pages_for_search": 1,
  "links": [],
- "modified": "2026-07-31 01:21:14.344677",
+ "modified": "2026-08-05 10:00:00.000000",
  "modified_by": "Administrator",
  "module": "Summer Flowers",
  "name": "Crop Protocol Version",

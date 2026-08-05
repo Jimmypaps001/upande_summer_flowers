@@ -271,6 +271,23 @@ def tc_derivation(plan=None, variety=None, farm=None):
 				"full_capacity_date": str(probe.max_pc_date or ""),
 			})
 
+	# The requirement and the order are different numbers and both belong on the
+	# derivation: ordering the requirement exactly arrives short by the loss rate,
+	# and seeing only the larger figure makes the multiplication look wrong.
+	required = int(math.ceil(v.tc_plants_for(mothers, None, with_loss=False))) if mothers else 0
+	steps.append({
+		"step": "TC plantlets required", "value": required, "unit": "plantlets",
+		"note": "%s mother plants / (1 + %s cycles x %s multiplication)"
+		        % (mothers, cint(v.max_multiplication_cycles),
+		           flt(v.multiplication_factor_per_cycle)),
+	})
+	if flt(v.tc_order_loss_pct):
+		steps.append({
+			"step": "TC order loss allowance", "value": flt(v.tc_order_loss_pct),
+			"unit": "%",
+			"note": "plantlets lost between the lab and the bench, so the order is "
+			        "the requirement / %.2f" % (1 - flt(v.tc_order_loss_pct) / 100),
+		})
 	steps.append({
 		"step": "TC plantlets to order", "value": tc["tc_plants"], "unit": "plantlets",
 		"note": ("order by %s, on farm %s, first cut %s"
