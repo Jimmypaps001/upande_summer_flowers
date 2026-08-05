@@ -33,6 +33,7 @@ def _has_role(roles=APPROVER_ROLES):
 class SummerFlowerPropagationPlan(Document):
 	def validate(self):
 		self.pull_header()
+		self.check_one_per_season()
 		self.count_outputs()
 		self.note_protocol_provenance()
 		self.build_requirement()
@@ -41,6 +42,58 @@ class SummerFlowerPropagationPlan(Document):
 		self.roll_up()
 
 	# --------------------------------------------------------------- header
+	# The figures a rebuild is judged on. Not everything -- dates and warnings follow
+	# from these, and listing them all would bury the numbers that matter.
+	TRACKED = (
+		("total_plants_to_stick", "Plants to stick"),
+		("total_cuttings_required", "Cuttings required"),
+		("peak_weekly_cuttings", "Peak weekly cuttings"),
+		("mother_plants_required", "Mother plants"),
+		("tc_plants_required", "TC plantlets to order"),
+		("cuttings_uncovered", "Cuttings not covered"),
+		("weeks_sticking", "Sticking weeks"),
+		("tc_order_date", "Order TC by"),
+		("first_sticking_date", "First sticking"),
+	)
+
+	def snapshot(self):
+		"""The tracked figures as they stand, for comparing across a rebuild."""
+		return {f: self.get(f) for f, _label in self.TRACKED}
+
+	def describe_changes(self, before):
+		"""What moved, in the farm's terms rather than field names."""
+		lines = []
+		for field, label in self.TRACKED:
+			was, now = before.get(field), self.get(field)
+			if (was or 0) == (now or 0) or str(was or "") == str(now or ""):
+				continue
+			fmt = (lambda x: "{:,}".format(cint(x))) if not str(field).endswith("date") \
+				else (lambda x: str(x or "not set"))
+			lines.append(_("{0}: {1} to {2}").format(label, fmt(was), fmt(now)))
+		return lines
+
+	def check_one_per_season(self):
+		"""One propagation plan per variety per season, and only one.
+
+		Propagation is a single physical operation for a crop in a year: one pool of
+		motherstock, one bench, one TC order. Two plans for the same variety and season
+		would each size that pool as though the other did not exist, and the farm would
+		have no way to tell which order to place.
+		"""
+		if not (self.variety and self.season_start_year):
+			return
+		filters = {"variety": self.variety, "season_start_year": self.season_start_year,
+		           "status": ["!=", "Rejected"]}
+		if not self.is_new():
+			filters["name"] = ["!=", self.name]
+		dupe = frappe.db.get_value("Summer Flower Propagation Plan", filters, "name")
+		if dupe:
+			frappe.throw(_(
+				"{0} is already the propagation plan for {1} in season {2}. Rebuild it "
+				"from the production plan rather than creating a second one -- one "
+				"variety in one season has one pool of motherstock and one TC order."
+			).format(dupe, self.variety, self.season), title=_("Plan exists"))
+
 	def pull_header(self):
 		p = frappe.get_cached_doc("Summer Flower Production Plan",
 		                          self.production_plan)
@@ -50,6 +103,10 @@ class SummerFlowerPropagationPlan(Document):
 		self.protocol = p.protocol
 		self.company = p.company
 		self.currency = p.currency
+		# The season comes from the production plan, so the two cannot disagree about
+		# which year is being propagated for.
+		self.season_start_year = cint(p.season_start_year)
+		self.season = p.season
 		self._plan = p
 		self._version = frappe.get_cached_doc("Crop Protocol Version", p.protocol)
 		# A pool cuts its way up to full capacity; it does not arrive there. Every
@@ -557,18 +614,56 @@ class SummerFlowerPropagationPlan(Document):
 
 
 @frappe.whitelist()
-def build_from_plan(production_plan):
-	"""Create the propagation plan for a production plan."""
+def build_from_plan(production_plan, as_dict=False):
+	"""The propagation plan for a variety and season: create it, or bring it up to date.
+
+	Keyed on variety and season, not on the production plan. Propagation is one
+	physical operation for a crop in a year -- one pool, one bench, one TC order --
+	so a second production plan for the same crop and season feeds the same
+	propagation plan rather than starting a rival one.
+
+	Where it already exists this rebuilds it and reports what moved. It used to
+	return the existing name untouched, which meant every later change to the
+	production plan -- a different protocol version, more plantings, a re-sized TC
+	order -- was quietly absent from the document the farm actually propagates from.
+	"""
 	if frappe.session.user == "Guest":
 		frappe.throw(_("Please sign in."), frappe.PermissionError)
-	existing = frappe.db.exists("Summer Flower Propagation Plan",
-	                            {"production_plan": production_plan,
-	                             "status": ["!=", "Rejected"]})
+
+	plan = frappe.get_cached_doc("Summer Flower Production Plan", production_plan)
+	existing = frappe.db.get_value(
+		"Summer Flower Propagation Plan",
+		{"variety": plan.variety, "season_start_year": cint(plan.season_start_year),
+		 "status": ["!=", "Rejected"]}, "name")
+
 	if existing:
-		return existing
+		d = frappe.get_doc("Summer Flower Propagation Plan", existing)
+		if d.docstatus:
+			frappe.throw(_(
+				"{0} is already submitted, so it cannot be rebuilt. Cancel and amend it "
+				"if the plan really has changed."
+			).format(d.name))
+		before = d.snapshot()
+		was_plan = d.production_plan
+		d.production_plan = production_plan
+		d.flags.ignore_permissions = True
+		d.save()
+		changes = d.describe_changes(before)
+		if was_plan != production_plan:
+			changes.insert(0, _("Built from {0} instead of {1}").format(
+				production_plan, was_plan))
+		d.db_set("last_change_summary", "\n".join(changes) or None,
+		         update_modified=False)
+		frappe.db.commit()
+		result = {"name": d.name, "created": False, "changes": changes,
+		          "variety": d.variety, "season": d.season}
+		return result if as_dict else d.name
+
 	d = frappe.new_doc("Summer Flower Propagation Plan")
 	d.production_plan = production_plan
 	d.flags.ignore_permissions = True
 	d.insert()
 	frappe.db.commit()
-	return d.name
+	result = {"name": d.name, "created": True, "changes": [],
+	          "variety": d.variety, "season": d.season}
+	return result if as_dict else d.name

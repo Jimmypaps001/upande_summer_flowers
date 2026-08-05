@@ -932,13 +932,20 @@ def create_propagation_plan(plan):
 	"""Work out how the plan's cuttings get sourced."""
 	_guard()
 	p = frappe.get_doc("Summer Flower Production Plan", plan)
-	name = p.create_propagation_plan()
+	outcome = p.create_propagation_plan()
 	frappe.db.commit()
-	return frappe.db.get_value(
-		"Summer Flower Propagation Plan", name,
+	row = frappe.db.get_value(
+		"Summer Flower Propagation Plan", outcome["name"],
 		["name", "status", "total_cuttings_required", "peak_weekly_cuttings",
-		 "mother_plants_required", "tc_plants_required", "peak_bench_sqm"],
+		 "mother_plants_required", "tc_plants_required", "peak_bench_sqm",
+		 "season", "last_change_summary"],
 		as_dict=True)
+	# Created or updated, and what moved. There is one propagation plan per variety
+	# per season, so pressing this on a second plan for the same crop rebuilds the
+	# existing one -- silently, until now.
+	row["created"] = outcome["created"]
+	row["changes"] = outcome["changes"]
+	return row
 
 
 # ---------------------------------------------------------------------------

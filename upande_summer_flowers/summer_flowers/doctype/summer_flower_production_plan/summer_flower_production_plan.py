@@ -494,7 +494,10 @@ class SummerFlowerProductionPlan(Document):
 				build_from_plan,
 			)
 
-		return build_from_plan(self.name)
+		# as_dict so the caller can say whether it created or updated, and what moved.
+		# There is one propagation plan per variety per season, so a second production
+		# plan for the same crop and season rebuilds it instead of starting a rival.
+		return build_from_plan(self.name, as_dict=True)
 
 	@frappe.whitelist()
 	def create_plantings(self):
@@ -611,6 +614,115 @@ def season_for(date):
 	"""The season a date falls in, by its starting year. July starts the season."""
 	d = getdate(date)
 	return d.year if d.month >= 7 else d.year - 1
+
+
+@frappe.whitelist()
+def plan_preview(market_demand, farm=None, season_start_year=None):
+	"""What creating this plan would mean, before anything is written.
+
+	A production plan is the document a budget and a propagation plan hang off, and
+	it was created blind: you picked a farm and a year and found out afterwards
+	whether the farm had blocks, whether a protocol was in force, whether the demand
+	reached into the season at all, or whether a plan for that season already
+	existed. All of that is knowable first, so it is shown first.
+	"""
+	frappe.has_permission("Summer Flower Market Demand", "read", market_demand, throw=True)
+	d = frappe.get_cached_doc("Summer Flower Market Demand", market_demand)
+	year = cint(season_start_year) or season_for(nowdate())
+	start = datetime.date(year, 7, 1)
+	end = datetime.date(year + 1, 6, 30)
+
+	weeks = [r for r in d.demand_weeks
+	         if r.week_start_date and start <= getdate(r.week_start_date) <= end]
+	stems = sum(cint(r.demand_stems) for r in weeks)
+	firm = sum(cint(r.demand_stems) for r in weeks if r.is_firm)
+
+	notes, blocking = [], []
+	version = current_version(d.variety, farm) if farm else None
+	if not farm:
+		blocking.append(_("Choose the farm. The demand is for the variety; a plan is "
+		                  "what one farm commits to."))
+	elif not frappe.db.exists("Farm", farm):
+		blocking.append(_("{0} is not a Farm.").format(farm))
+	elif not version:
+		blocking.append(_(
+			"No Crop Protocol Version is in force for {0} at {1}. Approve the protocol "
+			"first -- every figure in the plan comes from it."
+		).format(d.variety, farm))
+
+	if not weeks:
+		blocking.append(_(
+			"The demand register has no weeks inside season {0}-{1} (1 July {0} to 30 "
+			"June {1}). Extend its horizon, or plan a season it covers."
+		).format(year, year + 1))
+
+	existing = frappe.db.get_value("Summer Flower Production Plan", {
+		"market_demand": market_demand, "farm": farm,
+		"season_start_year": year, "docstatus": ["<", 2]}, ["name", "status"], as_dict=True)
+	if existing:
+		notes.append(_(
+			"{0} already plans this variety at this farm for that season ({1}). "
+			"Creating another gives you two plans for one commitment; regenerate that "
+			"one instead unless you want a rival scenario."
+		).format(existing.name, existing.status))
+
+	blocks = frappe.db.count("Block", {"farm": farm,
+	                                   "custom_is_summer_flower_block": 1}) if farm else 0
+	if farm and not blocks:
+		unblocked = frappe.db.sql("""
+			select count(*) n from tabBed b join tabWarehouse w on w.name = b.greenhouse
+			where w.custom_farm = %s and ifnull(b.custom_block, '') = ''
+		""", farm)[0][0]
+		notes.append(_(
+			"{0} has no summer flower blocks, so nothing can be placed there and the "
+			"plan will show no production. It does have {1} beds in its greenhouses "
+			"belonging to no block."
+		).format(farm, unblocked) if unblocked else _(
+			"{0} has no summer flower blocks and no beds, so there is nowhere to plant."
+		).format(farm))
+
+	prop = frappe.db.get_value("Summer Flower Propagation Plan", {
+		"variety": d.variety, "season_start_year": year,
+		"status": ["!=", "Rejected"]}, ["name", "status"], as_dict=True)
+	if prop:
+		notes.append(_(
+			"{0} is the propagation plan for {1} in that season ({2}). Approving this "
+			"plan rebuilds it rather than creating a second one."
+		).format(prop.name, d.variety, prop.status))
+
+	# The order that has to be placed first, judged against today rather than left
+	# for someone to read off a date after the plan is approved.
+	lead = None
+	if version and weeks:
+		v = frappe.get_cached_doc("Crop Protocol Version", version)
+		first = min(getdate(r.week_start_date) for r in weeks)
+		from upande_summer_flowers.summer_flowers.doctype.summer_flower_motherstock_batch.summer_flower_motherstock_batch import (
+			lab_lead_weeks,
+		)
+		weeks_back = cint(lab_lead_weeks(v)) + cint(v.lead_time_weeks) \
+			+ cint(v.first_harvest_offset_weeks) + cint(v.sticking_to_planting_weeks)
+		order_by = first - datetime.timedelta(weeks=weeks_back)
+		lead = {"first_demand_week": str(first), "weeks_back": weeks_back,
+		        "order_by": str(order_by), "late": order_by < getdate(nowdate())}
+		if lead["late"]:
+			notes.append(_(
+				"To harvest in the first demanded week ({0}) the TC order would have "
+				"had to be placed by {1} -- {2} weeks earlier, and that date has "
+				"passed. The early weeks will be short unless you buy rooted cuttings."
+			).format(first, order_by, weeks_back))
+
+	return {
+		"variety": d.variety, "farm": farm, "season": "%s-%s" % (year, str(year + 1)[-2:]),
+		"season_start_year": year,
+		"season_start": str(start), "season_end": str(end),
+		"weeks": len(weeks), "demand_stems": stems, "firm_stems": firm,
+		"peak_week_stems": max((cint(r.demand_stems) for r in weeks), default=0),
+		"protocol": version, "blocks": blocks,
+		"existing_plan": existing.name if existing else None,
+		"propagation_plan": prop.name if prop else None,
+		"lead": lead, "notes": notes, "blocking": blocking,
+		"can_create": not blocking,
+	}
 
 
 @frappe.whitelist()

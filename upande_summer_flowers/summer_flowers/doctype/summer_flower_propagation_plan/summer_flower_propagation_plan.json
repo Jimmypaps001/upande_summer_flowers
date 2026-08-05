@@ -13,6 +13,9 @@
   "market_demand",
   "variety",
   "farm",
+  "season_start_year",
+  "season",
+  "last_change_summary",
   "cb1",
   "protocol",
   "company",
@@ -105,6 +108,26 @@
    "options": "Farm",
    "read_only": 1,
    "fetch_from": "production_plan.farm"
+  },
+  {
+   "fieldname": "season_start_year",
+   "fieldtype": "Int",
+   "read_only": 1,
+   "label": "Season (Starting Year)",
+   "description": "From the production plan. A season runs 1 July to 30 June, and there is one propagation plan per variety per season."
+  },
+  {
+   "fieldname": "season",
+   "fieldtype": "Data",
+   "read_only": 1,
+   "label": "Season"
+  },
+  {
+   "fieldname": "last_change_summary",
+   "fieldtype": "Small Text",
+   "read_only": 1,
+   "label": "What Changed on the Last Rebuild",
+   "description": "Rebuilding an existing plan used to be silent -- and before that it did not rebuild at all. This is what moved."
   },
   {
    "fieldname": "cb1",
@@ -422,7 +445,7 @@
  "grid_page_length": 50,
  "index_web_pages_for_search": 1,
  "links": [],
- "modified": "2026-08-01 11:02:12.292546",
+ "modified": "2026-08-05 11:00:00.000000",
  "modified_by": "Administrator",
  "module": "Summer Flowers",
  "name": "Summer Flower Propagation Plan",

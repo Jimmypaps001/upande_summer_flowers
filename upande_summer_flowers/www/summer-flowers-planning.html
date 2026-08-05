@@ -3769,10 +3769,20 @@ table.hc tbody tr:hover td:not(.hc-k):not(.hc-m){background:var(--surface-2)}
       const pg = ev.target.closest("[data-pg]");
       if (pg && S.pg) {
         const k = pg.dataset.pg, nm = S.pg.propagation_plan;
+        // Created or brought up to date -- and if updated, what moved. There is one
+        // propagation plan per variety per season, so this button rebuilds the
+        // existing one rather than making a second, and saying so matters.
+        const propMsg = (r) => r.created
+          ? `Propagation plan ${r.name} created for ${r.season}: ${
+              num(r.total_cuttings_required)} cuttings, ${
+              num(r.mother_plants_required)} mother plants, ${
+              num(r.tc_plants_required)} TC plantlets.`
+          : (r.changes && r.changes.length
+              ? `${r.name} (${r.season}) updated — ${r.changes.join("; ")}.`
+              : `${r.name} (${r.season}) rebuilt; nothing changed.`);
         const after = (msg) => (r) => { toast(msg(r)); loadPropagation(); loadChain(); };
         if (k === "create") {
-          run("create_propagation_plan", { plan: S.pg.plan },
-              after((r) => `Propagation plan ${r.name}: ${num(r.total_cuttings_required)} cuttings.`));
+          run("create_propagation_plan", { plan: S.pg.plan }, after(propMsg));
         } else if (k === "reject") {
           formModal({ title: "Reject " + nm,
             fields: [{ name: "r", label: "Reason", type: "text", required: true }],
@@ -3818,8 +3828,13 @@ table.hc tbody tr:hover td:not(.hc-k):not(.hc-m){background:var(--surface-2)}
           });
         } else if (ch.dataset.ch === "ch-prop") {
           run("create_propagation_plan", { plan: S.chain.plan.name }, (r) => {
-            toast(`Propagation plan ${r.name}: ${num(r.total_cuttings_required)} cuttings, ` +
-                  `${num(r.mother_plants_required)} mother plants, ${r.peak_bench_sqm} m² bench.`);
+            toast(r.created
+              ? `Propagation plan ${r.name} created for ${r.season}: ${
+                  num(r.total_cuttings_required)} cuttings, ${
+                  num(r.mother_plants_required)} mother plants, ${r.peak_bench_sqm} m² bench.`
+              : (r.changes && r.changes.length
+                  ? `${r.name} (${r.season}) updated — ${r.changes.join("; ")}.`
+                  : `${r.name} (${r.season}) rebuilt; nothing changed.`));
             refreshAfterWrite();
           });
         }

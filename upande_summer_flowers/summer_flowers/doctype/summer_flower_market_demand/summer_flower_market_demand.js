@@ -105,9 +105,66 @@ function create_plan(frm) {
 				description: __("{0} means 1 July {0} to 30 June {1}.", [startYear, startYear + 1]),
 			},
 		],
-		primary_action_label: __("Create"),
+		primary_action_label: __("Check first"),
 		primary_action(values) {
-			d.hide();
+			// A plan is what a budget and a propagation plan hang off, so what it will
+			// mean is shown before anything is written rather than discovered after.
+			frappe.call({
+				method: "upande_summer_flowers.summer_flowers.doctype"
+					+ ".summer_flower_production_plan.summer_flower_production_plan"
+					+ ".plan_preview",
+				args: { market_demand: frm.doc.name, ...values },
+				freeze: true,
+			}).then((r) => {
+				if (!r.message) return;
+				d.hide();
+				confirm_plan(frm, values, r.message);
+			});
+		},
+	});
+	d.show();
+}
+
+function confirm_plan(frm, values, s) {
+	const num = (n) => frappe.format(n || 0, { fieldtype: "Int" });
+	const rows = [
+		[__("Variety"), s.variety],
+		[__("Farm"), s.farm],
+		[__("Season"), `${s.season} (${s.season_start} to ${s.season_end})`],
+		[__("Demand in that season"), `${num(s.demand_stems)} stems over ${
+			s.weeks} weeks, peak week ${num(s.peak_week_stems)}`],
+		[__("Firm of that"), `${num(s.firm_stems)} stems`],
+		[__("Protocol in force"), s.protocol || `<span style="color:#c0392b">${
+			__("none")}</span>`],
+		[__("Summer flower blocks at the farm"), num(s.blocks)],
+	];
+	if (s.lead) {
+		rows.push([__("TC order deadline"),
+			`${s.lead.order_by} (${s.lead.weeks_back} weeks before ${
+				s.lead.first_demand_week})${s.lead.late
+				? ` — <span style="color:#c0392b">${__("already passed")}</span>` : ""}`]);
+	}
+	if (s.existing_plan) rows.push([__("Existing plan"), s.existing_plan]);
+	if (s.propagation_plan) rows.push([__("Propagation plan"), s.propagation_plan]);
+
+	let html = `<table class="table table-bordered table-sm" style="font-size:12px">${
+		rows.map(([k, v]) => `<tr><td style="width:42%">${k}</td><td>${v}</td></tr>`).join("")
+	}</table>`;
+	(s.blocking || []).forEach((n) => {
+		html += `<p style="color:#c0392b;margin:6px 0"><b>${__("Blocking")}:</b> ${n}</p>`;
+	});
+	(s.notes || []).forEach((n) => {
+		html += `<p style="color:#8a6d3b;margin:6px 0">${n}</p>`;
+	});
+
+	const c = new frappe.ui.Dialog({
+		title: __("Before creating this plan"),
+		size: "large",
+		fields: [{ fieldtype: "HTML", options: html }],
+		primary_action_label: s.can_create ? __("Create the plan") : __("Close"),
+		primary_action() {
+			c.hide();
+			if (!s.can_create) return;
 			frm.call({
 				doc: frm.doc,
 				method: "create_production_plan",
@@ -121,5 +178,5 @@ function create_plan(frm) {
 			});
 		},
 	});
-	d.show();
+	c.show();
 }
