@@ -56,6 +56,8 @@
   "protocol_note",
   "sec_weeks",
   "weeks",
+  "calendar_section",
+  "calendar_html",
   "sec_sources",
   "sources",
   "sec_out",
@@ -368,6 +370,18 @@
    "options": "Summer Flower Propagation Week"
   },
   {
+   "fieldname": "calendar_section",
+   "fieldtype": "Section Break",
+   "label": "Sticking Calendar",
+   "collapsible": 1,
+   "description": "The sticking weeks, with the TC order, delivery, first cut and full capacity dates marked on the days they fall."
+  },
+  {
+   "fieldname": "calendar_html",
+   "fieldtype": "HTML",
+   "label": "Calendar"
+  },
+  {
    "fieldname": "sec_sources",
    "fieldtype": "Section Break",
    "label": "Sources"
@@ -445,7 +459,7 @@
  "grid_page_length": 50,
  "index_web_pages_for_search": 1,
  "links": [],
- "modified": "2026-08-05 11:00:00.000000",
+ "modified": "2026-08-05 13:00:00.000000",
  "modified_by": "Administrator",
  "module": "Summer Flowers",
  "name": "Summer Flower Propagation Plan",

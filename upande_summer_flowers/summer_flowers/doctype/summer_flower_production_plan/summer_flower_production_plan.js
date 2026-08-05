@@ -16,6 +16,7 @@ frappe.ui.form.on("Summer Flower Production Plan", {
 		if (frm.is_new()) return;
 
 		render_sheet(frm);
+		draw_calendar(frm);
 		frm.add_custom_button(__("Download Planning Sheet"), () => {
 			open_url_post(
 				"/api/method/upande_summer_flowers.summer_flowers.plan_sheet.sheet_csv",
@@ -300,4 +301,51 @@ function sheet_html(d) {
 			</tbody></table></div>`;
 	}
 	return h;
+}
+
+function draw_calendar(frm) {
+	const field = frm.get_field("calendar_html");
+	if (!field || !window.sf_calendar) return;
+	const int = (n) => frappe.format(n || 0, { fieldtype: "Int" });
+
+	// Variance rather than production, because the question a calendar answers is
+	// which weeks are short -- and a signed scale can say that in colour.
+	const weeks = (frm.doc.plan_weeks || []).map((w) => ({
+		date: w.week_start_date,
+		value: w.variance_stems,
+		title: `${w.year}-W${String(w.week_no).padStart(2, "0")}: demand ${
+			int(w.demand_stems)}, production ${int(w.production_stems)}, variance ${
+			int(w.variance_stems)}`,
+	}));
+
+	// A planting is four dated moments, not one, and they are weeks apart: the day it
+	// is stuck, the day it goes in the ground, the day it is pinched and the day it
+	// first cuts. Reading them off a table meant counting weeks by hand.
+	const events = [];
+	(frm.doc.plan_blocks || []).forEach((b) => {
+		const where = b.block || __("no block yet");
+		if (b.planting_date) {
+			events.push({ date: b.planting_date, colour: b.not_placed ? "#c0392b" : "#2980b9",
+				title: `${__("Plant")} ${int(b.beds)} ${__("beds")} — ${where}` });
+		}
+		if (b.pinch_date) {
+			events.push({ date: b.pinch_date, colour: "#f39c12",
+				title: `${__("Pinch")} — ${where}` });
+		}
+	});
+	if (frm.doc.tc_order_by_date) {
+		events.push({ date: frm.doc.tc_order_by_date, colour: "#8e44ad",
+			title: `${__("TC order deadline")}: ${int(frm.doc.tc_plants_to_order)} ${
+				__("plantlets")}` });
+	}
+
+	window.sf_calendar(field, {
+		weeks, events, signed: true,
+		legend: [{ dot: "#2980b9", label: __("planting") },
+			{ dot: "#c0392b", label: __("planting with no block") },
+			{ dot: "#f39c12", label: __("pinch") },
+			{ dot: "#8e44ad", label: __("TC order deadline") },
+			{ label: __("red weeks are short of demand, green weeks are over") }],
+		empty: __("No weeks yet. Regenerate the plan."),
+	});
 }

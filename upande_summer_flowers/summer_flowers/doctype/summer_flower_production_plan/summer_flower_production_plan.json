@@ -88,6 +88,8 @@
   "matrix_json",
   "matrix_html",
   "plan_weeks",
+  "calendar_section",
+  "calendar_html",
   "months_tab",
   "months_section",
   "plan_months",
@@ -616,6 +618,18 @@
    "options": "Summer Flower Plan Week"
   },
   {
+   "fieldname": "calendar_section",
+   "fieldtype": "Section Break",
+   "label": "Production Calendar",
+   "collapsible": 1,
+   "description": "Each week's variance against demand, with the plantings that produce it: sticking, planting, pinch and first harvest fall on their own days."
+  },
+  {
+   "fieldname": "calendar_html",
+   "fieldtype": "HTML",
+   "label": "Calendar"
+  },
+  {
    "fieldname": "months_tab",
    "fieldtype": "Tab Break",
    "label": "Monthly"
@@ -698,7 +712,7 @@
  "index_web_pages_for_search": 1,
  "is_submittable": 1,
  "links": [],
- "modified": "2026-08-01 11:53:29.564312",
+ "modified": "2026-08-05 13:00:00.000000",
  "modified_by": "Administrator",
  "module": "Summer Flowers",
  "name": "Summer Flower Production Plan",

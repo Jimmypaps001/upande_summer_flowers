@@ -35,6 +35,8 @@
   "weeks_tab",
   "weeks_section",
   "demand_weeks",
+  "calendar_section",
+  "calendar_html",
   "grades_tab"
  ],
  "fields": [
@@ -196,6 +198,18 @@
    "options": "Summer Flower Demand Week"
   },
   {
+   "fieldname": "calendar_section",
+   "fieldtype": "Section Break",
+   "label": "Demand Calendar",
+   "collapsible": 1,
+   "description": "The weekly demand rows on a calendar. A week sits on its Monday, which is the same rule that decides which season a week belongs to."
+  },
+  {
+   "fieldname": "calendar_html",
+   "fieldtype": "HTML",
+   "label": "Calendar"
+  },
+  {
    "fieldname": "grades_tab",
    "fieldtype": "Tab Break",
    "label": "Grade Split"
@@ -204,7 +218,7 @@
  "grid_page_length": 50,
  "index_web_pages_for_search": 1,
  "links": [],
- "modified": "2026-07-30 22:41:32.093488",
+ "modified": "2026-08-05 13:00:00.000000",
  "modified_by": "Administrator",
  "module": "Summer Flowers",
  "name": "Summer Flower Market Demand",

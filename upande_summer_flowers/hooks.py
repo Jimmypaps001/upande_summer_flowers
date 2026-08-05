@@ -86,7 +86,10 @@ add_to_apps_screen = [
 
 # include js, css files in header of desk.html
 # app_include_css = "/assets/upande_summer_flowers/css/upande_summer_flowers.css"
-# app_include_js = "/assets/upande_summer_flowers/js/upande_summer_flowers.js"
+# The child-table calendar renderer, shared by every form that has dated rows.
+# Frappe's own calendar view plots documents, and a child row is not a document, so
+# demand weeks, plan weeks, plantings and sticking weeks had no calendar at all.
+app_include_js = "/assets/upande_summer_flowers/js/sf_calendar.js"
 
 # include js, css files in header of web template
 # web_include_css = "/assets/upande_summer_flowers/css/upande_summer_flowers.css"

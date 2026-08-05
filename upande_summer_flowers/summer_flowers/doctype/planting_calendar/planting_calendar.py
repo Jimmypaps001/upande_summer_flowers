@@ -12,7 +12,7 @@ import datetime
 import frappe
 from frappe import _
 from frappe.model.document import Document
-from frappe.utils import add_days, flt, getdate, now_datetime, nowdate
+from frappe.utils import add_days, cint, flt, getdate, now_datetime, nowdate
 
 from upande_summer_flowers.summer_flowers.planning import iso_year_week
 
@@ -456,3 +456,45 @@ def production_by_week(doc):
 		stems = (r.actual_stems or 0) if r.is_harvested else (r.expected_stems or 0)
 		out[(r.year, r.week_no)] = out.get((r.year, r.week_no), 0) + stems
 	return out
+
+
+@frappe.whitelist()
+def calendar_events(start, end, filters=None, field_map=None):
+	"""Plantings as bars across the calendar, ending when the block is actually free.
+
+	frappe.desk.calendar.get_events would do for a single date field, but the end here
+	is two fields: actual_uproot_date once a planting has come out, planned_uproot_date
+	until then. A planting uprooted early releases its block early, and a calendar that
+	kept showing the planned date would hide that the block is available.
+	"""
+	conditions = []
+	values = {"start": getdate(start), "end": getdate(end)}
+	for key in ("farm", "block", "variety", "calendar_status"):
+		val = (frappe.parse_json(filters) or {}).get(key) if filters else None
+		if val:
+			conditions.append("and `{0}` = %({0})s".format(key))
+			values[key] = val
+
+	rows = frappe.db.sql("""
+		select name, variety, block, farm, beds, plants, calendar_status,
+			planting_date, sticking_date, pinch_date,
+			planned_uproot_date, actual_uproot_date,
+			ifnull(actual_uproot_date, planned_uproot_date) as ends
+		from `tabPlanting Calendar`
+		where docstatus < 2
+		  and planting_date is not null
+		  and planting_date <= %(end)s
+		  and ifnull(ifnull(actual_uproot_date, planned_uproot_date), planting_date)
+		      >= %(start)s
+		  {0}
+	""".format(" ".join(conditions)), values, as_dict=True)
+
+	for r in rows:
+		# The bar is the occupancy, so it carries what is occupied and by how much.
+		r["title"] = "{0} — {1} ({2} beds)".format(
+			r.variety or _("no variety"), r.block or _("no block"), cint(r.beds))
+		r["end"] = r.ends or r.planting_date
+		r["allDay"] = 1
+		if not r.actual_uproot_date:
+			r["title"] += " " + _("· planned")
+	return rows

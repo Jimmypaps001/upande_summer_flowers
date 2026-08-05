@@ -31,6 +31,8 @@ frappe.ui.form.on("Summer Flower Market Demand", {
 		if (frm.doc.weeks_covered) {
 			frm.add_custom_button(__("Create Production Plan"), () => create_plan(frm));
 		}
+
+		draw_calendar(frm);
 	},
 });
 
@@ -179,4 +181,26 @@ function confirm_plan(frm, values, s) {
 		},
 	});
 	c.show();
+}
+
+function draw_calendar(frm) {
+	const field = frm.get_field("calendar_html");
+	if (!field || !window.sf_calendar) return;
+	// Firm and forecast weeks are the same number until you know which is which, so
+	// the firm ones are marked on their Monday rather than left to the grid.
+	window.sf_calendar(field, {
+		weeks: (frm.doc.demand_weeks || []).map((r) => ({
+			date: r.week_start_date,
+			value: r.demand_stems,
+			title: `${r.year}-W${String(r.week_no).padStart(2, "0")}: ${
+				frappe.format(r.demand_stems || 0, { fieldtype: "Int" })} stems${
+				r.is_firm ? " (firm)" : " (forecast)"}`,
+		})),
+		events: (frm.doc.demand_weeks || []).filter((r) => r.is_firm).map((r) => ({
+			date: r.week_start_date, colour: "#27ae60", title: __("Firm demand"),
+		})),
+		legend: [{ dot: "#27ae60", label: __("firm week") },
+			{ label: __("shading: heavier weeks are darker") }],
+		empty: __("No demand weeks yet. Extend the horizon to add some."),
+	});
 }
