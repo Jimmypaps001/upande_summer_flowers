@@ -219,6 +219,24 @@ def lab_lead_weeks(version):
 	return weeks or lab_turnaround_weeks()
 
 
+def tc_order_by_date(version, first_sticking_date):
+	"""The last date a TC order can be placed and still reach a sticking week.
+
+	Two waits, and only two: the lab's own order-to-delivery, then lead_time_weeks,
+	which is already defined as arrival to first cutting including any multiplication
+	cycles. Adding ms_establishment_weeks on top would count tray and pot twice.
+
+	One function because there were two. The plan worked back by lab lead plus lead
+	time and the dashboard by lead time alone, so the same plan showed "order by
+	2025-11-03" on the document and "2026-08-10" on the dashboard -- nine months
+	apart, for the single decision with the longest lead time in the process.
+	"""
+	if not first_sticking_date:
+		return None
+	weeks = cint(lab_lead_weeks(version)) + cint(version.lead_time_weeks)
+	return add_days(getdate(first_sticking_date), -7 * weeks)
+
+
 def lab_turnaround_weeks():
 	return frappe.db.get_single_value("Summer Flower Settings", "lab_turnaround_weeks") or 0
 

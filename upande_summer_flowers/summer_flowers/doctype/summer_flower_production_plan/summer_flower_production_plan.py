@@ -256,8 +256,13 @@ class SummerFlowerProductionPlan(Document):
 				continue
 			if b.sticking_year and b.sticking_week:
 				planned_sticking[(b.sticking_year, b.sticking_week)] += b.plants or 0
-		self.peak_weekly_sticking_planned = (
-			max(planned_sticking.values()) if planned_sticking else 0)
+		if planned_sticking:
+			key = max(planned_sticking, key=lambda k: planned_sticking[k])
+			self.peak_weekly_sticking_planned = planned_sticking[key]
+			self.peak_sticking_week_planned = "%s-W%02d" % key
+		else:
+			self.peak_weekly_sticking_planned = 0
+			self.peak_sticking_week_planned = None
 		self.set_tc_order(planned_sticking)
 		self.set_space()
 
@@ -429,20 +434,16 @@ class SummerFlowerProductionPlan(Document):
 		self.tc_plants_to_order = int(math.ceil(v.tc_plants_for(mothers, cycles))) \
 			if mothers else 0
 
-		# Working back from the first sticking week. Two distinct waits, and only
-		# two: the lab's own order-to-delivery, then lead_time_weeks, which is
-		# already defined as arrival to first cutting including any multiplication
-		# cycles. Adding ms_establishment_weeks on top would count tray and pot
-		# twice, because lead_time_weeks contains them.
+		# Working back from the first sticking week, through the one function that
+		# knows how: the dashboard used to do this arithmetic itself and disagreed by
+		# nine months.
 		from upande_summer_flowers.summer_flowers.doctype.summer_flower_motherstock_batch.summer_flower_motherstock_batch import (
-			lab_lead_weeks,
+			tc_order_by_date,
 		)
 
 		first = min(planned_sticking) if planned_sticking else None
 		if first:
-			stick_monday = iso_monday(first[0], first[1])
-			weeks_back = cint(lab_lead_weeks(v)) + cint(v.lead_time_weeks)
-			self.tc_order_by_date = stick_monday - datetime.timedelta(weeks=weeks_back)
+			self.tc_order_by_date = tc_order_by_date(v, iso_monday(first[0], first[1]))
 
 		notes = []
 		if self.tc_order_by_date and self.tc_order_by_date < getdate(nowdate()):

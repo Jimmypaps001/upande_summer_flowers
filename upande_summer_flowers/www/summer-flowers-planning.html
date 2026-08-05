@@ -2726,6 +2726,15 @@ table.hc tbody tr:hover td:not(.hc-k):not(.hc-m){background:var(--surface-2)}
     $("tc-tiles").innerHTML = [
       { k: "Buy", v: num(t.chosen_tc),
         m: `plantlets · ${num(Math.round(t.cost))} at ${t.rate_per_plantlet}/plantlet` },
+      // Sized from the peak sticking week, so name it. The panel read 0 plantlets
+      // against a 3.7 million stem demand while it was sized from the placed
+      // plantings and none of them had a block.
+      { k: "Sized from", v: num(t.peak_plants),
+        m: `plants stuck in ${esc(t.peak_week || "the peak week")}${
+          t.peak_basis === "planned" && t.peak_plants !== t.peak_plants_placed
+            ? ` — includes plantings with no block yet (${num(t.peak_plants_placed)} placed)`
+            : ""}`,
+        c: t.peak_plants ? "" : "--critical" },
       // This is the tile that was missing: what buying that quantity grows.
       { k: "Demand it meets", v: cov === null ? "—" : cov.toFixed(1) + "%",
         m: `${num(t.built_production)} stems, ${num(t.built_unmet)} short`,
@@ -2764,6 +2773,9 @@ table.hc tbody tr:hover td:not(.hc-k):not(.hc-m){background:var(--surface-2)}
         `${esc(t.built_first_cut_week || "the first cut")}, which is the earliest week ` +
         `any pool from this order can be cut. No order size reaches them — they need ` +
         `either an earlier order or cuttings bought in already rooted.`);
+    }
+    if (t.binding_constraint) {
+      notes.push(esc(t.binding_constraint));
     }
     if (!t.tc_for_demand_solved && t.tc_for_demand_reason) {
       notes.push(`No order size lands the demand: ${esc(t.tc_for_demand_reason)}. ` +

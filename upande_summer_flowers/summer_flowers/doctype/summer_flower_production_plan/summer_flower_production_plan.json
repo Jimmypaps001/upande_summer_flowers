@@ -58,6 +58,7 @@
   "peak_weekly_sticking",
   "peak_sticking_week",
   "peak_weekly_sticking_planned",
+  "peak_sticking_week_planned",
   "tc_section",
   "tc_plants_to_order",
   "tc_order_by_date",
@@ -427,6 +428,13 @@
    "label": "Peak Weekly Sticking (Planned)",
    "read_only": 1,
    "description": "Includes plantings with no block. This is what propagation would have to raise for the plan to be met in full."
+  },
+  {
+   "fieldname": "peak_sticking_week_planned",
+   "fieldtype": "Data",
+   "read_only": 1,
+   "label": "Peak Sticking Week (Planned)",
+   "description": "The week the planned peak falls in. The placed peak has no week at all when nothing is placed, which left the TC panel naming no week."
   },
   {
    "fieldname": "tc_section",

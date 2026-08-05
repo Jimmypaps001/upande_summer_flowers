@@ -172,6 +172,7 @@ def demand_vs_production(variety=None, farm=None, plan=None):
 			"beds_required": p.new_beds_required or 0,
 			"plantings_proposed": len(new_rows),
 			"peak_weekly_sticking": p.peak_weekly_sticking or 0,
+			"peak_weekly_sticking_planned": p.get("peak_weekly_sticking_planned") or 0,
 			"peak_sticking_week": p.peak_sticking_week,
 			"average_area_ha": flt(p.average_area_ha),
 			"stems_per_plant_life": flt(v.total_stems_per_plant_life),
@@ -190,7 +191,9 @@ def tc_derivation(plan=None, variety=None, farm=None):
 
 	v = frappe.get_cached_doc("Crop Protocol Version", dv["version"])
 	t = dv["totals"]
-	peak_plants = t["peak_weekly_sticking"] or 0
+	# Sized from the planned peak, so the derivation shows a real order for a plan
+	# whose blocks are not settled yet rather than a column of zeros.
+	peak_plants = t.get("peak_weekly_sticking_planned") or t["peak_weekly_sticking"] or 0
 	cuttings = v.cuttings_for_plants(peak_plants) if peak_plants else 0
 	per_week = flt(v.cuttings_per_plant_per_week) or 1
 	mothers = int(round(cuttings / per_week)) if cuttings else 0
@@ -289,13 +292,45 @@ def tc_derivation(plan=None, variety=None, farm=None):
 	return out
 
 
-def _first_sticking_for(plan):
-	"""Earliest sticking week the plan proposes, as a date."""
+from upande_summer_flowers.summer_flowers.doctype.summer_flower_motherstock_batch.summer_flower_motherstock_batch import (
+	tc_order_by_date,
+)
+
+
+def sizing_peak(p):
+	"""The sticking week the TC order is sized from, and what it counts.
+
+	The planned peak, which includes plantings that have no block yet, falling back
+	to the placed one. The order goes to the lab months before anyone knows which
+	block will be free, so sizing it to the plantings that already have one
+	guarantees the plan can never be met even after the blocks are sorted out --
+	and where nothing is placed at all it sized the order at zero, which is what
+	made the whole TC panel read 0 plantlets against a real 3.7 million stem demand.
+	"""
+	planned = cint(p.get("peak_weekly_sticking_planned"))
+	placed = cint(p.get("peak_weekly_sticking"))
+	if planned:
+		return (planned,
+		        p.get("peak_sticking_week_planned") or p.get("peak_sticking_week"),
+		        "planned")
+	return placed, p.get("peak_sticking_week"), "placed"
+
+
+def _first_sticking_for(plan, placed_only=False):
+	"""Earliest sticking week the plan proposes, as a date.
+
+	Every proposal by default, not only the placed ones. A planting with no block
+	still has a sticking week, and it is the earliest one that dates the TC order;
+	excluding them returned nothing at all for a plan where none are placed, so the
+	order date read "not sized yet" when it was in fact already overdue.
+	"""
+	extra = "and ifnull(not_placed, 0) = 0" if placed_only else ""
 	row = frappe.db.sql("""select sticking_year y, sticking_week w
 		from `tabSummer Flower Plan Block`
-		where parent = %s and is_new_planting = 1 and ifnull(not_placed, 0) = 0
+		where parent = %s and is_new_planting = 1 {0}
 		  and ifnull(sticking_year, 0) > 0
-		order by sticking_year asc, sticking_week asc limit 1""", (plan,), as_dict=True)
+		order by sticking_year asc, sticking_week asc limit 1""".format(extra),
+		(plan,), as_dict=True)
 	return iso_monday(row[0].y, row[0].w) if row else None
 
 
@@ -591,7 +626,7 @@ def tc_purchase(plan=None, variety=None, farm=None, tc_qty=None, tolerance_pct=1
 	v = frappe.get_cached_doc("Crop Protocol Version", p.protocol)
 	tol = flt(tolerance_pct) or 10.0
 
-	peak_plants = cint(p.peak_weekly_sticking)
+	peak_plants, peak_week, peak_basis = sizing_peak(p)
 	cuttings = v.cuttings_for_plants(peak_plants) if peak_plants else 0
 	per_week = flt(v.cuttings_per_plant_per_week) or 1.0
 	mothers = int(math.ceil(cuttings / per_week)) if cuttings else 0
@@ -618,12 +653,10 @@ def tc_purchase(plan=None, variety=None, farm=None, tc_qty=None, tolerance_pct=1
 
 	# The order date decides which weeks the pool can supply at all, so it comes
 	# from the propagation plan where one exists rather than being invented.
-	order_date = (prop.tc_order_date if prop and prop.tc_order_date
-	              else _first_sticking_for(plan))
-	if order_date:
-		order_date = add_days(getdate(order_date),
-		                      0 if (prop and prop.tc_order_date)
-		                      else -7 * cint(v.lead_time_weeks))
+	if prop and prop.tc_order_date:
+		order_date = getdate(prop.tc_order_date)
+	else:
+		order_date = tc_order_by_date(v, _first_sticking_for(plan))
 
 	# What this quantity actually grows, and the smallest quantity that lands the
 	# demand. Buying less is now a production number, not a percentage on a tile.
@@ -632,6 +665,28 @@ def tc_purchase(plan=None, variety=None, farm=None, tc_qty=None, tolerance_pct=1
 		built = _tc_production(p, v, chosen, order_date)
 		solved = _solve_tc_for_demand(p, v, order_date, tolerance_pct=tol,
 		                              ceiling=max(recommended * 40, 200_000))
+	# When no order size lands the demand, the reader needs to know whether buying
+	# more would help. Usually it would not: a planting with no block does not happen
+	# however many plantlets arrive, and quoting a bigger TC number against that reads
+	# as though the shortfall were a purchasing decision.
+	binding = None
+	if solved and not solved.get("solved"):
+		if cint(p.plantings_not_placed):
+			binding = _(
+				"Buying more plantlets cannot close this. {0} of the {1} proposed "
+				"plantings have no block free for their whole life, so {2} stems of "
+				"demand have nowhere to grow -- blocks are the constraint here, not "
+				"tissue culture."
+			).format(cint(p.plantings_not_placed),
+			         len([b for b in p.plan_blocks if b.is_new_planting]),
+			         cint(p.unmet_stems))
+		else:
+			binding = _(
+				"No order size within the ceiling lands the demand, and every proposed "
+				"planting has a block, so the gap is in the demand's timing rather "
+				"than in the plantlets: the earliest sticking weeks are too close to "
+				"today for any order to reach them.")
+
 	base = cint(solved["tc_qty"]) if (solved and solved.get("solved")) else (
 		cint(prop.tc_plants_required) if prop else recommended)
 
@@ -643,6 +698,7 @@ def tc_purchase(plan=None, variety=None, farm=None, tc_qty=None, tolerance_pct=1
 		"tc_for_demand_solved": bool(solved and solved.get("solved")),
 		"tc_for_demand_coverage": flt(solved["coverage_pct"]) if solved else 0,
 		"tc_for_demand_reason": (solved or {}).get("reason"),
+		"binding_constraint": binding,
 		"built_coverage_pct": flt(built["coverage_pct"]) if built else None,
 		"built_production": cint(built["production_stems"]) if built else 0,
 		"built_unmet": cint(built["unmet_stems"]) if built else 0,
@@ -657,7 +713,11 @@ def tc_purchase(plan=None, variety=None, farm=None, tc_qty=None, tolerance_pct=1
 		"plan": plan, "variety": p.variety, "farm": p.farm, "version": v.name,
 		"tolerance_pct": tol,
 		"peak_plants": peak_plants,
-		"peak_week": p.peak_sticking_week,
+		"peak_week": peak_week,
+		# Which peak the order was sized from, so the panel can say so rather than
+		# leaving the reader to wonder why it is bigger than the placed plantings.
+		"peak_basis": peak_basis,
+		"peak_plants_placed": cint(p.peak_weekly_sticking),
 		"peak_cuttings": cuttings,
 		"mothers_for_peak": mothers,
 		"build_up_cycles": cycles,
@@ -712,17 +772,13 @@ def plan_whatif(plan=None, variety=None, farm=None, tc_qty=None, week_overrides=
 
 	order_date = prop.tc_order_date if prop and prop.tc_order_date else None
 	if not order_date:
-		first = _first_sticking_for(plan)
-		if first:
-			order_date = add_days(getdate(first), -7 * (
-				cint(v.supplier_lead_weeks)
-				+ cint(v.lead_time_for_cycles(cint(v.max_multiplication_cycles)))))
+		order_date = tc_order_by_date(v, _first_sticking_for(plan))
 	if not order_date:
 		return {"plan": plan, "error": "No sticking weeks to plan cuttings for."}
 
 	chosen = cint(tc_qty) or (cint(prop.tc_plants_required) if prop else 0)
 	if not chosen:
-		peak = v.cuttings_for_plants(cint(p.peak_weekly_sticking))
+		peak = v.cuttings_for_plants(sizing_peak(p)[0])
 		per_week = flt(v.cuttings_per_plant_per_week) or 1.0
 		factor = 1 + (cint(v.max_multiplication_cycles)
 		              * flt(v.multiplication_factor_per_cycle))
