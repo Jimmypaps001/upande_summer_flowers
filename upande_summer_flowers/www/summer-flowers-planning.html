@@ -683,6 +683,12 @@ input.pin.tgt.manual{border-color:var(--warning);
   font-weight:500;font-size:.66rem;color:var(--critical)}
 .cal-head{font-size:.78rem;font-weight:700;margin-bottom:6px}
 .cal-head span{color:var(--text-muted);font-weight:500}
+/* The weeks a month spans, and the weeks each line falls in. Monospaced so a column
+   of week runs lines up down the grid instead of drifting with the digit widths. */
+.cal-head-wk{display:block;font-size:.66rem;font-weight:500;font-variant-numeric:tabular-nums;
+  color:var(--text-muted);letter-spacing:.02em}
+.cal-wk{font-size:.7rem;font-weight:600;font-variant-numeric:tabular-nums;
+  color:var(--series-1);white-space:nowrap}
 .cal-line{display:flex;align-items:baseline;gap:6px;font-size:.75rem;margin:3px 0;
   flex-wrap:wrap}
 .cal-line .dot2{width:7px;height:7px;border-radius:50%;flex:none}
@@ -1257,6 +1263,30 @@ table.hc tbody tr:hover td:not(.hc-k):not(.hc-m){background:var(--surface-2)}
   // block, for how long"; this answers "what happens in March", which is the
   // question a grower actually plans a week around.
   const MONTHS = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+
+  // The ISO week a date falls in. The plan is built and read in weeks -- sticking
+  // week, planting week, harvest week -- so a month grid that named only months made
+  // you count back to the week yourself before you could act on it.
+  function isoWeekOf(d) {
+    const t = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
+    t.setUTCDate(t.getUTCDate() + 4 - ((t.getUTCDay() + 6) % 7 + 1));
+    const jan1 = new Date(Date.UTC(t.getUTCFullYear(), 0, 1));
+    return Math.ceil(((t - jan1) / 86400000 + 1) / 7);
+  }
+
+  // "wk10-13" rather than "wk10, wk11, wk12, wk13". A run of consecutive weeks is how
+  // a stagger of weekly plantings actually reads, and spelling every one out buried
+  // the months where the plan skips a week.
+  function weekRuns(weeks) {
+    const sorted = [...new Set(weeks)].sort((a, b) => a - b);
+    const runs = [];
+    sorted.forEach((w) => {
+      const last = runs[runs.length - 1];
+      if (last && w === last[1] + 1) last[1] = w;
+      else runs.push([w, w]);
+    });
+    return runs.map(([a, b]) => (a === b ? `wk${a}` : `wk${a}-${b}`)).join(", ");
+  }
   const CAL_KINDS = [
     ["stick", "Stick", "--violet"],
     ["plant", "Plant", "--series-1"],
@@ -1277,8 +1307,13 @@ table.hc tbody tr:hover td:not(.hc-k):not(.hc-m){background:var(--surface-2)}
       const key = d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0");
       if (!inPeriod(d.getFullYear(), null)) { /* year filter only */ }
       (buckets[key] = buckets[key] || { y: d.getFullYear(), m: d.getMonth(),
-                                        stick: [], plant: [], harvest: [], uproot: [] });
-      buckets[key][kind].push(row);
+                                        stick: [], plant: [], harvest: [], uproot: [],
+                                        weeks: [] });
+      // The week travels with the row, so a line can name its weeks and the month
+      // header can name the weeks the month spans.
+      const wk = isoWeekOf(d);
+      buckets[key][kind].push({ ...row, _wk: wk });
+      buckets[key].weeks.push(wk);
     };
     rows.forEach((r) => {
       put(r.sticking_date || r.stick_date, "stick", r);
@@ -1312,13 +1347,16 @@ table.hc tbody tr:hover td:not(.hc-k):not(.hc-m){background:var(--surface-2)}
         const who = [named.slice(0, 5).join(", ")
           + (named.length > 5 ? ` +${named.length - 5}` : ""),
           homeless ? `${homeless} unplaced` : ""].filter(Boolean).join(" · ");
+        const runs = weekRuns(list.map((r) => r._wk));
         return `<div class="cal-line" data-tip="${esc(
             `<b>${label}</b><br>${list.length} planting(s)<br>` +
             list.slice(0, 8).map((r) =>
-              `${shortBlock(r.block) || "no block"} · ${r.beds}b · ${num(r.plants)} plants`
+              `wk${r._wk} · ${shortBlock(r.block) || "no block"} · ${r.beds}b · ` +
+              `${num(r.plants)} plants`
             ).join("<br>"))}">` +
           `<i class="dot2" style="background:var(${col})"></i>` +
           `<b>${list.length}</b> ${esc(label.toLowerCase())}` +
+          `<span class="cal-wk">${esc(runs)}</span>` +
           `<span class="cal-who">${esc(who)}</span>` +
           `</div>`;
       }).join("");
@@ -1326,8 +1364,18 @@ table.hc tbody tr:hover td:not(.hc-k):not(.hc-m){background:var(--surface-2)}
       const homelessTotal = CAL_KINDS.reduce(
         (n, [kind]) => n + b[kind].filter((r) => !r.block).length, 0);
       const allHomeless = busy > 0 && homelessTotal === busy;
+      // Every week of the month, not only the ones with something in them, so a gap
+      // in the plan is visible as a week the header names and no line claims.
+      const first = new Date(Date.UTC(b.y, b.m, 1));
+      const last = new Date(Date.UTC(b.y, b.m + 1, 0));
+      const span = [];
+      for (let d = new Date(first); d <= last; d.setUTCDate(d.getUTCDate() + 7)) {
+        span.push(isoWeekOf(d));
+      }
+      span.push(isoWeekOf(last));
       return `<div class="cal-cell${busy ? "" : " quiet"}${allHomeless ? " nowhere" : ""}">` +
-        `<div class="cal-head">${MONTHS[b.m]} <span>${b.y}</span></div>` +
+        `<div class="cal-head">${MONTHS[b.m]} <span>${b.y}</span>` +
+        `<span class="cal-head-wk">${esc(weekRuns(span))}</span></div>` +
         (chips || '<div class="cal-none">nothing scheduled</div>') + `</div>`;
     }).join("") + "</div>";
     bindTips(el);
