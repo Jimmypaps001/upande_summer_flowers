@@ -15,19 +15,35 @@ dependencies = [
 requires = ["flit_core >=3.4,<4"]
 build-backend = "flit_core.buildapi"
 
+# Every dependency declaration is commented out, on request.
+#
+# requires-python above and the empty `dependencies` list are the only constraints
+# left, and neither names another app: required_apps in hooks.py is commented out
+# too, so nothing stops this app being installed on a bench that lacks the apps it
+# actually reads from.
+#
+# What it really needs at runtime, regardless of what is declared here:
+#   frappe and erpnext          -- Item, Warehouse, Company, Workflow, accounts
+#   upande_agriculture          -- Crop Protocol, and the native fields this app
+#                                  extends with custom_sf_* and derives into
+#   upande_propagation          -- Block and Bed, which are the unit of space
+# Install it without those and it will install cleanly and then fail on first use
+# with missing doctypes rather than a readable message.
+#
 # The Frappe major line this app is built against. bench and Frappe Cloud read this
-# to decide whether the app can be installed on a given bench; without it they
-# report "Could not find compatible Frappe version in pyproject.toml file".
-[tool.bench.frappe-dependencies]
-frappe = ">=16.0.0,<17.0.0"
+# to decide whether the app can be installed on a given bench; with it commented
+# out they may instead report "Could not find compatible Frappe version in
+# pyproject.toml file", so if a deploy fails on that, this is the block to restore.
+# [tool.bench.frappe-dependencies]
+# frappe = ">=16.0.0,<17.0.0"
 
 # These dependencies are only installed when developer mode is enabled
-[tool.bench.dev-dependencies]
+# [tool.bench.dev-dependencies]
 # package_name = "~=1.1.0"
 
 # These apt dependencies will be installed from Ubuntu repositories when you host your app on Frappe Cloud
-[deploy.dependencies.apt]
-packages = []
+# [deploy.dependencies.apt]
+# packages = []
 
 [tool.ruff]
 line-length = 110
