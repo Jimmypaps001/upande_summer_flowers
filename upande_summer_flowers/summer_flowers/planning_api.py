@@ -257,6 +257,13 @@ def tc_derivation(plan=None, variety=None, farm=None):
 		probe = frappe.new_doc("Summer Flower Motherstock Batch")
 		probe.variety, probe.farm, probe.protocol = dv["variety"], dv["farm"], v.name
 		probe.peak_weekly_cuttings = cuttings
+		# cuttings is already cuttings_for_plants(peak) -- rooting and field loss and
+		# the reject rate are in it. The batch applies cuttings_per_plant_required
+		# itself when apply_losses is set, so leaving it on multiplied the 1.17 in
+		# twice: the Motherstock tab read 11,754 plantlets where the TC tab read
+		# 10,046, for the same plan and the same week. The same double count produced
+		# the 1,992 in the what-if probe, which was fixed there and not here.
+		probe.apply_losses = 0
 		probe.first_sticking_date = _first_sticking_for(dv["plan"])
 		if probe.first_sticking_date:
 			probe.run_method("validate")
