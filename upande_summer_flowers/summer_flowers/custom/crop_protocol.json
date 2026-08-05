@@ -1101,7 +1101,7 @@
    "in_list_view": 0,
    "in_preview": 0,
    "in_standard_filter": 0,
-   "insert_after": "custom_sf_plants_per_sqm_net",
+   "insert_after": "plants_per_sqm",
    "is_system_generated": 0,
    "is_virtual": 0,
    "label": "Path Allowance on Bed Area",
@@ -1152,7 +1152,7 @@
    "fieldname": "custom_sf_plants_per_bed",
    "fieldtype": "Int",
    "label": "Plants Per Bed",
-   "insert_after": "plants_per_sqm",
+   "insert_after": "custom_sf_sqm_gross_per_bed",
    "depends_on": "eval:doc.custom_is_summer_flower",
    "dt": "Crop Protocol",
    "name": "Crop Protocol-custom_sf_plants_per_bed",
@@ -2153,36 +2153,6 @@
  "property_setters": [
   {
    "doc_type": "Crop Protocol",
-   "doctype_or_field": "DocField",
-   "field_name": "length_distribution",
-   "property": "depends_on",
-   "property_type": "Text",
-   "value": "eval:!doc.custom_is_summer_flower",
-   "name": "Crop Protocol-length_distribution-depends_on",
-   "doctype": "Property Setter"
-  },
-  {
-   "doc_type": "Crop Protocol",
-   "doctype_or_field": "DocField",
-   "field_name": "length_distribution_total",
-   "property": "depends_on",
-   "property_type": "Text",
-   "value": "eval:!doc.custom_is_summer_flower",
-   "name": "Crop Protocol-length_distribution_total-depends_on",
-   "doctype": "Property Setter"
-  },
-  {
-   "doc_type": "Crop Protocol",
-   "doctype_or_field": "DocField",
-   "field_name": "flush_schedule",
-   "property": "depends_on",
-   "property_type": "Text",
-   "value": "eval:!doc.custom_is_summer_flower",
-   "name": "Crop Protocol-flush_schedule-depends_on",
-   "doctype": "Property Setter"
-  },
-  {
-   "doc_type": "Crop Protocol",
    "doctype_or_field": "DocType",
    "field_name": null,
    "property": "autoname",
@@ -2194,121 +2164,51 @@
   {
    "doc_type": "Crop Protocol",
    "doctype_or_field": "DocField",
-   "field_name": "variety",
-   "property": "unique",
-   "property_type": "Check",
-   "value": "0",
-   "name": "Crop Protocol-variety-unique",
-   "doctype": "Property Setter"
-  },
-  {
-   "doc_type": "Crop Protocol",
-   "doctype_or_field": "DocField",
-   "field_name": "plants_per_sqm",
-   "property": "insert_after",
-   "property_type": "Data",
-   "value": "custom_sf_density_section",
-   "name": "Crop Protocol-plants_per_sqm-insert_after",
-   "doctype": "Property Setter"
-  },
-  {
-   "doc_type": "Crop Protocol",
-   "doctype_or_field": "DocField",
-   "field_name": "weeks_to_pinch",
-   "property": "insert_after",
-   "property_type": "Data",
-   "value": "custom_sf_timeline_section",
-   "name": "Crop Protocol-weeks_to_pinch-insert_after",
-   "doctype": "Property Setter"
-  },
-  {
-   "doc_type": "Crop Protocol",
-   "doctype_or_field": "DocField",
-   "field_name": "weeks_between_flushes",
-   "property": "insert_after",
-   "property_type": "Data",
-   "value": "weeks_to_pinch",
-   "name": "Crop Protocol-weeks_between_flushes-insert_after",
-   "doctype": "Property Setter"
-  },
-  {
-   "doc_type": "Crop Protocol",
-   "doctype_or_field": "DocField",
-   "field_name": "total_weeks_in_ground",
-   "property": "insert_after",
-   "property_type": "Data",
-   "value": "custom_sf_first_harvest_offset_weeks",
-   "name": "Crop Protocol-total_weeks_in_ground-insert_after",
-   "doctype": "Property Setter"
-  },
-  {
-   "doc_type": "Crop Protocol",
-   "doctype_or_field": "DocField",
-   "field_name": "total_flushes",
-   "property": "insert_after",
-   "property_type": "Data",
-   "value": "custom_sf_flush_totals_section",
-   "name": "Crop Protocol-total_flushes-insert_after",
-   "doctype": "Property Setter"
-  },
-  {
-   "doc_type": "Crop Protocol",
-   "doctype_or_field": "DocField",
-   "field_name": "total_stems_per_plant_life",
-   "property": "insert_after",
-   "property_type": "Data",
-   "value": "total_flushes",
-   "name": "Crop Protocol-total_stems_per_plant_life-insert_after",
-   "doctype": "Property Setter"
-  },
-  {
-   "doc_type": "Crop Protocol",
-   "doctype_or_field": "DocField",
-   "field_name": "propagation_tab",
+   "field_name": "average_stem_length_cm",
    "property": "depends_on",
    "property_type": "Data",
    "value": "eval:!doc.custom_is_summer_flower",
-   "name": "Crop Protocol-propagation_tab-depends_on",
+   "name": "Crop Protocol-average_stem_length_cm-depends_on",
    "doctype": "Property Setter"
   },
   {
    "doc_type": "Crop Protocol",
    "doctype_or_field": "DocField",
-   "field_name": "production_tab",
+   "field_name": "breeder",
    "property": "depends_on",
    "property_type": "Data",
    "value": "eval:!doc.custom_is_summer_flower",
-   "name": "Crop Protocol-production_tab-depends_on",
+   "name": "Crop Protocol-breeder-depends_on",
    "doctype": "Property Setter"
   },
   {
    "doc_type": "Crop Protocol",
    "doctype_or_field": "DocField",
-   "field_name": "length_tab",
+   "field_name": "color",
    "property": "depends_on",
    "property_type": "Data",
    "value": "eval:!doc.custom_is_summer_flower",
-   "name": "Crop Protocol-length_tab-depends_on",
+   "name": "Crop Protocol-color-depends_on",
    "doctype": "Property Setter"
   },
   {
    "doc_type": "Crop Protocol",
    "doctype_or_field": "DocField",
-   "field_name": "planting_section",
+   "field_name": "colour",
    "property": "depends_on",
    "property_type": "Data",
    "value": "eval:!doc.custom_is_summer_flower",
-   "name": "Crop Protocol-planting_section-depends_on",
+   "name": "Crop Protocol-colour-depends_on",
    "doctype": "Property Setter"
   },
   {
    "doc_type": "Crop Protocol",
    "doctype_or_field": "DocField",
-   "field_name": "timeline_section",
+   "field_name": "crop_type",
    "property": "depends_on",
    "property_type": "Data",
    "value": "eval:!doc.custom_is_summer_flower",
-   "name": "Crop Protocol-timeline_section-depends_on",
+   "name": "Crop Protocol-crop_type-depends_on",
    "doctype": "Property Setter"
   },
   {
@@ -2324,6 +2224,16 @@
   {
    "doc_type": "Crop Protocol",
    "doctype_or_field": "DocField",
+   "field_name": "flush_schedule",
+   "property": "depends_on",
+   "property_type": "Text",
+   "value": "eval:!doc.custom_is_summer_flower",
+   "name": "Crop Protocol-flush_schedule-depends_on",
+   "doctype": "Property Setter"
+  },
+  {
+   "doc_type": "Crop Protocol",
+   "doctype_or_field": "DocField",
    "field_name": "flush_schedule_section",
    "property": "depends_on",
    "property_type": "Data",
@@ -2334,11 +2244,101 @@
   {
    "doc_type": "Crop Protocol",
    "doctype_or_field": "DocField",
-   "field_name": "protocol_group",
+   "field_name": "growth_stages_section",
+   "property": "label",
+   "property_type": "Data",
+   "value": "Growth Stages",
+   "name": "Crop Protocol-growth_stages_section-label",
+   "doctype": "Property Setter"
+  },
+  {
+   "doc_type": "Crop Protocol",
+   "doctype_or_field": "DocField",
+   "field_name": "length_distribution",
+   "property": "depends_on",
+   "property_type": "Text",
+   "value": "eval:!doc.custom_is_summer_flower",
+   "name": "Crop Protocol-length_distribution-depends_on",
+   "doctype": "Property Setter"
+  },
+  {
+   "doc_type": "Crop Protocol",
+   "doctype_or_field": "DocField",
+   "field_name": "length_distribution_section",
    "property": "depends_on",
    "property_type": "Data",
    "value": "eval:!doc.custom_is_summer_flower",
-   "name": "Crop Protocol-protocol_group-depends_on",
+   "name": "Crop Protocol-length_distribution_section-depends_on",
+   "doctype": "Property Setter"
+  },
+  {
+   "doc_type": "Crop Protocol",
+   "doctype_or_field": "DocField",
+   "field_name": "length_distribution_total",
+   "property": "depends_on",
+   "property_type": "Text",
+   "value": "eval:!doc.custom_is_summer_flower",
+   "name": "Crop Protocol-length_distribution_total-depends_on",
+   "doctype": "Property Setter"
+  },
+  {
+   "doc_type": "Crop Protocol",
+   "doctype_or_field": "DocField",
+   "field_name": "length_tab",
+   "property": "depends_on",
+   "property_type": "Data",
+   "value": "eval:!doc.custom_is_summer_flower",
+   "name": "Crop Protocol-length_tab-depends_on",
+   "doctype": "Property Setter"
+  },
+  {
+   "doc_type": "Crop Protocol",
+   "doctype_or_field": "DocField",
+   "field_name": "life_expectancy_years",
+   "property": "label",
+   "property_type": "Data",
+   "value": "Life Expectancy (years)",
+   "name": "Crop Protocol-life_expectancy_years-label",
+   "doctype": "Property Setter"
+  },
+  {
+   "doc_type": "Crop Protocol",
+   "doctype_or_field": "DocField",
+   "field_name": "planting_section",
+   "property": "depends_on",
+   "property_type": "Data",
+   "value": "eval:!doc.custom_is_summer_flower",
+   "name": "Crop Protocol-planting_section-depends_on",
+   "doctype": "Property Setter"
+  },
+  {
+   "doc_type": "Crop Protocol",
+   "doctype_or_field": "DocField",
+   "field_name": "plants_per_sqm",
+   "property": "insert_after",
+   "property_type": "Data",
+   "value": "custom_sf_density_section",
+   "name": "Crop Protocol-plants_per_sqm-insert_after",
+   "doctype": "Property Setter"
+  },
+  {
+   "doc_type": "Crop Protocol",
+   "doctype_or_field": "DocField",
+   "field_name": "plants_per_sqm",
+   "property": "label",
+   "property_type": "Data",
+   "value": "Plants per m\u00b2 of bed (net)",
+   "name": "Crop Protocol-plants_per_sqm-label",
+   "doctype": "Property Setter"
+  },
+  {
+   "doc_type": "Crop Protocol",
+   "doctype_or_field": "DocField",
+   "field_name": "production_tab",
+   "property": "depends_on",
+   "property_type": "Data",
+   "value": "eval:!doc.custom_is_summer_flower",
+   "name": "Crop Protocol-production_tab-depends_on",
    "doctype": "Property Setter"
   },
   {
@@ -2354,11 +2354,41 @@
   {
    "doc_type": "Crop Protocol",
    "doctype_or_field": "DocField",
-   "field_name": "weeks_in_propagation",
+   "field_name": "propagation_tab",
    "property": "depends_on",
    "property_type": "Data",
    "value": "eval:!doc.custom_is_summer_flower",
-   "name": "Crop Protocol-weeks_in_propagation-depends_on",
+   "name": "Crop Protocol-propagation_tab-depends_on",
+   "doctype": "Property Setter"
+  },
+  {
+   "doc_type": "Crop Protocol",
+   "doctype_or_field": "DocField",
+   "field_name": "protocol_group",
+   "property": "depends_on",
+   "property_type": "Data",
+   "value": "eval:!doc.custom_is_summer_flower",
+   "name": "Crop Protocol-protocol_group-depends_on",
+   "doctype": "Property Setter"
+  },
+  {
+   "doc_type": "Crop Protocol",
+   "doctype_or_field": "DocField",
+   "field_name": "rolling_forecast_weeks",
+   "property": "depends_on",
+   "property_type": "Data",
+   "value": "eval:!doc.custom_is_summer_flower",
+   "name": "Crop Protocol-rolling_forecast_weeks-depends_on",
+   "doctype": "Property Setter"
+  },
+  {
+   "doc_type": "Crop Protocol",
+   "doctype_or_field": "DocField",
+   "field_name": "section_grade_allocation",
+   "property": "depends_on",
+   "property_type": "Data",
+   "value": "eval:!doc.custom_is_summer_flower",
+   "name": "Crop Protocol-section_grade_allocation-depends_on",
    "doctype": "Property Setter"
   },
   {
@@ -2384,81 +2414,61 @@
   {
    "doc_type": "Crop Protocol",
    "doctype_or_field": "DocField",
-   "field_name": "weeks_to_bending",
+   "field_name": "timeline_section",
    "property": "depends_on",
    "property_type": "Data",
    "value": "eval:!doc.custom_is_summer_flower",
-   "name": "Crop Protocol-weeks_to_bending-depends_on",
+   "name": "Crop Protocol-timeline_section-depends_on",
    "doctype": "Property Setter"
   },
   {
    "doc_type": "Crop Protocol",
    "doctype_or_field": "DocField",
-   "field_name": "rolling_forecast_weeks",
-   "property": "depends_on",
+   "field_name": "total_flushes",
+   "property": "insert_after",
    "property_type": "Data",
-   "value": "eval:!doc.custom_is_summer_flower",
-   "name": "Crop Protocol-rolling_forecast_weeks-depends_on",
+   "value": "custom_sf_flush_totals_section",
+   "name": "Crop Protocol-total_flushes-insert_after",
    "doctype": "Property Setter"
   },
   {
    "doc_type": "Crop Protocol",
    "doctype_or_field": "DocField",
-   "field_name": "weeks_pinch_to_first_harvest",
-   "property": "depends_on",
+   "field_name": "total_stems_per_plant_life",
+   "property": "insert_after",
    "property_type": "Data",
-   "value": "eval:!doc.custom_is_summer_flower",
-   "name": "Crop Protocol-weeks_pinch_to_first_harvest-depends_on",
+   "value": "total_flushes",
+   "name": "Crop Protocol-total_stems_per_plant_life-insert_after",
    "doctype": "Property Setter"
   },
   {
    "doc_type": "Crop Protocol",
    "doctype_or_field": "DocField",
-   "field_name": "average_stem_length_cm",
-   "property": "depends_on",
+   "field_name": "total_weeks_in_ground",
+   "property": "insert_after",
    "property_type": "Data",
-   "value": "eval:!doc.custom_is_summer_flower",
-   "name": "Crop Protocol-average_stem_length_cm-depends_on",
+   "value": "custom_sf_first_harvest_offset_weeks",
+   "name": "Crop Protocol-total_weeks_in_ground-insert_after",
    "doctype": "Property Setter"
   },
   {
    "doc_type": "Crop Protocol",
    "doctype_or_field": "DocField",
-   "field_name": "colour",
-   "property": "depends_on",
+   "field_name": "total_weeks_in_ground",
+   "property": "label",
    "property_type": "Data",
-   "value": "eval:!doc.custom_is_summer_flower",
-   "name": "Crop Protocol-colour-depends_on",
+   "value": "Total Weeks In Ground",
+   "name": "Crop Protocol-total_weeks_in_ground-label",
    "doctype": "Property Setter"
   },
   {
    "doc_type": "Crop Protocol",
    "doctype_or_field": "DocField",
-   "field_name": "color",
-   "property": "depends_on",
-   "property_type": "Data",
-   "value": "eval:!doc.custom_is_summer_flower",
-   "name": "Crop Protocol-color-depends_on",
-   "doctype": "Property Setter"
-  },
-  {
-   "doc_type": "Crop Protocol",
-   "doctype_or_field": "DocField",
-   "field_name": "breeder",
-   "property": "depends_on",
-   "property_type": "Data",
-   "value": "eval:!doc.custom_is_summer_flower",
-   "name": "Crop Protocol-breeder-depends_on",
-   "doctype": "Property Setter"
-  },
-  {
-   "doc_type": "Crop Protocol",
-   "doctype_or_field": "DocField",
-   "field_name": "crop_type",
-   "property": "depends_on",
-   "property_type": "Data",
-   "value": "eval:!doc.custom_is_summer_flower",
-   "name": "Crop Protocol-crop_type-depends_on",
+   "field_name": "variety",
+   "property": "unique",
+   "property_type": "Check",
+   "value": "0",
+   "name": "Crop Protocol-variety-unique",
    "doctype": "Property Setter"
   },
   {
@@ -2474,31 +2484,81 @@
   {
    "doc_type": "Crop Protocol",
    "doctype_or_field": "DocField",
-   "field_name": "section_grade_allocation",
-   "property": "depends_on",
+   "field_name": "weeks_between_flushes",
+   "property": "insert_after",
    "property_type": "Data",
-   "value": "eval:!doc.custom_is_summer_flower",
-   "name": "Crop Protocol-section_grade_allocation-depends_on",
+   "value": "weeks_to_pinch",
+   "name": "Crop Protocol-weeks_between_flushes-insert_after",
    "doctype": "Property Setter"
   },
   {
    "doc_type": "Crop Protocol",
    "doctype_or_field": "DocField",
-   "field_name": "length_distribution_section",
-   "property": "depends_on",
-   "property_type": "Data",
-   "value": "eval:!doc.custom_is_summer_flower",
-   "name": "Crop Protocol-length_distribution_section-depends_on",
-   "doctype": "Property Setter"
-  },
-  {
-   "doc_type": "Crop Protocol",
-   "doctype_or_field": "DocField",
-   "field_name": "growth_stages_section",
+   "field_name": "weeks_between_flushes",
    "property": "label",
    "property_type": "Data",
-   "value": "Growth Stages",
-   "name": "Crop Protocol-growth_stages_section-label",
+   "value": "Flush Interval Weeks",
+   "name": "Crop Protocol-weeks_between_flushes-label",
+   "doctype": "Property Setter"
+  },
+  {
+   "doc_type": "Crop Protocol",
+   "doctype_or_field": "DocField",
+   "field_name": "weeks_in_propagation",
+   "property": "depends_on",
+   "property_type": "Data",
+   "value": "eval:!doc.custom_is_summer_flower",
+   "name": "Crop Protocol-weeks_in_propagation-depends_on",
+   "doctype": "Property Setter"
+  },
+  {
+   "doc_type": "Crop Protocol",
+   "doctype_or_field": "DocField",
+   "field_name": "weeks_pinch_to_first_harvest",
+   "property": "depends_on",
+   "property_type": "Data",
+   "value": "eval:!doc.custom_is_summer_flower",
+   "name": "Crop Protocol-weeks_pinch_to_first_harvest-depends_on",
+   "doctype": "Property Setter"
+  },
+  {
+   "doc_type": "Crop Protocol",
+   "doctype_or_field": "DocField",
+   "field_name": "weeks_to_bending",
+   "property": "depends_on",
+   "property_type": "Data",
+   "value": "eval:!doc.custom_is_summer_flower",
+   "name": "Crop Protocol-weeks_to_bending-depends_on",
+   "doctype": "Property Setter"
+  },
+  {
+   "doc_type": "Crop Protocol",
+   "doctype_or_field": "DocField",
+   "field_name": "weeks_to_pinch",
+   "property": "insert_after",
+   "property_type": "Data",
+   "value": "custom_sf_timeline_section",
+   "name": "Crop Protocol-weeks_to_pinch-insert_after",
+   "doctype": "Property Setter"
+  },
+  {
+   "doc_type": "Crop Protocol",
+   "doctype_or_field": "DocField",
+   "field_name": "weeks_to_pinch",
+   "property": "label",
+   "property_type": "Data",
+   "value": "Weeks planting \u2192 pinch",
+   "name": "Crop Protocol-weeks_to_pinch-label",
+   "doctype": "Property Setter"
+  },
+  {
+   "doc_type": "Crop Protocol",
+   "doctype_or_field": "DocField",
+   "field_name": "yield_stems_per_ha",
+   "property": "label",
+   "property_type": "Data",
+   "value": "Stated Yield (stems/ha/yr)",
+   "name": "Crop Protocol-yield_stems_per_ha-label",
    "doctype": "Property Setter"
   }
  ],

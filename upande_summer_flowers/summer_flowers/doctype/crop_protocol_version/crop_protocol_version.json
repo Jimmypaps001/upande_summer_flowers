@@ -811,9 +811,8 @@
   {
    "description": "The agronomist's target figure. Kept beside the computed one because the two rarely agree and the gap matters.",
    "fieldname": "stated_yield_stems_per_ha",
-   "fieldtype": "Float",
-   "label": "Stated Yield (stems/ha/yr)",
-   "precision": "0"
+   "fieldtype": "Int",
+   "label": "Stated Yield (stems/ha/yr)"
   },
   {
    "fieldname": "yield_variance_pct",
@@ -855,7 +854,7 @@
  "grid_page_length": 50,
  "index_web_pages_for_search": 1,
  "links": [],
- "modified": "2026-08-05 10:00:00.000000",
+ "modified": "2026-08-05 12:00:00.000000",
  "modified_by": "Administrator",
  "module": "Summer Flowers",
  "name": "Crop Protocol Version",
