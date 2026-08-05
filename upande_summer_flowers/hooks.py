@@ -12,7 +12,22 @@ app_license = "mit"
 # Both are still needed at runtime: erpnext for Item / Warehouse / Customer, and
 # upande_core for the doctypes this app links to. Put the line back once they are
 # installed on the target bench.
-# required_apps = ["erpnext", "upande_core"]
+# Commented out on request, and here is what it would say if it were not. Verified
+# against the doctypes this app actually extends, overrides or reads:
+#
+#   erpnext             Item, Warehouse, Company, Material Request, Stock Entry, accounts
+#   upande_core         Farm and Bed -- Bed is the unit of space every planting occupies
+#   upande_agriculture  Crop Protocol, which this app extends with 88 custom fields and
+#                       is the source of every planning number; and Crop Cycle, which
+#                       override_doctype_class replaces the controller of
+#   upande_propagation  Block, which a planting is placed in, and Seedling Request
+#
+# A site with only frappe and erpnext will now install this app cleanly and then have
+# no Crop Protocol, Block, Bed, Crop Cycle or Seedling Request for it to work on: the
+# install log says "DocType Crop Cycle does not exist. Skipping fixture syncing" and
+# 86 custom fields are silently not applied.
+#
+# required_apps = ["erpnext", "upande_core", "upande_agriculture", "upande_propagation"]
 
 # Fixtures
 # ------------------

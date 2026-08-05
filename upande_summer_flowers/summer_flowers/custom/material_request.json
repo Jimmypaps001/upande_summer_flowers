@@ -411,28 +411,7 @@
  ],
  "custom_perms": [],
  "doctype": "Material Request",
- "links": [
-  {
-   "creation": "2025-06-05 13:21:00.605084",
-   "custom": 1,
-   "docstatus": 0,
-   "group": null,
-   "hidden": 0,
-   "idx": 0,
-   "is_child_table": 0,
-   "link_doctype": "Stock Entry",
-   "link_fieldname": "custom_material_request",
-   "modified": "2026-01-23 12:39:41.730036",
-   "modified_by": "Administrator",
-   "name": "j2cjkshfhm",
-   "owner": "otieno@upande.com",
-   "parent": "Material Request",
-   "parent_doctype": null,
-   "parentfield": "links",
-   "parenttype": "Customize Form",
-   "table_fieldname": null
-  }
- ],
+ "links": [],
  "property_setters": [],
  "sync_on_migrate": 1
 }
