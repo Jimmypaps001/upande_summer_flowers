@@ -546,7 +546,9 @@ def chain_status(variety=None, farm=None, demand=None, plan=None):
 	if plan:
 		pr = frappe.get_all(
 			"Summer Flower Propagation Plan",
-			filters={"production_plan": plan["name"]},
+			# Same reasoning as the chain: keyed on variety and season.
+			filters={"variety": plan["variety"],
+			         "season_start_year": cint(plan.get("season_start_year"))},
 			fields=["name", "status", "total_cuttings_required",
 			        "peak_weekly_cuttings", "peak_week", "cuttings_from_existing",
 			        "existing_cover_pct", "mother_plants_required",
@@ -619,6 +621,18 @@ def process_overview(variety=None, farm=None, plan=None):
 		if blocked:
 			blockers.append("%s: %s" % (label, blocked))
 
+	# ── 0. whose chain is this?
+	#
+	# A plan is the most specific thing in scope, so it names the variety and the farm.
+	# The register used to be resolved first, from the variety filter alone, and with
+	# no variety set it took the most recently edited register of any crop -- so the
+	# chain showed Agapanthus Blue's demand above an Aster Pink Flash plan and reported
+	# that they did not match. They never disagreed; they were never the same crop.
+	if plan and frappe.db.exists("Summer Flower Production Plan", plan):
+		scope = frappe.db.get_value("Summer Flower Production Plan", plan,
+		                            ["variety", "farm"], as_dict=True)
+		variety, farm = scope.variety, scope.farm
+
 	# ── 1. the register
 	f = {}
 	if variety:
@@ -634,8 +648,8 @@ def process_overview(variety=None, farm=None, plan=None):
 		return {"variety": variety, "farm": farm, "stages": stages,
 		        "blockers": blockers, "verdict": _("Nothing to show: no demand register.")}
 	d = dem[0]
-	# The register names the variety; the farm comes from the plan, since one
-	# variety's demand can be met from several farms.
+	# Where no plan was given the register names the variety, since one variety's
+	# demand can be met from several farms and the farm then comes from the plan.
 	variety = d.variety
 	stage("demand", "Market demand", d.name, d.horizon_status,
 	      "{:,}".format(cint(d.total_demand_stems)) + _(" stems"),
@@ -690,10 +704,17 @@ def process_overview(variety=None, farm=None, plan=None):
 		               if p and p.docstatus != 1 else None))
 
 	# ── 4. propagation
+	#
+	# Found by variety and season, which is how it is keyed: propagation is one pool of
+	# motherstock and one TC order for a crop in a year, whichever production plan it
+	# was last built from. Looking it up by production_plan reported "Not created, so
+	# nothing knows where the cuttings come from" for a crop that had one, because a
+	# second plan had been cut for the same season.
 	pr = None
 	if p:
 		rows = frappe.get_all("Summer Flower Propagation Plan",
-		                      filters={"production_plan": p.name,
+		                      filters={"variety": p.variety,
+		                               "season_start_year": cint(p.season_start_year),
 		                               "status": ["!=", "Rejected"]},
 		                      fields=["name", "status", "total_cuttings_required",
 		                              "cuttings_uncovered", "plants_short",
@@ -728,8 +749,10 @@ def process_overview(variety=None, farm=None, plan=None):
 		      _("order by {0}, {1} {2}").format(
 			      pr.tc_order_date, "{:,}".format(cint(pr.tc_cost)),
 			      pr.currency or ""),
+		      # A batch is raised from the propagation plan, which belongs to the crop
+		      # and the season rather than to one production plan.
 		      done=bool(frappe.db.count("Summer Flower Motherstock Batch",
-		                                {"production_plan": p.name,
+		                                {"variety": p.variety,
 		                                 "docstatus": ["<", 2]})),
 		      blocked=(_("The order date {0} passed {1} days ago. This is the longest "
 		                 "lead time in the process — nothing downstream moves until it "

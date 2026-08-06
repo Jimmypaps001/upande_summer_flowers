@@ -321,6 +321,23 @@ from upande_summer_flowers.summer_flowers.doctype.summer_flower_motherstock_batc
 )
 
 
+def _prop_filters(plan):
+	"""How to find the propagation plan for a production plan.
+
+	By variety and season, because that is how it is keyed: propagation is one pool of
+	motherstock and one TC order for a crop in a year, whichever production plan it was
+	last built from. Looking it up by production_plan reported no propagation plan for a
+	crop that had one, as soon as a second plan was cut for the same season.
+	"""
+	row = frappe.db.get_value("Summer Flower Production Plan", plan,
+	                          ["variety", "season_start_year"], as_dict=True)
+	if not row:
+		return {"production_plan": plan, "status": ["!=", "Rejected"]}
+	return {"variety": row.variety,
+	        "season_start_year": cint(row.season_start_year),
+	        "status": ["!=", "Rejected"]}
+
+
 def sizing_peak(p):
 	"""The sticking week the TC order is sized from, and what it counts.
 
@@ -662,7 +679,7 @@ def tc_purchase(plan=None, variety=None, farm=None, tc_qty=None, tolerance_pct=1
 	# need with no motherstock at all, which is the number to sanity-check against.
 	prop = frappe.get_all(
 		"Summer Flower Propagation Plan",
-		filters={"production_plan": plan, "status": ["!=", "Rejected"]},
+		filters=_prop_filters(plan),
 		fields=["name", "tc_plants_required", "mother_plants_required",
 		        "tc_order_date", "tc_on_farm_date", "first_sticking_date",
 		        "full_capacity_date", "ramp_weeks", "cuttings_uncovered",
@@ -789,7 +806,7 @@ def plan_whatif(plan=None, variety=None, farm=None, tc_qty=None, week_overrides=
 
 	prop = frappe.get_all(
 		"Summer Flower Propagation Plan",
-		filters={"production_plan": plan, "status": ["!=", "Rejected"]},
+		filters=_prop_filters(plan),
 		fields=["name", "tc_plants_required", "tc_order_date"],
 		order_by="creation desc", limit=1)
 	prop = prop[0] if prop else None
@@ -1731,7 +1748,7 @@ def propagation_detail(plan=None, propagation_plan=None, variety=None, farm=None
 		if not plan:
 			return {"propagation_plan": None, "reason": "no production plan in scope"}
 		rows = frappe.get_all("Summer Flower Propagation Plan",
-		                      filters={"production_plan": plan}, pluck="name",
+		                      filters=_prop_filters(plan), pluck="name",
 		                      order_by="creation desc", limit=1)
 		if not rows:
 			return {"propagation_plan": None, "plan": plan,

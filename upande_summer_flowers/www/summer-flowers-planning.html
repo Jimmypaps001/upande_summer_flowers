@@ -1993,8 +1993,13 @@ table.hc tbody tr:hover td:not(.hc-k):not(.hc-m){background:var(--surface-2)}
 
     // Sticking is what sizes the motherstock, and it is a peak, not a total: the
     // busiest single week in scope, with the week it falls in.
+    //
+    // Only rows that have a sticking week. A planting already standing in the ground
+    // has none -- nobody is going to stick it again -- and bucketing those together
+    // produced a week called "0-W00" holding the sum of every standing planting:
+    // 300,000 plants in a single week that does not exist.
     const byStick = {};
-    sticks.forEach((r) => {
+    sticks.filter((r) => r.sticking_year && r.sticking_week).forEach((r) => {
       const k = `${r.sticking_year}-W${String(r.sticking_week).padStart(2, "0")}`;
       byStick[k] = (byStick[k] || 0) + (r.plants || 0);
     });
@@ -2012,9 +2017,12 @@ table.hc tbody tr:hover td:not(.hc-k):not(.hc-m){background:var(--surface-2)}
       coverage: demand ? production / demand * 100 : 0,
       deficitWeeks: weeks.filter((r) => (r.variance || 0) < 0),
       surplusWeeks: weeks.filter((r) => (r.variance || 0) > 0),
-      plants: sum(plantings, "plants"),
-      beds: sum(plantings, "beds"),
-      cuttings: sum(sticks, "cuttings"),
+      // The plantings this plan proposes. Standing plantings are production, not work
+      // to resource: counting them said 1,050,000 plants to raise where the plan asks
+      // for 920,000, and the two numbers sat on the same screen.
+      plants: sum(plantings.filter((r) => r.is_new), "plants"),
+      beds: sum(plantings.filter((r) => r.is_new), "beds"),
+      cuttings: sum(sticks.filter((r) => r.is_new), "cuttings"),
       peakStick: peak, peakStickWeek: peakWeek,
     };
   }
