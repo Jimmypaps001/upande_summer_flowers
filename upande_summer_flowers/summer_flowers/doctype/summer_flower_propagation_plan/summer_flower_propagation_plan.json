@@ -187,7 +187,7 @@
    "read_only": 1
   },
   {
-   "description": "Grossed up for rooting, field establishment and reject losses on the protocol.",
+   "description": "Scaled up for rooting, field establishment and reject losses on the protocol.",
    "fieldname": "cuttings_per_plant",
    "fieldtype": "Float",
    "label": "Cuttings per Plant",

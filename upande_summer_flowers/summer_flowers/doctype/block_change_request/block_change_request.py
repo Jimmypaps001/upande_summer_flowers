@@ -3,7 +3,7 @@
 """Splitting a block into several, or recombining several into one.
 
 A block is a piece of land, so the land does not appear or vanish when the fences
-move: the resulting gross area must equal the source gross area, and the request
+move: the resulting area must equal the source area, and the request
 will not execute if it does not. Both directions need Farm Manager approval and a
 justification, and neither is allowed while a planting is standing on the land --
 a plant cannot be transferred between blocks by editing a record.

@@ -151,7 +151,7 @@ class SummerFlowerPropagationPlan(Document):
 
 	# ---------------------------------------------------------- requirement
 	def build_requirement(self):
-		"""Plants to stick per week, grossed up into cuttings.
+		"""Plants to stick per week, scaled up into cuttings.
 
 		Taken from the plan's proposed plantings, which already carry the sticking
 		week the protocol implies, so the two documents cannot disagree about when
@@ -539,7 +539,7 @@ class SummerFlowerPropagationPlan(Document):
 		b.company = self.company
 		b.production_plan = self.production_plan
 		b.peak_weekly_cuttings = peak
-		# Same reason as _probe_batch: peak is already in cuttings, grossed up once
+		# Same reason as _probe_batch: peak is already in cuttings, scaled up once
 		# by cuttings_for_plants. Leaving apply_losses on its default made the real
 		# batch order 14% more than the probe had just quoted on the same document.
 		b.apply_losses = 0

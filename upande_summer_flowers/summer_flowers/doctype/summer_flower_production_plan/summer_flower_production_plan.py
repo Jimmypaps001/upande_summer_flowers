@@ -790,7 +790,7 @@ def _populate(plan):
 	# stems in which week. Recorded as the numbers are folded in, so the matrix cannot
 	# drift from the plan it came from.
 	per_row = []
-	# (start_date, end_date, gross_area_ha) for the area-standing curve
+	# (start_date, end_date, net_area_ha) for the area-standing curve
 	footprints = []
 
 	# ---- what is already on the ground
@@ -827,9 +827,7 @@ def _populate(plan):
 				"lifetime_stems": planting.expected_stems_life,
 				"planting_in_past": 1 if getdate(planting.planting_date) < getdate(nowdate()) else 0,
 			})
-			per_row.append({"weeks": dict(mine), "uproot": str(planting.end_date()),
-			                "gross_area_ha": flt(planting.net_area_ha)
-			                * (1 + flt(protocol.path_allowance_pct) / 100)})
+			per_row.append({"weeks": dict(mine), "uproot": str(planting.end_date())})
 
 	# ---- close the remaining deficits
 	offsets = protocol.flush_offsets()
@@ -901,9 +899,7 @@ def _populate(plan):
 			not_placed += 1
 			unmet += deficit
 			unmet_by_week[(year, week)] += deficit
-			per_row.append({"weeks": {}, "uproot": str(uproot),
-			                "gross_area_ha": (beds * flt(protocol.sqm_gross_per_bed))
-			                / 10_000})
+			per_row.append({"weeks": {}, "uproot": str(uproot)})
 			plan.append("plan_blocks", {
 				"is_new_planting": 1,
 				"block": None,
@@ -974,8 +970,7 @@ def _populate(plan):
 			"planting_in_past": 1 if planting_date < today else 0,
 			"notes": note,
 		})
-		per_row.append({"weeks": dict(mine), "uproot": str(uproot),
-		                "gross_area_ha": (beds * flt(protocol.sqm_gross_per_bed)) / 10_000})
+		per_row.append({"weeks": dict(mine), "uproot": str(uproot)})
 		proposed += 1
 
 	# ---- weekly grid
@@ -1014,7 +1009,7 @@ def _populate(plan):
 	plan.matrix_json = frappe.as_json({
 		"grid": [[y, w, str(m)] for (y, w, m) in grid],
 		"rows": [{"weeks": {"%s-%s" % k: v for k, v in r["weeks"].items()},
-		          "uproot": r["uproot"], "gross_area_ha": r["gross_area_ha"]}
+		          "uproot": r["uproot"]}
 		         for r in per_row],
 	})
 

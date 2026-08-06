@@ -152,7 +152,7 @@
    "creation": "2026-07-31 09:56:16.999043",
    "default": null,
    "depends_on": "custom_is_summer_flower_cycle",
-   "description": "Net planted area. Cannot exceed the block's gross area; a planting does not have to fill the block.",
+   "description": "Net planted area. Cannot exceed the block's area; a planting does not have to fill the block.",
    "docstatus": 0,
    "dt": "Crop Cycle",
    "fetch_from": null,

@@ -30,7 +30,7 @@
    "label": "Net Area (ha)",
    "precision": "5",
    "reqd": 1,
-   "description": "Net bed area \u2014 the ground the crop occupies. Gross block area is no longer carried anywhere."
+   "description": "Net bed area \u2014 the ground the crop occupies, and the only area this app carries."
   },
   {
    "columns": 1,

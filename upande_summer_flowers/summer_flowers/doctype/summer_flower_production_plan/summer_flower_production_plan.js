@@ -185,7 +185,7 @@ function render_sheet(frm) {
 
 function sheet_html(d) {
 	const head = ["BLOCK", "Planting wk", "Planting Date", "Pinching Date",
-		"NET AREA (m2)", "Uprooting Date", "GROSS AREA (Ha)", "NO OF BEDS", "NO.PLANTS"];
+		"NET AREA (m2)", "Uprooting Date", "NET AREA (Ha)", "NO OF BEDS", "NO.PLANTS"];
 	const cols = d.grid.length;
 	let h = `<div style="overflow-x:auto"><table class="table table-bordered table-sm"
 		style="font-size:11px;white-space:nowrap">`;
@@ -195,7 +195,7 @@ function sheet_html(d) {
 	h += `<th></th><th></th></tr><tr>`;
 	head.forEach((c) => (h += `<th>${c}</th>`));
 	d.grid.forEach((g) => (h += `<th class="text-center">${g.week}</th>`));
-	h += `<th>TOTAL</th><th>STEMS/<br>GROSS HA</th><th>LIFETIME</th></tr></thead><tbody>`;
+	h += `<th>TOTAL</th><th>STEMS/<br>HA</th><th>LIFETIME</th></tr></thead><tbody>`;
 
 	// A planting with no block produces nothing and has to look different from one
 	// that produces nothing because its weeks are outside the season.
@@ -205,24 +205,24 @@ function sheet_html(d) {
 		h += `<tr${style}><td>${p.block}</td><td>${p.planting_week || ""}</td>
 			<td>${p.planting_date}</td><td>${p.pinch_date}</td>
 			<td class="text-right">${fmt(p.net_area_sqm)}</td><td>${p.uproot_date}</td>
-			<td class="text-right">${(p.gross_area_ha || 0).toFixed(4)}</td>
+			<td class="text-right">${((p.net_area_sqm || 0) / 10000).toFixed(4)}</td>
 			<td class="text-right">${fmt(p.beds)}</td>
 			<td class="text-right">${fmt(p.plants)}</td>`;
 		p.weekly.forEach((v) => (h += `<td class="text-right">${v ? fmt(v) : ""}</td>`));
 		h += `<td class="text-right"><b>${fmt(p.season_total)}</b></td>
-			<td class="text-right">${fmt(Math.round(p.season_stems_per_gross_ha))}</td>
+			<td class="text-right">${fmt(Math.round(p.season_stems_per_ha))}</td>
 			<td class="text-right">${fmt(p.lifetime_total)}</td></tr>`;
 	});
 
 	const t = d.totals;
 	h += `<tr style="font-weight:bold"><td>TOTAL</td><td></td><td></td><td></td>
 		<td class="text-right">${fmt(t.net_area_sqm)}</td><td></td>
-		<td class="text-right">${(t.gross_area_ha || 0).toFixed(4)}</td>
+		<td class="text-right">${((t.net_area_sqm || 0) / 10000).toFixed(4)}</td>
 		<td class="text-right">${fmt(t.beds)}</td>
 		<td class="text-right">${fmt(t.plants)}</td>
 		<td colspan="${cols}"></td>
 		<td class="text-right">${fmt(t.season)}</td>
-		<td class="text-right">${fmt(Math.round(t.season_stems_per_gross_ha))}</td>
+		<td class="text-right">${fmt(Math.round(t.season_stems_per_ha))}</td>
 		<td class="text-right">${fmt(t.lifetime)}</td></tr>`;
 
 	const band = (label, values, opts = {}) => {
@@ -261,13 +261,11 @@ function sheet_html(d) {
 			__("from Crop Protocol {0} -- change them there", [d.protocol])
 		}</span>
 		<table class="table table-bordered table-sm" style="font-size:11px;max-width:760px">
-		<tr><td>${__("Net / gross m² per bed")}</td><td class="text-right">${
-			a.net_sqm_per_bed} / ${a.gross_sqm_per_bed}</td>
-			<td class="text-muted">${__("path allowance")} ${a.path_allowance_pct}%</td></tr>
+		<tr><td>${__("m² per bed")}</td>
+			<td class="text-right">${a.net_sqm_per_bed}</td><td></td></tr>
 		<tr><td>${__("Plants per m² (net) / per bed")}</td><td class="text-right">${
 			a.plants_per_sqm_net} / ${fmt(a.plants_per_bed)}</td>
-			<td class="text-muted">${fmt(a.plants_per_net_ha)} ${__("per net ha")}, ${
-			fmt(a.plants_per_gross_ha)} ${__("per gross ha")}</td></tr>
+			<td class="text-muted">${fmt(a.plants_per_net_ha)} ${__("per hectare")}</td></tr>
 		<tr><td>${__("Pinch at week / total weeks in ground")}</td>
 			<td class="text-right">${a.pinch_at_week} / ${a.total_weeks_in_ground}</td>
 			<td class="text-muted">${(a.flushes_per_year || 0).toFixed(2)} ${
@@ -277,27 +275,22 @@ function sheet_html(d) {
 		<thead><tr><th>${__("Flush")}</th><th>${__("Weeks from pinch")}</th>
 			<th>${__("Weeks from planting")}</th><th class="text-right">${
 			__("Stems/plant")}</th><th class="text-right">${
-			__("Stems/net ha/yr")}</th><th class="text-right">${
-			__("Stems/gross ha/yr")}</th></tr></thead><tbody>`;
+			__("Stems/ha/yr")}</th></tr></thead><tbody>`;
 		a.flush_schedule.forEach((f) => {
 			h += `<tr><td>${f.flush}</td><td>${f.weeks_from_pinch}</td>
 				<td>${f.weeks_from_planting}</td>
 				<td class="text-right">${f.stems_per_plant}</td>
-				<td class="text-right">${fmt(Math.round(f.stems_per_net_ha_year))}</td>
-				<td class="text-right">${fmt(Math.round(f.stems_per_gross_ha_year))}</td></tr>`;
+				<td class="text-right">${fmt(Math.round(f.stems_per_ha_year))}</td></tr>`;
 		});
 		h += `<tr style="font-weight:bold"><td colspan="3">${
 			__("Total stems per plant life")}</td>
 			<td class="text-right">${a.total_stems_per_plant_life}</td>
-			<td class="text-right">${fmt(Math.round(a.stems_per_net_ha_life))}</td>
-			<td class="text-right">${fmt(Math.round(a.stems_per_gross_ha_life))}</td></tr>
+			<td class="text-right">${fmt(Math.round(a.stems_per_net_ha_life))}</td></tr>
 			<tr><td colspan="3">${__("Per year")}</td><td></td>
-			<td class="text-right">${fmt(Math.round(a.stems_per_net_ha_year))}</td>
-			<td class="text-right">${fmt(Math.round(a.stems_per_gross_ha_year))}</td></tr>
+			<td class="text-right">${fmt(Math.round(a.stems_per_net_ha_year))}</td></tr>
 			<tr><td colspan="3">${__("Best year")}</td>
 			<td class="text-right">${a.best_year_stems_per_plant}</td>
-			<td class="text-right">${fmt(Math.round(a.best_year_stems_per_net_ha))}</td>
-			<td class="text-right">${fmt(Math.round(a.best_year_stems_per_gross_ha))}</td></tr>
+			<td class="text-right">${fmt(Math.round(a.best_year_stems_per_net_ha))}</td></tr>
 			</tbody></table></div>`;
 	}
 	return h;

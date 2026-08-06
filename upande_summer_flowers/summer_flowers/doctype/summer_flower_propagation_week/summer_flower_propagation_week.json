@@ -51,7 +51,7 @@
   },
   {
    "columns": 1,
-   "description": "Plants grossed up for rooting, field and reject losses.",
+   "description": "Plants scaled up for rooting, field and reject losses.",
    "fieldname": "cuttings_required",
    "fieldtype": "Int",
    "in_list_view": 1,

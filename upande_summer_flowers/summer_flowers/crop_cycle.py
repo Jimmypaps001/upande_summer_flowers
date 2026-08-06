@@ -178,7 +178,7 @@ class SummerFlowerCropCycle(CropCycle):
 	def sync_block_geometry(self):
 		"""Align a block-scoped cycle with the block it occupies.
 
-		Gross area is read from the block on every save rather than copied once,
+		The area is read from the block on every save rather than copied once,
 		because a block's net area legitimately changes over time. The native
 		bed-range fields are left alone: a block cycle is described by the block's
 		own beds, not by ranges typed onto the cycle.

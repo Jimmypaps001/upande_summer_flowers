@@ -16,7 +16,7 @@
    "creation": "2026-07-31 22:09:40.616386",
    "default": null,
    "depends_on": "custom_sf_block",
-   "description": "Defaults from the crop cycle's planted area, else the block's gross area.",
+   "description": "Defaults from the crop cycle's planted area, else the block's area.",
    "docstatus": 0,
    "dt": "Material Request",
    "fetch_from": null,

@@ -38,8 +38,6 @@
   "geometry_tab",
   "density_section",
   "plants_per_sqm_net",
-  "path_allowance_pct",
-  "sqm_gross_per_bed",
   "cb_geo",
   "plants_per_bed",
   "min_planting_area_sqm",
@@ -68,12 +66,8 @@
   "stems_per_ha_life",
   "stems_per_ha_year",
   "plants_per_net_ha",
-  "plants_per_gross_ha",
-  "stems_per_gross_ha_life",
-  "stems_per_gross_ha_year",
   "best_year_stems_per_plant",
   "best_year_stems_per_net_ha",
-  "best_year_stems_per_gross_ha",
   "propagation_tab",
   "establishment_section",
   "weeks_on_tray",
@@ -321,20 +315,6 @@
    "description": "Plants standing per square metre of BED \u2014 the ground the crop actually occupies, not the block it sits in. This and Plants per Bed set the bed size, the plants per block and every per-hectare figure in the protocol."
   },
   {
-   "fieldname": "path_allowance_pct",
-   "fieldtype": "Percent",
-   "label": "Path Allowance on Bed Area",
-   "description": "How much floor a bed occupies beyond its planted surface -- paths, edges, headland. Gross bed area is net plus this. The planning workbook quotes every per-hectare figure on gross area, so without it our yields read 25% higher than the sheet for the same crop."
-  },
-  {
-   "fieldname": "sqm_gross_per_bed",
-   "fieldtype": "Float",
-   "read_only": 1,
-   "precision": "4",
-   "label": "Gross m\u00b2 per Bed",
-   "description": "Net m\u00b2 per bed plus the path allowance."
-  },
-  {
    "fieldname": "cb_geo",
    "fieldtype": "Column Break"
   },
@@ -500,26 +480,6 @@
    "label": "Plants per Net Hectare"
   },
   {
-   "fieldname": "plants_per_gross_ha",
-   "fieldtype": "Int",
-   "read_only": 1,
-   "label": "Plants per Gross Hectare"
-  },
-  {
-   "fieldname": "stems_per_gross_ha_life",
-   "fieldtype": "Float",
-   "read_only": 1,
-   "precision": "0",
-   "label": "Stems per Gross Hectare (Life)"
-  },
-  {
-   "fieldname": "stems_per_gross_ha_year",
-   "fieldtype": "Float",
-   "read_only": 1,
-   "precision": "0",
-   "label": "Stems per Gross Hectare per Year"
-  },
-  {
    "fieldname": "best_year_stems_per_plant",
    "fieldtype": "Float",
    "read_only": 1,
@@ -533,13 +493,6 @@
    "read_only": 1,
    "precision": "0",
    "label": "Best Year: Stems per Net Hectare"
-  },
-  {
-   "fieldname": "best_year_stems_per_gross_ha",
-   "fieldtype": "Float",
-   "read_only": 1,
-   "precision": "0",
-   "label": "Best Year: Stems per Gross Hectare"
   },
   {
    "fieldname": "propagation_tab",
@@ -856,7 +809,7 @@
  "grid_page_length": 50,
  "index_web_pages_for_search": 1,
  "links": [],
- "modified": "2026-08-06 09:00:00.000000",
+ "modified": "2026-08-06 10:00:00.000000",
  "modified_by": "Administrator",
  "module": "Summer Flowers",
  "name": "Crop Protocol Version",

@@ -99,9 +99,9 @@ class CropProtocolVersion(Document):
 	def set_geometry(self):
 		"""Everything geometric comes off net bed area.
 
-		Gross block area and the net:gross ratio are gone: the farm plans in the
-		ground the crop occupies, and carrying both invited every per-hectare figure
-		to be quoted against whichever one the reader assumed.
+		One area, and it is the ground the crop occupies. Carrying a second, larger
+		one alongside invited every per-hectare figure to be read against whichever
+		the reader assumed.
 		"""
 		if not self.plants_per_sqm_net:
 			frappe.throw(_("Plants per m² of bed (net) is required."))
@@ -115,14 +115,6 @@ class CropProtocolVersion(Document):
 			               "plants per bed is worked out from it."))
 		self.plants_per_bed = int(round(
 			flt(self.sqm_net_per_bed) * flt(self.plants_per_sqm_net)))
-		# Gross bed area is the floor the bed takes up: its planted surface plus paths
-		# and edges. Net is what the plants occupy and what the plant count comes off;
-		# gross is what the land is measured in and what the planning workbook quotes
-		# every per-hectare figure against. Both, explicitly, from one input -- the
-		# reason the pair was removed before was that each could be typed separately
-		# and then disagree.
-		self.sqm_gross_per_bed = flt(self.sqm_net_per_bed) * (
-			1 + flt(self.path_allowance_pct) / 100)
 
 		# The minimum planting is an area. Beds are whole, so it rounds up to one.
 		beds = 0
@@ -174,22 +166,14 @@ class CropProtocolVersion(Document):
 
 		self.life_expectancy_years = years
 
-		# Per hectare, on both bases, each labelled. stems_per_ha_* stay net, which is
-		# what every other calculation here uses; the gross pair exists because that is
-		# how the yields are quoted on paper, and reconciling a plan against the sheet
-		# was impossible while only one basis existed. 1,742,703 net and 1,394,162
-		# gross are the same crop.
+		# Per hectare means per hectare of BED. There is one area in this app -- the
+		# ground the crop occupies -- and every per-hectare figure is quoted against
+		# it. Carrying a second, larger area alongside invited every yield to be read
+		# against whichever one the reader assumed.
 		plants_per_ha = (self.plants_per_sqm_net or 0) * 10_000
 		self.plants_per_net_ha = int(round(plants_per_ha))
-		self.plants_per_gross_ha = int(round(
-			(self.plants_per_bed or 0) / flt(self.sqm_gross_per_bed) * 10_000
-		)) if self.sqm_gross_per_bed else 0
 		self.stems_per_ha_life = (self.total_stems_per_plant_life or 0) * plants_per_ha
 		self.stems_per_ha_year = (self.stems_per_ha_life / years) if years else 0
-		self.stems_per_gross_ha_life = (
-			(self.total_stems_per_plant_life or 0) * self.plants_per_gross_ha)
-		self.stems_per_gross_ha_year = (
-			self.stems_per_gross_ha_life / years) if years else 0
 
 		# The best year, not the average one. Flushes are not evenly spaced across a
 		# plant's life and the first ones are the heaviest, so the year a planting
@@ -197,8 +181,6 @@ class CropProtocolVersion(Document):
 		# the sheet and only the average was here.
 		self.best_year_stems_per_plant = self.best_year_per_plant()
 		self.best_year_stems_per_net_ha = self.best_year_stems_per_plant * plants_per_ha
-		self.best_year_stems_per_gross_ha = (
-			self.best_year_stems_per_plant * self.plants_per_gross_ha)
 
 		# A target yield and a computed one rarely agree; show the gap instead of
 		# quietly preferring one.

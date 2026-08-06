@@ -1336,7 +1336,7 @@ def protocol_detail(version=None, variety=None, farm=None):
 
 	flushes = []
 	cum = 0
-	# Per hectare of BED. Gross block area is no longer carried anywhere.
+	# Per hectare of BED. It is the only area this app carries.
 	plants_per_ha = (v.plants_per_sqm_net or 0) * 10_000
 	for r in sorted(v.flush_schedule, key=lambda r: r.flush_number or 0):
 		cum += r.stems_per_plant or 0

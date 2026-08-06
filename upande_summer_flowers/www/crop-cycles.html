@@ -395,7 +395,9 @@
     const tiles = [
       { k: "Plants", v: num(g.plants), m: `${num(g.beds)} beds` },
       { k: "Area planted", v: num(Math.round(g.area_planted_sqm)) + " m²",
-        m: g.block_gross_sqm ? `${g.utilisation_pct.toFixed(0)}% of ${num(Math.round(g.block_gross_sqm))} m²` : "" },
+        // block_area_sqm is what the API returns. This asked for a field name that
+        // no longer exists and got undefined, so the sub-label has been blank.
+        m: g.block_area_sqm ? `${g.utilisation_pct.toFixed(0)}% of ${num(Math.round(g.block_area_sqm))} m²` : "" },
       { k: "Density", v: g.density ? g.density.toFixed(1) : "—", m: "plants / m²" },
     ];
     if (d.is_summer_flower) {

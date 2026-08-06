@@ -77,7 +77,7 @@ def _m_pph(v):
 			_step(_("× 10,000 m² per hectare"), flt(v.plants_per_sqm_net) * 10_000),
 		],
 		"caveats": [
-			_("A hectare of BED, not of block. Gross block area and the net:gross "
+			_("A hectare of BED, not of block. A second, larger area and the ratio between them "
 			  "ratio are no longer carried, so there is one area and it is stated."),
 		],
 	}

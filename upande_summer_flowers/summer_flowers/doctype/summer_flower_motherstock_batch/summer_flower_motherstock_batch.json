@@ -174,7 +174,7 @@
   },
   {
    "default": "1",
-   "description": "Tick only when Peak Weekly Cuttings is a count of PLANTS. It grosses the figure up by the protocol's cuttings per plant, so ticking it against a figure already in cuttings applies the rooting and field losses twice.",
+   "description": "Tick only when Peak Weekly Cuttings is a count of PLANTS. It scales the figure up by the protocol's cuttings per plant, so ticking it against a figure already in cuttings applies the rooting and field losses twice.",
    "fieldname": "apply_losses",
    "fieldtype": "Check",
    "label": "Peak Is In Plants (Apply Losses)"
