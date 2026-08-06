@@ -607,11 +607,14 @@ def process_overview(variety=None, farm=None, plan=None):
 	blockers = []
 
 	def stage(key, label, doc=None, state=None, value=None, detail=None,
-	          done=False, blocked=None, count=None):
+	          done=False, blocked=None, count=None, note=None):
+		# blocked stops the chain; note is something to do next that does not.
+		# Plantings waiting on a block used to be a blocker, and it is not one: the
+		# plan is built, the TC order is sized and propagation follows from them.
 		stages.append({
 			"key": key, "label": label, "doc": doc, "state": state,
 			"value": value, "detail": detail, "done": bool(done),
-			"blocked": blocked, "count": count,
+			"blocked": blocked, "note": note, "count": count,
 		})
 		if blocked:
 			blockers.append("%s: %s" % (label, blocked))
@@ -662,10 +665,13 @@ def process_overview(variety=None, farm=None, plan=None):
 			      len([b for b in p.plan_blocks if b.is_new_planting]),
 			      cint(p.new_beds_required))),
 		      done=p.docstatus == 1,
-		      blocked=(_("{0} proposed plantings have no block free for their whole "
-		                 "life, so {1} stems cannot be grown.").format(
-			                 short, "{:,}".format(cint(p.unmet_stems)))
-		               if short else None))
+		      # Not "blocked": the plan is built and the propagation and TC figures
+		      # follow from it. Assigning blocks is the next job, not a prerequisite.
+		      blocked=None,
+		      note=(_("{0} plantings are waiting on a block ({1} stems). Assign blocks "
+		              "before planting; the plan and the TC order already include them."
+		              ).format(short, "{:,}".format(cint(p.unmet_stems)))
+		            if short else None))
 
 	# ── 3. the budget
 	budget = p.get("budget") if p else None

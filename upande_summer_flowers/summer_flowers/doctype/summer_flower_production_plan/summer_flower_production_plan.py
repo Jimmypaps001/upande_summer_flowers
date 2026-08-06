@@ -194,16 +194,18 @@ class SummerFlowerProductionPlan(Document):
 	def set_totals(self):
 		weeks = self.plan_weeks
 		self.total_production_stems = sum((w.production_stems or 0) for w in weeks)
-		self.planned_production_stems = sum(
-			(w.get("planned_production_stems") or 0) for w in weeks)
+		# What the plan grows, and what today's blocks could hold of it. The first is the
+		# plan; the second is a constraint report on it.
+		self.placeable_production_stems = sum(
+			(w.get("placeable_production_stems") or 0) for w in weeks)
 		self.total_demand_stems = sum((w.demand_stems or 0) for w in weeks)
 		self.total_variance_stems = self.total_production_stems - self.total_demand_stems
 		self.coverage_pct = (
 			self.total_production_stems / self.total_demand_stems * 100
 			if self.total_demand_stems else 0
 		)
-		self.planned_coverage_pct = (
-			self.planned_production_stems / self.total_demand_stems * 100
+		self.placeable_coverage_pct = (
+			self.placeable_production_stems / self.total_demand_stems * 100
 			if self.total_demand_stems else 0
 		)
 
@@ -223,12 +225,11 @@ class SummerFlowerProductionPlan(Document):
 			if self.average_area_ha and years else 0
 		)
 
-		# Only plantings that have a block count towards what has to be resourced.
-		# A proposal with nowhere to go is a statement of what the farm cannot do,
-		# not a bed to prepare or a cutting to stick, and counting it would ask
-		# propagation to raise plants that will never be planted.
-		new_rows = [b for b in self.plan_blocks
-		            if b.is_new_planting and not b.get("not_placed")]
+		# Every proposed planting, whether a block has been assigned yet or not. These
+		# are the beds to prepare and the cuttings to stick: the TC order goes to the
+		# lab long before anyone knows which block will be free, and the propagation
+		# plan raises cuttings for the whole plan on the same reasoning.
+		new_rows = [b for b in self.plan_blocks if b.is_new_planting]
 		self.new_beds_required = sum((b.beds or 0) for b in new_rows)
 		self.new_plants_required = sum((b.plants or 0) for b in new_rows)
 
@@ -246,10 +247,8 @@ class SummerFlowerProductionPlan(Document):
 			self.peak_weekly_sticking = 0
 			self.peak_sticking_week = None
 
-		# The planned peak includes plantings with no block. That is the number the
-		# TC order is sized from: the order has to be placed months before anyone
-		# knows which block will be free, and ordering for the placed subset would
-		# guarantee the plan can never be met even after the blocks are sorted out.
+		# The same peak, kept under its own name because the TC order and the
+		# propagation plan both read it.
 		planned_sticking = defaultdict(int)
 		for b in self.plan_blocks:
 			if not b.is_new_planting:
@@ -369,16 +368,17 @@ class SummerFlowerProductionPlan(Document):
 			).format(self.farm))
 		elif self.space_utilisation_pct > 100:
 			notes.append(_(
-				"This plan needs {0} ha at its peak and {1} has {2} ha. It cannot fit "
-				"however the blocks are arranged -- {3} of the proposed plantings "
-				"already have nowhere to go."
+				"This plan needs {0} ha at its peak and {1} has {2} ha, so it cannot "
+				"fit however the blocks are arranged. {3} plantings are waiting on a "
+				"block and some of them will not get one until the farm has more land."
 			).format(round(self.space_required_ha, 3), self.farm,
 			         round(self.space_stated_ha, 3), cint(self.plantings_not_placed)))
 		elif cint(self.plantings_not_placed):
 			notes.append(_(
 				"There is enough land in total ({0} ha needed of {1} ha) but {2} "
-				"plantings still have nowhere to go: a block is held for a whole "
-				"planting's life, so the free beds are not free at the same time."
+				"plantings are still waiting on a block: a block is held for a whole "
+				"planting's life, so the free beds are not free at the same time. "
+				"Moving a planting a week or two either way often finds one."
 			).format(round(self.space_required_ha, 3),
 			         round(self.space_stated_ha, 3), cint(self.plantings_not_placed)))
 		# Its own note, not part of the chain above. Land the plan cannot reach is
@@ -454,8 +454,9 @@ class SummerFlowerProductionPlan(Document):
 			).format(self.tc_order_by_date, first[0], first[1]))
 		if cint(self.plantings_not_placed):
 			notes.append(_(
-				"{0} of the proposed plantings have no block. This order is sized for "
-				"the whole plan, so buying it commits to finding room for them."
+				"{0} of the proposed plantings are waiting on a block. This order is "
+				"sized for the whole plan, which is the point -- it is placed long "
+				"before the blocks are assigned."
 			).format(cint(self.plantings_not_placed)))
 		self.tc_status = "\n".join(notes) or _(
 			"{0} plantlets, {1} cycles of multiplication to {2} mother plants, "
@@ -782,6 +783,19 @@ def _populate(plan):
 	}
 
 	production = defaultdict(int)
+	# A plan answers what the market wants and what the crop does. Whether a block is
+	# free for it is a separate question, answered later when blocks are assigned, so
+	# production counts every planting the plan proposes.
+	#
+	# It did not. A proposal with no block was excluded, which made a plan at a farm
+	# whose blocks were all taken read zero production -- and worse, the loop kept
+	# proposing for a week it had already proposed for, because the deficit never
+	# closed: forty plantings for a demand that needs thirteen.
+	#
+	# placeable is the second grid: the same plan restricted to the plantings a block
+	# is actually free for. That is what the farm can grow today, and it stays visible
+	# beside the plan rather than replacing it.
+	placeable = defaultdict(int)
 	contributors = defaultdict(list)
 	# Every planting's own week-by-week stems, keyed by its plan_blocks row. This is
 	# the shape the planning workbook is actually read in -- one row per planting, one
@@ -801,6 +815,7 @@ def _populate(plan):
 		for (y, w), stems in production_by_week(planting).items():
 			if (y, w) in index:
 				production[(y, w)] += stems
+				placeable[(y, w)] += stems
 				mine[(y, w)] += stems
 				contributors[(y, w)].append(f"{planting.block} ({planting.beds}b)")
 				hit = True
@@ -850,23 +865,12 @@ def _populate(plan):
 	calendar = BlockCalendar(plan.farm, plan.variety)
 	block_capacity = calendar.capacity()
 	not_placed = unmet = 0
-	# What the plan would deliver if every proposal had somewhere to go. Keeping only
-	# the placeable figure meant a plan whose blocks were all taken read zero
-	# production and looked identical to a plan that grows nothing, with the reason
-	# buried in thirteen row notes.
-	#
-	# This is the deficit each unplaceable proposal was meant to close, not that
-	# proposal's full yield. The loop retries a week it could not place, so summing
-	# the retries counted the same shortfall thirteen times over and reported 599%
-	# planned coverage against a demand of 114,000.
-	unmet_by_week = defaultdict(int)
 
 	proposed = 0
 	for (year, week, monday) in grid:
-		# Against what can actually be grown. Measuring against the proposals instead
-		# -- counting an unplaceable one as covering its week -- stopped the loop
-		# retrying that week, and the retries are how later proposals find a block
-		# that has come free: Aster at Karen fell from 70.7% coverage to 60.0%.
+		# Against the plan. Every proposal counts towards it, so a week is proposed for
+		# once and the loop converges on the plantings the demand needs rather than
+		# retrying weeks whose blocks were full.
 		deficit = demand_map.get((year, week), 0) - production[(year, week)]
 		if deficit <= 0:
 			continue
@@ -891,41 +895,12 @@ def _populate(plan):
 		s_year, s_week = iso_year_week(sticking_date)
 		uproot = planting_date + datetime.timedelta(weeks=life_weeks)
 
-		# Find a block free for the planting's whole life before counting any of
-		# its stems. A planting with nowhere to go does not happen, so folding its
-		# flushes into the grid would report production the farm cannot grow.
+		# A block if one is free, and the planting either way. Which block a planting
+		# goes in is decided when blocks are assigned; the plan does not wait for it.
 		block = calendar.place(beds, planting_date, uproot)
 		if not block:
 			not_placed += 1
 			unmet += deficit
-			unmet_by_week[(year, week)] += deficit
-			per_row.append({"weeks": {}, "uproot": str(uproot)})
-			plan.append("plan_blocks", {
-				"is_new_planting": 1,
-				"block": None,
-				"beds": beds,
-				"plants": plants,
-				"sticking_year": s_year,
-				"sticking_week": s_week,
-				"planting_year": p_year,
-				"planting_week": p_week,
-				"planting_date": planting_date,
-				"net_area_ha": (beds * (protocol.sqm_net_per_bed or 0)) / 10_000,
-				"below_minimum": 0,
-				"not_placed": 1,
-				"planting_in_past": 1 if planting_date < today else 0,
-				"notes": (
-					_("{0} has no summer flower blocks, so nothing can be planted "
-					  "there. Mark its blocks as summer flower blocks, or plan this "
-					  "variety at a farm that has them.").format(plan.farm)
-					if not calendar.block_count() else
-					_("Every block big enough for {0} beds is already held by another "
-					  "planting for some part of {1} to {2}. Not counted as "
-					  "production.").format(beds, planting_date, uproot)
-				),
-			})
-			proposed += 1
-			continue
 
 		# Fold every flush of this proposed planting into the grid.
 		family = set()
@@ -937,9 +912,14 @@ def _populate(plan):
 			hy, hw = iso_year_week(hd)
 			family.add(hw)
 			if (hy, hw) in index:
-				production[(hy, hw)] += int(round(spp * plants))
-				mine[(hy, hw)] += int(round(spp * plants))
-				contributors[(hy, hw)].append(f"new {p_year}-W{p_week:02d} ({beds}b)")
+				stems = int(round(spp * plants))
+				production[(hy, hw)] += stems
+				mine[(hy, hw)] += stems
+				if block:
+					placeable[(hy, hw)] += stems
+				contributors[(hy, hw)].append(
+					f"new {p_year}-W{p_week:02d} ({beds}b)"
+					+ ("" if block else " — no block yet"))
 
 		net_ha = (beds * (protocol.sqm_net_per_bed or 0)) / 10_000
 		footprints.append((planting_date, uproot, net_ha))
@@ -947,7 +927,7 @@ def _populate(plan):
 		note = None
 		plan.append("plan_blocks", {
 			"is_new_planting": 1,
-			"block": block,
+			"block": block or None,
 			"beds": beds,
 			"plants": plants,
 			"sticking_year": s_year,
@@ -966,9 +946,16 @@ def _populate(plan):
 				(protocol.total_stems_per_plant_life or 0) * plants
 			)),
 			"below_minimum": 1 if beds < min_beds else 0,
-			"not_placed": 0,
+			"not_placed": 0 if block else 1,
 			"planting_in_past": 1 if planting_date < today else 0,
-			"notes": note,
+			"notes": note if block else (
+				_("No block assigned yet. {0} has no summer flower blocks at all."
+				  ).format(plan.farm) if not calendar.block_count() else
+				_("No block assigned yet: every block of {0} beds or more is held by "
+				  "another planting for part of {1} to {2}. The plan counts it; "
+				  "assign a block before it can be planted."
+				  ).format(beds, planting_date, uproot)
+			),
 		})
 		per_row.append({"weeks": dict(mine), "uproot": str(uproot)})
 		proposed += 1
@@ -1025,7 +1012,7 @@ def _populate(plan):
 			"week_start_date": monday,
 			"month_name": MONTH_NAMES[monday.month - 1],
 			"production_stems": prod,
-			"planned_production_stems": prod + unmet_by_week[(year, week)],
+			"placeable_production_stems": placeable[(year, week)],
 			"demand_stems": dem,
 			"variance_stems": prod - dem,
 			"cumulative_variance": running,

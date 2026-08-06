@@ -11,7 +11,7 @@
   "week_no",
   "week_start_date",
   "month_name",
-  "planned_production_stems",
+  "placeable_production_stems",
   "production_stems",
   "demand_stems",
   "variance_stems",
@@ -49,12 +49,12 @@
    "read_only": 1
   },
   {
-   "fieldname": "planned_production_stems",
+   "fieldname": "placeable_production_stems",
    "fieldtype": "Int",
-   "label": "Planned Stems",
+   "label": "With Blocks Today",
    "read_only": 1,
    "in_list_view": 1,
-   "description": "What the protocol yields from every proposed planting, whether or not a block was found for it."
+   "description": "This week's production from plantings that already have a block. Production beside it is the whole plan."
   },
   {
    "columns": 2,
@@ -103,7 +103,7 @@
  "index_web_pages_for_search": 1,
  "istable": 1,
  "links": [],
- "modified": "2026-07-29 14:10:05.392617",
+ "modified": "2026-08-06 11:00:00.000000",
  "modified_by": "Administrator",
  "module": "Summer Flowers",
  "name": "Summer Flower Plan Week",

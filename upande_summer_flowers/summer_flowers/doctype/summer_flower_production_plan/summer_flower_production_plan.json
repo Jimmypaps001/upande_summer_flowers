@@ -39,12 +39,12 @@
   "weeks_covered",
   "outcome_section",
   "total_production_stems",
-  "planned_production_stems",
+  "placeable_production_stems",
   "total_demand_stems",
   "cb_outcome",
   "total_variance_stems",
   "coverage_pct",
-  "planned_coverage_pct",
+  "placeable_coverage_pct",
   "outcome2_section",
   "weeks_in_deficit",
   "worst_weekly_deficit",
@@ -318,14 +318,15 @@
    "fieldname": "total_production_stems",
    "fieldtype": "Int",
    "label": "Production (stems)",
-   "read_only": 1
+   "read_only": 1,
+   "description": "What this plan grows: every planting it proposes, at protocol yield. Blocks are assigned later and do not change it."
   },
   {
-   "fieldname": "planned_production_stems",
+   "fieldname": "placeable_production_stems",
    "fieldtype": "Int",
-   "label": "Planned Production (Stems)",
+   "label": "Production With Blocks Today",
    "read_only": 1,
-   "description": "Every proposed planting at protocol yield. Production above counts only the plantings a block was found for."
+   "description": "How much of the plan today's free blocks could actually hold. The plan is the figure above; this is a constraint report on it."
   },
   {
    "fieldname": "total_demand_stems",
@@ -350,11 +351,11 @@
    "read_only": 1
   },
   {
-   "fieldname": "planned_coverage_pct",
+   "fieldname": "placeable_coverage_pct",
    "fieldtype": "Percent",
-   "label": "Planned Coverage",
+   "label": "Coverage With Blocks Today",
    "read_only": 1,
-   "description": "Coverage if every proposed planting had somewhere to go."
+   "description": "Coverage if only the plantings that already have a block happened."
   },
   {
    "fieldname": "outcome2_section",
@@ -677,14 +678,14 @@
    "description": "Proposals the farm has no free block for. Their stems are excluded from production, so coverage reflects what can actually be grown.",
    "fieldname": "plantings_not_placed",
    "fieldtype": "Int",
-   "label": "Plantings With No Block",
+   "label": "Plantings Awaiting a Block",
    "read_only": 1
   },
   {
-   "description": "Demand the unplaceable plantings would have covered.",
+   "description": "Stems from plantings with no block assigned yet. They are in the plan and in the TC order; they need a block before they can be planted.",
    "fieldname": "unmet_stems",
    "fieldtype": "Int",
-   "label": "Unmet Stems",
+   "label": "Stems Awaiting a Block",
    "read_only": 1
   },
   {
@@ -712,7 +713,7 @@
  "index_web_pages_for_search": 1,
  "is_submittable": 1,
  "links": [],
- "modified": "2026-08-05 13:00:00.000000",
+ "modified": "2026-08-06 11:00:00.000000",
  "modified_by": "Administrator",
  "module": "Summer Flowers",
  "name": "Summer Flower Production Plan",

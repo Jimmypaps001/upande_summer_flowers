@@ -765,6 +765,7 @@ table.hc tbody tr:hover td:not(.hc-k):not(.hc-m){background:var(--surface-2)}
   border-radius:9px;padding:9px 11px;margin:0 5px 8px 0;position:relative}
 .po-st.done{border-top-color:var(--good)}
 .po-st.blocked{border-top-color:var(--warning);background:var(--warn-bg,rgba(217,119,6,.06))}
+.po-n{font-size:.7rem;color:var(--text-muted);margin-top:4px;line-height:1.35}
 .po-st.stuck{border-top-color:var(--critical);box-shadow:0 0 0 1px var(--critical)}
 .po-n{position:absolute;top:7px;right:9px;font-size:.62rem;font-weight:700;
   color:var(--text-muted)}
@@ -1071,6 +1072,9 @@ table.hc tbody tr:hover td:not(.hc-k):not(.hc-m){background:var(--surface-2)}
           (st.count && st.count > 1 ? ` · ${st.count}` : "") + `</div>` : "") +
         (st.detail ? `<div class="po-d">${esc(st.detail)}</div>` : "") +
         (st.blocked ? `<div class="po-b">${esc(st.blocked)}</div>` : "") +
+        // A note is the next job, not a wall: plantings waiting on a block do not
+        // stop the plan, the TC order or propagation.
+        (st.note ? `<div class="po-n">${esc(st.note)}</div>` : "") +
         `</div>`;
     }).join("") + "</div>";
   }
