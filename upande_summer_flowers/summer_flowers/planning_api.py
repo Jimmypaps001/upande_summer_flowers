@@ -1341,9 +1341,30 @@ EDITABLE_PROTOCOL_FIELDS = (
 
 
 @frappe.whitelist()
-def protocol_detail(version=None, variety=None, farm=None):
-	"""The whole protocol sheet: inputs, derived values and the journey timelines."""
+def protocol_detail(version=None, variety=None, farm=None, plan=None):
+	"""The whole protocol sheet: inputs, derived values and the journey timelines.
+
+	Three ways to arrive at a version, in order of how specific they are.
+
+	A version named outright wins -- that is the picker on the tab. Otherwise a plan
+	in scope names its own, because the plan is built on a pinned version and the rest
+	of the dashboard is describing that plan: showing the version in force beside it
+	would put a different set of numbers on the same screen, and a plan sits on a
+	superseded version routinely.
+
+	Only with neither does it fall back to the version in force for a variety. That
+	fallback used to be the only path -- the dashboard passed plan= and this had no
+	such argument, so Frappe dropped it -- which is why the Protocol tab stayed on
+	Aster Pink Flash while every other tab followed the plan you had picked.
+	"""
 	_guard()
+	source = "picked"
+	if not version and plan:
+		row = frappe.db.get_value("Summer Flower Production Plan", plan,
+		                          ["protocol", "variety", "farm"], as_dict=True)
+		if row and row.protocol:
+			version, variety, farm = row.protocol, row.variety, row.farm
+			source = "plan"
 	if not version:
 		f = {"version_status": "Active"}
 		if variety:
@@ -1355,6 +1376,7 @@ def protocol_detail(version=None, variety=None, farm=None):
 		if not rows:
 			return {"version": None}
 		version = rows[0]
+		source = "in force"
 
 	v = frappe.get_doc("Crop Protocol Version", version)
 
@@ -1423,6 +1445,11 @@ def protocol_detail(version=None, variety=None, farm=None):
 		"effective_from": str(v.effective_from) if v.effective_from else None,
 		"effective_to": str(v.effective_to) if v.effective_to else None,
 		"is_current": bool(v.is_current),
+		# Which of the three routes chose this version, so the tab can say whether it
+		# is showing the plan's pinned protocol or the one in force -- they differ
+		# routinely, and a reader who cannot tell which is which cannot trust either.
+		"source": source,
+		"for_plan": plan if source == "plan" else None,
 		"change_reason": v.change_reason,
 		"editable": v.version_status == "Draft",
 		"climate_note": v.climate_note,

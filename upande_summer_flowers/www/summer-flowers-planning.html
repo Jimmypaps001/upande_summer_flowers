@@ -3466,7 +3466,13 @@ table.hc tbody tr:hover td:not(.hc-k):not(.hc-m){background:var(--surface-2)}
     $("pr-sub").textContent =
       `${d.version} · v${d.version_no} ${d.status}` +
       (d.is_current ? " (current)" : "") +
-      ` · ${d.farm} · effective ${d.effective_from || "—"} → ${d.effective_to || "open"}`;
+      ` · ${d.farm} · effective ${d.effective_from || "—"} → ${d.effective_to || "open"}` +
+      // Say which protocol this is. The plan's pinned version and the version in
+      // force differ routinely, and a reader who cannot tell them apart cannot
+      // trust either.
+      (d.source === "plan"
+        ? ` · the protocol ${d.for_plan} is built on`
+        : d.source === "in force" ? " · the version in force" : "");
 
     // banner: what editing this version will actually do
     let banner = "";
