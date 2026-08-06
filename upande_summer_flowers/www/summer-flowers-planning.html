@@ -118,6 +118,8 @@
         <div class="pl-legend" id="pp-cal-legend"></div>
         <div id="pp-calendar"></div>
         <h3>{{ _("Stick, plant, harvest") }}</h3>
+        <p class="pl-note" style="margin-top:0">{{ _("The plan is built from the demand; which beds each planting goes into is decided here. Click a block to see what could hold it.") }}</p>
+        <div class="pl-row" id="pp-alloc" style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:8px"></div>
         <div id="pp-table" class="pl-scroll pl-tall"></div>
       </div>
     </section>
@@ -694,6 +696,19 @@ input.pin.tgt.manual{border-color:var(--warning);
 .cal-line .dot2{width:7px;height:7px;border-radius:50%;flex:none}
 .cal-who{color:var(--text-muted);font-size:.7rem}
 .cal-none{font-size:.72rem;color:var(--text-muted)}
+.pl-mini{font:inherit;font-size:.72rem;padding:1px 7px;border-radius:6px;cursor:pointer;
+  border:1px dashed var(--border);background:var(--surface-2);color:var(--text)}
+.pl-mini:hover{border-style:solid;border-color:var(--series-1)}
+/* Candidate rows in the assign dialog: the ones that fit read as choices, the ones
+   that do not read as information about why. */
+.bk-opt{display:flex;align-items:baseline;gap:8px;width:100%;text-align:left;
+  padding:6px 8px;border:1px solid var(--border);border-radius:8px;background:var(--surface);
+  cursor:pointer;font:inherit;font-size:.78rem;margin-bottom:5px}
+.bk-opt:hover{border-color:var(--series-1)}
+.bk-opt.no{cursor:default;opacity:.75;border-style:dashed}
+.bk-opt.no:hover{border-color:var(--border)}
+.bk-b{font-weight:600}
+.bk-m{color:var(--text-muted);font-size:.72rem;margin-left:auto;text-align:right}
 .pg-track{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:6px}
 .pg-stop{background:var(--surface-2);border:1px solid var(--border);border-radius:8px;
   padding:8px 12px;min-width:130px}
@@ -1416,6 +1431,15 @@ table.hc tbody tr:hover td:not(.hc-k):not(.hc-m){background:var(--surface-2)}
     // filter matches on.
     rows = rows.filter((r) => inPeriod(r.planting_year, r.planting_week));
     renderPlantingCalendar(rows);
+    const awaiting = pp.plantings.filter((r) => r.is_new && !r.block).length;
+    $("pp-alloc").innerHTML = awaiting
+      ? `<span class="pl-note" style="margin:0">${awaiting} ${
+          awaiting === 1 ? "planting is" : "plantings are"} waiting on a block. ` +
+        `The plan and the TC order already include them.</span>` +
+        `<button type="button" class="pl-btn primary" data-bk-all="1">` +
+        `Suggest and assign all</button>`
+      : `<span class="pl-note" style="margin:0">Every planting has a block.</span>` +
+        `<button type="button" class="pl-btn" data-bk-clear="1">Clear all blocks</button>`;
     const shown = rows.slice(0, 200);
     $("pp-table").innerHTML =
       '<table class="pl-t"><thead><tr><th>#</th><th>Stick</th><th>Plant</th><th>1st harvest</th>' +
@@ -1431,7 +1455,15 @@ table.hc tbody tr:hover td:not(.hc-k):not(.hc-m){background:var(--surface-2)}
           `<td>${esc(r.first_harvest || "—")}</td><td>${esc(r.harvest_family || "—")}</td>` +
           `<td class="n">${num(r.beds)}</td><td class="n">${num(r.plants)}</td>` +
           `<td class="n">${num(r.cuttings)}</td><td class="n">${num(r.lifetime_stems)}</td>` +
-          `<td>${esc(shortBlock(r.block) || "—")}</td><td>${f.join(" ")}</td></tr>`;
+          // The block is the one thing on this row a planner decides, so it is the
+          // one thing here that is not read-only. Suggestions load on demand: a plan
+          // with thirty-five plantings would otherwise ask the server for thirty-five
+          // ranked block lists before showing anything.
+          `<td>${r.is_new && !S.pp.submitted
+            ? `<button type="button" class="pl-mini" data-bk="${esc(r.row)}"
+                 data-beds="${r.beds}">${esc(shortBlock(r.block) || "assign…")}</button>`
+            : esc(shortBlock(r.block) || "—")}</td>` +
+          `<td>${f.join(" ")}</td></tr>`;
       }).join("") + "</tbody></table>" +
       (rows.length > shown.length
         ? `<p class="pl-note">Showing ${shown.length} of ${rows.length}.</p>` : "");
@@ -2292,6 +2324,66 @@ table.hc tbody tr:hover td:not(.hc-k):not(.hc-m){background:var(--surface-2)}
   }
 
   const cint = (v) => parseInt(v || 0, 10) || 0;
+
+  // The suggestion list for one planting. Loaded when asked for, not up front: a plan
+  // with thirty-five plantings would mean thirty-five ranked block lists before the
+  // table could be drawn.
+  function openBlockPicker(plan, row, beds) {
+    run("block_options", { plan, row }, (res) => {
+      const p = (res.plantings || [])[0];
+      if (!p) { toast("That planting is no longer on the plan.", true); return; }
+      const wrap = document.createElement("div");
+      wrap.className = "fm-back";
+      const opts = (p.candidates || []).map((c) => {
+        if (c.fits) {
+          return `<button type="button" class="bk-opt" data-pick="${esc(c.block)}">` +
+            `<span class="bk-b">${esc(shortBlock(c.block))}</span>` +
+            `<span class="bk-m">${c.free_beds} of ${c.total_beds} beds free — fits` +
+            `${c.free_beds === beds ? ", exactly" : `, ${c.free_beds - beds} to spare`}` +
+            `</span></button>`;
+        }
+        const b = (c.blockers || [])[0] || {};
+        const held = b.planting
+          ? `held by ${esc(b.planting)} (${esc(b.status || "?")}${
+              b.in_ground ? ", in the ground" : ""})`
+          : "held";
+        return `<div class="bk-opt no"><span class="bk-b">${esc(shortBlock(c.block))}</span>` +
+          `<span class="bk-m">${c.free_beds} of ${c.total_beds} free — needs ${beds}<br>` +
+          (c.free_from
+            ? `free ${esc(c.free_from)}, ${c.weeks_late} wk${c.weeks_late === 1 ? "" : "s"} late<br>`
+            : "") +
+          `${held}${b.uproot_weeks_early
+            ? `<br>uproot ${b.uproot_weeks_early} wks early to fit` : ""}` +
+          `</span></div>`;
+      }).join("") || '<p class="pl-empty">No blocks at this farm.</p>';
+
+      wrap.innerHTML = `<div class="fm-card" style="max-width:560px">
+        <h3 class="fm-h">Block for planting ${p.idx}</h3>
+        <p class="fm-i">${beds} beds, stuck ${esc(p.sticking_week)}, planted ${
+          esc(p.planting_date)}, pinched ${esc(p.pinch_date || "—")}, uprooted ${
+          esc(p.uproot_date)}. It needs those beds for the whole of that.</p>
+        <div class="fm-b">${opts}</div>
+        <div class="fm-a">
+          ${p.assigned ? '<button type="button" class="pl-btn" data-pick="">Leave unassigned</button>' : ""}
+          <button type="button" class="pl-btn" data-cancel="1">Close</button>
+        </div></div>`;
+      document.body.appendChild(wrap);
+      const close = () => wrap.remove();
+      wrap.addEventListener("click", (ev) => {
+        if (ev.target === wrap || ev.target.closest("[data-cancel]")) return close();
+        const pick = ev.target.closest("[data-pick]");
+        if (!pick) return;
+        close();
+        run("set_block", { plan, row, block: pick.dataset.pick }, (r) => {
+          toast(r.block
+            ? `Planting ${p.idx} assigned to ${shortBlock(r.block)}. ` +
+              `With blocks: ${r.placeable_coverage_pct.toFixed(1)}% of demand.`
+            : `Planting ${p.idx} left unassigned. ${r.awaiting} waiting on a block.`);
+          refreshAfterWrite();
+        });
+      });
+    });
+  }
 
   function refreshAfterWrite() {
     // A write can move production, so the projections are reloaded too rather
@@ -3890,6 +3982,44 @@ table.hc tbody tr:hover td:not(.hc-k):not(.hc-m){background:var(--surface-2)}
             refreshAfterWrite();
           });
         }
+        return;
+      }
+      // ── block allocation: suggest, then let the reader choose
+      const bkAll = ev.target.closest("[data-bk-all]");
+      if (bkAll && S.pp && S.pp.plan) {
+        run("assign_all_blocks", { plan: S.pp.plan }, (r) => {
+          toast(`${r.assigned.length} plantings assigned. ${r.awaiting} still waiting. ` +
+                `With blocks: ${r.placeable_coverage_pct.toFixed(1)}% of demand.`);
+          refreshAfterWrite();
+        });
+        return;
+      }
+      const bkClear = ev.target.closest("[data-bk-clear]");
+      if (bkClear && S.pp && S.pp.plan) {
+        formModal({
+          title: "Clear every block?",
+          intro: "The plan itself does not change — only which beds each planting is "
+               + "assigned to. Production, the TC order and propagation all stay as they are.",
+          fields: [],
+          submitLabel: "Clear all blocks",
+          onSubmit: () => {
+            const rows = S.pp.plantings.filter((r) => r.is_new && r.block);
+            let done = 0;
+            rows.forEach((r) => {
+              run("set_block", { plan: S.pp.plan, row: r.row, block: "" }, () => {
+                if (++done === rows.length) {
+                  toast(`${done} blocks cleared.`);
+                  refreshAfterWrite();
+                }
+              });
+            });
+          },
+        });
+        return;
+      }
+      const bk = ev.target.closest("[data-bk]");
+      if (bk && S.pp && S.pp.plan) {
+        openBlockPicker(S.pp.plan, bk.dataset.bk, +bk.dataset.beds || 0);
         return;
       }
       const bg = ev.target.closest("[data-bg]");

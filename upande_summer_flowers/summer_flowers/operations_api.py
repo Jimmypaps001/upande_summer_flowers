@@ -934,6 +934,42 @@ def create_production_plan(demand, farm=None, season_start_year=None, force_new=
 
 
 @frappe.whitelist()
+def block_options(plan, row=None):
+	"""The blocks that could hold each planting awaiting one. Assigns nothing."""
+	_guard()
+	from upande_summer_flowers.summer_flowers.doctype.summer_flower_production_plan.summer_flower_production_plan import (
+		block_suggestions,
+	)
+
+	out = block_suggestions(plan, only_unassigned=0)
+	if row:
+		out["plantings"] = [p for p in out["plantings"] if p["row"] == row]
+	return out
+
+
+@frappe.whitelist()
+def set_block(plan, row, block=None):
+	"""Put one planting in one block, or clear it. The planner's decision, applied."""
+	_guard()
+	from upande_summer_flowers.summer_flowers.doctype.summer_flower_production_plan.summer_flower_production_plan import (
+		assign_block,
+	)
+
+	return assign_block(plan, row, block)
+
+
+@frappe.whitelist()
+def assign_all_blocks(plan):
+	"""Take every suggestion at once, for the plans with thirty-five plantings."""
+	_guard()
+	from upande_summer_flowers.summer_flowers.doctype.summer_flower_production_plan.summer_flower_production_plan import (
+		autoassign_blocks,
+	)
+
+	return autoassign_blocks(plan)
+
+
+@frappe.whitelist()
 def create_propagation_plan(plan):
 	"""Work out how the plan's cuttings get sourced."""
 	_guard()

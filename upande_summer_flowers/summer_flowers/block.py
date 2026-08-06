@@ -35,6 +35,7 @@ def validate_block(doc, method=None):
 	apply_current_area(doc)
 	check_planted_within_area(doc)
 	measure_beds(doc)
+	apply_current_coverage(doc)
 
 
 def check_area_history(doc):
@@ -240,3 +241,21 @@ def link_beds_to_block(block, from_bed=None, to_bed=None):
 		frappe.db.set_value("Bed", name, "custom_block", block, update_modified=False)
 	doc.save()
 	return {"linked": len(names), "measured_ha": doc.custom_measured_net_area_ha}
+
+
+def apply_current_coverage(doc):
+	"""Recount what is standing on this block as part of saving it.
+
+	Occupied and free beds depend on the block's own bed count, not only on the
+	plantings, and they were recomputed only when a planting changed. Reloading
+	Karen's blocks from 40 beds to 80 therefore left all 73 reporting the free beds
+	they had before -- Block 5A said "occupied 19, free 21" of 80.
+	"""
+	if doc.is_new():
+		return
+	from upande_summer_flowers.summer_flowers.doctype.planting_calendar.planting_calendar import (
+		coverage_of,
+	)
+
+	for field, value in coverage_of(doc.name, doc.get("custom_total_beds")).items():
+		doc.set(field, value)

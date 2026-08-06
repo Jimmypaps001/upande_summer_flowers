@@ -400,8 +400,15 @@ class PlantingCalendar(Document):
 
 # ---------------------------------------------------------------------------
 
-def refresh_coverage(block):
-	"""Recompute a block's occupancy from the plantings standing on it today."""
+def coverage_of(block, total_beds=None):
+	"""What is standing on a block today, as a dict of the fields that record it.
+
+	Split out from refresh_coverage so a block can compute its own occupancy while it
+	is being saved. The figures depend on the block's bed count as well as on the
+	plantings, and this was only ever recomputed when a planting changed -- so
+	reloading Karen's blocks from 40 beds to 80 left every one of them reporting the
+	free beds it had before: "occupied 19, free 21" against a block of 80.
+	"""
 	today = getdate(nowdate())
 	rows = frappe.get_all(
 		"Planting Calendar",
@@ -410,23 +417,31 @@ def refresh_coverage(block):
 		        "planned_uproot_date", "actual_uproot_date"],
 	)
 	beds = plants = 0
-	current = None
+	holders = []
 	for r in rows:
 		end = getdate(r.actual_uproot_date or r.planned_uproot_date)
 		if end < today or getdate(r.planting_date) > today:
 			continue
 		beds += r.beds or 0
 		plants += r.plants or 0
-		current = r.name
+		holders.append(r.name)
 
-	total = frappe.db.get_value("Block", block, "custom_total_beds") or 0
-	frappe.db.set_value("Block", block, {
+	total = cint(total_beds if total_beds is not None
+	             else frappe.db.get_value("Block", block, "custom_total_beds"))
+	return {
 		"custom_beds_occupied": beds,
 		"custom_beds_free": max(0, total - beds),
 		"custom_coverage_pct": (beds / total * 100) if total else 0,
 		"custom_plants_standing": plants,
-		"custom_current_planting": current,
-	}, update_modified=False)
+		# Several plantings can stand in one block now that beds are allocated
+		# individually, so this is the earliest of them rather than the only one.
+		"custom_current_planting": holders[0] if holders else None,
+	}
+
+
+def refresh_coverage(block):
+	"""Recompute a block's occupancy from the plantings standing on it today."""
+	frappe.db.set_value("Block", block, coverage_of(block), update_modified=False)
 
 
 def standing_plantings(farm, variety, as_of=None):

@@ -979,6 +979,10 @@ def planting_plan(plan=None, variety=None, farm=None):
 			"unallocated": bool(b.is_new_planting and not b.block),
 			"not_placed": bool(b.get("not_placed")),
 			"notes": b.notes,
+			# The child row's own name, so the allocation control can assign a block
+			# to this exact planting rather than matching on index and dates.
+			"row": b.name,
+			"is_new": bool(b.is_new_planting),
 		})
 
 	# Occupancy windows, from the plan's allocated rows plus anything already on
@@ -1032,6 +1036,9 @@ def planting_plan(plan=None, variety=None, farm=None):
 		"protocol_stale": cint(fresh["stale"]),
 		"protocol_note": fresh["note"],
 		"plantings": plantings,
+		# A submitted plan's blocks are not editable, so the allocation control is not
+		# offered on one.
+		"submitted": bool(p.docstatus),
 		"occupancy": occupancy,
 		"totals": {
 			"proposed": len(new_rows),
