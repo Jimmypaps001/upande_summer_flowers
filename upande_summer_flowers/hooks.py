@@ -221,6 +221,9 @@ app_include_js = "/assets/upande_summer_flowers/js/sf_calendar.js"
 # would otherwise collapse every block in a greenhouse into one record.
 
 override_doctype_class = {
+	# Bed, so a bed can live in a block with no greenhouse. The greenhouse path is
+	# untouched: a bed that has one runs upande_core's validate unaltered.
+	"Bed": "upande_summer_flowers.summer_flowers.bed.SummerFlowerBed",
 	"Crop Cycle": "upande_summer_flowers.summer_flowers.crop_cycle.SummerFlowerCropCycle",
 }
 
@@ -241,12 +244,18 @@ doc_events = {
 	},
 	"Block": {
 		"validate": "upande_summer_flowers.summer_flowers.block.validate_block",
+		"autoname": "upande_summer_flowers.summer_flowers.bed_naming.block_autoname",
 	},
 	# Bed is the unit of space, so its area has to be right and it has to have one
 	# owner. Unconditional, unlike the others: a wrong area or a bed claimed by both
 	# a block and a greenhouse miscounts the land for every crop, not just these.
 	"Bed": {
 		"validate": "upande_summer_flowers.summer_flowers.bed.validate_bed",
+		# Summer flower beds are in open blocks, not greenhouses, so they cannot be
+		# named after one or take their farm through one.
+		"autoname": "upande_summer_flowers.summer_flowers.bed_naming.bed_autoname",
+		"before_validate":
+			"upande_summer_flowers.summer_flowers.bed_naming.bed_farm_from_block",
 	},
 	# Material Request IS the crop input order sheet -- there is no parallel
 	# doctype. This only derives quantities from area and application rate, and

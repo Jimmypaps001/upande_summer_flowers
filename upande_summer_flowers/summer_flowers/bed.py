@@ -10,6 +10,7 @@ and to a greenhouse independently, so the same land could be counted twice.
 import frappe
 from frappe import _
 from frappe.utils import flt
+from upande_core.upande_core.doctype.bed.bed import Bed as BaseBed
 
 # A bed with no length or width is not a small bed, it is an unmeasured one, and
 # the two have to be told apart: the first would shrink a block's capacity, the
@@ -24,13 +25,14 @@ def validate_bed(doc, method=None):
 
 
 def set_area(doc):
-	"""Area is length x width, always.
+	"""Area is length x width wherever there are a length and a width.
 
 	bed_area was 0 on all 20,668 beds on this site while length and width were
 	filled in, so every consumer either ignored it or read zero hectares of land.
 	It is derived, so it is derived here rather than typed.
 	"""
-	doc.bed_area = flt(doc.bed_length) * flt(doc.bed_width)
+	if doc.bed_length and doc.bed_width:
+		doc.bed_area = flt(doc.bed_length) * flt(doc.bed_width)
 
 
 def check_single_owner(doc):
@@ -95,3 +97,33 @@ def backfill_bed_area(limit=None):
 	frappe.db.commit()
 	return {"beds": len(rows), "areas_written": fixed, "already_correct": already,
 	        "no_dimensions": blank}
+
+
+class SummerFlowerBed(BaseBed):
+	"""Bed, extended so it can exist in a block with no greenhouse.
+
+	upande_core's Bed validates that the bed's farm carries "Has Beds" in its Farm
+	Type, and it reaches the farm through the greenhouse. Summer flower beds have no
+	greenhouse -- they are in open blocks -- so that check has nothing to walk and
+	throws "Farm None does not include Has Beds in its Farm Type".
+
+	Only that path changes. A bed with a greenhouse runs the original validate
+	unaltered, so every rose bed on the site behaves exactly as before.
+	"""
+
+	def validate(self):
+		if self.greenhouse:
+			super().validate()
+			return
+		if not self.custom_block:
+			frappe.throw(_("A bed needs either a greenhouse or a block."))
+		# The two things the parent does that still apply: the area, and no section,
+		# because sections are numbered within a greenhouse and there is not one.
+		#
+		# Only from the dimensions where there are dimensions. A block's beds are known
+		# to be 50 m² each without anyone having measured a length and a width, and
+		# deriving unconditionally would overwrite the one figure we actually have
+		# with zero.
+		if self.bed_length and self.bed_width:
+			self.bed_area = flt(self.bed_length) * flt(self.bed_width)
+		self.section = None

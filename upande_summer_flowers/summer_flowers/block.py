@@ -142,13 +142,17 @@ def bed_rows(block, greenhouse=None):
 
 
 def measured_sqm(row):
-	"""Length x width, which is now also what bed_area holds.
+	"""What a bed measures: its dimensions where it has them, its area otherwise.
 
-	Computed rather than read even so: bed_area is backfilled and maintained by
-	Bed's own validate, but a block should not go to zero hectares if a bed is
-	written by something that bypasses it.
+	Both cases are real on this site and they arrived in that order. Greenhouse beds
+	carry a length and a width and had bed_area sitting at zero, so this computed
+	from the dimensions and ignored the stored figure. The KR farm blocks are the
+	other way round -- every bed is known to be 50 m² and nobody has measured a
+	length or a width -- and computing unconditionally reported 4,789 beds covering
+	nought hectares.
 	"""
-	return flt(row.get("bed_length")) * flt(row.get("bed_width"))
+	sqm = flt(row.get("bed_length")) * flt(row.get("bed_width"))
+	return sqm or flt(row.get("bed_area"))
 
 
 def measure_beds(doc):
@@ -201,9 +205,9 @@ def measure_beds(doc):
 		               "area is available to plan with."))
 	blank = len([r for r in rows if not measured_sqm(r)])
 	if blank:
-		notes.append(_("{0} of {1} beds have no length or width recorded, so the "
-		               "measured area understates this block by whatever they are. "
-		               "Nothing can compute it for them.").format(blank, len(rows)))
+		notes.append(_("{0} of {1} beds have neither dimensions nor a recorded area, "
+		               "so the measured area understates this block by whatever they "
+		               "are. Nothing can compute it for them.").format(blank, len(rows)))
 	if credible < len(rows) - blank:
 		notes.append(_("{0} beds measure outside {1}-{2} sqm, which is not a bed."
 		               ).format(len(rows) - blank - credible,

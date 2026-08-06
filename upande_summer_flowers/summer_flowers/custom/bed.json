@@ -580,6 +580,17 @@
  ],
  "doctype": "Bed",
  "links": [],
- "property_setters": [],
+ "property_setters": [
+  {
+   "name": "Bed-greenhouse-reqd",
+   "doc_type": "Bed",
+   "doctype_or_field": "DocField",
+   "field_name": "greenhouse",
+   "property": "reqd",
+   "property_type": "Check",
+   "value": "0",
+   "doctype": "Property Setter"
+  }
+ ],
  "sync_on_migrate": 1
 }
