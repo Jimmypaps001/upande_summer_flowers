@@ -1400,24 +1400,50 @@ def protocol_detail(version=None, variety=None, farm=None, plan=None):
 		})
 
 	# TC order through to the first harvest off those cuttings.
-	lead = v.supplier_lead_weeks or 0
-	estab = v.ms_establishment_weeks or 0
+	#
+	# Built from lead_time_weeks, which is the same figure the plan's order-by date
+	# works back from, so the two cannot disagree. They did: this card walked order ->
+	# establishment -> cut and reached 81 weeks, while the plan assumed 103 -- because
+	# the card ignored the multiplication cycles the order's SIZE depends on. You
+	# cannot order a fifth of the mother plants and also cut eighteen weeks after they
+	# land. It counted hardening twice as well, once inside establishment and again on
+	# the way to the field.
+	lead = cint(v.supplier_lead_weeks)
+	estab = cint(v.ms_establishment_weeks)
+	cycles = cint(v.max_multiplication_cycles)
+	build = cycles * cint(v.cycle_time_weeks)
+	to_cut = cint(v.lead_time_weeks)          # arrival to the first cutting
+	stick_to_plant = cint(v.sticking_to_planting_weeks)
+	plant_to_harvest = cint(v.first_harvest_offset_weeks)
+
 	journey = [
 		{"week": 0, "label": "Place TC order", "note": None},
 		{"week": lead, "label": "TC arrives", "note": f"{lead}w supplier lead"},
-		{"week": lead + (v.weeks_on_tray or 0), "label": "Tray to pot",
-		 "note": f"{v.weeks_on_tray or 0}w tray"},
-		{"week": lead + (v.weeks_on_tray or 0) + (v.weeks_on_pot or 0),
-		 "label": "Pot ends, ramp begins", "note": f"{v.weeks_on_pot or 0}w pot"},
-		{"week": lead + estab, "label": "Motherstock ready",
+		{"week": lead + cint(v.weeks_on_tray), "label": "Tray to pot",
+		 "note": f"{cint(v.weeks_on_tray)}w tray"},
+		{"week": lead + cint(v.weeks_on_tray) + cint(v.weeks_on_pot),
+		 "label": "Pot ends, ramp begins", "note": f"{cint(v.weeks_on_pot)}w pot"},
+		{"week": lead + estab, "label": "First generation ready",
 		 "note": f"{estab}w establishment, ramp {v.ramp_profile or ''}"},
-		{"week": lead + estab + (v.hardening_weeks or 0), "label": "Cutting to field",
-		 "note": f"{v.hardening_weeks or 0}w hardening"},
-		{"week": lead + estab + (v.hardening_weeks or 0) + (v.weeks_to_pinch or 0),
-		 "label": "Pinch", "note": f"{v.weeks_to_pinch or 0}w to pinch"},
-		{"week": lead + estab + (v.cutting_to_harvest_weeks or 0),
+	]
+	if cycles:
+		journey += [
+			{"week": lead + estab + build, "label": "Multiplication done",
+			 "note": f"{cycles} cycles x {cint(v.cycle_time_weeks)}w"},
+			{"week": lead + to_cut, "label": "Motherstock cutting",
+			 "note": f"{estab}w to establish the multiplied generation"},
+		]
+	else:
+		journey.append({"week": lead + to_cut, "label": "Motherstock cutting",
+		                "note": "no build-up"})
+	journey += [
+		{"week": lead + to_cut + stick_to_plant, "label": "Cuttings planted",
+		 "note": f"{stick_to_plant}w sticking to planting"},
+		{"week": lead + to_cut + stick_to_plant + cint(v.weeks_to_pinch),
+		 "label": "Pinch", "note": f"{cint(v.weeks_to_pinch)}w to pinch"},
+		{"week": lead + to_cut + stick_to_plant + plant_to_harvest,
 		 "label": "First harvest",
-		 "note": f"{v.cutting_to_harvest_weeks or 0}w cutting to harvest"},
+		 "note": f"{plant_to_harvest}w planting to first harvest"},
 	]
 
 	ramp = [
