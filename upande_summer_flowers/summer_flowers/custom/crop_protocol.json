@@ -2214,6 +2214,26 @@
   {
    "doc_type": "Crop Protocol",
    "doctype_or_field": "DocField",
+   "field_name": "custom_sf_plants_per_bed",
+   "property": "read_only",
+   "property_type": "Check",
+   "value": "1",
+   "name": "Crop Protocol-custom_sf_plants_per_bed-read_only",
+   "doctype": "Property Setter"
+  },
+  {
+   "doc_type": "Crop Protocol",
+   "doctype_or_field": "DocField",
+   "field_name": "custom_sf_sqm_net_per_bed",
+   "property": "read_only",
+   "property_type": "Check",
+   "value": "0",
+   "name": "Crop Protocol-custom_sf_sqm_net_per_bed-read_only",
+   "doctype": "Property Setter"
+  },
+  {
+   "doc_type": "Crop Protocol",
+   "doctype_or_field": "DocField",
    "field_name": "flush_details_section",
    "property": "depends_on",
    "property_type": "Data",
@@ -2307,7 +2327,7 @@
    "field_name": "planting_section",
    "property": "depends_on",
    "property_type": "Data",
-   "value": "eval:!doc.custom_is_summer_flower",
+   "value": "",
    "name": "Crop Protocol-planting_section-depends_on",
    "doctype": "Property Setter"
   },

@@ -376,8 +376,22 @@ def set_status(doc):
 		doc.custom_sf_pending_changes = _("Differs from {0} in: {1}").format(
 			doc.get("custom_sf_current_version"), ", ".join(changed))
 	else:
-		doc.custom_sf_protocol_status = "Approved"
-		doc.custom_sf_pending_changes = None
+		# Matching the version again does not approve a protocol. Editing a number and
+		# then putting it back leaves nothing to approve, but the workflow owns this
+		# field and declares no Draft -> Approved move, so writing "Approved" here
+		# raised WorkflowPermissionError and the edit could not be saved at all.
+		#
+		# Lowering to Draft is this function's job because an approved status with
+		# different numbers behind it is a lie. Raising is the workflow's, because an
+		# approval is somebody deciding, not an equality test.
+		if doc.get("custom_sf_protocol_status") == "Approved":
+			doc.custom_sf_pending_changes = None
+			return
+		doc.custom_sf_pending_changes = _(
+			"Nothing differs from {0}. Approving is still a decision someone makes, so "
+			"this stays where the workflow left it."
+		).format(doc.get("custom_sf_current_version")) \
+			if doc.get("custom_sf_current_version") else None
 
 
 @frappe.whitelist()

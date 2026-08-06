@@ -106,7 +106,15 @@ class CropProtocolVersion(Document):
 		if not self.plants_per_sqm_net:
 			frappe.throw(_("Plants per m² of bed (net) is required."))
 
-		self.sqm_net_per_bed = (self.plants_per_bed or 0) / self.plants_per_sqm_net
+		# Two inputs decide the geometry: how densely the crop is planted, and how big
+		# a bed is. Plants per bed was an input too and is now the result of them --
+		# 50 m² at 20 plants per m² is 1,000 plants -- because three numbers where two
+		# will do is three numbers that can disagree.
+		if not self.sqm_net_per_bed:
+			frappe.throw(_("Net m² per bed is required. It is the size of one bed, and "
+			               "plants per bed is worked out from it."))
+		self.plants_per_bed = int(round(
+			flt(self.sqm_net_per_bed) * flt(self.plants_per_sqm_net)))
 		# Gross bed area is the floor the bed takes up: its planted surface plus paths
 		# and edges. Net is what the plants occupy and what the plant count comes off;
 		# gross is what the land is measured in and what the planning workbook quotes

@@ -342,13 +342,15 @@
    "default": "1000",
    "fieldname": "plants_per_bed",
    "fieldtype": "Int",
-   "label": "Plants Per Bed"
+   "label": "Plants Per Bed",
+   "read_only": 1,
+   "description": "Bed area at the planting density. Not typed: an area at a density is a plant count, and typing both let them disagree."
   },
   {
    "fieldname": "min_planting_area_sqm",
    "fieldtype": "Float",
    "label": "Minimum planting area (m\u00b2 net)",
-   "description": "The smallest planting worth making, as net bed area. The planner will not propose anything below it; it converts the area to whole beds using the bed size above."
+   "description": "The smallest planting worth making, as an area. Beds are whole, so this rounds up to whole beds and then to plants."
   },
   {
    "fieldname": "derived_geo_section",
@@ -361,7 +363,7 @@
    "fieldtype": "Float",
    "label": "m\u00b2 net per bed",
    "precision": "2",
-   "read_only": 1
+   "description": "The net planted area of one bed. Karen's beds are 50 m\u00b2 each. Plants per bed follows from this and the density."
   },
   {
    "fieldname": "min_planting_beds_derived",
@@ -854,7 +856,7 @@
  "grid_page_length": 50,
  "index_web_pages_for_search": 1,
  "links": [],
- "modified": "2026-08-05 12:00:00.000000",
+ "modified": "2026-08-06 09:00:00.000000",
  "modified_by": "Administrator",
  "module": "Summer Flowers",
  "name": "Crop Protocol Version",
