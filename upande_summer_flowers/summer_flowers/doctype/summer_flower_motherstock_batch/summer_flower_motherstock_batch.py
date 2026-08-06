@@ -215,8 +215,15 @@ def lab_lead_weeks(version):
 	reconciled. The protocol wins because it is the more specific and the auditable
 	one; the Setting remains the fallback for a protocol that has not filled it in.
 	"""
-	weeks = cint(getattr(version, "supplier_lead_weeks", 0))
-	return weeks or lab_turnaround_weeks()
+	# The protocol's figure, including zero. Zero is a real answer -- plantlets already
+	# on the farm, or bought in rooted -- and treating it as "not filled in" meant the
+	# journey said 0 weeks of supplier lead while every date built from this one
+	# assumed the global 20, two numbers for one fact. The Setting is the fallback only
+	# for a version that has no such field at all.
+	weeks = getattr(version, "supplier_lead_weeks", None)
+	if weeks is None:
+		return lab_turnaround_weeks()
+	return cint(weeks)
 
 
 def tc_order_by_date(version, first_sticking_date):
