@@ -191,7 +191,43 @@ class SummerFlowerProductionPlan(Document):
 				"pct_of_year": (b["production"] / total * 100) if total else 0,
 			})
 
+	def refresh_placement(self):
+		"""Recount what has a block, and what that grows, from the rows as they stand.
+
+		plantings_not_placed, unmet_stems and the weekly placeable figures were only
+		computed during a rebuild, so assigning a block by hand left them saying what
+		was true before: 34 plantings unassigned and the counter still reading 0.
+
+		The per-planting weekly stems are already in matrix_json, row for row with
+		plan_blocks, so the placeable grid is those rows that have a block. No yield is
+		recalculated here -- the same numbers, added up differently.
+		"""
+		rows = [b for b in self.plan_blocks if b.is_new_planting]
+		self.plantings_not_placed = len([b for b in rows if not b.block])
+		self.blocks_used = len({b.block for b in self.plan_blocks if b.block})
+
+		try:
+			stems = frappe.parse_json(self.matrix_json or "{}").get("rows") or []
+		except Exception:
+			stems = []
+		if len(stems) != len(self.plan_blocks):
+			return
+		placeable = defaultdict(int)
+		unmet = 0
+		for row, mine in zip(self.plan_blocks, stems):
+			weekly = (mine or {}).get("weeks") or {}
+			if row.block or not row.is_new_planting:
+				for key, v in weekly.items():
+					placeable[key] += cint(v)
+			else:
+				unmet += sum(cint(v) for v in weekly.values())
+		self.unmet_stems = unmet
+		for w in self.plan_weeks:
+			w.placeable_production_stems = placeable.get(
+				"%s-%s" % (cint(w.year), cint(w.week_no)), 0)
+
 	def set_totals(self):
+		self.refresh_placement()
 		weeks = self.plan_weeks
 		self.total_production_stems = sum((w.production_stems or 0) for w in weeks)
 		# What the plan grows, and what today's blocks could hold of it. The first is the
@@ -618,6 +654,165 @@ def season_for(date):
 
 
 @frappe.whitelist()
+def block_suggestions(plan, only_unassigned=1):
+	"""For each planting, the blocks that could hold it -- nothing is assigned.
+
+	The plan is built from the demand and the protocol; which beds a planting goes
+	into is decided here, afterwards, by someone who knows the farm. So this ranks
+	the options and names what stands in the way, and assign_block is a separate
+	call that the reader makes.
+	"""
+	frappe.has_permission("Summer Flower Production Plan", "read", plan, throw=True)
+	p = frappe.get_doc("Summer Flower Production Plan", plan)
+	protocol = frappe.get_cached_doc("Crop Protocol Version", p.protocol)
+	life_weeks = cint(protocol.total_weeks_in_ground)
+	only_unassigned = cint(only_unassigned)
+
+	# Seeded with what is already reserved, then each row this plan has already
+	# assigned is reserved too, so two rows are never offered the same beds.
+	cal = BlockCalendar(p.farm, p.variety)
+	rows = [b for b in p.plan_blocks if b.is_new_planting and b.planting_date]
+	for b in rows:
+		if b.block:
+			blk = cal.get(b.block)
+			if blk:
+				blk["busy"].append({
+					"start": getdate(b.planting_date),
+					"end": getdate(b.planting_date) + datetime.timedelta(weeks=life_weeks),
+					"beds": cint(b.beds), "holder": p.name, "status": "This plan",
+					"in_ground": False})
+
+	out = []
+	for b in rows:
+		if only_unassigned and b.block:
+			continue
+		start = getdate(b.planting_date)
+		end = start + datetime.timedelta(weeks=life_weeks)
+		out.append({
+			"row": b.name,
+			"idx": b.idx,
+			"beds": cint(b.beds),
+			"plants": cint(b.plants),
+			"sticking_week": "%s-W%02d" % (b.sticking_year, cint(b.sticking_week)),
+			"planting_date": str(start),
+			"pinch_date": str(b.pinch_date or ""),
+			"first_harvest": ("%s-W%02d" % (b.first_harvest_year,
+			                                cint(b.first_harvest_week))
+			                  if b.first_harvest_year else None),
+			"uproot_date": str(end),
+			"assigned": b.block,
+			"candidates": cal.candidates(cint(b.beds), start, end),
+		})
+	return {"plan": p.name, "farm": p.farm, "variety": p.variety,
+	        "life_weeks": life_weeks,
+	        "awaiting": cint(p.plantings_not_placed),
+	        "plantings": out}
+
+
+@frappe.whitelist()
+def assign_block(plan, row, block):
+	"""Put one planting in one block, or take it out again.
+
+	Refuses only what is arithmetically impossible -- not enough beds free for the
+	planting's whole life -- and says what is in the way when it does. Everything
+	else is the planner's call, including leaving a planting unassigned.
+	"""
+	frappe.has_permission("Summer Flower Production Plan", "write", plan, throw=True)
+	p = frappe.get_doc("Summer Flower Production Plan", plan)
+	if p.docstatus != 0:
+		frappe.throw(_("{0} is not a draft, so its blocks cannot be changed.").format(plan))
+	target = next((b for b in p.plan_blocks if b.name == row), None)
+	if not target:
+		frappe.throw(_("That planting is not on this plan."))
+
+	if not block:
+		target.block = None
+		target.not_placed = 1
+	else:
+		protocol = frappe.get_cached_doc("Crop Protocol Version", p.protocol)
+		start = getdate(target.planting_date)
+		end = start + datetime.timedelta(weeks=cint(protocol.total_weeks_in_ground))
+		cal = BlockCalendar(p.farm, p.variety)
+		for b in p.plan_blocks:
+			if b.name != row and b.is_new_planting and b.block and b.planting_date:
+				blk = cal.get(b.block)
+				if blk:
+					blk["busy"].append({
+						"start": getdate(b.planting_date),
+						"end": getdate(b.planting_date) + datetime.timedelta(
+							weeks=cint(protocol.total_weeks_in_ground)),
+						"beds": cint(b.beds), "holder": p.name,
+						"status": "This plan", "in_ground": False})
+		blk = cal.get(block)
+		if not blk:
+			frappe.throw(_("{0} is not a summer flower block at {1}.").format(block, p.farm))
+		free = cal.free_beds(blk, start, end)
+		if free < cint(target.beds):
+			frappe.throw(_(
+				"{0} has {1} of its {2} beds free from {3} to {4}, and this planting "
+				"needs {5}. Uproot something earlier, move the planting, or choose "
+				"another block."
+			).format(block, free, blk["beds"], start, end, cint(target.beds)))
+		target.block = block
+		target.not_placed = 0
+		target.notes = None
+
+	# The weekly grid distinguishes the plan from what today's blocks could hold, so
+	# assigning a block changes that second figure and has to be recomputed. The plan
+	# itself does not move: the plantings were always counted.
+	p.flags.ignore_permissions = True
+	p.save()
+	p.reload()
+	return {"row": row, "block": target.block,
+	        "awaiting": cint(p.plantings_not_placed),
+	        "placeable_production_stems": cint(p.placeable_production_stems),
+	        "placeable_coverage_pct": flt(p.placeable_coverage_pct),
+	        "coverage_pct": flt(p.coverage_pct)}
+
+
+@frappe.whitelist()
+def autoassign_blocks(plan):
+	"""Take every suggestion the calendar would make, in one go.
+
+	The same tightest-fit rule the planner uses, applied to the rows that have no
+	block. Offered because doing it by hand for thirty-five plantings is tedious, not
+	because it knows better than the person doing it -- anything it assigns can be
+	changed afterwards.
+	"""
+	frappe.has_permission("Summer Flower Production Plan", "write", plan, throw=True)
+	p = frappe.get_doc("Summer Flower Production Plan", plan)
+	if p.docstatus != 0:
+		frappe.throw(_("{0} is not a draft, so its blocks cannot be changed.").format(plan))
+	protocol = frappe.get_cached_doc("Crop Protocol Version", p.protocol)
+	life = cint(protocol.total_weeks_in_ground)
+	cal = BlockCalendar(p.farm, p.variety)
+	for b in p.plan_blocks:
+		if b.is_new_planting and b.block and b.planting_date:
+			blk = cal.get(b.block)
+			if blk:
+				blk["busy"].append({
+					"start": getdate(b.planting_date),
+					"end": getdate(b.planting_date) + datetime.timedelta(weeks=life),
+					"beds": cint(b.beds), "holder": p.name, "status": "This plan",
+					"in_ground": False})
+	assigned = []
+	for b in p.plan_blocks:
+		if not b.is_new_planting or b.block or not b.planting_date:
+			continue
+		start = getdate(b.planting_date)
+		got = cal.place(cint(b.beds), start,
+		                start + datetime.timedelta(weeks=life))
+		if got:
+			b.block, b.not_placed, b.notes = got, 0, None
+			assigned.append({"row": b.name, "block": got, "beds": cint(b.beds)})
+	p.flags.ignore_permissions = True
+	p.save()
+	p.reload()
+	return {"assigned": assigned, "awaiting": cint(p.plantings_not_placed),
+	        "placeable_coverage_pct": flt(p.placeable_coverage_pct)}
+
+
+@frappe.whitelist()
 def plan_preview(market_demand, farm=None, season_start_year=None):
 	"""What creating this plan would mean, before anything is written.
 
@@ -1022,13 +1217,18 @@ def _populate(plan):
 
 
 class BlockCalendar:
-	"""Which block is free, and when.
+	"""Which beds are free, in which block, and when.
 
-	A block holds one planting at a time, but only for that planting's life --
-	once it is uprooted the block is available again. The previous version popped
-	a block out of the pool for good, so a three-year plan could never use more
-	than one planting per block and everything after the thirteenth proposal came
-	back unplaceable. Occupancy is a set of windows per block instead.
+	A planting reserves the beds it needs, not the whole block. Karen's blocks run
+	from 20 to 120 beds and a planting is 10 to 34, so holding a whole block for one
+	planting left seventy beds of a hundred idle for two years and reported that forty
+	plantings needed forty blocks. Several plantings share a block where the beds and
+	the dates both allow it, which is already how the farm works: Block 5A holds two.
+
+	Occupancy is a list of (start, end, beds) reservations per block. Beds free in a
+	window is the block's total less the most beds reserved at any moment inside it --
+	the peak, not the sum, because two reservations that do not overlap in time do not
+	compete for the same beds.
 	"""
 
 	def __init__(self, farm, variety=None):
@@ -1053,14 +1253,24 @@ class BlockCalendar:
 		f = {"calendar_status": ["in", RESERVING_STATES]}
 		for r in frappe.get_all(
 				"Planting Calendar", filters=f,
-				fields=["block", "planting_date", "planned_uproot_date",
-				        "actual_uproot_date"]):
+				fields=["name", "block", "beds", "planting_date",
+				        "planned_uproot_date", "actual_uproot_date",
+				        "calendar_status"]):
 			b = self._get(r.block)
 			if not b or not r.planting_date:
 				continue
 			end = r.actual_uproot_date or r.planned_uproot_date
-			b["busy"].append((getdate(r.planting_date),
-			                  getdate(end) if end else getdate(r.planting_date)))
+			b["busy"].append({
+				"start": getdate(r.planting_date),
+				"end": getdate(end) if end else getdate(r.planting_date),
+				"beds": cint(r.beds) or b["beds"],
+				"holder": r.name,
+				"status": r.calendar_status,
+				# Whether the crop is in the ground decides what freeing the beds
+				# costs: a Draft reservation can simply be moved, a Planted one has
+				# to be uprooted early and loses its remaining flushes.
+				"in_ground": r.calendar_status in ("Planted",),
+			})
 
 	def _get(self, name):
 		for b in self.blocks:
@@ -1068,25 +1278,92 @@ class BlockCalendar:
 				return b
 		return None
 
-	def place(self, beds, start, end):
-		"""Smallest block that fits and is free for the whole window.
+	@staticmethod
+	def _peak_reserved(block, start, end):
+		"""The most beds reserved at any single moment inside a window.
 
-		Smallest-that-fits rather than largest-first: taking a 40-bed block for an
-		8-bed planting wastes the block for the planting's whole life, and blocks
-		are the scarce thing here, not beds.
+		The sum would double count reservations that follow one another: two 40-bed
+		plantings a year apart in an 80-bed block use 40 beds, not 80.
+		"""
+		edges = sorted({start, end}
+		               | {r["start"] for r in block["busy"] if start <= r["start"] < end}
+		               | {r["end"] for r in block["busy"] if start < r["end"] <= end})
+		peak = 0
+		for point in edges:
+			if point >= end:
+				continue
+			at = sum(r["beds"] for r in block["busy"]
+			         if r["start"] <= point < r["end"])
+			peak = max(peak, at)
+		return peak
+
+	def free_beds(self, block, start, end):
+		"""Beds free for the whole of a window, in one block."""
+		return max(0, block["beds"] - self._peak_reserved(block, start, end))
+
+	def place(self, beds, start, end, reserve=True):
+		"""The block that fits with the least room to spare.
+
+		Tightest fit rather than largest-first: a 34-bed planting put into a 120-bed
+		block leaves 86 beds fragmented across that planting's whole life, and the
+		point of allocating by bed is to keep the big blocks whole for the plantings
+		that need them.
 		"""
 		best = None
 		for b in self.blocks:
-			if b["beds"] < beds:
+			free = self.free_beds(b, start, end)
+			if free < beds:
 				continue
-			if any(not (end <= s or start >= e) for s, e in b["busy"]):
-				continue
-			if best is None or b["beds"] < best["beds"]:
+			if best is None or free < self.free_beds(best, start, end):
 				best = b
 		if best is None:
 			return None
-		best["busy"].append((start, end))
+		if reserve:
+			best["busy"].append({"start": start, "end": end, "beds": beds,
+			                     "holder": None, "status": "Proposed",
+			                     "in_ground": False})
 		return best["name"]
+
+	def candidates(self, beds, start, end, limit=6):
+		"""Every block, ranked: the ones that fit, then the ones that nearly do.
+
+		A block that frees up two weeks after the planting is wanted is worth seeing --
+		moving the planting a fortnight is usually cheaper than finding land -- and so
+		is knowing which planting holds it and what uprooting that one early would
+		cost. Hiding occupied blocks would hide both.
+		"""
+		out = []
+		for b in self.blocks:
+			free = self.free_beds(b, start, end)
+			if free >= beds:
+				out.append({"block": b["name"], "total_beds": b["beds"],
+				            "free_beds": free, "fits": True, "free_from": None,
+				            "weeks_late": 0, "blockers": []})
+				continue
+			# What holds it, and when it would be free enough.
+			clash = [r for r in b["busy"]
+			         if not (end <= r["start"] or start >= r["end"])]
+			free_from = None
+			for r in sorted(clash, key=lambda x: x["end"]):
+				if b["beds"] - self._peak_reserved(b, r["end"], end) >= beds:
+					free_from = r["end"]
+					break
+			out.append({
+				"block": b["name"], "total_beds": b["beds"], "free_beds": free,
+				"fits": False,
+				"free_from": str(free_from) if free_from else None,
+				"weeks_late": ((free_from - start).days // 7) if free_from else None,
+				"blockers": [{"planting": r["holder"], "status": r["status"],
+				              "beds": r["beds"], "frees_on": str(r["end"]),
+				              "in_ground": r["in_ground"],
+				              "uproot_weeks_early": max(
+					              0, (r["end"] - start).days // 7)}
+				             for r in sorted(clash, key=lambda x: x["end"])[:3]],
+			})
+		out.sort(key=lambda c: (not c["fits"],
+		                        c["free_beds"] - beds if c["fits"] else 0,
+		                        c["weeks_late"] if c["weeks_late"] is not None else 9999))
+		return out[:limit]
 
 	def capacity(self):
 		return max((b["beds"] for b in self.blocks), default=0)
@@ -1101,3 +1378,6 @@ class BlockCalendar:
 
 	def used(self):
 		return len([b for b in self.blocks if b["busy"]])
+
+	def get(self, name):
+		return self._get(name)
