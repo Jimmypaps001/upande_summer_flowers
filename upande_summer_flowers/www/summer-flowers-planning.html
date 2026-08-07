@@ -2853,18 +2853,48 @@ table.hc tbody tr:hover td:not(.hc-k):not(.hc-m){background:var(--surface-2)}
     const cum = {};
     let acc = 0;
     ((dv.weeks) || []).forEach((r) => { acc += r.variance; cum[r.label] = acc; });
+    // Production is what the plan grows; Supplied is what the confirmed TC order
+    // can actually put in the ground. Until an order is confirmed the two are the
+    // same number by definition, so the column says so rather than repeating itself
+    // in silence -- a column quietly duplicating its neighbour reads as a bug.
+    const committed = !!(dv && dv.tc_committed);
+    const caption = committed
+      ? `<p class="pl-note"><b>Supplied</b> is what the confirmed order of ` +
+        `${num(dv.tc_plants_committed)} plantlets` +
+        (dv.tc_order_date_committed
+          ? `, placed ${esc(dv.tc_order_date_committed)},` : "") +
+        ` can put in the ground. Where it falls below Production, the cuttings ` +
+        `are not there to plant what the plan asks for.</p>`
+      : `<p class="pl-note">No TC order has been confirmed, so <b>Supplied</b> ` +
+        `matches Production — nothing is constraining the plan yet. Confirm an ` +
+        `order above and this column shows what it actually delivers.</p>`;
+
     $("pn-weeks").innerHTML = q.weeks.length
-      ? '<table class="pl-t"><thead><tr><th>Week</th><th>Starts</th>' +
+      ? caption +
+        '<table class="pl-t"><thead><tr><th>Week</th><th>Starts</th>' +
         '<th class="n">Demand</th><th class="n">Production</th>' +
+        '<th class="n">Supplied</th>' +
         '<th class="n">Variance</th><th class="n">Cumulative</th>' +
         '</tr></thead><tbody>' +
-        q.weeks.map((r) => `<tr class="${r.variance < 0 ? "short" : ""}">` +
-          `<td>${esc(r.label)}</td><td>${esc(r.week_start_date || "")}</td>` +
-          `<td class="n">${num(r.demand)}</td>` +
-          `<td class="n">${num(r.production)}</td>` +
-          `<td class="n" style="color:var(${r.variance < 0 ? "--critical" : "--good"})">` +
-          `${sgn(r.variance)}</td>` +
-          `<td class="n">${sgn(cum[r.label] || 0)}</td></tr>`).join("") +
+        q.weeks.map((r) => {
+          const sup = r.supplied || 0;
+          // Short against the plan is the interesting case: the plan wanted these
+          // stems and the order cannot deliver them.
+          const shortOfPlan = committed && sup < (r.production || 0);
+          return `<tr class="${r.variance < 0 ? "short" : ""}">` +
+            // demand_vs_production calls it `date`; this asked for week_start_date
+            // and got undefined, so the Starts column has been blank all along.
+            `<td>${esc(r.label)}</td><td>${esc(r.date || r.week_start_date || "")}</td>` +
+            `<td class="n">${num(r.demand)}</td>` +
+            `<td class="n">${num(r.production)}</td>` +
+            `<td class="n"${shortOfPlan
+              ? ' style="color:var(--critical)" title="' +
+                num((r.production || 0) - sup) + ' stems the order cannot supply"'
+              : ""}>${num(sup)}</td>` +
+            `<td class="n" style="color:var(${r.variance < 0 ? "--critical" : "--good"})">` +
+            `${sgn(r.variance)}</td>` +
+            `<td class="n">${sgn(cum[r.label] || 0)}</td></tr>`;
+        }).join("") +
         "</tbody></table>"
       : '<p class="pl-empty">No weeks in this period.</p>';
 

@@ -129,6 +129,13 @@ def demand_vs_production(variety=None, farm=None, plan=None):
 	p = frappe.get_doc("Summer Flower Production Plan", plan)
 	v = frappe.get_cached_doc("Crop Protocol Version", p.protocol)
 
+	# Only a committed order constrains anything, so only then is the stored
+	# supplied figure the answer. Reading it unconditionally returns zero for every
+	# plan saved before the column existed -- a plan that grows nothing, which is
+	# both wrong and alarming. Falling back on the value being falsy would be worse:
+	# a week a real order genuinely cannot supply would quietly show production.
+	committed = bool(p.tc_choice_committed)
+
 	weeks = [
 		{
 			"label": f"{w.year}-W{w.week_no:02d}",
@@ -136,6 +143,11 @@ def demand_vs_production(variety=None, farm=None, plan=None):
 			"demand": w.demand_stems or 0,
 			"production": w.production_stems or 0,
 			"variance": w.variance_stems or 0,
+			# What the confirmed order can actually supply this week. Equal to
+			# production until an order is confirmed, so the column reads as "no
+			# constraint yet" rather than as a plan that grows nothing.
+			"supplied": (cint(w.supplied_production_stems) if committed
+			             else cint(w.production_stems)),
 			"area_ha": flt(w.area_ha),
 		}
 		for w in p.plan_weeks
@@ -160,6 +172,9 @@ def demand_vs_production(variety=None, farm=None, plan=None):
 		"version": p.protocol,
 		"status": p.status,
 		"period": f"{p.from_year}-W{p.from_week:02d} to {p.to_year}-W{p.to_week:02d}",
+		"tc_committed": committed,
+		"tc_plants_committed": cint(p.tc_plants_committed),
+		"tc_order_date_committed": str(p.tc_order_date_committed or ""),
 		"weeks": weeks,
 		"months": months,
 		"totals": {
@@ -167,6 +182,10 @@ def demand_vs_production(variety=None, farm=None, plan=None):
 			"production_stems": p.total_production_stems or 0,
 			"variance_stems": p.total_variance_stems or 0,
 			"coverage_pct": flt(p.coverage_pct),
+			"supplied_stems": (cint(p.supplied_production_stems) if committed
+			                   else cint(p.total_production_stems)),
+			"supplied_coverage_pct": (flt(p.supplied_coverage_pct) if committed
+			                          else flt(p.coverage_pct)),
 			"weeks_in_deficit": p.weeks_in_deficit or 0,
 			"plants_required": plants,
 			"beds_required": p.new_beds_required or 0,
