@@ -150,13 +150,22 @@ function confirm_plan(frm, values, s) {
 	// knowable from the demand and the protocol, and both are why a plan gets
 	// abandoned after it has been built.
 	if (s.tc) {
+		// Every figure named, in the order it is derived. "12,245 mother plants cutting
+		// 12,245 in the peak week" repeated one number without saying the second was
+		// cuttings — and at one cutting per plant per week they are always equal.
+		const rate = s.tc.cuttings_per_plant_per_week || 1;
 		rows.push([__("Tissue culture to buy"),
-			`<b>${num(s.tc.plantlets)}</b> ${__("plantlets")} — ${
-				num(s.tc.mother_plants)} ${__("mother plants cutting")} ${
-				num(s.tc.cuttings)} ${__("in the peak week")}`]);
-		rows.push([__("Peak week it is sized on"),
-			`${num(s.tc.peak_week_stems)} ${__("stems")}, ${
-				num(s.tc.plants_in_peak_week)} ${__("plants to stick")}`]);
+			`<b>${num(s.tc.plantlets)}</b> ${__("plantlets")}`]);
+		rows.push([__("Which multiply into"),
+			`${num(s.tc.mother_plants)} ${__("mother plants")}` +
+			` <span class="text-muted">(${__("at")} ${rate} ${
+				__("cutting(s) per plant per week")})</span>`]);
+		rows.push([__("Enough to cut"),
+			`${num(s.tc.cuttings)} ${__("cuttings")} ${__("in")} <b>${
+				esc(s.tc.peak_week)}</b> — ${__("the busiest sticking week")}`]);
+		rows.push([__("That week plants"),
+			`${num(s.tc.plants_in_peak_week)} ${__("plants, to meet")} ${
+				num(s.tc.peak_week_stems)} ${__("stems of demand")}`]);
 	}
 	if (s.space) {
 		const over = s.space.pct_of_farm && s.space.pct_of_farm > 100;

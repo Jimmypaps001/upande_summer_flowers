@@ -990,7 +990,8 @@ def plan_preview(market_demand, farm=None, season_start_year=None):
 				lab_lead_weeks,
 			)
 
-		peak_stems = max((cint(r.demand_stems) for r in weeks), default=0)
+		peak_row = max(weeks, key=lambda r: cint(r.demand_stems))
+		peak_stems = cint(peak_row.demand_stems)
 		offsets = v.flush_offsets()
 		first_flush = offsets[0][1] if offsets else 0
 		ppb = cint(v.plants_per_bed) or 1
@@ -1003,10 +1004,17 @@ def plan_preview(market_demand, farm=None, season_start_year=None):
 			per_week = flt(v.cuttings_per_plant_per_week) or 1.0
 			mothers = int(math.ceil(cuttings / per_week))
 			tc = {
+				# Which week, not just how big. "The peak week" means nothing without
+				# it, and it is the week every date downstream is counted back from.
+				"peak_week": "%s-W%02d" % (cint(peak_row.year), cint(peak_row.week_no)),
 				"peak_week_stems": peak_stems,
 				"plants_in_peak_week": plants,
 				"cuttings": cuttings,
 				"mother_plants": mothers,
+				# Carried so the reader can see why mothers and cuttings are often the
+				# same number: at one cutting per plant per week they are equal, and
+				# printing both without the rate looks like a mistake.
+				"cuttings_per_plant_per_week": per_week,
 				"plantlets": int(math.ceil(v.tc_plants_for(mothers))),
 				"order_by": lead["order_by"] if lead else None,
 				"late": bool(lead and lead["late"]),
@@ -1042,16 +1050,18 @@ def plan_preview(market_demand, farm=None, season_start_year=None):
 						"{3} ha. It will not all fit, so expect plantings with no block."
 					).format(space["ha_needed"], space["beds_needed"], farm,
 					         space["ha_at_farm"]))
-			if tc["late"]:
-				notes.append(_(
-					"About {0} plantlets to buy, and the order was due {1}."
-				).format("{:,}".format(tc["plantlets"]), tc["order_by"]))
-			else:
-				notes.append(_(
-					"About {0} plantlets to buy{1}."
-				).format("{:,}".format(tc["plantlets"]),
-				         _(", ordered by {0}").format(tc["order_by"])
-				         if tc["order_by"] else ""))
+			notes.append(_(
+				"About {0} plantlets to buy. They multiply into {1} mother plants, "
+				"which is what it takes to cut {2} cuttings in {3} -- the busiest "
+				"sticking week, and the one the pool has to be sized for because "
+				"cuttings cannot be banked.{4}"
+			).format("{:,}".format(tc["plantlets"]),
+			         "{:,}".format(tc["mother_plants"]),
+			         "{:,}".format(tc["cuttings"]), tc["peak_week"],
+			         _(" The order was due {0}.").format(tc["order_by"])
+			         if tc["late"] else
+			         (_(" Order by {0}.").format(tc["order_by"])
+			          if tc["order_by"] else "")))
 
 	return {
 		"variety": d.variety, "farm": farm, "season": "%s-%s" % (year, str(year + 1)[-2:]),
