@@ -1991,7 +1991,7 @@ table.hc tbody tr:hover td:not(.hc-k):not(.hc-m){background:var(--surface-2)}
 
     html += `<h3 class="pl-h3">Sticking week by week</h3>` +
       `<p class="pl-note">Capacity is what the standing and new pools can actually ` +
-      `cut that week. Ramp is how much of their full rate that is: a pool climbs to ` +
+      `cut that week. Build-up is how much of their full rate that is: a pool climbs to ` +
       `100% over ${t.ramp_weeks || 0} weeks from its first cut, so the early weeks ` +
       `are short even when the pool is sized correctly for the peak.</p>` +
       (on ? `<p class="pl-note">Showing ${scoped.length} of ${r.weeks.length} ` +
@@ -2005,7 +2005,7 @@ table.hc tbody tr:hover td:not(.hc-k):not(.hc-m){background:var(--surface-2)}
           '<col style="width:88px"><col></colgroup>' +
           '<thead><tr><th>Week</th>' +
           '<th>Starts</th><th class="n">Plants</th><th class="n">Cuttings</th>' +
-          '<th class="n">Capacity</th><th class="n">Ramp</th>' +
+          '<th class="n">Capacity</th><th class="n">Build-up</th>' +
           '<th class="n">Existing MS</th><th class="n">New MS</th>' +
           '<th class="n">Uncovered</th><th>Planted in</th></tr></thead><tbody>' +
           scoped.map((x) => `<tr${x.shortfall ? ' class="short"' : ""}>` +
@@ -2693,8 +2693,8 @@ table.hc tbody tr:hover td:not(.hc-k):not(.hc-m){background:var(--surface-2)}
       { k: "First cutting", v: esc(tc.first_sticking_date || "—"),
         m: tc.ramp_weeks
           ? `full capacity ${esc(tc.full_capacity_date || "—")} after a ` +
-            `${tc.ramp_weeks}-week ramp`
-          : "no ramp recorded" },
+            `${tc.ramp_weeks}-week build-up`
+          : "no build-up recorded" },
       { k: "Short during build-up", v: num(tc.lost_to_ramp || 0), m: "cuttings",
         c: tc.lost_to_ramp ? "--serious" : "--good" },
     ].map(tile).join("");
@@ -2866,7 +2866,7 @@ table.hc tbody tr:hover td:not(.hc-k):not(.hc-m){background:var(--surface-2)}
 
   // The answer to "if I send half to propagation, when does it join production".
   // Every diverted week becomes a pool of its own: the protocol's tray and pot
-  // weeks to become a mother plant, then its ramp, then a full life of cutting.
+  // weeks to become a mother plant, then its build-up, then a full life of cutting.
   function returnsHtml(b) {
     const rets = b.prop_returns || [];
     const gained = (b.sticking || []).filter((x) => x.returned_capacity);
@@ -3372,7 +3372,7 @@ table.hc tbody tr:hover td:not(.hc-k):not(.hc-m){background:var(--surface-2)}
     $("ls-table").innerHTML =
       '<p class="pl-note">Click any <b>To farm</b> figure to change the split for that ' +
       'week. What you leave behind goes to the propagation unit and comes back as its ' +
-      'own motherstock pool after establishment, ramping to full capacity like any ' +
+      'own motherstock pool after establishment, building up to full capacity like any ' +
       'other — so it shows up in Prop-MS and in the total from then on.</p>' +
       '<table class="pl-t pl-t-cols"><thead><tr><th>Wk</th><th>Week</th><th>Date</th>' +
       '<th>Phase</th><th>Source</th>' +
@@ -3697,7 +3697,7 @@ table.hc tbody tr:hover td:not(.hc-k):not(.hc-m){background:var(--surface-2)}
       `<td class="n">${num(fr.reduce((a, f) => a + f.stems_per_ha, 0))}</td><td></td></tr>` +
       "</tbody></table>";
 
-    // TC establishment + ramp
+    // TC establishment + build-up
     $("pr-estab").innerHTML =
       prow("Weeks on tray", F.weeks_on_tray + " weeks", null,
         { field: "weeks_on_tray", value: F.weeks_on_tray }) +
@@ -3705,10 +3705,10 @@ table.hc tbody tr:hover td:not(.hc-k):not(.hc-m){background:var(--surface-2)}
         { field: "weeks_on_pot", value: F.weeks_on_pot }) +
       prow("Build-up weeks", F.ramp_weeks + " weeks", "to full capacity",
         { field: "ramp_weeks", value: F.ramp_weeks }) +
-      prow("Ramp profile", esc(F.ramp_profile || ""), "% per week",
+      prow("Build-up profile", esc(F.ramp_profile || ""), "% per week",
         { field: "ramp_profile", value: F.ramp_profile, type: "text" }) +
       prow("MS establishment", D.ms_establishment_weeks + " weeks",
-        "tray + pot + ramp", null, "ms_establishment_weeks") +
+        "tray + pot + build-up", null, "ms_establishment_weeks") +
       prow("Plants per m² of bench", D.plants_per_sqm_bench,
         `${F.pots_per_sqm} pots × ${F.plants_per_pot}`, null, "plants_per_sqm_bench");
     $("pr-ramp").innerHTML = d.ramp.map((r) =>
@@ -3721,7 +3721,7 @@ table.hc tbody tr:hover td:not(.hc-k):not(.hc-m){background:var(--surface-2)}
         { field: "motherstock_life_weeks", value: F.motherstock_life_weeks }) +
       prow("Supplier lead", F.supplier_lead_weeks + " weeks", "order → delivery",
         { field: "supplier_lead_weeks", value: F.supplier_lead_weeks }) +
-      prow("Establishment lead", D.ms_establishment_weeks + " weeks", "tray + pot + ramp") +
+      prow("Establishment lead", D.ms_establishment_weeks + " weeks", "tray + pot + build-up") +
       prow("Total renewal lead", "<b>" + D.total_renewal_lead_weeks + " weeks</b>",
         `${F.supplier_lead_weeks} + ${D.ms_establishment_weeks}`, null,
         "total_renewal_lead_weeks") +

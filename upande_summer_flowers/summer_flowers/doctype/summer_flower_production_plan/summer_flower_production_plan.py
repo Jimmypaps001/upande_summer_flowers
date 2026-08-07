@@ -978,9 +978,85 @@ def plan_preview(market_demand, farm=None, season_start_year=None):
 				"passed. The early weeks will be short unless you buy rooted cuttings."
 			).format(first, order_by, weeks_back))
 
+	# What it would cost to say yes: the plantlets to buy and the ground to find. Both
+	# are knowable from the demand and the protocol before a plan exists, and both are
+	# the reason a plan gets abandoned after it is built -- the order that had to go a
+	# year ago, or the land that was never there.
+	tc = space = None
+	if version and weeks:
+		v = frappe.get_cached_doc("Crop Protocol Version", version)
+		from upande_summer_flowers.summer_flowers.doctype \
+			.summer_flower_motherstock_batch.summer_flower_motherstock_batch import (
+				lab_lead_weeks,
+			)
+
+		peak_stems = max((cint(r.demand_stems) for r in weeks), default=0)
+		offsets = v.flush_offsets()
+		first_flush = offsets[0][1] if offsets else 0
+		ppb = cint(v.plants_per_bed) or 1
+		min_beds = cint(v.min_planting_beds_derived) or 1
+		if first_flush:
+			# The busiest week decides the pool, because cuttings cannot be banked.
+			beds = max(min_beds, int(math.ceil(peak_stems / (first_flush * ppb))))
+			plants = beds * ppb
+			cuttings = cint(v.cuttings_for_plants(plants))
+			per_week = flt(v.cuttings_per_plant_per_week) or 1.0
+			mothers = int(math.ceil(cuttings / per_week))
+			tc = {
+				"peak_week_stems": peak_stems,
+				"plants_in_peak_week": plants,
+				"cuttings": cuttings,
+				"mother_plants": mothers,
+				"plantlets": int(math.ceil(v.tc_plants_for(mothers))),
+				"order_by": lead["order_by"] if lead else None,
+				"late": bool(lead and lead["late"]),
+			}
+			# Ground: what has to be STANDING to deliver one season's demand, so the
+			# yield has to be per year, not per life. A plant gives 18.8 stems over
+			# 2.13 years, not 18.8 in the season -- dividing by the lifetime figure
+			# said Aster needed 1.09 ha where it needs 2.33, less than half the land.
+			years = flt(v.life_expectancy_years) or 1
+			per_year = flt(v.total_stems_per_plant_life) / years
+			if per_year:
+				total_plants = int(math.ceil(stems / per_year))
+				total_beds = int(math.ceil(total_plants / ppb))
+				need_ha = total_beds * flt(v.sqm_net_per_bed) / 10_000
+				have = frappe.db.sql("""
+					select ifnull(sum(custom_net_area_ha), 0) ha,
+					       ifnull(sum(custom_total_beds), 0) beds
+					from tabBlock where farm = %s and custom_is_summer_flower_block = 1
+				""", farm, as_dict=True)[0] if farm else {"ha": 0, "beds": 0}
+				space = {
+					"basis": "plants standing to deliver one season at %.1f stems "
+					         "per plant per year" % per_year,
+					"beds_needed": total_beds, "plants_needed": total_plants,
+					"ha_needed": round(need_ha, 3),
+					"ha_at_farm": round(flt(have["ha"]), 3),
+					"beds_at_farm": cint(have["beds"]),
+					"pct_of_farm": round(need_ha / flt(have["ha"]) * 100, 1)
+					if flt(have["ha"]) else None,
+				}
+				if space["pct_of_farm"] and space["pct_of_farm"] > 100:
+					notes.append(_(
+						"This demand needs about {0} ha standing ({1} beds) and {2} has "
+						"{3} ha. It will not all fit, so expect plantings with no block."
+					).format(space["ha_needed"], space["beds_needed"], farm,
+					         space["ha_at_farm"]))
+			if tc["late"]:
+				notes.append(_(
+					"About {0} plantlets to buy, and the order was due {1}."
+				).format("{:,}".format(tc["plantlets"]), tc["order_by"]))
+			else:
+				notes.append(_(
+					"About {0} plantlets to buy{1}."
+				).format("{:,}".format(tc["plantlets"]),
+				         _(", ordered by {0}").format(tc["order_by"])
+				         if tc["order_by"] else ""))
+
 	return {
 		"variety": d.variety, "farm": farm, "season": "%s-%s" % (year, str(year + 1)[-2:]),
 		"season_start_year": year,
+		"tc": tc, "space": space,
 		"season_start": str(start), "season_end": str(end),
 		"weeks": len(weeks), "demand_stems": stems, "firm_stems": firm,
 		"peak_week_stems": max((cint(r.demand_stems) for r in weeks), default=0),

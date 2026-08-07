@@ -146,6 +146,30 @@ function confirm_plan(frm, values, s) {
 				s.lead.first_demand_week})${s.lead.late
 				? ` — <span style="color:#c0392b">${__("already passed")}</span>` : ""}`]);
 	}
+	// What saying yes costs: the plantlets to buy and the ground to find. Both are
+	// knowable from the demand and the protocol, and both are why a plan gets
+	// abandoned after it has been built.
+	if (s.tc) {
+		rows.push([__("Tissue culture to buy"),
+			`<b>${num(s.tc.plantlets)}</b> ${__("plantlets")} — ${
+				num(s.tc.mother_plants)} ${__("mother plants cutting")} ${
+				num(s.tc.cuttings)} ${__("in the peak week")}`]);
+		rows.push([__("Peak week it is sized on"),
+			`${num(s.tc.peak_week_stems)} ${__("stems")}, ${
+				num(s.tc.plants_in_peak_week)} ${__("plants to stick")}`]);
+	}
+	if (s.space) {
+		const over = s.space.pct_of_farm && s.space.pct_of_farm > 100;
+		rows.push([__("Ground it needs"),
+			`<b>${s.space.ha_needed} ha</b> ${__("standing")} (${
+				num(s.space.beds_needed)} ${__("beds")}, ${
+				num(s.space.plants_needed)} ${__("plants")})`]);
+		rows.push([__("Ground at this farm"),
+			`${s.space.ha_at_farm} ha, ${num(s.space.beds_at_farm)} ${__("beds")}` +
+			(s.space.pct_of_farm
+				? ` — <span style="color:${over ? "#c0392b" : "#27ae60"}">${
+					s.space.pct_of_farm}% ${__("of it")}</span>` : "")]);
+	}
 	if (s.existing_plan) rows.push([__("Existing plan"), s.existing_plan]);
 	if (s.propagation_plan) rows.push([__("Propagation plan"), s.propagation_plan]);
 
