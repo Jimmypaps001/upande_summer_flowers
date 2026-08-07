@@ -1122,6 +1122,28 @@ table.hc tbody tr:hover td:not(.hc-k):not(.hc-m){background:var(--surface-2)}
     }).join("") + "</div>";
   }
 
+  // 1, 2 or 5 times a power of ten -- the steps people actually read an axis in.
+  function niceStep(rough) {
+    if (!(rough > 0)) return 1;
+    const mag = Math.pow(10, Math.floor(Math.log10(rough)));
+    const n = rough / mag;
+    return (n <= 1 ? 1 : n <= 2 ? 2 : n <= 5 ? 5 : 10) * mag;
+  }
+
+  // Millions and thousands, because 3,720,698 down the side of a chart is noise.
+  function axisNum(v) {
+    if (!v) return "0";
+    if (Math.abs(v) >= 1e6) {
+      const m = v / 1e6;
+      return (m % 1 ? m.toFixed(1) : m) + "M";
+    }
+    if (Math.abs(v) >= 1e3) {
+      const k = v / 1e3;
+      return (k % 1 ? k.toFixed(1) : k) + "k";
+    }
+    return num(v);
+  }
+
   // Two cumulative lines and the gap between them. A week-by-week bar chart cannot
   // show whether a season is recovering: eight small deficits and one big surplus look
   // the same as the reverse. Running totals do, and where the lines cross is the week
@@ -1142,26 +1164,50 @@ table.hc tbody tr:hover td:not(.hc-k):not(.hc-m){background:var(--surface-2)}
                demand: cd, production: cp, gap: cp - cd };
     });
     const W = 980, H = 260, L = 66, R = 10, T = 12, B = 30;
-    const max = Math.max(...pts.map((p) => Math.max(p.demand, p.production))) || 1;
+    // Gridlines a reader can hold in their head. Quartering the exact maximum gave
+    // 930,175 / 1,860,349 / 2,790,524, which is arithmetically right and unreadable.
+    const raw = Math.max(...pts.map((p) => Math.max(p.demand, p.production))) || 1;
+    const step = niceStep(raw / 4);
+    const max = Math.ceil(raw / step) * step;
     const x = (i) => L + (W - L - R) * (pts.length === 1 ? 0 : i / (pts.length - 1));
     const y = (v) => T + (H - T - B) * (1 - v / max);
 
     let g = `<svg viewBox="0 0 ${W} ${H}" class="pl-svg" role="img"
       aria-label="Cumulative demand and production across the season">`;
-    for (let i = 0; i <= 4; i++) {
-      const v = max * i / 4, yy = y(v);
+    for (let v = 0; v <= max + 1; v += step) {
+      const yy = y(v);
       g += `<line x1="${L}" x2="${W - R}" y1="${yy}" y2="${yy}" stroke="var(--border)"/>` +
         `<text x="${L - 6}" y="${yy + 4}" text-anchor="end" class="pl-ax">${
-          num(Math.round(v))}</text>`;
+          axisNum(v)}</text>`;
     }
     // The gap as a filled band, so being behind is visible without reading two lines
-    // against each other. Coloured by which side is on top.
+    // against each other. One polygon per week rather than one for the whole season:
+    // the lines cross whenever the plan falls behind, and a single ring folds into a
+    // bowtie at the crossing -- which is what made this chart unreadable. Each segment
+    // is coloured by which side is on top over that week.
     const behind = pts.some((p) => p.gap < 0), ahead = pts.some((p) => p.gap > 0);
-    const band = pts.map((p, i) => `${x(i)},${y(p.production)}`).join(" ") + " " +
-      pts.map((p, i) => `${x(pts.length - 1 - i)},${y(pts[pts.length - 1 - i].demand)}`)
-        .join(" ");
-    g += `<polygon points="${band}" fill="var(--${behind && !ahead ? "critical" : "good"})"
-      opacity="0.13"/>`;
+    for (let i = 0; i < pts.length - 1; i++) {
+      const a = pts[i], b = pts[i + 1];
+      // Where the sign flips mid-segment, split at the crossing so neither half is
+      // shaded the wrong colour.
+      const cuts = [];
+      if ((a.gap < 0) !== (b.gap < 0) && (b.gap - a.gap) !== 0) {
+        cuts.push(Math.abs(a.gap) / Math.abs(b.gap - a.gap));
+      }
+      const stops = [0, ...cuts, 1];
+      for (let k = 0; k < stops.length - 1; k++) {
+        const s0 = stops[k], s1 = stops[k + 1];
+        const at = (f, key) => a[key] + (b[key] - a[key]) * f;
+        const x0 = x(i) + (x(i + 1) - x(i)) * s0;
+        const x1 = x(i) + (x(i + 1) - x(i)) * s1;
+        const mid = (s0 + s1) / 2;
+        const good = at(mid, "production") >= at(mid, "demand");
+        g += `<polygon points="${x0},${y(at(s0, "production"))} ` +
+          `${x1},${y(at(s1, "production"))} ${x1},${y(at(s1, "demand"))} ` +
+          `${x0},${y(at(s0, "demand"))}" fill="var(--${good ? "good" : "critical"})" ` +
+          `opacity="0.15"/>`;
+      }
+    }
     const line = (key, colour) =>
       `<polyline fill="none" stroke="${colour}" stroke-width="2" points="${
         pts.map((p, i) => `${x(i)},${y(p[key])}`).join(" ")}"/>`;
@@ -1175,9 +1221,14 @@ table.hc tbody tr:hover td:not(.hc-k):not(.hc-m){background:var(--surface-2)}
         `<text x="${x(cross) + 4}" y="${T + 12}" class="pl-ax"
           style="fill:var(--good);font-weight:700">catches up ${esc(pts[cross].label)}</text>`;
     }
-    const every = Math.ceil(pts.length / 12);
+    // Evenly spaced labels, and the last one only if it will not sit on top of the
+    // one before it -- "28-W25" and "28-W26" were printed a few pixels apart.
+    const every = Math.max(1, Math.ceil(pts.length / 10));
+    const lastLabelled = Math.floor((pts.length - 1) / every) * every;
     pts.forEach((p, i) => {
-      if (i % every === 0 || i === pts.length - 1) {
+      const show = i % every === 0
+        || (i === pts.length - 1 && i - lastLabelled >= every / 2);
+      if (show) {
         g += `<text x="${x(i)}" y="${H - 10}" text-anchor="middle" class="pl-ax">${
           esc(p.label.slice(2))}</text>`;
       }
