@@ -138,7 +138,7 @@
         <div id="pp-calendar"></div>
         <h3>{{ _("Stick, plant, harvest") }}</h3>
         <p class="pl-note" style="margin-top:0">{{ _("The plan is built from the demand; which beds each planting goes into is decided here. Click a block to see what could hold it.") }}</p>
-        <div class="pl-row" id="pp-alloc" style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:8px"></div>
+        <div class="pl-row" id="pp-assign" style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:8px"></div>
         <div id="pp-table" class="pl-scroll pl-tall"></div>
       </div>
     </section>
@@ -1530,7 +1530,10 @@ table.hc tbody tr:hover td:not(.hc-k):not(.hc-m){background:var(--surface-2)}
     rows = rows.filter((r) => inPeriod(r.planting_year, r.planting_week));
     renderPlantingCalendar(rows);
     const awaiting = pp.plantings.filter((r) => r.is_new && !r.block).length;
-    $("pp-alloc").innerHTML = awaiting
+    // pp-assign, not pp-alloc: the Allocated filter button already had that id, so
+    // this was overwriting the filter's own markup and then toggleGroup bound to a
+    // button that no longer existed -- which is why the whole tab stopped rendering.
+    $("pp-assign").innerHTML = awaiting
       ? `<span class="pl-note" style="margin:0">${awaiting} ${
           awaiting === 1 ? "planting is" : "plantings are"} waiting on a block. ` +
         `The plan and the TC order already include them.</span>` +
