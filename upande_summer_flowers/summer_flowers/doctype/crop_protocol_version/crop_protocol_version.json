@@ -629,7 +629,7 @@
    "fieldname": "mult_derived_section",
    "fieldtype": "Section Break",
    "label": "Worked out from the multiplication settings above",
-   "description": "Read-only: what the build-up achieves and how long it takes."
+   "description": "Read-only: what the multiplication achieves and how long it takes."
   },
   {
    "fieldname": "max_multiplication_factor",
@@ -722,17 +722,17 @@
    "description": "Weeks a new motherstock takes to reach full cutting capacity.",
    "fieldname": "ramp_weeks",
    "fieldtype": "Int",
-   "label": "Ramp Weeks"
+   "label": "Build-up Weeks to Full Capacity"
   },
   {
    "default": "25,50,75,100",
-   "description": "Capacity per ramp week, comma separated. The last value holds for the rest of the life.",
+   "description": "Capacity per build-up week, comma separated. The last value holds for the rest of the life.",
    "fieldname": "ramp_profile",
    "fieldtype": "Data",
-   "label": "Ramp Profile (%)"
+   "label": "Build-up Profile (%)"
   },
   {
-   "description": "Tray + pot + ramp. What a cutting needs to become a productive mother; hardening belongs to the cutting-to-harvest path.",
+   "description": "Tray + pot + build-up. What a cutting needs to become a productive mother; hardening belongs to the cutting-to-harvest path.",
    "fieldname": "ms_establishment_weeks",
    "fieldtype": "Int",
    "label": "MS Establishment (weeks)",
@@ -741,14 +741,14 @@
   {
    "fieldname": "establishment_includes_ramp",
    "fieldtype": "Check",
-   "label": "TC Establishment Includes the Ramp",
-   "description": "Whether the weeks from a TC plantlet to its first cutting include the climb to full cutting rate. Off means the ramp is cut through at the reducing rate, not waited out."
+   "label": "TC Establishment Includes the Build-up",
+   "description": "Whether the weeks from a TC plantlet to its first cutting include the climb to full cutting rate. Off means the build-up is cut through at the reducing rate, not waited out."
   },
   {
    "fieldname": "establishment_includes_hardening",
    "fieldtype": "Check",
    "label": "TC Establishment Includes Hardening",
-   "description": "Whether hardening counts against the mother plant on the bench. The planning workbook counts it: tray 3 + pot 8 + ramp 4 + hardening 3 = 18 weeks, and its 40 week lab lead time depends on it."
+   "description": "Whether hardening counts against the mother plant on the bench. The planning workbook counts it: tray 3 + pot 8 + build-up 4 + hardening 3 = 18 weeks, and its 40 week lab lead time depends on it."
   },
   {
    "fieldname": "weeks_tc_to_first_cut_derived",
@@ -809,7 +809,7 @@
  "grid_page_length": 50,
  "index_web_pages_for_search": 1,
  "links": [],
- "modified": "2026-08-06 10:00:00.000000",
+ "modified": "2026-08-07 09:00:00.000000",
  "modified_by": "Administrator",
  "module": "Summer Flowers",
  "name": "Crop Protocol Version",

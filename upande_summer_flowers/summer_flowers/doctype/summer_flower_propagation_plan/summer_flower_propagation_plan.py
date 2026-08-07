@@ -303,7 +303,7 @@ class SummerFlowerPropagationPlan(Document):
 
 		# The pool's first cutting week is the first week something is short: you do
 		# not grow mother plants in order to throw the cuttings away. So its early
-		# weeks are cut at the ramp rate, and what it cannot take stays uncovered
+		# weeks are cut at the build-up rate, and what it cannot take stays uncovered
 		# rather than being quietly credited at full capacity.
 		lost = 0
 		short_weeks = 0
@@ -328,7 +328,7 @@ class SummerFlowerPropagationPlan(Document):
 
 		self.cuttings_lost_to_ramp = lost
 		self.ramp_short_weeks = short_weeks
-		# What it would take to cover even the first ramp week. Bigger than the peak
+		# What it would take to cover even the first build-up week. Bigger than the peak
 		# sizing and idle for the rest of the pool's life, so it is offered as a
 		# number to decide on, not applied.
 		first_week = min(short, key=lambda r: getdate(r.week_start_date))
@@ -441,8 +441,8 @@ class SummerFlowerPropagationPlan(Document):
 				"cut, not on it -- the new pool gets there on {0}. {2} cuttings "
 				"across {3} weeks fall inside that climb and cannot be taken. Either "
 				"start the pool {1} weeks earlier, or raise it to {4} mother plants "
-				"instead of {5} so even the first ramp week is covered, which leaves "
-				"that extra capacity idle once the ramp is done."
+				"instead of {5} so even the first build-up week is covered, which leaves "
+				"that extra capacity idle once the build-up is done."
 			).format(self.full_capacity_date, max(0, cint(self.ramp_weeks) - 1),
 			         cint(self.cuttings_lost_to_ramp), cint(self.ramp_short_weeks),
 			         cint(self.mother_plants_to_cover_ramp),
@@ -502,6 +502,21 @@ class SummerFlowerPropagationPlan(Document):
 		self.approved_by = frappe.session.user
 		self.approved_on = now_datetime()
 		self.save()
+		# Approving the sourcing is what authorises the buying, so the batch is raised
+		# here rather than waiting for a third button. Never fatal: an approved plan
+		# whose batch could not be raised is still approved, and the chain says so.
+		try:
+			batch = self.create_motherstock_batch()
+			if batch:
+				frappe.msgprint(
+					_("Motherstock batch {0} raised.").format(
+						frappe.utils.get_link_to_form(
+							"Summer Flower Motherstock Batch", batch)),
+					indicator="green")
+		except Exception as e:
+			frappe.msgprint(_("Approved, but no motherstock batch was raised: {0}"
+			                  ).format(frappe.utils.strip_html(str(e))[:160]),
+			                indicator="orange")
 		return self.status
 
 	@frappe.whitelist()
@@ -561,7 +576,7 @@ class SummerFlowerPropagationPlan(Document):
 	def _peak_from_rows(self):
 		"""The peak the new pool was asked to cover, not what it managed to supply.
 
-		from_new_ms on its own is the allocation after the ramp, so sizing a batch
+		from_new_ms on its own is the allocation after the build-up, so sizing a batch
 		from it sizes the pool from its own ramped output -- circular, and it
 		under-orders. The requirement is what the pool had to cover in that week:
 		what it did supply plus what was left uncovered. Without this the batch

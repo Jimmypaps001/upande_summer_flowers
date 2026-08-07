@@ -226,7 +226,7 @@
    "description": "Cycles of on-farm multiplication. Fewer cycles means a bigger TC order but a much shorter lead time.",
    "fieldname": "build_up_cycles",
    "fieldtype": "Int",
-   "label": "Build Up Cycles",
+   "label": "Multiplication Cycles",
    "reqd": 1
   },
   {
@@ -280,7 +280,7 @@
   {
    "fieldname": "ramp_weeks",
    "fieldtype": "Int",
-   "label": "Ramp Weeks to Full Capacity",
+   "label": "Build-up Weeks to Full Capacity",
    "read_only": 1,
    "description": "Weeks of reduced cutting capacity from the first cut. Full capacity lands on Motherstock Productive By."
   },
@@ -376,7 +376,7 @@
   {
    "fieldname": "buildup_tab",
    "fieldtype": "Tab Break",
-   "label": "Build-up"
+   "label": "Multiplication"
   },
   {
    "fieldname": "buildup_section",
@@ -385,14 +385,14 @@
   {
    "fieldname": "build_up_steps",
    "fieldtype": "Table",
-   "label": "Build Up Steps",
+   "label": "Multiplication Steps",
    "options": "Summer Flower Motherstock Cycle"
   }
  ],
  "grid_page_length": 50,
  "index_web_pages_for_search": 1,
  "links": [],
- "modified": "2026-07-30 22:41:32.621608",
+ "modified": "2026-08-07 09:00:00.000000",
  "modified_by": "Administrator",
  "module": "Summer Flowers",
  "name": "Summer Flower Motherstock Batch",

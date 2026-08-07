@@ -178,7 +178,7 @@ def _m_mse(v):
 		"steps": [
 			_step(_("Weeks on tray"), v.weeks_on_tray),
 			_step(_("Weeks on pot"), v.weeks_on_pot),
-			_step(_("Ramp to full capacity"), v.ramp_weeks),
+			_step(_("Build-up to full capacity"), v.ramp_weeks),
 			_step(_("Total"), v.ms_establishment_weeks),
 		],
 		"caveats": [

@@ -40,9 +40,49 @@ class SummerFlowerProductionPlan(Document):
 		self.sync_status()
 
 	def on_submit(self):
-		"""Approval is the workflow transition that submits the plan."""
+		"""Approval is the workflow transition that submits the plan.
+
+		Approving a plan is the moment it becomes a commitment, so everything that
+		follows from that commitment is created here: the budget, and the propagation
+		plan that says where the cuttings come from. The propagation plan had to be
+		asked for separately, which is why an approved plan could sit beside "Not
+		created, so nothing knows where the cuttings come from" -- the one thing with
+		a two year lead time, waiting on somebody to press a second button.
+		"""
 		self.db_set("status", "Approved")
 		self.create_budget()
+		self.ensure_propagation()
+
+	def ensure_propagation(self):
+		"""Create or rebuild the propagation plan for this crop and season.
+
+		Never fatal. A plan that cannot source its cuttings is still an approved plan
+		and the budget is already posted; the chain says so plainly on the propagation
+		step, which is more use than an exception that leaves the approval half done.
+		"""
+		from upande_summer_flowers.summer_flowers.doctype \
+			.summer_flower_propagation_plan.summer_flower_propagation_plan import (
+				build_from_plan,
+			)
+
+		try:
+			out = build_from_plan(self.name, as_dict=True)
+		except Exception:
+			frappe.log_error(frappe.get_traceback(),
+			                 "Propagation plan for %s" % self.name)
+			frappe.msgprint(
+				_("The plan is approved and the budget is posted, but its propagation "
+				  "plan could not be built. Open the Propagation step to see why."),
+				indicator="orange", title=_("Propagation not built"))
+			return
+		frappe.msgprint(
+			_("Propagation plan {0} {1}.").format(
+				frappe.utils.get_link_to_form("Summer Flower Propagation Plan",
+				                              out["name"]),
+				_("created") if out["created"] else
+				(_("updated: {0}").format("; ".join(out["changes"]))
+				 if out["changes"] else _("rebuilt, nothing changed"))),
+			indicator="green")
 
 	def on_cancel(self):
 		self.db_set("status", "Rejected")
@@ -585,12 +625,43 @@ class SummerFlowerProductionPlan(Document):
 		return {"created": created, "skipped": skipped}
 
 	@frappe.whitelist()
-	def regenerate(self):
-		"""Rebuild the weekly grid and planting proposals in place."""
+	def regenerate(self, adopt_current_protocol=1):
+		"""Rebuild the weekly grid and planting proposals against the current protocol.
+
+		Regenerate used to rebuild against the version the plan was already pinned to,
+		which meant a protocol change reached nothing: the dashboard said "protocol
+		changed since this plan was built -- regenerate to apply" and regenerating did
+		not apply it. It adopts the version in force now, and says which version it
+		moved from, because a silent switch of the numbers a plan rests on is worse
+		than not switching at all.
+
+		An existing propagation plan is rebuilt too. It sources the cuttings this plan
+		needs, and leaving it on the old figures is how a plan and its own sourcing end
+		up describing different crops. A propagation plan is not created here: that
+		happens when the plan is approved, because sourcing an unapproved plan commits
+		nobody to anything.
+		"""
 		if self.docstatus != 0:
 			frappe.throw(_("Only a draft plan can be regenerated."))
+		was = self.protocol
+		if cint(adopt_current_protocol):
+			current = current_version(self.variety, self.farm)
+			if current:
+				self.protocol = current
 		_populate(self)
 		self.save()
+		if was and was != self.protocol:
+			frappe.msgprint(
+				_("Rebuilt on {0}, which is the version in force. It was built on {1}."
+				  ).format(self.protocol, was), indicator="blue")
+
+		existing = frappe.db.get_value(
+			"Summer Flower Propagation Plan",
+			{"variety": self.variety,
+			 "season_start_year": cint(self.season_start_year),
+			 "status": ["!=", "Rejected"], "docstatus": 0}, "name")
+		if existing:
+			self.ensure_propagation()
 		return self.name
 
 

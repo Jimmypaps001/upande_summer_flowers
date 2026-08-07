@@ -66,9 +66,9 @@ def params_from_version(version, overrides=None):
 		"ms_establishment_weeks": int(v.ms_establishment_weeks or 0),
 		# Delivery to first cut, the same figure the Motherstock Batch dates its
 		# schedule from: tray and pot, and a second establishment when the order is
-		# multiplied up first. NOT ms_establishment_weeks, which includes the ramp --
+		# multiplied up first. NOT ms_establishment_weeks, which includes the build-up --
 		# the simulator then ramps capacity from the first cut as well, so using it
-		# waited out the ramp and reduced capacity for it, counting the same weeks
+		# waited out the build-up and reduced capacity for it, counting the same weeks
 		# twice and putting the first cut 11 weeks later than the batch does.
 		"tc_to_first_cut_weeks": int(
 			v.lead_time_for_cycles(cint(v.max_multiplication_cycles)) or 0),
@@ -80,7 +80,7 @@ def params_from_version(version, overrides=None):
 		"multiplication_factor": 1 + (cint(v.max_multiplication_cycles)
 		                              * flt(v.multiplication_factor_per_cycle)),
 		# A cutting diverted to the propagation unit becomes a mother plant after
-		# tray and pot, then ramps. Not ms_establishment_weeks, which folds the ramp
+		# tray and pot, then ramps. Not ms_establishment_weeks, which folds the build-up
 		# in and would wait it out before ramping again; and not the TC path either,
 		# because a cutting off the farm is not multiplied up in a lab first.
 		"cutting_to_mother_weeks": (cint(v.weeks_on_tray) + cint(v.weeks_on_pot)),
@@ -262,7 +262,7 @@ def simulate(p, tc_qty, order_date, num_cycles=None, farm_overrides=None,
 				w = sw - c["first_cut_sw"]
 				ramp_pct = ramp_ratio(w, ramp)
 				base_cap = int(round(c["ms_plants"] * per_plant * ramp_pct))
-				phase = (f"Ramp {w + 1} ({int(round(ramp_pct * 100))}%)"
+				phase = (f"Build-up {w + 1} ({int(round(ramp_pct * 100))}%)"
 				         if w < len(ramp) else "Full")
 				source = f"MS{c['cycle']}"
 				cycle_no = c["cycle"]

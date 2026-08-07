@@ -255,7 +255,7 @@ def fill_native_gaps(doc):
 			if digits:
 				acc += float(digits) * flt(g.allocation_pct)
 		doc.average_stem_length_cm = round(acc / total, 2) if acc else 0
-	# Weeks to max PC and the ramp are the same span; the ramp is the one typed.
+	# Weeks to max PC and the build-up are the same span; the build-up is the one typed.
 	if cint(doc.get("custom_sf_ramp_weeks")):
 		doc.custom_sf_weeks_to_max_pc = cint(doc.get("custom_sf_ramp_weeks"))
 

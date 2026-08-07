@@ -72,9 +72,9 @@ class SummerFlowerMotherstockBatch(Document):
 		stick = getdate(self.first_sticking_date)
 
 		# The first cutting week and full capacity are not the same week. The pool
-		# climbs the ramp while it is being cut, so max PC lands ramp_weeks - 1 weeks
+		# climbs the build-up while it is being cut, so max PC lands ramp_weeks - 1 weeks
 		# after the first cut -- the last ramp step is the 100% one. Setting these
-		# equal, as this did, is what made the ramp invisible and every plan read as
+		# equal, as this did, is what made the build-up invisible and every plan read as
 		# though a new pool delivered its full rate from day one.
 		ramp = p.ramp_ratios()
 		self.ramp_weeks = len(ramp)

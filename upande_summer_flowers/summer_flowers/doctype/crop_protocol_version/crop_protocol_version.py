@@ -201,7 +201,7 @@ class CropProtocolVersion(Document):
 			+ (self.weeks_to_max_pc or 0) + (self.hardening_weeks or 0)
 		)
 		# What a cutting actually needs to become a productive mother: tray, pot,
-		# then the ramp to full capacity. Hardening is not in here -- it belongs to
+		# then the build-up to full capacity. Hardening is not in here -- it belongs to
 		# the cutting-to-harvest path, where the cutting goes to the field instead.
 		# Establishment to a productive mother, and the weeks to the FIRST cutting are
 		# now two names for a decision the protocol makes rather than two hard-coded
@@ -258,9 +258,9 @@ class CropProtocolVersion(Document):
 	def weeks_tc_to_first_cut(self):
 		"""Weeks from a TC plantlet arriving to the first cutting off it.
 
-		Tray and pot always; the ramp and hardening only if the protocol says they
+		Tray and pot always; the build-up and hardening only if the protocol says they
 		count. Neither is obvious. The ramp is arguably cut through rather than waited
-		out, at the reducing rate ramp_profile describes; hardening arguably belongs to
+		out, at the reducing rate the build-up profile describes; hardening arguably belongs to
 		the cutting that goes to the field, not to the mother that stays on the bench.
 		The planning workbook counts both -- 3 + 8 + 4 + 3 = 18 weeks, which is what
 		makes its lab lead time 40 and not 26 -- so this is a stated assumption on the

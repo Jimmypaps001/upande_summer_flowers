@@ -246,7 +246,7 @@
    "fieldtype": "Int",
    "label": "Plants That Cannot Be Stuck",
    "read_only": 1,
-   "description": "Uncovered cuttings converted back to plants. This is what the ramp and any other shortfall cost in the field, not just on the bench."
+   "description": "Uncovered cuttings converted back to plants. This is what the build-up and any other shortfall cost in the field, not just on the bench."
   },
   {
    "fieldname": "stems_at_risk",
@@ -281,7 +281,7 @@
   {
    "fieldname": "ramp_weeks",
    "fieldtype": "Int",
-   "label": "Ramp Weeks to Full Capacity",
+   "label": "Build-up Weeks to Full Capacity",
    "read_only": 1,
    "description": "A new pool climbs to its full cutting rate over these weeks. It does not start at 100%."
   },
@@ -294,22 +294,22 @@
   {
    "fieldname": "cuttings_lost_to_ramp",
    "fieldtype": "Int",
-   "label": "Cuttings Short During Ramp",
+   "label": "Cuttings Short During Build-up",
    "read_only": 1,
-   "description": "Cuttings the new pool cannot take while it is still climbing. This is the cost of the ramp, not a sizing error."
+   "description": "Cuttings the new pool cannot take while it is still climbing. This is the cost of the build-up, not a sizing error."
   },
   {
    "fieldname": "ramp_short_weeks",
    "fieldtype": "Int",
-   "label": "Weeks Short During Ramp",
+   "label": "Weeks Short During Build-up",
    "read_only": 1
   },
   {
    "fieldname": "mother_plants_to_cover_ramp",
    "fieldtype": "Int",
-   "label": "Mother Plants to Cover the Ramp",
+   "label": "Mother Plants to Cover the Build-up",
    "read_only": 1,
-   "description": "Plants needed for even the first ramp week to be fully covered. Larger than the peak sizing, and idle once the ramp is done -- a decision, not a default."
+   "description": "Plants needed for even the first build-up week to be fully covered. Larger than the peak sizing, and idle once the build-up is done -- a decision, not a default."
   },
   {
    "fieldname": "sec_tc",
@@ -459,7 +459,7 @@
  "grid_page_length": 50,
  "index_web_pages_for_search": 1,
  "links": [],
- "modified": "2026-08-05 13:00:00.000000",
+ "modified": "2026-08-07 09:00:00.000000",
  "modified_by": "Administrator",
  "module": "Summer Flowers",
  "name": "Summer Flower Propagation Plan",

@@ -77,6 +77,25 @@
         <div class="pl-chart-wrap"><div id="dv-chart" class="pl-chart"></div></div>
         <p class="pl-note">{{ _("Weekly swings hard because a whole block flushes in one week. Monthly is the reliable read.") }}</p>
       </div>
+
+      <!-- Bars answer "how did we do that week". They cannot answer "are we ahead
+           over the season", because a run of small deficits and one large surplus
+           look alike week by week. Two cumulative lines do: where they cross is
+           where the plan catches up, and the gap between them is what is owed. -->
+      <div class="pl-card">
+        <div class="pl-card-head">
+          <div><h2>{{ _("Cumulative position over the season") }}</h2>
+               <p class="pl-note" id="cu-sub">{{ _("Every week's demand and production added up as the season runs. The gap is what the plan owes, or is ahead by.") }}</p></div>
+        </div>
+        <div class="pl-legend">
+          <span class="pl-key"><i class="sw" style="background:var(--series-1)"></i>{{ _("Production, cumulative") }}</span>
+          <span class="pl-key"><i class="sw" style="background:var(--series-2)"></i>{{ _("Demand, cumulative") }}</span>
+          <span class="pl-key"><i class="sw" style="background:var(--critical)"></i>{{ _("Behind") }}</span>
+          <span class="pl-key"><i class="sw" style="background:var(--good)"></i>{{ _("Ahead") }}</span>
+        </div>
+        <div class="pl-chart-wrap"><div id="cu-chart" class="pl-chart"></div></div>
+        <p class="pl-note" id="cu-note"></p>
+      </div>
     </section>
 
     <!-- ══ MARKET DEMAND ══ -->
@@ -410,7 +429,7 @@
         <div class="pl-card">
           <div class="pl-card-head"><h2>{{ _("TC establishment") }}</h2></div>
           <div id="pr-estab"></div>
-          <h3>{{ _("Ramp to full capacity") }}</h3>
+          <h3>{{ _("Build-up to full capacity") }}</h3>
           <div id="pr-ramp" class="pl-ramp"></div>
         </div>
         <div class="pl-card">
@@ -1094,6 +1113,82 @@ table.hc tbody tr:hover td:not(.hc-k):not(.hc-m){background:var(--surface-2)}
     }).join("") + "</div>";
   }
 
+  // Two cumulative lines and the gap between them. A week-by-week bar chart cannot
+  // show whether a season is recovering: eight small deficits and one big surplus look
+  // the same as the reverse. Running totals do, and where the lines cross is the week
+  // the plan catches up.
+  function renderCumulative(weeks) {
+    const el = $("cu-chart");
+    if (!el) return;
+    if (!weeks || weeks.length < 2) {
+      el.innerHTML = '<p class="pl-empty">Not enough weeks to plot.</p>';
+      $("cu-note").textContent = "";
+      return;
+    }
+    let cd = 0, cp = 0;
+    const pts = weeks.map((w) => {
+      cd += w.demand || 0;
+      cp += w.production || 0;
+      return { label: `${w.year}-W${String(w.week_no).padStart(2, "0")}`,
+               demand: cd, production: cp, gap: cp - cd };
+    });
+    const W = 980, H = 260, L = 66, R = 10, T = 12, B = 30;
+    const max = Math.max(...pts.map((p) => Math.max(p.demand, p.production))) || 1;
+    const x = (i) => L + (W - L - R) * (pts.length === 1 ? 0 : i / (pts.length - 1));
+    const y = (v) => T + (H - T - B) * (1 - v / max);
+
+    let g = `<svg viewBox="0 0 ${W} ${H}" class="pl-svg" role="img"
+      aria-label="Cumulative demand and production across the season">`;
+    for (let i = 0; i <= 4; i++) {
+      const v = max * i / 4, yy = y(v);
+      g += `<line x1="${L}" x2="${W - R}" y1="${yy}" y2="${yy}" stroke="var(--border)"/>` +
+        `<text x="${L - 6}" y="${yy + 4}" text-anchor="end" class="pl-ax">${
+          num(Math.round(v))}</text>`;
+    }
+    // The gap as a filled band, so being behind is visible without reading two lines
+    // against each other. Coloured by which side is on top.
+    const behind = pts.some((p) => p.gap < 0), ahead = pts.some((p) => p.gap > 0);
+    const band = pts.map((p, i) => `${x(i)},${y(p.production)}`).join(" ") + " " +
+      pts.map((p, i) => `${x(pts.length - 1 - i)},${y(pts[pts.length - 1 - i].demand)}`)
+        .join(" ");
+    g += `<polygon points="${band}" fill="var(--${behind && !ahead ? "critical" : "good"})"
+      opacity="0.13"/>`;
+    const line = (key, colour) =>
+      `<polyline fill="none" stroke="${colour}" stroke-width="2" points="${
+        pts.map((p, i) => `${x(i)},${y(p[key])}`).join(" ")}"/>`;
+    g += line("demand", "var(--series-2)") + line("production", "var(--series-1)");
+
+    // Where the plan first catches up, if it does.
+    const cross = pts.findIndex((p, i) => i && pts[i - 1].gap < 0 && p.gap >= 0);
+    if (cross > 0) {
+      g += `<line x1="${x(cross)}" x2="${x(cross)}" y1="${T}" y2="${H - B}"
+        stroke="var(--good)" stroke-width="1.4" stroke-dasharray="4 3"/>` +
+        `<text x="${x(cross) + 4}" y="${T + 12}" class="pl-ax"
+          style="fill:var(--good);font-weight:700">catches up ${esc(pts[cross].label)}</text>`;
+    }
+    const every = Math.ceil(pts.length / 12);
+    pts.forEach((p, i) => {
+      if (i % every === 0 || i === pts.length - 1) {
+        g += `<text x="${x(i)}" y="${H - 10}" text-anchor="middle" class="pl-ax">${
+          esc(p.label.slice(2))}</text>`;
+      }
+      g += `<circle cx="${x(i)}" cy="${y(p.production)}" r="7" fill="transparent"
+        data-tip="${esc(`${p.label}<br>Cumulative demand ${num(p.demand)}<br>` +
+          `Cumulative production ${num(p.production)}<br>` +
+          `${p.gap < 0 ? "Behind by " + num(-p.gap) : "Ahead by " + num(p.gap)}`)}"/>`;
+    });
+    el.innerHTML = g + "</svg>";
+    bindTips(el);
+
+    const last = pts[pts.length - 1];
+    $("cu-note").textContent = last.gap >= 0
+      ? `Ends ${num(last.gap)} stems ahead of demand` +
+        (cross > 0 ? `, catching up in ${pts[cross].label}.`
+                   : ", ahead throughout.")
+      : `Ends ${num(-last.gap)} stems short of demand across the season` +
+        (behind && ahead ? ", after being ahead earlier." : ", behind throughout.");
+  }
+
   function renderOverview() {
     const t = S.dv && S.dv.totals;
     const q = scoped();
@@ -1128,6 +1223,9 @@ table.hc tbody tr:hover td:not(.hc-k):not(.hc-m){background:var(--surface-2)}
       ? `${S.dv.plan} · ${S.dv.variety} at ${S.dv.farm} · ${S.dv.period} · ${S.dv.status}`
       : "No production plan.";
     drawGrouped($("dv-chart"), S.dv ? (S.grain === "month" ? S.dv.months : S.dv.weeks) : []);
+    // Always weekly and always the scoped weeks: a running total only means anything
+    // if it runs over the period the reader is looking at.
+    renderCumulative(q.weeks);
   }
 
   function renderDemand() {
@@ -1826,11 +1924,11 @@ table.hc tbody tr:hover td:not(.hc-k):not(.hc-m){background:var(--surface-2)}
         m: `${t.bench_sqm} m² of bench${whole}` },
       { k: "TC plantlets", v: num(t.tc_plants),
         m: (t.tc_order_date ? "order by " + t.tc_order_date : "none needed") + whole },
-      { k: "Ramp to full capacity", v: `${t.ramp_weeks || 0} wk`,
+      { k: "Build-up to full capacity", v: `${t.ramp_weeks || 0} wk`,
         m: t.full_capacity_date
           ? `full rate from ${t.full_capacity_date}` : "no new pool needed",
         c: t.lost_to_ramp ? "--serious" : "" },
-      { k: "Short during ramp", v: num(t.lost_to_ramp),
+      { k: "Short during build-up", v: num(t.lost_to_ramp),
         m: t.lost_to_ramp
           ? `cuttings over ${t.ramp_short_weeks} week` +
             (t.ramp_short_weeks === 1 ? "" : "s") + whole
@@ -2597,7 +2695,7 @@ table.hc tbody tr:hover td:not(.hc-k):not(.hc-m){background:var(--surface-2)}
           ? `full capacity ${esc(tc.full_capacity_date || "—")} after a ` +
             `${tc.ramp_weeks}-week ramp`
           : "no ramp recorded" },
-      { k: "Short during ramp", v: num(tc.lost_to_ramp || 0), m: "cuttings",
+      { k: "Short during build-up", v: num(tc.lost_to_ramp || 0), m: "cuttings",
         c: tc.lost_to_ramp ? "--serious" : "--good" },
     ].map(tile).join("");
 
@@ -3605,7 +3703,7 @@ table.hc tbody tr:hover td:not(.hc-k):not(.hc-m){background:var(--surface-2)}
         { field: "weeks_on_tray", value: F.weeks_on_tray }) +
       prow("Weeks on pot", F.weeks_on_pot + " weeks", null,
         { field: "weeks_on_pot", value: F.weeks_on_pot }) +
-      prow("Ramp weeks", F.ramp_weeks + " weeks", "to full capacity",
+      prow("Build-up weeks", F.ramp_weeks + " weeks", "to full capacity",
         { field: "ramp_weeks", value: F.ramp_weeks }) +
       prow("Ramp profile", esc(F.ramp_profile || ""), "% per week",
         { field: "ramp_profile", value: F.ramp_profile, type: "text" }) +
@@ -3836,6 +3934,7 @@ table.hc tbody tr:hover td:not(.hc-k):not(.hc-m){background:var(--surface-2)}
     // Charts sized while hidden come out wrong, so redraw on reveal.
     if (name === "overview" && S.dv) {
       drawGrouped($("dv-chart"), S.grain === "month" ? S.dv.months : S.dv.weeks);
+      renderCumulative(scoped().weeks);
     }
     if (name === "planting" && S.pp) drawGantt($("pp-gantt"), S.pp.occupancy);
     if (name === "motherstock" && S.ls) drawPool($("ls-chart"), S.ls.rows);
@@ -4132,7 +4231,8 @@ table.hc tbody tr:hover td:not(.hc-k):not(.hc-m){background:var(--surface-2)}
       });
 
       toggleGroup([["g-month", "month"], ["g-week", "week"]], "grain", () =>
-        drawGrouped($("dv-chart"), S.grain === "month" ? S.dv.months : S.dv.weeks));
+        { drawGrouped($("dv-chart"), S.grain === "month" ? S.dv.months : S.dv.weeks);
+          renderCumulative(scoped().weeks); });
       toggleGroup([["d-all", "all"], ["d-short", "short"], ["d-over", "over"]],
         "dmFilter", renderDemand);
       toggleGroup([["pp-all", "all"], ["pp-alloc", "alloc"], ["pp-flag", "flag"]],

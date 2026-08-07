@@ -77,7 +77,7 @@
    "label": "Capacity Available",
    "in_list_view": 1,
    "read_only": 1,
-   "description": "Cuttings every live pool can actually take this week, after the ramp to full capacity."
+   "description": "Cuttings every live pool can actually take this week, after the build-up to full capacity."
   },
   {
    "fieldname": "ramp_pct",
@@ -107,7 +107,7 @@
  "index_web_pages_for_search": 1,
  "istable": 1,
  "links": [],
- "modified": "2026-08-01 10:56:38.322538",
+ "modified": "2026-08-07 09:00:00.000000",
  "modified_by": "Administrator",
  "module": "Summer Flowers",
  "name": "Summer Flower Propagation Week",
