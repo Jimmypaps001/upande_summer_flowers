@@ -36,6 +36,7 @@ class SummerFlowerProductionPlan(Document):
 		self.set_period_end()
 		self.roll_up_months()
 		self.set_totals()
+		self.apply_tc_constraint()
 		self.check_protocol_freshness()
 		self.sync_status()
 
@@ -504,11 +505,20 @@ class SummerFlowerProductionPlan(Document):
 		cuttings = cint(v.cuttings_for_plants(peak))
 		per_week = flt(v.cuttings_per_plant_per_week) or 1.0
 		mothers = int(math.ceil(cuttings / per_week)) if cuttings else 0
-		cycles = cint(v.max_multiplication_cycles)
+		cycles = cint(self.tc_cycles_committed) if self.tc_choice_committed \
+			else cint(v.max_multiplication_cycles)
 		self.tc_cuttings_at_peak = cuttings
 		self.tc_mother_plants = mothers
-		self.tc_plants_to_order = int(math.ceil(v.tc_plants_for(mothers, cycles))) \
-			if mothers else 0
+		calculated = int(math.ceil(v.tc_plants_for(mothers, cycles))) if mothers else 0
+
+		# A confirmed choice is the order; the calculation becomes advice about it.
+		# Recomputing over the top would make the dashboard's Confirm button a no-op
+		# that appeared to work -- the value would be written and then quietly
+		# replaced by this method on the very next save.
+		if self.tc_choice_committed and cint(self.tc_plants_committed) > 0:
+			self.tc_plants_to_order = cint(self.tc_plants_committed)
+		else:
+			self.tc_plants_to_order = calculated
 
 		# Working back from the first sticking week, through the one function that
 		# knows how: the dashboard used to do this arithmetic itself and disagreed by
@@ -519,7 +529,10 @@ class SummerFlowerProductionPlan(Document):
 
 		first = min(planned_sticking) if planned_sticking else None
 		if first:
-			self.tc_order_by_date = tc_order_by_date(v, iso_monday(first[0], first[1]))
+			self.tc_order_by_date = tc_order_by_date(
+				v, iso_monday(first[0], first[1]), cycles=cycles)
+		if self.tc_choice_committed and self.tc_order_date_committed:
+			self.tc_order_by_date = getdate(self.tc_order_date_committed)
 
 		notes = []
 		if self.tc_order_by_date and self.tc_order_by_date < getdate(nowdate()):
@@ -538,6 +551,58 @@ class SummerFlowerProductionPlan(Document):
 			"{0} plantlets, {1} cycles of multiplication to {2} mother plants, "
 			"cutting {3} in the peak week."
 		).format(self.tc_plants_to_order, cycles, mothers, cuttings)
+
+	# ------------------------------------------------- what the order supplies
+	def apply_tc_constraint(self):
+		"""Fill in what the confirmed TC order can actually supply, week by week.
+
+		The plan is sized from the demand: it proposes the plantings the market asks
+		for, whether or not there are cuttings to stick them with. That is the right
+		default -- the demand is the requirement, and a plan that silently shrank to
+		what was already bought would hide the shortfall rather than show it.
+
+		A confirmed order is the other half of the picture. It is walked through the
+		same pool simulation the dashboard uses, so the answer here and the answer
+		there are the same walk and cannot drift apart. The result lands in its own
+		column rather than overwriting production, for the same reason placeable has
+		its own column: the plan and the constraint on it are two facts, and
+		collapsing them into one loses the ability to say which is biting.
+
+		Without a confirmed order, supplied equals production -- nothing is
+		constraining it yet, and reporting zero would read as a plan that grows
+		nothing.
+		"""
+		for w in self.plan_weeks:
+			w.supplied_production_stems = cint(w.production_stems)
+		self.supplied_production_stems = cint(self.total_production_stems)
+		self.supplied_coverage_pct = flt(self.coverage_pct)
+
+		if not (self.tc_choice_committed and cint(self.tc_plants_committed) > 0):
+			return
+		v = getattr(self, "_version", None) or frappe.get_cached_doc(
+			"Crop Protocol Version", self.protocol)
+		order_date = self.tc_order_date_committed or self.tc_order_by_date
+		if not order_date:
+			return
+
+		from upande_summer_flowers.summer_flowers.planning_api import _tc_production
+
+		try:
+			built = _tc_production(self, v, cint(self.tc_plants_committed),
+			                       getdate(order_date))
+		except Exception:
+			# A plan that cannot be simulated is still a plan; it just cannot say
+			# what the order supplies. Losing the save over it would be worse.
+			frappe.log_error(frappe.get_traceback(), "TC constraint on %s" % self.name)
+			return
+
+		supplied = {(cint(r["year"]), cint(r["week_no"])): cint(r["production"])
+		            for r in built.get("weeks") or []}
+		for w in self.plan_weeks:
+			w.supplied_production_stems = supplied.get(
+				(cint(w.year), cint(w.week_no)), 0)
+		self.supplied_production_stems = cint(built.get("production_stems"))
+		self.supplied_coverage_pct = flt(built.get("coverage_pct"))
 
 	# ------------------------------------------------------------------ budget
 	def create_budget(self):

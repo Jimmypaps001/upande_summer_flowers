@@ -257,8 +257,13 @@
           <span class="pl-actions">
             <label class="pl-inline">{{ _("Buy") }}
               <input type="number" id="tc-qty" min="0" step="50"></label>
-            <button type="button" class="pl-btn" data-tc="apply">{{ _("Check this quantity") }}</button>
+            <label class="pl-inline">{{ _("Order on") }}
+              <input type="date" id="tc-date"></label>
+            <label class="pl-inline">{{ _("Cycles") }}
+              <input type="number" id="tc-cycles" min="0" max="12" step="1"></label>
+            <button type="button" class="pl-btn" data-tc="apply">{{ _("Try this") }}</button>
             <button type="button" class="pl-btn" data-tc="reset">{{ _("Use the recommendation") }}</button>
+            <button type="button" class="pl-btn primary" data-tc="confirm">{{ _("Confirm") }}</button>
           </span>
         </div>
         <div class="pl-tiles pl-tiles-sm" id="tc-tiles"></div>
@@ -3087,9 +3092,69 @@ table.hc tbody tr:hover td:not(.hc-k):not(.hc-m){background:var(--surface-2)}
 
   function loadTc(qty) {
     if (!(S.dv && S.dv.plan)) { S.tc = null; renderTc(); return Promise.resolve(); }
-    return call("tc_purchase", { plan: S.dv.plan, tc_qty: qty || null })
+    // All three levers travel together. Sending only the one that was typed in
+    // would reset the other two to the plan's values on every keystroke, so a date
+    // chosen a moment ago would vanish the next time a quantity was tried.
+    const d = $("tc-date"), c = $("tc-cycles");
+    return call("tc_purchase", {
+      plan: S.dv.plan,
+      tc_qty: qty || null,
+      order_date: (d && d.value) || null,
+      cycles: (c && c.value !== "") ? c.value : null,
+    })
       .then((r) => { S.tc = r; renderTc(); })
       .catch((e) => { S.tc = { error: e.message }; renderTc(); });
+  }
+
+  // Confirming is the only thing on this card that writes. It says plainly what is
+  // about to change and what it will cost, because the figure being confirmed is
+  // usually not the recommended one -- that is the point of being able to tweak it.
+  function confirmTc(btn) {
+    const t = S.tc;
+    if (!(t && t.plan)) return;
+    if (t.plan_submitted) {
+      alert("This plan is approved. Amend it to change the TC order.");
+      return;
+    }
+    const qty = parseInt($("tc-qty").value, 10) || t.chosen_tc;
+    const date = $("tc-date").value || t.order_date_used || "";
+    const cycles = $("tc-cycles").value !== "" ? parseInt($("tc-cycles").value, 10)
+                                               : t.build_up_cycles;
+    const cov = t.built_coverage_pct;
+    const lines = [
+      `Confirm ${num(qty)} plantlets, ${cycles} build-up cycles` +
+        (date ? `, ordering ${date}?` : "?"),
+      "",
+      cov === null ? "" : `That order supplies ${cov.toFixed(1)}% of the demand ` +
+        `(${num(t.built_production)} stems).`,
+      t.built_dropped ? `${num(t.built_dropped)} plantings do not happen for want of ` +
+        `cuttings.` : "",
+      "",
+      "This writes the choice to the plan, the propagation plan and any draft " +
+      "motherstock batch, and the plan's expected stems will follow it.",
+    ].filter(Boolean);
+    if (!confirm(lines.join("\n"))) return;
+
+    const was = btn.textContent;
+    btn.disabled = true; btn.textContent = "Confirming…";
+    call("confirm_tc_choice", {
+      plan: t.plan, tc_qty: qty, order_date: date || null, cycles: cycles,
+    })
+      .then((r) => {
+        $("tc-note").innerHTML =
+          `<p class="pl-note"><b>Confirmed.</b> ${esc(r.note || "")}</p>`;
+        // Everything downstream moved, so nothing on screen can be trusted as it
+        // stands: the weekly table, the planting dates and the propagation plan
+        // are all derived from what was just written.
+        return loadScope()
+          .then(() => Promise.all([loadChain(), loadTc(), loadWhatIf()]))
+          .then(renderPlanTab);
+      })
+      .catch((e) => {
+        $("tc-note").innerHTML =
+          `<p class="pl-note pl-bad">Could not confirm: ${esc(e.message)}</p>`;
+      })
+      .finally(() => { btn.disabled = false; btn.textContent = was; });
   }
 
   function renderTc() {
@@ -4441,7 +4506,11 @@ table.hc tbody tr:hover td:not(.hc-k):not(.hc-m){background:var(--surface-2)}
       $("tc-tiles").parentElement.addEventListener("click", (e) => {
         const b = e.target.closest("[data-tc]");
         if (!b) return;
-        if (b.dataset.tc === "reset") { loadTc(null); return; }
+        if (b.dataset.tc === "reset") {
+          $("tc-qty").value = ""; $("tc-date").value = ""; $("tc-cycles").value = "";
+          loadTc(null); return;
+        }
+        if (b.dataset.tc === "confirm") { confirmTc(b); return; }
         loadTc($("tc-qty").value || null);
       });
       $("ls-table").addEventListener("click", (e) => {

@@ -651,7 +651,8 @@ def _solve_tc_for_demand(plan_doc, version, order_date, target_pct=100.0,
 
 
 @frappe.whitelist()
-def tc_purchase(plan=None, variety=None, farm=None, tc_qty=None, tolerance_pct=10):
+def tc_purchase(plan=None, variety=None, farm=None, tc_qty=None, tolerance_pct=10,
+                order_date=None, cycles=None):
 	"""What to buy on the first TC order, and what buying differently does.
 
 	The recommendation is the amount that makes the pool exactly meet the plan's
@@ -673,7 +674,12 @@ def tc_purchase(plan=None, variety=None, farm=None, tc_qty=None, tolerance_pct=1
 	cuttings = v.cuttings_for_plants(peak_plants) if peak_plants else 0
 	per_week = flt(v.cuttings_per_plant_per_week) or 1.0
 	mothers = int(math.ceil(cuttings / per_week)) if cuttings else 0
-	cycles = cint(v.max_multiplication_cycles)
+	# The three levers, each falling back to what the plan is running on. Asking for
+	# one and not the others has to leave the others where they were, or a tweak to
+	# the quantity would silently reset a date the user had already chosen.
+	cycles = cint(cycles) if cycles not in (None, "") else (
+		cint(p.tc_cycles_committed) if p.tc_choice_committed
+		else cint(v.max_multiplication_cycles))
 	recommended = int(math.ceil(v.tc_plants_for(mothers, cycles))) if mothers else 0
 
 	# The propagation plan nets off standing motherstock, so where one exists its
@@ -696,10 +702,14 @@ def tc_purchase(plan=None, variety=None, farm=None, tc_qty=None, tolerance_pct=1
 
 	# The order date decides which weeks the pool can supply at all, so it comes
 	# from the propagation plan where one exists rather than being invented.
-	if prop and prop.tc_order_date:
+	if order_date:
+		order_date = getdate(order_date)
+	elif p.tc_choice_committed and p.tc_order_date_committed:
+		order_date = getdate(p.tc_order_date_committed)
+	elif prop and prop.tc_order_date and cycles == cint(v.max_multiplication_cycles):
 		order_date = getdate(prop.tc_order_date)
 	else:
-		order_date = tc_order_by_date(v, _first_sticking_for(plan))
+		order_date = tc_order_by_date(v, _first_sticking_for(plan), cycles=cycles)
 
 	# What this quantity actually grows, and the smallest quantity that lands the
 	# demand. Buying less is now a production number, not a percentage on a tile.
@@ -764,6 +774,14 @@ def tc_purchase(plan=None, variety=None, farm=None, tc_qty=None, tolerance_pct=1
 		"peak_cuttings": cuttings,
 		"mothers_for_peak": mothers,
 		"build_up_cycles": cycles,
+		# What the plan is actually committed to, so the dashboard can show a tried
+		# figure as tried rather than as decided.
+		"committed": bool(p.tc_choice_committed),
+		"committed_tc": cint(p.tc_plants_committed),
+		"committed_order_date": str(p.tc_order_date_committed or ""),
+		"committed_cycles": cint(p.tc_cycles_committed),
+		"protocol_cycles": cint(v.max_multiplication_cycles),
+		"plan_submitted": p.docstatus == 1,
 		"multiplication_factor": factor,
 		"recommended_tc": recommended,
 		"propagation_plan": prop.name if prop else None,
@@ -788,13 +806,20 @@ def tc_purchase(plan=None, variety=None, farm=None, tc_qty=None, tolerance_pct=1
 
 @frappe.whitelist()
 def plan_whatif(plan=None, variety=None, farm=None, tc_qty=None, week_overrides=None,
-                to_prop_pct=0):
-	"""Try a different order size or a different weekly split, before committing.
+                to_prop_pct=0, order_date=None, cycles=None):
+	"""Try a different order, a different order date, or a different build-up.
 
 	Same walk as tc_purchase, but it also hands back the per-sticking-week rows the
 	numbers came from so they can be changed one week at a time. Nothing is saved:
-	the plan on file is untouched until it is regenerated or approved, so this is
-	the place to find out whether the plan is worth going on with.
+	the plan on file is untouched until the choice is confirmed, so this is the
+	place to find out whether the plan is worth going on with.
+
+	Three levers, because those are the three the farm actually pulls. The quantity
+	decides how much can be cut; the order date decides which weeks can be supplied
+	at all; the cycles decide both how many plantlets are needed for a given pool
+	and how long the lead time is, so changing them moves the order date too unless
+	one is pinned. A quantity tried against the wrong date reads as a shortfall
+	that buying more would not fix.
 	"""
 	_guard()
 	plan = resolve_plan(variety, farm, plan)
@@ -813,9 +838,18 @@ def plan_whatif(plan=None, variety=None, farm=None, tc_qty=None, week_overrides=
 		order_by="creation desc", limit=1)
 	prop = prop[0] if prop else None
 
-	order_date = prop.tc_order_date if prop and prop.tc_order_date else None
-	if not order_date:
-		order_date = tc_order_by_date(v, _first_sticking_for(plan))
+	cycles = cint(cycles) if cycles not in (None, "") else cint(v.max_multiplication_cycles)
+
+	# An asked-for date wins; otherwise the propagation plan's, otherwise the one the
+	# cycles imply. Asking for cycles without a date has to re-derive the date, since
+	# a shorter build-up is precisely a shorter lead time.
+	asked_date = getdate(order_date) if order_date else None
+	if asked_date:
+		order_date = asked_date
+	elif prop and prop.tc_order_date and cycles == cint(v.max_multiplication_cycles):
+		order_date = prop.tc_order_date
+	else:
+		order_date = tc_order_by_date(v, _first_sticking_for(plan), cycles=cycles)
 	if not order_date:
 		return {"plan": plan, "error": "No sticking weeks to plan cuttings for."}
 
@@ -823,7 +857,7 @@ def plan_whatif(plan=None, variety=None, farm=None, tc_qty=None, week_overrides=
 	if not chosen:
 		peak = v.cuttings_for_plants(sizing_peak(p)[0])
 		per_week = flt(v.cuttings_per_plant_per_week) or 1.0
-		factor = v.multiplication_factor()
+		factor = v.multiplication_factor(cycles)
 		chosen = int(math.ceil(peak / per_week / factor)) if per_week and factor else 0
 
 	built = _tc_production(p, v, chosen, order_date, to_prop_pct=flt(to_prop_pct),
@@ -835,8 +869,20 @@ def plan_whatif(plan=None, variety=None, farm=None, tc_qty=None, week_overrides=
 		"status": p.workflow_state or p.status,
 		"order_date": str(order_date),
 		"tc_qty": chosen,
+		"cycles": cycles,
 		"recommended_tc": cint(prop.tc_plants_required) if prop else 0,
 		"propagation_plan": prop.name if prop else None,
+		# What the plan is running on now, so the three levers can be shown as
+		# changed-from rather than as bare numbers.
+		"current": {
+			"tc_qty": cint(prop.tc_plants_required) if prop else 0,
+			"order_date": str(prop.tc_order_date) if prop and prop.tc_order_date else None,
+			"cycles": cint(v.max_multiplication_cycles),
+			"lead_time_weeks": cint(v.lead_time_for_cycles(cint(v.max_multiplication_cycles))),
+		},
+		"lead_time_weeks": cint(v.lead_time_for_cycles(cycles)),
+		"multiplication_factor": flt(v.multiplication_factor(cycles)),
+		"mother_plants_from_order": int(round(v.mother_plants_for(chosen, cycles))),
 		"baseline": {
 			"coverage_pct": flt(p.coverage_pct),
 			"production_stems": cint(p.total_production_stems),
@@ -2027,3 +2073,128 @@ def propagation_detail(plan=None, propagation_plan=None, variety=None, farm=None
 		} for r in d.sources],
 		"batches": batches,
 	}
+
+
+@frappe.whitelist()
+def confirm_tc_choice(plan, tc_qty=None, order_date=None, cycles=None, reason=None):
+	"""Commit a tried quantity, order date or build-up, and carry it downstream.
+
+	plan_whatif answers "what would happen"; this is the answer to "do it". The
+	three documents that each hold a piece of the same decision are written in one
+	go, because leaving any of them behind is how the plan, the propagation plan
+	and the batch came to disagree about the same order in the first place:
+
+	    production plan   what is being bought and what it supplies
+	    propagation plan  the requirement it was raised against
+	    motherstock batch the order itself, and the schedule hanging off it
+
+	The batch takes the figures as overrides rather than as its own calculation, so
+	it keeps saying what the requirement was and what was chosen instead. Confirming
+	the calculated figure clears the override rather than pinning it, so a confirm
+	that changes nothing leaves nothing behind to go stale.
+
+	A submitted plan is not touched: the numbers on it have been approved, and the
+	way to change those is to amend the plan, not to have an endpoint quietly
+	rewrite them underneath the approval.
+	"""
+	_guard()
+	p = frappe.get_doc("Summer Flower Production Plan", plan)
+	if p.docstatus == 1:
+		frappe.throw(_("{0} is approved. Amend it to change the TC order.").format(plan))
+	if p.docstatus == 2:
+		frappe.throw(_("{0} is cancelled.").format(plan))
+
+	v = frappe.get_cached_doc("Crop Protocol Version", p.protocol)
+	cycles = cint(cycles) if cycles not in (None, "") else cint(v.max_multiplication_cycles)
+	tc_qty = cint(tc_qty) or cint(p.tc_plants_to_order)
+
+	# Cycles and the order date are one decision, not two. Fewer build-up cycles is
+	# a shorter lead time and therefore a later order date -- that is most of why
+	# anyone cuts cycles. Keeping the old date while changing the cycles would
+	# confirm a schedule the lead time contradicts, so where no date was asked for
+	# and the cycles have moved, the date is re-derived rather than carried over.
+	was_cycles = (cint(p.tc_cycles_committed) if p.tc_choice_committed
+	              else cint(v.max_multiplication_cycles))
+	if order_date:
+		order_date = getdate(order_date)
+	elif cycles != was_cycles:
+		order_date = tc_order_by_date(v, _first_sticking_for(plan), cycles=cycles)
+	else:
+		order_date = getdate(p.tc_order_by_date) if p.tc_order_by_date else None
+	if not tc_qty:
+		frappe.throw(_("Nothing to confirm: no TC quantity."))
+
+	before = {
+		"tc_qty": cint(p.tc_plants_to_order),
+		"order_date": str(p.tc_order_by_date or ""),
+		"cycles": cint(p.tc_cycles_committed) or cint(v.max_multiplication_cycles),
+		"production_stems": cint(p.total_production_stems),
+		"coverage_pct": flt(p.coverage_pct),
+	}
+
+	p.tc_choice_committed = 1
+	p.tc_plants_committed = tc_qty
+	p.tc_order_date_committed = order_date
+	p.tc_cycles_committed = cycles
+	p.save(ignore_permissions=True)
+
+	changed = []
+	# ---- the propagation plan, where one exists for this variety and season
+	prop_name = None
+	prop = frappe.get_all("Summer Flower Propagation Plan", filters=_prop_filters(plan),
+	                      fields=["name", "docstatus"], order_by="creation desc", limit=1)
+	if prop and cint(prop[0].docstatus) == 0:
+		prop_name = prop[0].name
+		pd = frappe.get_doc("Summer Flower Propagation Plan", prop_name)
+		if cint(pd.tc_plants_required) != tc_qty or (
+				order_date and getdate(pd.tc_order_date or order_date) != order_date):
+			pd.tc_plants_required = tc_qty
+			if order_date:
+				pd.tc_order_date = order_date
+			pd.save(ignore_permissions=True)
+			changed.append(_("propagation plan {0}").format(prop_name))
+	elif prop:
+		changed.append(_("propagation plan {0} is submitted and was left alone")
+		               .format(prop[0].name))
+
+	# ---- the motherstock batches raised for this plan
+	for b in frappe.get_all("Summer Flower Motherstock Batch",
+	                        filters={"production_plan": plan, "docstatus": 0},
+	                        fields=["name"]):
+		bd = frappe.get_doc("Summer Flower Motherstock Batch", b.name)
+		bd.build_up_cycles = cycles
+		# Confirming what the maths already says should clear the override, not pin
+		# it: a batch marked as overridden when it is not would stop following the
+		# protocol the next time the protocol moves.
+		bd.override_tc_plants = 1 if tc_qty != cint(bd.tc_plants_calculated) else 0
+		bd.tc_plants_required = tc_qty
+		if order_date:
+			bd.override_tc_order_date = 1 if getdate(
+				bd.tc_order_date_calculated or order_date) != order_date else 0
+			bd.tc_order_date = order_date
+		bd.save(ignore_permissions=True)
+		changed.append(_("batch {0}").format(b.name))
+
+	p.reload()
+	after = {
+		"tc_qty": cint(p.tc_plants_to_order),
+		"order_date": str(p.tc_order_by_date or ""),
+		"cycles": cint(p.tc_cycles_committed),
+		"production_stems": cint(p.total_production_stems),
+		"supplied_stems": cint(p.supplied_production_stems),
+		"coverage_pct": flt(p.coverage_pct),
+		"supplied_coverage_pct": flt(p.supplied_coverage_pct),
+	}
+
+	note = _("Confirmed {0} plantlets, {1} cycles, ordering {2}. That order supplies "
+	         "{3} stems, {4}% of the demand.").format(
+		after["tc_qty"], after["cycles"], after["order_date"] or _("(no date)"),
+		after["supplied_stems"], round(after["supplied_coverage_pct"], 1))
+	if reason:
+		note += "\n\n" + _("Reason given: {0}").format(reason)
+	if changed:
+		note += "\n\n" + _("Carried through to {0}.").format(", ".join(changed))
+	p.db_set("tc_choice_note", note, update_modified=False)
+
+	return {"plan": plan, "before": before, "after": after,
+	        "propagation_plan": prop_name, "changed": changed, "note": note}

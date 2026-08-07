@@ -13,6 +13,7 @@
   "month_name",
   "placeable_production_stems",
   "production_stems",
+  "supplied_production_stems",
   "demand_stems",
   "variance_stems",
   "cumulative_variance",
@@ -64,6 +65,13 @@
    "label": "Production"
   },
   {
+   "fieldname": "supplied_production_stems",
+   "fieldtype": "Int",
+   "label": "Supplied Production Stems",
+   "read_only": 1,
+   "description": "Of the production this week, the part the confirmed TC order can actually supply. Equal to production until an order is confirmed."
+  },
+  {
    "columns": 2,
    "fieldname": "demand_stems",
    "fieldtype": "Int",
@@ -103,7 +111,7 @@
  "index_web_pages_for_search": 1,
  "istable": 1,
  "links": [],
- "modified": "2026-08-06 11:00:00.000000",
+ "modified": "2026-08-07 15:00:00.000000",
  "modified_by": "Administrator",
  "module": "Summer Flowers",
  "name": "Summer Flower Plan Week",

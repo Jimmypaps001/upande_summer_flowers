@@ -309,6 +309,18 @@ class CropProtocolVersion(Document):
 		per_cycle = flt(self.multiplication_factor_per_cycle)
 		return cycles * (per_cycle if per_cycle > 0 else 1.0)
 
+	def mother_plants_for(self, tc_plants, cycles=None):
+		"""Mother plants a given order of plantlets ends up as. The inverse of
+		tc_plants_for, so an override can be read back in the units that matter.
+
+		Kept next to its inverse deliberately: the two drifting apart is how an
+		override comes to promise a pool the order cannot produce.
+		"""
+		factor = self.multiplication_factor(cycles)
+		loss = flt(self.tc_order_loss_pct) / 100
+		arriving = flt(tc_plants) * (1 - loss) if 0 < loss < 1 else flt(tc_plants)
+		return arriving * factor
+
 	def tc_plants_for(self, mother_plants, cycles=None, with_loss=True):
 		"""Plantlets to order for a target number of mother plants.
 

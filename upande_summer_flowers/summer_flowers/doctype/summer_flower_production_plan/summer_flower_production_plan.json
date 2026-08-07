@@ -66,6 +66,15 @@
   "tc_mother_plants",
   "tc_cuttings_at_peak",
   "tc_status",
+  "tc_choice_section",
+  "tc_choice_committed",
+  "tc_plants_committed",
+  "tc_order_date_committed",
+  "tc_cycles_committed",
+  "cb_tc_choice",
+  "supplied_production_stems",
+  "supplied_coverage_pct",
+  "tc_choice_note",
   "space_section",
   "space_required_ha",
   "space_stated_ha",
@@ -482,6 +491,66 @@
    "read_only": 1
   },
   {
+   "fieldname": "tc_choice_section",
+   "fieldtype": "Section Break",
+   "label": "Confirmed TC Choice"
+  },
+  {
+   "fieldname": "tc_choice_committed",
+   "fieldtype": "Check",
+   "label": "TC Choice Confirmed",
+   "read_only": 1,
+   "default": "0",
+   "description": "Set when a TC quantity, order date or build-up has been confirmed from the dashboard. The plan then reports what that order supplies, not only what the demand asks for."
+  },
+  {
+   "fieldname": "tc_plants_committed",
+   "fieldtype": "Int",
+   "label": "Confirmed TC Plants",
+   "read_only": 1,
+   "depends_on": "tc_choice_committed"
+  },
+  {
+   "fieldname": "tc_order_date_committed",
+   "fieldtype": "Date",
+   "label": "Confirmed Order Date",
+   "read_only": 1,
+   "depends_on": "tc_choice_committed"
+  },
+  {
+   "fieldname": "tc_cycles_committed",
+   "fieldtype": "Int",
+   "label": "Confirmed Build-up Cycles",
+   "read_only": 1,
+   "depends_on": "tc_choice_committed"
+  },
+  {
+   "fieldname": "cb_tc_choice",
+   "fieldtype": "Column Break",
+   "label": ""
+  },
+  {
+   "fieldname": "supplied_production_stems",
+   "fieldtype": "Int",
+   "label": "Stems The Order Supplies",
+   "read_only": 1,
+   "depends_on": "tc_choice_committed"
+  },
+  {
+   "fieldname": "supplied_coverage_pct",
+   "fieldtype": "Percent",
+   "label": "Coverage The Order Supplies",
+   "read_only": 1,
+   "depends_on": "tc_choice_committed"
+  },
+  {
+   "fieldname": "tc_choice_note",
+   "fieldtype": "Small Text",
+   "label": "What The Confirmed Choice Changed",
+   "read_only": 1,
+   "depends_on": "tc_choice_committed"
+  },
+  {
    "fieldname": "space_section",
    "fieldtype": "Section Break",
    "label": "Space: What This Plan Needs Against What We Have"
@@ -713,7 +782,7 @@
  "index_web_pages_for_search": 1,
  "is_submittable": 1,
  "links": [],
- "modified": "2026-08-06 11:00:00.000000",
+ "modified": "2026-08-07 15:00:00.000000",
  "modified_by": "Administrator",
  "module": "Summer Flowers",
  "name": "Summer Flower Production Plan",

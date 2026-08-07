@@ -20,6 +20,7 @@ class SummerFlowerMotherstockBatch(Document):
 		self.build_schedule()
 		self.cost_it()
 		self.build_steps()
+		self.describe_choice()
 
 	# ------------------------------------------------------------ requirement
 	def pull_peak_from_plan(self):
@@ -62,13 +63,89 @@ class SummerFlowerMotherstockBatch(Document):
 			)
 
 		self.multiplication_factor = p.multiplication_factor(cycles)
-		self.tc_plants_required = int(math.ceil(p.tc_plants_for(self.mother_plants, cycles)))
 		self.lead_time_weeks = p.lead_time_for_cycles(cycles)
 		self.total_lead_time_weeks = (self.lead_time_weeks or 0) + lab_lead_weeks(p)
+
+		# The calculation always runs and is always shown, whether or not it is the
+		# figure being ordered. A batch that quietly stopped telling you what the
+		# requirement was would make an override impossible to judge.
+		self.tc_plants_calculated = int(math.ceil(p.tc_plants_for(self.mother_plants, cycles)))
+		if not (self.override_tc_plants and cint(self.tc_plants_required) > 0):
+			self.tc_plants_required = self.tc_plants_calculated
+
+	# ----------------------------------------------------------- the override
+	def describe_choice(self):
+		"""Say what an override buys, in the units the decision is made in.
+
+		A quantity is hard to judge as a quantity: 8,556 against 6,845 means
+		nothing until it is read back as mother plants, and a date means nothing
+		until it is read as weeks earlier or later than the schedule wants. Both are
+		stated, and shortfalls are stated as shortfalls rather than left to be
+		inferred from two numbers sitting next to each other.
+		"""
+		p = self.protocol_doc
+		lines = []
+
+		if self.override_tc_plants:
+			calc = cint(self.tc_plants_calculated)
+			chosen = cint(self.tc_plants_required)
+			gap = chosen - calc
+			pool = int(round(p.mother_plants_for(chosen, self.build_up_cycles)))
+			need = cint(self.mother_plants)
+			lines.append(
+				_("Ordering {0} plantlets where the requirement works out to {1}, "
+				  "a difference of {2}. That order becomes about {3} mother plants "
+				  "against the {4} this batch needs.").format(
+					chosen, calc, ("+%d" % gap) if gap >= 0 else str(gap), pool, need))
+			if pool < need:
+				short = need - pool
+				lines.append(
+					_("That is {0} mother plants short, about {1}% of the pool. The "
+					  "peak week will not be cut in full.").format(
+						short, int(round(short * 100.0 / need)) if need else 0))
+
+		if self.override_tc_order_date and self.tc_order_date_calculated:
+			chosen_d = getdate(self.tc_order_date)
+			calc_d = getdate(self.tc_order_date_calculated)
+			weeks = int(round((chosen_d - calc_d).days / 7.0))
+			if weeks:
+				lines.append(
+					_("Ordering {0}, which is {1} weeks {2} than the schedule wants. "
+					  "The first sticking week moves with it, to {3}, and everything "
+					  "hung off it -- planting, pinching, first harvest -- moves too.").format(
+						frappe.format(chosen_d, {"fieldtype": "Date"}),
+						abs(weeks), _("later") if weeks > 0 else _("earlier"),
+						frappe.format(getdate(self.first_sticking_date),
+						              {"fieldtype": "Date"})))
+
+		self.tc_choice_note = "\n\n".join(lines) or None
 
 	# --------------------------------------------------------------- schedule
 	def build_schedule(self):
 		p = self.protocol_doc
+
+		# An overridden order date moves the first sticking week rather than sitting
+		# next to it in contradiction. The two are one full lead time apart by
+		# definition: order today, and the earliest the pool can be cut from is the
+		# lead time away. Buying earlier means sticking earlier, and everything the
+		# plan hangs off the sticking week -- planting, pinching, first harvest --
+		# moves with it. Setting the date without moving the week would leave a batch
+		# claiming an order date its own schedule disagrees with.
+		# The week the schedule wants, held apart from the week the override forces.
+		# Without this the baseline moves with the override -- the calculated order
+		# date is derived from the sticking week, so shifting the week shifts the
+		# baseline and the two always agree, leaving an override that reads as no
+		# change at all. Captured before the shift, and only while it is still the
+		# schedule's own answer.
+		if not self.sticking_week_required or not self.override_tc_order_date:
+			self.sticking_week_required = getdate(self.first_sticking_date)
+
+		if self.override_tc_order_date and self.tc_order_date:
+			implied = add_days(getdate(self.tc_order_date),
+			                   7 * (self.total_lead_time_weeks or 0))
+			if implied != getdate(self.first_sticking_date):
+				self.first_sticking_date = implied
+
 		stick = getdate(self.first_sticking_date)
 
 		# The first cutting week and full capacity are not the same week. The pool
@@ -80,7 +157,10 @@ class SummerFlowerMotherstockBatch(Document):
 		self.ramp_weeks = len(ramp)
 		self.max_pc_date = add_days(stick, 7 * (len(ramp) - 1))
 		self.tc_on_farm_date = add_days(stick, -7 * (self.lead_time_weeks or 0))
-		self.tc_order_date = add_days(stick, -7 * (self.total_lead_time_weeks or 0))
+		self.tc_order_date_calculated = add_days(
+			getdate(self.sticking_week_required), -7 * (self.total_lead_time_weeks or 0))
+		if not (self.override_tc_order_date and self.tc_order_date):
+			self.tc_order_date = self.tc_order_date_calculated
 		self.expiry_date = add_days(stick, 7 * (p.motherstock_life_weeks or 0))
 		# Renewal must be productive the week this one expires, so the next order
 		# goes in one full lead time before that.
@@ -226,7 +306,7 @@ def lab_lead_weeks(version):
 	return cint(weeks)
 
 
-def tc_order_by_date(version, first_sticking_date):
+def tc_order_by_date(version, first_sticking_date, cycles=None):
 	"""The last date a TC order can be placed and still reach a sticking week.
 
 	Two waits, and only two: the lab's own order-to-delivery, then lead_time_weeks,
@@ -237,10 +317,16 @@ def tc_order_by_date(version, first_sticking_date):
 	time and the dashboard by lead time alone, so the same plan showed "order by
 	2025-11-03" on the document and "2026-08-10" on the dashboard -- nine months
 	apart, for the single decision with the longest lead time in the process.
+
+	`cycles` asks the question for a build-up other than the protocol's own, which
+	is what makes cutting cycles worth trying: fewer cycles is a shorter lead time
+	and therefore a later, easier order date, paid for in plantlets.
 	"""
 	if not first_sticking_date:
 		return None
-	weeks = cint(lab_lead_weeks(version)) + cint(version.lead_time_weeks)
+	lead = (cint(version.lead_time_for_cycles(cint(cycles)))
+	        if cycles not in (None, "") else cint(version.lead_time_weeks))
+	weeks = cint(lab_lead_weeks(version)) + lead
 	return add_days(getdate(first_sticking_date), -7 * weeks)
 
 

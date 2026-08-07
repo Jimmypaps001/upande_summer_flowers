@@ -37,15 +37,21 @@
   "multiplication_factor",
   "cb_tc",
   "tc_plants_required",
+  "override_tc_plants",
+  "tc_plants_calculated",
+  "tc_choice_note",
   "lead_time_weeks",
   "total_lead_time_weeks",
   "schedule_section",
   "first_sticking_date",
+  "sticking_week_required",
   "max_pc_date",
   "ramp_weeks",
   "tc_on_farm_date",
   "cb_sched",
   "tc_order_date",
+  "override_tc_order_date",
+  "tc_order_date_calculated",
   "expiry_date",
   "renewal_tc_order_date",
   "schedule_note_section",
@@ -244,8 +250,29 @@
    "fieldname": "tc_plants_required",
    "fieldtype": "Int",
    "in_list_view": 1,
-   "label": "Tc Plants Required",
-   "read_only": 1
+   "label": "TC Plants To Order",
+   "read_only_depends_on": "eval:!doc.override_tc_plants"
+  },
+  {
+   "fieldname": "override_tc_plants",
+   "fieldtype": "Check",
+   "label": "Set The TC Quantity Myself",
+   "default": "0",
+   "description": "Off, the order is whatever the requirement works out to. On, the figure below is yours to set and the calculation only advises."
+  },
+  {
+   "fieldname": "tc_plants_calculated",
+   "fieldtype": "Int",
+   "label": "Calculated TC Plants",
+   "read_only": 1,
+   "description": "What the requirement, the cycles and the order loss work out to."
+  },
+  {
+   "fieldname": "tc_choice_note",
+   "fieldtype": "Small Text",
+   "label": "What This Choice Costs",
+   "read_only": 1,
+   "depends_on": "eval:doc.override_tc_plants || doc.override_tc_order_date"
   },
   {
    "fieldname": "lead_time_weeks",
@@ -270,6 +297,13 @@
    "fieldtype": "Date",
    "label": "First Sticking Date",
    "reqd": 1
+  },
+  {
+   "fieldname": "sticking_week_required",
+   "fieldtype": "Date",
+   "label": "Sticking Week The Schedule Wants",
+   "read_only": 1,
+   "description": "The first sticking week before any order-date override moved it. Kept so that an override can be measured against something that does not move with it."
   },
   {
    "fieldname": "max_pc_date",
@@ -298,7 +332,21 @@
    "fieldname": "tc_order_date",
    "fieldtype": "Date",
    "label": "Place TC Order By",
-   "read_only": 1
+   "read_only_depends_on": "eval:!doc.override_tc_order_date"
+  },
+  {
+   "fieldname": "override_tc_order_date",
+   "fieldtype": "Check",
+   "label": "Set The Order Date Myself",
+   "default": "0",
+   "description": "On, the order date below is yours and the first sticking week moves to match it, because the two are a lead time apart."
+  },
+  {
+   "fieldname": "tc_order_date_calculated",
+   "fieldtype": "Date",
+   "label": "Calculated Order Date",
+   "read_only": 1,
+   "description": "One full lead time, lab included, before the first sticking week."
   },
   {
    "fieldname": "expiry_date",
@@ -392,7 +440,7 @@
  "grid_page_length": 50,
  "index_web_pages_for_search": 1,
  "links": [],
- "modified": "2026-08-07 09:00:00.000000",
+ "modified": "2026-08-07 14:30:00.000000",
  "modified_by": "Administrator",
  "module": "Summer Flowers",
  "name": "Summer Flower Motherstock Batch",
