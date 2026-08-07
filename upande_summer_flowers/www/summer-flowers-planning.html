@@ -157,6 +157,15 @@
         <h3 class="pl-h3">{{ _("Space used and unused") }}</h3>
         <div id="bf-util"></div>
 
+        <!-- The forecast above stops at the plan's horizon, which is the question a
+             plan asks. A planting outlives it -- Aster is 111 weeks in the ground
+             against a 52 week plan -- so more than half of what is already in the
+             ground falls outside every other chart here. -->
+        <h3 class="pl-h3">{{ _("Production to the end of every standing planting") }}</h3>
+        <p class="pl-note" style="margin-top:0">{{ _("What the ground will produce whether or not anyone plans for it, from the plantings that already exist. Not proposals.") }}</p>
+        <div class="pl-tiles pl-tiles-sm" id="lt-tiles"></div>
+        <div id="lt-table" class="pl-scroll"></div>
+
         <h3 class="pl-h3">{{ _("Weekly output of every block, against demand") }}</h3>
         <div class="pl-legend">
           <span class="pl-key"><i class="sw" style="background:var(--series-1)"></i>{{ _("Stems from standing blocks") }}</span>
@@ -3221,6 +3230,45 @@ table.hc tbody tr:hover td:not(.hc-k):not(.hc-m){background:var(--surface-2)}
     renderBlocks();
   }
 
+  // Every stem a standing planting will still yield, month by month, past the plan.
+  function renderLifetime() {
+    const d = S.lt;
+    if (!d || !d.rows || !d.rows.length) {
+      $("lt-tiles").innerHTML = "";
+      $("lt-table").innerHTML =
+        '<p class="pl-empty">Nothing standing for this variety yet.</p>';
+      return;
+    }
+    const t = d.totals;
+    $("lt-tiles").innerHTML = [
+      { k: "Standing plantings", v: num(t.plantings),
+        m: `${num(t.beds)} beds · ${num(t.plants)} plants` },
+      { k: "Stems over their lives", v: num(t.stems_expected),
+        m: `${t.first_harvest} to ${t.last_harvest}` },
+      { k: "Already harvested", v: num(t.stems_harvested),
+        m: t.stems_expected
+          ? (t.stems_harvested * 100 / t.stems_expected).toFixed(1) + "% of it" : "" },
+      { k: "Still to come", v: num(t.stems_remaining), m: "from today onwards",
+        c: "--series-1" },
+    ].map(tile).join("");
+
+    const max = Math.max(...d.rows.map((r) => r.expected)) || 1;
+    $("lt-table").innerHTML =
+      '<table class="pl-t"><thead><tr><th>Period</th><th class="n">Expected</th>' +
+      '<th class="n">Harvested</th><th class="n">Still to come</th>' +
+      '<th class="n">Cumulative</th><th class="n">Plantings</th><th>Share</th>' +
+      '</tr></thead><tbody>' +
+      d.rows.map((r) => `<tr><td>${esc(r.period)}</td>` +
+        `<td class="n">${num(r.expected)}</td>` +
+        `<td class="n">${r.harvested ? num(r.harvested) : "—"}</td>` +
+        `<td class="n">${r.future ? num(r.future) : "—"}</td>` +
+        `<td class="n">${num(r.cumulative)}</td>` +
+        `<td class="n">${r.plantings}</td>` +
+        `<td><span style="display:inline-block;height:8px;border-radius:3px;` +
+        `background:var(--series-1);width:${(r.expected * 100 / max).toFixed(1)}%"></span></td>` +
+        `</tr>`).join("") + "</tbody></table>";
+  }
+
   function renderBlocks() {
     const bf = S.bf; if (!bf) return;
     renderOverlay();
@@ -3868,7 +3916,10 @@ table.hc tbody tr:hover td:not(.hc-k):not(.hc-m){background:var(--surface-2)}
     return Promise.all([
       call("demand_vs_production", a), call("tc_derivation", a), call("planting_plan", a),
       call("block_forecast", a), call("event_calendar", a), call("protocol_detail", a),
-    ]).then(([dv, deriv, pp, bf, cal, pr]) => {
+      // Past the plan's horizon: what the ground already carries to the end of its life.
+      call("lifetime_production", a),
+    ]).then(([dv, deriv, pp, bf, cal, pr, lt]) => {
+      S.lt = lt;
       S.dv = dv && dv.plan ? dv : null;
       S.deriv = deriv; S.pp = pp; S.bf = bf; S.cal = cal; S.pr = pr;
       // The simulator's own picker defaults to the plan's version, but it is free
@@ -3897,7 +3948,8 @@ table.hc tbody tr:hover td:not(.hc-k):not(.hc-m){background:var(--surface-2)}
       S.calYear = cal.years && cal.years.length ? cal.years[0] : null;
 
       renderOverview(); renderDemand(); renderPlanting();
-      renderBlocks(); renderDerivation(); renderCalendar(); renderProtocol();
+      renderBlocks(); renderLifetime();
+      renderDerivation(); renderCalendar(); renderProtocol();
       // Keep the picker honest about which plan the page is actually showing.
       if (dv && dv.plan) { S.plan = dv.plan; const ps = $("f-plan"); if (ps) ps.value = dv.plan; }
       loadPlanState();

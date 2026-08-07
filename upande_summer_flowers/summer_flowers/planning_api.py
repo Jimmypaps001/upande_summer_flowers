@@ -1161,7 +1161,7 @@ def block_forecast(plan=None, variety=None, farm=None, blocks=None):
 			filters={"custom_block": ["in", [b.name for b in all_blocks]]},
 			fields=["name", "bed", "greenhouse", "custom_block", "custom_bed_status",
 			        "custom_planting_calendar", "custom_plants", "custom_uproot_date",
-			        "bed_length", "bed_width"],
+			        "bed_length", "bed_width", "bed_area"],
 			order_by="custom_block asc, bed asc",
 		):
 			beds_by_block.setdefault(r.custom_block, []).append({
@@ -1171,7 +1171,10 @@ def block_forecast(plan=None, variety=None, farm=None, blocks=None):
 				"planting": r.custom_planting_calendar,
 				"plants": r.custom_plants or 0,
 				"uproot_date": str(r.custom_uproot_date) if r.custom_uproot_date else None,
-				"area_sqm": flt(r.bed_length) * flt(r.bed_width),
+				# Dimensions where a bed has them, the recorded area otherwise. The
+				# 4,789 beds in Karen's blocks are each 50 m² with no length or width,
+				# so multiplying reported nought square metres of 24.149 hectares.
+				"area_sqm": (flt(r.bed_length) * flt(r.bed_width)) or flt(r.bed_area),
 			})
 
 	out = []
@@ -1189,6 +1192,23 @@ def block_forecast(plan=None, variety=None, farm=None, blocks=None):
 		# trustworthy on its own. Report how much of it is actually measured and let
 		# the caller fall back to bed counts rather than quote a silent under-count.
 		measured = len([x for x in beds if x["area_sqm"] > 0])
+		# Bed status is the better answer where it is maintained, because a bed pulled
+		# early frees up the moment its status changes. It is not maintained here:
+		# creating a Planting Calendar does not touch the beds, so 14 blocks held
+		# plantings while 4 bed records out of 4,789 said Planted and the farm read as
+		# 0.1% used. Where a block has plantings but no bed says so, the plantings are
+		# the authority and the basis is reported so nobody reads a bed count that was
+		# never kept.
+		held = sum(cint(r.get("beds")) for r in rows
+		           if r.get("calendar_status") not in ("Uprooted", "Cancelled"))
+		basis = "bed status"
+		if held and not used:
+			basis = "plantings"
+			held = min(held, len(beds) or held)
+			# Area follows the same basis, or the bar would say 300 beds used and
+			# nought square metres of them.
+			per_bed = (net_total / len(beds)) if beds else 0
+			net_used = held * per_bed
 		entry = {
 			"block": b.name,
 			"block_code": b.block,
@@ -1200,16 +1220,26 @@ def block_forecast(plan=None, variety=None, farm=None, blocks=None):
 			"beds": beds,
 			"utilisation": {
 				"beds_total": len(beds),
-				"beds_used": len(used),
-				"beds_free": len(free),
+				"beds_used": held if basis == "plantings" else len(used),
+				"beds_free": (max(0, len(beds) - held) if basis == "plantings"
+				              else len(free)),
 				"beds_uprooted": len(uprooted),
-				"pct_used": round(len(used) * 100.0 / len(beds), 2) if beds else 0.0,
+				# Which of the two answers this is, so a reader can tell a maintained
+				# bed register from a count inferred off the plantings.
+				"basis": basis,
+				"pct_used": round(
+					(held if basis == "plantings" else len(used))
+					* 100.0 / len(beds), 2) if beds else 0.0,
 				"net_sqm_total": round(net_total, 1),
 				"net_sqm_used": round(net_used, 1),
 				"net_sqm_free": round(net_total - net_used, 1),
 				"beds_measured": measured,
 				"area_complete": bool(beds) and measured == len(beds),
-				"plants_standing": sum(x["plants"] for x in used),
+				"plants_standing": (sum(cint(r.get("plants")) for r in rows
+				                        if r.get("calendar_status")
+				                        not in ("Uprooted", "Cancelled"))
+				                    if basis == "plantings"
+				                    else sum(x["plants"] for x in used)),
 			},
 		}
 		for pl in rows:
@@ -1338,6 +1368,121 @@ EDITABLE_PROTOCOL_FIELDS = (
 	"field_establishment_pct", "cutting_reject_pct", "stated_yield_stems_per_ha",
 	"ready_cutting_price", "climate_note",
 )
+
+
+@frappe.whitelist()
+def lifetime_production(variety=None, farm=None, plan=None, grain="month"):
+	"""Every stem a standing planting will yield, to the end of its life.
+
+	The block forecast stops at the plan's horizon, because that is the question a plan
+	asks. A planting outlives it: Aster is 111 weeks in the ground and a plan covers 52,
+	so more than half of what is already planted falls outside every chart on this
+	dashboard. This is the rest of it -- what the ground will produce whether or not
+	anyone plans for it -- flush by flush, from the plantings that exist.
+	"""
+	_guard()
+	if plan and not variety:
+		row = frappe.db.get_value("Summer Flower Production Plan", plan,
+		                          ["variety", "farm"], as_dict=True)
+		if row:
+			variety, farm = row.variety, row.farm
+
+	pf = {"calendar_status": ["not in", ("Cancelled", "Uprooted")]}
+	if variety:
+		pf["variety"] = variety
+	if farm:
+		pf["farm"] = farm
+	plantings = frappe.get_all(
+		"Planting Calendar", filters=pf,
+		fields=["name", "block", "variety", "farm", "beds", "plants", "planting_date",
+		        "planned_uproot_date", "actual_uproot_date", "calendar_status",
+		        "crop_protocol_version", "expected_stems_life"],
+		order_by="planting_date asc")
+	if not plantings:
+		return {"variety": variety, "farm": farm, "plantings": [], "rows": [],
+		        "totals": {}, "grain": grain}
+
+	# Flush rows carry the dated harvests, and they are the same rows the plan and the
+	# calendar read, so nothing is recomputed here.
+	names = [p.name for p in plantings]
+	flushes = frappe.get_all(
+		"Planting Calendar Flush",
+		filters={"parent": ["in", names]},
+		fields=["parent", "flush_number", "harvest_date", "year", "week_no",
+		        "expected_stems", "actual_stems", "is_harvested", "stems_per_plant"],
+		order_by="harvest_date asc")
+
+	today = getdate(nowdate())
+	buckets = {}
+	by_planting = {}
+	for f in flushes:
+		if not f.harvest_date:
+			continue
+		d = getdate(f.harvest_date)
+		key = ("%s-%02d" % (d.year, d.month) if grain == "month"
+		       else "%s-W%02d" % (cint(f.year), cint(f.week_no)))
+		b = buckets.setdefault(key, {"period": key, "date": str(d),
+		                             "expected": 0, "actual": 0, "harvested": 0,
+		                             "future": 0, "plantings": set()})
+		exp, act = cint(f.expected_stems), cint(f.actual_stems)
+		b["expected"] += exp
+		b["actual"] += act
+		b["plantings"].add(f.parent)
+		if f.is_harvested:
+			b["harvested"] += act
+		elif d >= today:
+			b["future"] += exp
+		p = by_planting.setdefault(f.parent, {"expected": 0, "harvested": 0,
+		                                      "remaining": 0, "flushes": 0,
+		                                      "last": None})
+		p["expected"] += exp
+		p["flushes"] += 1
+		p["last"] = str(d)
+		if f.is_harvested:
+			p["harvested"] += act
+		elif d >= today:
+			p["remaining"] += exp
+
+	rows = [{**b, "plantings": len(b["plantings"])}
+	        for b in sorted(buckets.values(), key=lambda x: x["date"])]
+	run = 0
+	for r in rows:
+		run += r["expected"]
+		r["cumulative"] = run
+
+	out_plantings = []
+	for p in plantings:
+		agg = by_planting.get(p.name, {})
+		out_plantings.append({
+			"planting": p.name, "block": p.block, "beds": cint(p.beds),
+			"plants": cint(p.plants), "status": p.calendar_status,
+			"planted": str(p.planting_date) if p.planting_date else None,
+			"uproot": str(p.actual_uproot_date or p.planned_uproot_date or ""),
+			"protocol": p.crop_protocol_version,
+			"flushes": agg.get("flushes", 0),
+			"stems_expected": agg.get("expected", 0),
+			"stems_harvested": agg.get("harvested", 0),
+			"stems_remaining": agg.get("remaining", 0),
+			"last_harvest": agg.get("last"),
+			# What the planting itself claims, so a flush table that has drifted from
+			# the planting's own total is visible rather than silently trusted.
+			"stems_on_record": cint(p.expected_stems_life),
+		})
+	return {
+		"variety": variety, "farm": farm, "grain": grain,
+		"plantings": out_plantings, "rows": rows,
+		"totals": {
+			"plantings": len(out_plantings),
+			"beds": sum(x["beds"] for x in out_plantings),
+			"plants": sum(x["plants"] for x in out_plantings),
+			"stems_expected": sum(x["stems_expected"] for x in out_plantings),
+			"stems_harvested": sum(x["stems_harvested"] for x in out_plantings),
+			"stems_remaining": sum(x["stems_remaining"] for x in out_plantings),
+			"first_harvest": rows[0]["date"] if rows else None,
+			"last_harvest": rows[-1]["date"] if rows else None,
+			"periods": len(rows),
+		},
+	}
 
 
 @frappe.whitelist()
