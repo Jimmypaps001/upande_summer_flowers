@@ -1027,7 +1027,31 @@ def plan_preview(market_demand, farm=None, season_start_year=None):
 			per_year = flt(v.total_stems_per_plant_life) / years
 			if per_year:
 				total_plants = int(math.ceil(stems / per_year))
-				total_beds = int(math.ceil(total_plants / ppb))
+				smooth_beds = int(math.ceil(total_plants / ppb))
+				# That figure assumes the ground can be divided as finely as the demand.
+				# It cannot: the planner rounds every planting up to the protocol's
+				# minimum, and a week wanting two beds gets ten. So the beds are sized
+				# the way the planner will size them -- week by week, each proposal
+				# covering its own flush weeks -- which is why changing the minimum
+				# planting area moves this number and the smooth one never did.
+				covered = defaultdict(int)
+				proposed_beds = 0
+				for r in sorted(weeks, key=lambda x: (cint(x.year), cint(x.week_no))):
+					key = (cint(r.year), cint(r.week_no))
+					short = cint(r.demand_stems) - covered[key]
+					if short <= 0:
+						continue
+					want = int(math.ceil(short / (first_flush * ppb)))
+					b = max(min_beds, want)
+					proposed_beds += b
+					for off, spp in offsets:
+						# hd, not d: d is the demand register in this scope, and
+						# shadowing it turned the next read of d.variety into an
+						# AttributeError on a date.
+						hd = getdate(r.week_start_date) + datetime.timedelta(
+							weeks=off - offsets[0][0])
+						covered[iso_year_week(hd)] += int(round(spp * b * ppb))
+				total_beds = max(smooth_beds, proposed_beds)
 				need_ha = total_beds * flt(v.sqm_net_per_bed) / 10_000
 				have = frappe.db.sql("""
 					select ifnull(sum(custom_net_area_ha), 0) ha,
@@ -1037,6 +1061,11 @@ def plan_preview(market_demand, farm=None, season_start_year=None):
 				space = {
 					"basis": "plants standing to deliver one season at %.1f stems "
 					         "per plant per year" % per_year,
+					# Both, so the cost of the minimum is visible rather than folded in.
+					"beds_if_divisible": smooth_beds,
+					"beds_with_minimum": proposed_beds,
+					"min_planting_beds": min_beds,
+					"min_planting_area_sqm": flt(v.min_planting_area_sqm),
 					"beds_needed": total_beds, "plants_needed": total_plants,
 					"ha_needed": round(need_ha, 3),
 					"ha_at_farm": round(flt(have["ha"]), 3),

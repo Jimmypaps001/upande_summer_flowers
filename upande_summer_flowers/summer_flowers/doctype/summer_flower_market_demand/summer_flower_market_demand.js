@@ -174,10 +174,21 @@ function confirm_plan(frm, values, s) {
 	}
 	if (s.space) {
 		const over = s.space.pct_of_farm && s.space.pct_of_farm > 100;
+		const extra = (s.space.beds_with_minimum || 0) - (s.space.beds_if_divisible || 0);
 		rows.push([__("Ground it needs"),
 			`<b>${s.space.ha_needed} ha</b> ${__("standing")} (${
 				num(s.space.beds_needed)} ${__("beds")}, ${
 				num(s.space.plants_needed)} ${__("plants")})`]);
+		// The minimum planting size is a real cost in ground and it used to be
+		// invisible: the figure above assumed the land could be divided as finely as
+		// the demand, so changing the minimum moved nothing.
+		if (extra > 0) {
+			rows.push([__("Of which the minimum costs"),
+				`${num(extra)} ${__("extra beds")} — ${__("the smallest planting is")} ${
+					s.space.min_planting_beds} ${__("beds")} (${
+					s.space.min_planting_area_sqm} m²), ${
+					__("so a week needing less is still planted at that")}`]);
+		}
 		rows.push([__("Ground at this farm"),
 			`${s.space.ha_at_farm} ha, ${num(s.space.beds_at_farm)} ${__("beds")}` +
 			(s.space.pct_of_farm

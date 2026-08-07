@@ -2533,8 +2533,14 @@ table.hc tbody tr:hover td:not(.hc-k):not(.hc-m){background:var(--surface-2)}
           `${esc(p.tc.order_by || "—")}${p.tc.late ? " — already passed" : ""}`]);
       }
       if (p.space) {
+        const extra = (p.space.beds_with_minimum || 0) - (p.space.beds_if_divisible || 0);
         rows.push(["Ground it needs",
           `${p.space.ha_needed} ha standing, ${num(p.space.beds_needed)} beds`]);
+        if (extra > 0) {
+          rows.push(["Of which the minimum costs",
+            `${num(extra)} extra beds — smallest planting is ${
+              p.space.min_planting_beds} beds (${p.space.min_planting_area_sqm} m²)`]);
+        }
         rows.push(["Ground at this farm",
           `${p.space.ha_at_farm} ha${p.space.pct_of_farm
             ? ` — ${p.space.pct_of_farm}% of it` : ""}`]);
