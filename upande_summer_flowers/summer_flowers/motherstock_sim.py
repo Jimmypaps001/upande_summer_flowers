@@ -11,9 +11,10 @@ sent to the field, the pool doubles every round.
     1000 -> 0 to field,  1000 retained -> 1000 + 1000 = 2000
 
 That compounds, which is not what the planning workbook assumed. Its formula,
-`TC = mothers / (1 + cycles x factor)`, is linear: each round adds one cohort of
-the original size. Four rounds gives 16x here against 5x there, so the two
-disagree by roughly 3x on how many plantlets to buy. Both are reported.
+`TC = mothers / (cycles x factor)`, is linear: each round adds one cohort of the
+original size, and the arriving plantlet is not counted as a generation of its
+own. Four rounds gives 16x here against 4x there, so the two disagree by roughly
+4x on how many plantlets to buy. Both are reported.
 
 Nothing here touches the database, so the same code serves a saved batch and a
 what-if slider.
@@ -185,7 +186,11 @@ def simulate(
 		})
 
 	peak = max(timeline, key=lambda r: r["ms_pool"]) if timeline else {}
-	linear_equivalent = tc_plants * (1 + rounds * factor)
+	# The linear model this is compared against: the cycles govern, so four rounds
+	# give four plants per plantlet, not five. Kept in step with
+	# CropProtocolVersion.multiplication_factor, which is what actually sizes an order.
+	linear_factor = (rounds * (factor if factor > 0 else 1.0)) if rounds else 1.0
+	linear_equivalent = tc_plants * linear_factor
 	return {
 		"tc_plants": tc_plants,
 		"tc_arrival_date": str(arrival),
@@ -194,7 +199,7 @@ def simulate(
 		"final_pool": pool,
 		"multiplication_achieved": (pool / tc_plants) if tc_plants else 0,
 		"workbook_linear_pool": int(linear_equivalent),
-		"workbook_multiplication": (1 + rounds * factor),
+		"workbook_multiplication": linear_factor,
 		"field_plants_released": cumulative_field,
 		"peak_pool": peak.get("ms_pool", 0),
 		"peak_bench_sqm": peak.get("bench_sqm", 0),

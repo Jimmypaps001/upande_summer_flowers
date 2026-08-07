@@ -282,11 +282,13 @@ def tc_derivation(plan=None, variety=None, farm=None):
 	# derivation: ordering the requirement exactly arrives short by the loss rate,
 	# and seeing only the larger figure makes the multiplication look wrong.
 	required = int(math.ceil(v.tc_plants_for(mothers, None, with_loss=False))) if mothers else 0
+	mf = v.multiplication_factor()
+	factor_txt = ("%g" % mf)
 	steps.append({
 		"step": "TC plantlets required", "value": required, "unit": "plantlets",
-		"note": "%s mother plants / (1 + %s cycles x %s multiplication)"
-		        % (mothers, cint(v.max_multiplication_cycles),
-		           flt(v.multiplication_factor_per_cycle)),
+		"note": "%s mother plants / %s, because %s multiplication cycles turn one "
+		        "plantlet into %s plants"
+		        % (mothers, factor_txt, cint(v.max_multiplication_cycles), factor_txt),
 	})
 	if flt(v.tc_order_loss_pct):
 		steps.append({
@@ -688,7 +690,7 @@ def tc_purchase(plan=None, variety=None, farm=None, tc_qty=None, tolerance_pct=1
 	prop = prop[0] if prop else None
 
 	chosen = cint(tc_qty) or (cint(prop.tc_plants_required) if prop else recommended)
-	factor = 1 + (cycles * flt(v.multiplication_factor_per_cycle))
+	factor = v.multiplication_factor(cycles)
 	pool_for = lambda tc: int(round(cint(tc) * factor))
 	cover_of_peak = (pool_for(chosen) * per_week / cuttings * 100) if cuttings else 0
 
@@ -821,8 +823,7 @@ def plan_whatif(plan=None, variety=None, farm=None, tc_qty=None, week_overrides=
 	if not chosen:
 		peak = v.cuttings_for_plants(sizing_peak(p)[0])
 		per_week = flt(v.cuttings_per_plant_per_week) or 1.0
-		factor = 1 + (cint(v.max_multiplication_cycles)
-		              * flt(v.multiplication_factor_per_cycle))
+		factor = v.multiplication_factor()
 		chosen = int(math.ceil(peak / per_week / factor)) if per_week and factor else 0
 
 	built = _tc_production(p, v, chosen, order_date, to_prop_pct=flt(to_prop_pct),

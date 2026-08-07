@@ -218,8 +218,7 @@ class CropProtocolVersion(Document):
 		self.plants_per_sqm_bench = (self.pots_per_sqm or 0) * (self.plants_per_pot or 0)
 
 		cycles = self.max_multiplication_cycles or 0
-		factor = self.multiplication_factor_per_cycle or 0
-		self.max_multiplication_factor = 1 + (cycles * factor)
+		self.max_multiplication_factor = self.multiplication_factor(cycles)
 		self.lead_time_weeks = self.lead_time_for_cycles(cycles)
 
 	def ramp_ratios(self):
@@ -285,21 +284,43 @@ class CropProtocolVersion(Document):
 			return est
 		return est + (cycles * (self.cycle_time_weeks or 0)) + est
 
-	def tc_plants_for(self, mother_plants, cycles=None, with_loss=True):
-		"""Plantlets to order for a target number of mother plants.
+	def multiplication_factor(self, cycles=None):
+		"""How many mother plants one TC plantlet ends up as.
 
-		Two steps. The multiplication divides by 1 + cycles x factor, which is the
-		workbook's own model -- linear in the cycles, not compounding -- and matches
-		its TC sheet at every cycle count from 0 to 4. Then the order allowance
-		divides by what survives the lab-to-bench transfer, which is its separate TC
-		ORDER column: 4,000 plantlets needed is 4,444 ordered at 10%. Ordering the
-		requirement exactly means arriving short by the loss rate.
+		The cycles govern: four multiplication cycles turn one plantlet into four
+		plants, so 4,000 plants wanted is 1,000 plantlets bought. The per-cycle
+		factor scales that for a variety where one cycle yields more than one
+		generation, and defaults to 1 so that a protocol which never filled it in is
+		still driven by its cycle count alone.
 
-		with_loss=False gives the bare requirement, for showing the two apart.
+		No cycles means no multiplication: one plantlet is one plant, so the factor
+		is 1 and the full requirement is bought.
+
+		This deliberately does not count the arriving plantlet as a generation of
+		its own. Doing so divides by five where the farm divides by four and
+		under-buys by a fifth, which is the whole reason this lives in one place
+		instead of being spelt out at each of the eight sites that needed it.
 		"""
 		if cycles is None:
 			cycles = self.max_multiplication_cycles or 0
-		factor = 1 + (cycles * (self.multiplication_factor_per_cycle or 0))
+		cycles = cint(cycles)
+		if not cycles:
+			return 1.0
+		per_cycle = flt(self.multiplication_factor_per_cycle)
+		return cycles * (per_cycle if per_cycle > 0 else 1.0)
+
+	def tc_plants_for(self, mother_plants, cycles=None, with_loss=True):
+		"""Plantlets to order for a target number of mother plants.
+
+		Two steps. The multiplication divides by what one plantlet becomes -- see
+		multiplication_factor -- and then the order allowance divides by what
+		survives the lab-to-bench transfer: 4,000 plantlets needed is 4,444 ordered
+		at 10%. Ordering the requirement exactly means arriving short by the loss
+		rate.
+
+		with_loss=False gives the bare requirement, for showing the two apart.
+		"""
+		factor = self.multiplication_factor(cycles)
 		needed = (mother_plants / factor) if factor else mother_plants
 		if not with_loss:
 			return needed

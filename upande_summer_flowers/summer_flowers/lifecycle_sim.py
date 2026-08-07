@@ -77,8 +77,7 @@ def params_from_version(version, overrides=None):
 		# one plantlet as one mother while still waiting out the build-up, so an
 		# order sized by the Motherstock Batch produced a fifth of the capacity that
 		# batch had sized it for.
-		"multiplication_factor": 1 + (cint(v.max_multiplication_cycles)
-		                              * flt(v.multiplication_factor_per_cycle)),
+		"multiplication_factor": v.multiplication_factor(),
 		# A cutting diverted to the propagation unit becomes a mother plant after
 		# tray and pot, then ramps. Not ms_establishment_weeks, which folds the build-up
 		# in and would wait it out before ramping again; and not the TC path either,

@@ -61,7 +61,7 @@ class SummerFlowerMotherstockBatch(Document):
 				title=_("Above protocol cap"),
 			)
 
-		self.multiplication_factor = 1 + (cycles * (p.multiplication_factor_per_cycle or 0))
+		self.multiplication_factor = p.multiplication_factor(cycles)
 		self.tc_plants_required = int(math.ceil(p.tc_plants_for(self.mother_plants, cycles)))
 		self.lead_time_weeks = p.lead_time_for_cycles(cycles)
 		self.total_lead_time_weeks = (self.lead_time_weeks or 0) + lab_lead_weeks(p)
@@ -182,7 +182,7 @@ class SummerFlowerMotherstockBatch(Document):
 		plants = tc_plants
 		for c in range(1, cycles + 1):
 			cursor = add_days(cursor, 7 * (p.cycle_time_weeks or 0))
-			plants = tc_plants * (1 + c * (p.multiplication_factor_per_cycle or 0))
+			plants = tc_plants * p.multiplication_factor(c)
 			step(_("Multiplication cycle {0}").format(c), cursor, plants)
 
 		if cycles:
@@ -284,7 +284,7 @@ def cycle_options(protocol, mother_plants, stage="Stage 4", year=None):
 		rate = lookup_tc_rate(tc, stage, year)
 		out.append({
 			"cycles": cycles,
-			"multiplication_factor": 1 + cycles * (p.multiplication_factor_per_cycle or 0),
+			"multiplication_factor": p.multiplication_factor(cycles),
 			"tc_plants": tc,
 			"rate": rate,
 			"cost": flt(rate) * tc,
