@@ -1829,7 +1829,7 @@
    "field_name": "flush_details_section",
    "property": "depends_on",
    "property_type": "Data",
-   "value": "eval:!doc.custom_is_summer_flower",
+   "value": "",
    "name": "Crop Protocol-flush_details_section-depends_on",
    "doctype": "Property Setter"
   },
@@ -1949,7 +1949,7 @@
    "field_name": "production_tab",
    "property": "depends_on",
    "property_type": "Data",
-   "value": "eval:!doc.custom_is_summer_flower",
+   "value": "",
    "name": "Crop Protocol-production_tab-depends_on",
    "doctype": "Property Setter"
   },
@@ -1969,7 +1969,7 @@
    "field_name": "propagation_tab",
    "property": "depends_on",
    "property_type": "Data",
-   "value": "eval:!doc.custom_is_summer_flower",
+   "value": "",
    "name": "Crop Protocol-propagation_tab-depends_on",
    "doctype": "Property Setter"
   },
