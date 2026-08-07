@@ -919,6 +919,22 @@ def _space_for(plan, farm):
 
 
 @frappe.whitelist()
+def plan_preview(market_demand, farm=None, season_start_year=None):
+	"""What creating this plan would mean, before anything is written.
+
+	A passthrough because the dashboard reaches this module and the check itself lives
+	with the plan. Both surfaces ask the same question and get the same answer.
+	"""
+	_guard()
+	from upande_summer_flowers.summer_flowers.doctype \
+		.summer_flower_production_plan.summer_flower_production_plan import (
+			plan_preview as _preview,
+		)
+
+	return _preview(market_demand, farm=farm, season_start_year=season_start_year)
+
+
+@frappe.whitelist()
 def create_production_plan(demand, farm=None, season_start_year=None, force_new=0):
 	"""Build the production plan for a demand register.
 

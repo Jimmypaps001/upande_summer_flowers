@@ -2503,6 +2503,68 @@ table.hc tbody tr:hover td:not(.hc-k):not(.hc-m){background:var(--surface-2)}
     });
   }
 
+  // The same check the desk form does before creating a plan: what it will cover, what
+  // it will cost to buy, and what ground it needs.
+  function createPlanFromChain() {
+    const demand = S.chain.demand.name;
+    if (!S.farm) {
+      toast("Choose a farm first. A plan is one farm's commitment: the demand is for " +
+            "the variety, and which farm grows it decides the blocks and the protocol.",
+            true);
+      return;
+    }
+    const season = S.season || (S.chain.demand.horizon_start
+      ? +String(S.chain.demand.horizon_start).slice(0, 4) : null);
+    run("plan_preview", { market_demand: demand, farm: S.farm,
+                          season_start_year: season }, (p) => {
+      const rows = [
+        ["Variety", `${esc(p.variety)} at ${esc(p.farm)}`],
+        ["Season", `${esc(p.season)} (${esc(p.season_start)} to ${esc(p.season_end)})`],
+        ["Demand in that season", `${num(p.demand_stems)} stems over ${p.weeks} weeks`],
+        ["Protocol in force", p.protocol ? esc(p.protocol) : "none"],
+        ["Summer flower blocks", num(p.blocks)],
+      ];
+      if (p.tc) {
+        rows.push(["Tissue culture to buy", `${num(p.tc.plantlets)} plantlets`]);
+        rows.push(["Which multiply into",
+          `${num(p.tc.mother_plants)} mother plants, cutting ${num(p.tc.cuttings)} in ${
+            esc(p.tc.peak_week)}`]);
+        rows.push(["Order by",
+          `${esc(p.tc.order_by || "—")}${p.tc.late ? " — already passed" : ""}`]);
+      }
+      if (p.space) {
+        rows.push(["Ground it needs",
+          `${p.space.ha_needed} ha standing, ${num(p.space.beds_needed)} beds`]);
+        rows.push(["Ground at this farm",
+          `${p.space.ha_at_farm} ha${p.space.pct_of_farm
+            ? ` — ${p.space.pct_of_farm}% of it` : ""}`]);
+      }
+      const body = `<table class="pl-t"><tbody>${
+        rows.map(([k, v]) => `<tr><td>${esc(k)}</td><td>${v}</td></tr>`).join("")
+      }</tbody></table>` +
+        (p.blocking || []).map((n) =>
+          `<p class="pl-callout">${esc(n)}</p>`).join("") +
+        (p.notes || []).map((n) =>
+          `<p class="pl-note">${esc(n)}</p>`).join("");
+
+      formModal({
+        title: p.can_create ? "Create this plan?" : "This plan cannot be created",
+        intro: body,
+        fields: [],
+        submitLabel: p.can_create ? "Create the plan" : "Close",
+        onSubmit: () => {
+          if (!p.can_create) return;
+          run("create_production_plan",
+              { demand, farm: S.farm, season_start_year: p.season_start_year }, (r) => {
+            toast(`Plan ${r.name}: ${r.weeks_covered} weeks, ` +
+                  `${r.coverage_pct.toFixed(1)}% coverage, ${num(r.new_beds_required)} beds.`);
+            refreshAfterWrite();
+          });
+        },
+      });
+    });
+  }
+
   function refreshAfterWrite() {
     // A write can move production, so the projections are reloaded too rather
     // than leaving the other tabs showing pre-transaction numbers.
@@ -4133,11 +4195,11 @@ table.hc tbody tr:hover td:not(.hc-k):not(.hc-m){background:var(--surface-2)}
       const ch = ev.target.closest("[data-ch]");
       if (ch && S.chain) {
         if (ch.dataset.ch === "ch-plan") {
-          run("create_production_plan", { demand: S.chain.demand.name }, (r) => {
-            toast(`Plan ${r.name} created: ${r.weeks_covered} weeks, ` +
-                  `${r.coverage_pct.toFixed(1)}% coverage, ${num(r.new_beds_required)} beds.`);
-            refreshAfterWrite();
-          });
+          // A plan is one farm's commitment for one season, and this sent neither --
+          // only the register -- so build_from_demand refused it and the button did
+          // nothing. The farm comes from the scope bar, and the season from the demand
+          // if none is picked, and the reader sees what it will cost before agreeing.
+          createPlanFromChain();
         } else if (ch.dataset.ch === "ch-prop") {
           run("create_propagation_plan", { plan: S.chain.plan.name }, (r) => {
             toast(r.created

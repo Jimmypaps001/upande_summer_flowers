@@ -129,6 +129,11 @@ function create_plan(frm) {
 
 function confirm_plan(frm, values, s) {
 	const num = (n) => frappe.format(n || 0, { fieldtype: "Int" });
+	// These rows are built as HTML, so anything from the server is escaped. esc was
+	// used below without ever being defined here -- the dashboard has one, this file
+	// did not -- and the ReferenceError meant the dialog never opened and clicking
+	// Create did nothing at all.
+	const esc = (v) => frappe.utils.escape_html(String(v == null ? "" : v));
 	const rows = [
 		[__("Variety"), s.variety],
 		[__("Farm"), s.farm],
