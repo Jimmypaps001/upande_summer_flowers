@@ -90,12 +90,17 @@ fixtures = [
 # doctypes, so picking Summer Flowers from the apps screen looked like the module
 # WAS that one page. The workspace opens the menu, and the dashboard is the first
 # link in it, under Dashboard.
+#
+# /desk, not /app: this is the base the sidebar itself builds links with
+# (sidebar_item.js -> "/desk/" + frappe.router.slug(...)), and frappe.router.slug
+# lowercases and hyphenates, so the workspace named "Summer Flowers" is at
+# /desk/summer-flowers.
 add_to_apps_screen = [
 	{
 		"name": "upande_summer_flowers",
 		"logo": "/assets/upande_summer_flowers/images/summer_flowers.svg",
 		"title": "Summer Flowers",
-		"route": "/app/summer-flowers",
+		"route": "/desk/summer-flowers",
 	}
 ]
 
