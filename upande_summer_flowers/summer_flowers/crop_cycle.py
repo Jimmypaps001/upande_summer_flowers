@@ -718,7 +718,11 @@ def _check_item_usable(code):
 def _asset_location(farm, greenhouse=None):
 	"""Asset needs a Location. Prefer the farm's own, then its name."""
 	if farm:
-		loc = frappe.db.get_value("Farm", farm, "custom_location")
+		# custom_location is another app's field on Farm, and a site can be without
+		# it. Asking anyway is a SELECT on a column that is not there, which takes
+		# the whole asset creation down rather than falling back to the farm name.
+		loc = (frappe.db.get_value("Farm", farm, "custom_location")
+		       if frappe.get_meta("Farm").has_field("custom_location") else None)
 		if loc and frappe.db.exists("Location", loc):
 			return loc
 		if frappe.db.exists("Location", farm):

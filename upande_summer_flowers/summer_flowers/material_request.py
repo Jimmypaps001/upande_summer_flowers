@@ -76,8 +76,11 @@ def _default_store(doc):
 	field = {"Chemical Issuing": "custom_chemical_store",
 	         "Fertiliser Issuing": "custom_fertilizer_store"}.get(
 		doc.get("custom_request_type"))
-	if field and doc.get("custom_farm"):
+	if field and doc.get("custom_farm") and frappe.get_meta("Farm").has_field(field):
 		return frappe.db.get_value("Farm", doc.custom_farm, field)
+	# No such field on this site's Farm: no default store, which is what the
+	# request would have had anyway. Asking for the column would instead refuse
+	# the save outright.
 	return None
 
 
