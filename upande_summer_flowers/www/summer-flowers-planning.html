@@ -1044,6 +1044,20 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
   const esc = (s) => String(s == null ? "" : s).replace(/[&<>"']/g,
     (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
   const sgn = (v) => (v > 0 ? "+" : "") + num(v);
+  // Dates come off the API as YYYY-MM-DD, which is the right thing to send and the
+  // wrong thing to read: this site is set to dd-mm-yyyy and every date on the page
+  // was ignoring that. frappe.datetime.str_to_user applies whatever System Settings
+  // says, so the page follows the site rather than carrying a format of its own.
+  const fdate = (v) => {
+    const raw = String(v == null ? "" : v).trim();
+    if (!raw) return "";
+    try {
+      if (frappe && frappe.datetime && frappe.datetime.str_to_user) {
+        return esc(frappe.datetime.str_to_user(raw.slice(0, 10)));
+      }
+    } catch (e) { /* fall through to the ISO string rather than showing nothing */ }
+    return esc(raw);
+  };
   const shortBlock = (b) => String(b || "").split(" - Block ").pop();
 
   const M = "upande_summer_flowers.summer_flowers.planning_api.";
@@ -1414,7 +1428,7 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
           cum = cumAt[r.label];
           const c = r.variance < 0 ? "var(--critical)" : r.variance > 0 ? "var(--good)" : "";
           return `<tr class="${r.production ? "" : "zero"}"><td>${esc(r.label)}</td>` +
-            `<td>${esc(r.date)}</td><td class="n">${num(r.demand)}</td>` +
+            `<td>${fdate(r.date)}</td><td class="n">${num(r.demand)}</td>` +
             `<td class="n">${num(r.production)}</td>` +
             `<td class="n"${c ? ` style="color:${c}"` : ""}>${sgn(r.variance)}</td>` +
             `<td class="n">${sgn(cum)}</td><td class="n">${r.area_ha.toFixed(3)}</td></tr>`;
@@ -1821,7 +1835,7 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
     const body = rows.map(({ b, p }, i) => {
       const tot = Object.values(cellAt[i]).reduce((a, c) => a + c.stems, 0);
       return `<tr><td class="hc-k" title="${esc(p.name)} · planted ` +
-        `${esc(p.planting_date || "")} · uproot ${esc(p.uproot_date || "")}">` +
+        `${fdate(p.planting_date)} · uproot ${fdate(p.uproot_date)}">` +
         `${esc(b.block_code)}</td>` +
         `<td class="hc-m">${esc(p.variety || "")}</td>` +
         `<td class="hc-m">${num(p.beds)}</td>` +
@@ -2066,7 +2080,7 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
         m: (t.tc_order_date ? "order by " + t.tc_order_date : "none needed") + whole },
       { k: "Build-up to full capacity", v: `${t.ramp_weeks || 0} wk`,
         m: t.full_capacity_date
-          ? `full rate from ${t.full_capacity_date}` : "no new pool needed",
+          ? `full rate from ${fdate(t.full_capacity_date)}` : "no new pool needed",
         c: t.lost_to_ramp ? "--serious" : "" },
       { k: "Short during build-up", v: num(t.lost_to_ramp),
         m: t.lost_to_ramp
@@ -2124,7 +2138,7 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
           `<td>${esc(b.tc_order_date || "—")}</td>` +
           `<td>${esc(b.tc_on_farm_date || "—")}</td>` +
           `<td>${esc(b.first_sticking_date || "—")}</td>` +
-          `<td>${esc(b.expiry_date || "—")}</td>` +
+          `<td>${b.expiry_date ? fdate(b.expiry_date) : "—"}</td>` +
           `<td class="n">${num(Math.round(b.total_cost || 0))}</td></tr>`).join("") +
         "</tbody></table>";
     }
@@ -2606,8 +2620,8 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
       wrap.innerHTML = `<div class="fm-card" style="max-width:560px">
         <h3 class="fm-h">Block for planting ${p.idx}</h3>
         <p class="fm-i">${beds} beds, stuck ${esc(p.sticking_week)}, planted ${
-          esc(p.planting_date)}, pinched ${esc(p.pinch_date || "—")}, uprooted ${
-          esc(p.uproot_date)}. It needs those beds for the whole of that.</p>
+          fdate(p.planting_date)}, pinched ${p.pinch_date ? fdate(p.pinch_date) : "—"}, uprooted ${
+          fdate(p.uproot_date)}. It needs those beds for the whole of that.</p>
         <div class="fm-b">${opts}</div>
         <div class="fm-a">
           ${p.assigned ? '<button type="button" class="pl-btn" data-pick="">Leave unassigned</button>' : ""}
@@ -2710,7 +2724,7 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
     const d = S.det;
     formModal({
       title: "Record actual pinch",
-      intro: `<p class="fm-intro">Planned pinch was <b>${esc(d.dates.planned_pinch)}</b>. ` +
+      intro: `<p class="fm-intro">Planned pinch was <b>${fdate(d.dates.planned_pinch)}</b>. ` +
         `A different date re-anchors the uproot date and every flush by the same drift.</p>`,
       fields: [{ name: "d", label: "Pinched on", type: "date",
                  value: d.dates.planned_pinch, required: true }],
@@ -2750,7 +2764,7 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
     const d = S.det;
     formModal({
       title: "End the cycle",
-      intro: `<p class="fm-intro">Planned uproot is <b>${esc(d.dates.planned_uproot)}</b>. ` +
+      intro: `<p class="fm-intro">Planned uproot is <b>${fdate(d.dates.planned_uproot)}</b>. ` +
         `Uprooting off that date needs a reason and Farm Manager approval, and ` +
         `recalculates plant age, remaining flushes and expected stems.</p>`,
       fields: [
@@ -2900,7 +2914,7 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
       { k: "On farm", v: esc(tc.tc_on_farm_date || "—"), m: "plantlets delivered" },
       { k: "First cutting", v: esc(tc.first_sticking_date || "—"),
         m: tc.ramp_weeks
-          ? `full capacity ${esc(tc.full_capacity_date || "—")} after a ` +
+          ? `full capacity ${fdate(tc.full_capacity_date)} after a ` +
             `${tc.ramp_weeks}-week build-up`
           : "no build-up recorded" },
       { k: "Short during build-up", v: num(tc.lost_to_ramp || 0), m: "cuttings",
@@ -2956,7 +2970,7 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
           return `<tr class="${r.variance < 0 ? "short" : ""}">` +
             // demand_vs_production calls it `date`; this asked for week_start_date
             // and got undefined, so the Starts column has been blank all along.
-            `<td>${esc(r.label)}</td><td>${esc(r.date || r.week_start_date || "")}</td>` +
+            `<td>${esc(r.label)}</td><td>${fdate(r.date || r.week_start_date)}</td>` +
             `<td class="n">${num(r.demand)}</td>` +
             `<td class="n">${num(r.production)}</td>` +
             `<td class="n"${shortOfPlan
@@ -3133,10 +3147,10 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
       rets.map((x) => `<tr><td>${esc(x.src_date)}</td>` +
         `<td class="n">${num(x.plants)}</td>` +
         `<td class="n">${x.establishment_weeks}</td>` +
-        `<td>${esc(x.ready_date)}</td><td>${esc(x.full_date)}</td>` +
+        `<td>${fdate(x.ready_date)}</td><td>${fdate(x.full_date)}</td>` +
         `<td>${esc(x.ends_date)}</td>` +
         `<td class="n" style="color:var(--violet)">${num(x.weekly_capacity)}</td>` +
-        `<td class="bf-meta">joins production from ${esc(x.ready_date)}</td></tr>`).join("") +
+        `<td class="bf-meta">joins production from ${fdate(x.ready_date)}</td></tr>`).join("") +
       "</tbody></table></div>" +
       (gained.length
         ? '<h3 class="pl-h3">Sticking weeks it lifts</h3>' +
@@ -3302,9 +3316,9 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
       { k: "Pool it builds", v: num(t.chosen_pool),
         m: `×${t.multiplication_factor} over ${t.build_up_cycles} build-up cycles · ` +
            `covers ${t.chosen_cover_pct.toFixed(0)}% of the peak week` },
-      { k: "MS starts cutting", v: esc(t.first_cut_date || "—"),
+      { k: "MS starts cutting", v: t.first_cut_date ? fdate(t.first_cut_date) : "—",
         m: t.full_capacity_date
-          ? `full rate ${esc(t.full_capacity_date)} after ${t.ramp_weeks} weeks`
+          ? `full rate ${fdate(t.full_capacity_date)} after ${t.ramp_weeks} weeks`
           : "no schedule yet" },
     ].map(tile).join("");
 
@@ -3334,8 +3348,8 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
         `${t.tc_for_demand_coverage.toFixed(1)}%.`);
     }
     if (t.order_date) {
-      notes.push(`This order has to be placed by ${esc(t.order_date)} to be on farm ` +
-        `for a first cut on ${esc(t.first_cut_date || "?")}.`);
+      notes.push(`This order has to be placed by ${fdate(t.order_date)} to be on farm ` +
+        `for a first cut on ${t.first_cut_date ? fdate(t.first_cut_date) : "?"}.`);
     }
     $("tc-note").innerHTML = notes.length
       ? notes.map((n) => `<div class="pl-callout">${n}</div>`).join("") : "";
@@ -3594,8 +3608,8 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
                 : "Not a harvest week — nothing to cut"))}"
             >${w.is_harvest_week ? "F" + w.flush_number : ""}</div>`).join("");
         return `<div class="bf-plant"><span class="bf-meta">${esc(p.variety)} · ${p.beds} beds · ` +
-          `${num(p.plants)} plants · planted ${esc(p.planting_date)} · pinch ${esc(p.pinch_date || "—")}` +
-          ` · <strong>uproot ${esc(p.uproot_date)}</strong> · ${harv.length} harvest weeks of ` +
+          `${num(p.plants)} plants · planted ${fdate(p.planting_date)} · pinch ${p.pinch_date ? fdate(p.pinch_date) : "—"}` +
+          ` · <strong>uproot ${fdate(p.uproot_date)}</strong> · ${harv.length} harvest weeks of ` +
           `${p.cycle_weeks} · ${num(p.expected_stems_life)} stems</span>` +
           `<div class="bf-weeks">${cells}</div></div>`;
       }).join("") : `<div class="bf-idle">Nothing planted, so nothing forecast.</div>`;
@@ -3686,7 +3700,7 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
     // build-up and the lead time moves, which moves everything after it -- so they
     // belong on the card being changed, not in a caption.
     $("ls-proto-tiles").innerHTML = [
-      { k: "TC per order", v: num(r.tc_qty), m: "plantlets ordered " + esc(r.order_date) },
+      { k: "TC per order", v: num(r.tc_qty), m: "plantlets ordered " + fdate(r.order_date) },
       { k: "Build-up cycles", v: r.build_up_cycles != null ? r.build_up_cycles : "—",
         m: `×${r.multiplication_factor || 1} multiplication` },
       { k: "Supplier lead", v: p.supplier_lead_weeks + "w", m: "order to delivery" },
@@ -3738,18 +3752,18 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
       '<th>Order next by</th><th>Expires</th></tr></thead><tbody>' +
       r.cycles.map((c) =>
         `<tr><td>${c.cycle}</td><td class="n">${num(c.tc_qty)}</td>` +
-        `<td>${esc(c.order_date)}</td><td>${esc(c.arrive_date)}</td>` +
-        `<td>${esc(c.first_cut_date)}</td>` +
+        `<td>${fdate(c.order_date)}</td><td>${fdate(c.arrive_date)}</td>` +
+        `<td>${fdate(c.first_cut_date)}</td>` +
         // Each tranche and the week it lands. The pool is only the size that was
         // ordered for once the last of them is in, which is a different date from
         // the first cut and the one the order has to be worked back from.
         `<td style="font-size:.72rem;white-space:normal">${(c.stages || []).map((st) =>
           `<span class="ls-stage ls-stage-${((st.stage - 1) % 4) + 1}">${esc(st.label)}` +
-          ` ${esc(st.ready_date)}</span>`).join(" ")}</td>` +
-        `<td>${esc(c.pool_full_date || c.full_date)}</td>` +
-        `<td>${esc(c.first_harvest_date)}</td>` +
-        `<td style="color:var(--serious)">${esc(c.next_order_date)}</td>` +
-        `<td style="color:var(--critical)">${esc(c.expiry_date)}</td></tr>`).join("") +
+          ` ${fdate(st.ready_date)}</span>`).join(" ")}</td>` +
+        `<td>${fdate(c.pool_full_date || c.full_date)}</td>` +
+        `<td>${fdate(c.first_harvest_date)}</td>` +
+        `<td style="color:var(--serious)">${fdate(c.next_order_date)}</td>` +
+        `<td style="color:var(--critical)">${fdate(c.expiry_date)}</td></tr>`).join("") +
       "</tbody></table>";
 
     drawPool($("ls-chart"), r.rows);
@@ -3785,7 +3799,7 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
         // planted, so every numeric column is a dash. Thirteen dashes read as a
         // broken row; one band reads as what it is, the wait before the first cut.
         ? `<tr class="ls-band"><td>${x.sw}</td><td>${esc(x.label)}</td>` +
-          `<td>${esc(x.date || "")}</td>` +
+          `<td>${fdate(x.date)}</td>` +
           `<td colspan="12"><b>${esc(x.phase || "")}</b>` +
           `${x.events.length ? " — " + esc(x.events.join(" · ")) : ""}</td></tr>`
         :
@@ -3795,7 +3809,7 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
         // its life so MS1 and MS2 stay told apart down the column.
         `<tr class="${x.stage_arrived ? "ls-arrive" : (x.total_cap ? "" : "zero")}">` +
         `<td>${x.sw}</td><td>${esc(x.label)}</td>` +
-        `<td>${esc(x.date || "")}</td>` +
+        `<td>${fdate(x.date)}</td>` +
         `<td>${esc(x.phase || "—")}</td><td>` +
         ((x.stage_detail || []).length
           ? x.stage_detail.map((d) =>
@@ -4395,8 +4409,8 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
         `<tr${p.not_placed ? ' class="short"' : ""}>` +
         `<td>${esc(p.block)}${p.not_placed
           ? ' <span class="pill">no block</span>' : ""}</td>` +
-        `<td>${esc(p.planting_date)}</td><td>${esc(p.pinch_date || "—")}</td>` +
-        `<td>${esc(p.uproot_date || "—")}</td>` +
+        `<td>${fdate(p.planting_date)}</td><td>${p.pinch_date ? fdate(p.pinch_date) : "—"}</td>` +
+        `<td>${p.uproot_date ? fdate(p.uproot_date) : "—"}</td>` +
         `<td class="n">${num(p.beds)}</td><td class="n">${num(p.plants)}</td>` +
         `<td class="n">${num(p.net_area_sqm)}</td>` +
         cells(p.weekly) +
