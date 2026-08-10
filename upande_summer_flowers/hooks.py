@@ -83,12 +83,19 @@ fixtures = [
 
 # Shown on the /apps screen. The mark is an SVG so it stays sharp from 16px up and
 # needs no external request, which the dashboards' CSP would block anyway.
+#
+# The route is the workspace, not the planning dashboard. The dashboard is a www
+# page and therefore outside the desk: routing the app at it dropped you straight
+# onto one screen with no sidebar and no way back to the other twenty-three
+# doctypes, so picking Summer Flowers from the apps screen looked like the module
+# WAS that one page. The workspace opens the menu, and the dashboard is the first
+# link in it, under Dashboard.
 add_to_apps_screen = [
 	{
 		"name": "upande_summer_flowers",
 		"logo": "/assets/upande_summer_flowers/images/summer_flowers.svg",
 		"title": "Summer Flowers",
-		"route": "/summer-flowers-planning",
+		"route": "/app/summer-flowers",
 	}
 ]
 
