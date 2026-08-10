@@ -12,19 +12,47 @@ deployed.
 
 ---
 
-## Unreleased on marginpar — `1a6fcd4` (2026-08-10)
+## Reading another app's doctype defensively — `1a6fcd4`, `de88d31`, `3065466` (2026-08-10)
 
-**Stop asking Bed for a field another app may not have.**
+Three commits, one mistake: this app read doctypes it does not own as though their
+shape were fixed. It is not — a site that has a different mix of apps installed, or a
+different version of one, has a different Bed, Farm and Crop Protocol Growth Stage.
+Each of these was a `SELECT` on a column that was not there, or a mandatory column
+left unwritten, and each took down a whole operation rather than degrading.
 
-`bed_rows()` selected `custom_active` from Bed unconditionally. Bed belongs to
-`upande_propagation`, not to this app, and an older copy of it has no such column, so
-every Block and Bed read on such a site died with:
+**`1a6fcd4` — Bed.custom_active.** `bed_rows()` selected `custom_active`
+unconditionally. Bed belongs to `upande_propagation`, and an older copy has no such
+column, so every Block and Bed read died with:
 
     MySQLdb.OperationalError: (1054, "Unknown column 'custom_active' in 'SELECT'")
 
-The field is now asked for only when `frappe.get_meta("Bed").has_field("custom_active")`
-says it is there, and a row without it is treated as active. Any site whose Bed
-doctype predates that field needs this commit before blocks can be created.
+Now asked for only when the meta has it; a row without it counts as active.
+
+**`de88d31` — Crop Protocol Growth Stage.** `upande_agriculture` replaced the
+`days_from`/`days_to`/`weeks` boundary trio with a single **mandatory**
+`days_to_harvest`. `set_growth_stages` wrote the old three, so approving a protocol
+threw `MandatoryError` on all six stages on any site carrying the newer doctype.
+Now writes whichever columns the site has, with `days_to_harvest` taking the end of
+the stage on its own clock.
+
+**`3065466` — Farm.custom_location, custom_chemical_store, custom_fertilizer_store.**
+Present on a bench only because `upande_kaitet` is installed there. Without it, asset
+creation and Material Request defaulting both refused outright rather than falling
+back, which is what both are written to do when a farm has none.
+
+Found by diffing every foreign doctype between a bench with `upande_kaitet` and a site
+without it. The rest of that diff is clean: `workflow_state` is only ever read off this
+app's own plan, and `average_stem_length_cm` and `life_expectancy_years` are written to
+Crop Protocol rather than selected from it, so a site without them drops the value
+instead of breaking.
+
+**Known gap, not fixed here.** `Crop Protocol.colour` carries
+`"fetch_from": "variety.custom_color"`, but `Item.custom_color` is shipped by
+`upande_kaitet`. On a site without it every Crop Protocol insert dies in
+`get_invalid_links`. That belongs to `upande_agriculture` — which reads
+`Item.custom_color` in `setup/build_crop_protocols.py` too without shipping it. Until
+it is fixed there, a Property Setter clearing `fetch_from` on `Crop Protocol-colour`
+unblocks the site; the field is an optional cosmetic Link to `Color`.
 
 ---
 
