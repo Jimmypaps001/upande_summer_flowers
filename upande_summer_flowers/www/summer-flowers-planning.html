@@ -87,6 +87,7 @@
           <div><h2>{{ _("Full market demand") }}</h2>
                <p class="pl-note">{{ _("Every week of the horizon, as the market asked for it. What it takes to grow this is the production plan's answer, not the register's.") }}</p></div>
           <span class="pl-actions">
+            <button type="button" class="pl-btn" data-dm="upload">{{ _("Upload a demand file") }}</button>
             <button type="button" class="pl-btn" data-dm="extend">{{ _("Extend the horizon") }}</button>
             <button type="button" class="pl-btn" data-dm="new">{{ _("New market demand") }}</button>
             <button type="button" class="pl-btn primary" data-dm="plan">{{ _("Create the plan and its sourcing") }}</button>
@@ -579,6 +580,31 @@
       </span>
     </div>
     <div class="pl-dlg-body" id="dm-dlg-body"></div>
+  </dialog>
+
+  <!-- The demand workbook, read before it is written. The farm keeps three years
+       of demand in one sheet, a block per financial year and a row per grade; this
+       reads it, says what it would do, and writes only when told. -->
+  <dialog id="up-dlg" class="pl-dlg">
+    <div class="pl-dlg-head">
+      <div><h2 id="up-title">{{ _("Upload a market demand file") }}</h2>
+           <p class="pl-note" id="up-sub">{{ _("A block per financial year: Financial year, Crop, Variety, Grade split, Total, then W27 onward. The Total row becomes the register; the grades are read to check it adds up.") }}</p></div>
+      <button type="button" class="pl-btn" data-up="close">{{ _("Close") }}</button>
+    </div>
+    <div class="pl-dlg-body">
+      <div class="pl-controls">
+        <label>{{ _("File") }}
+          <input type="file" id="up-file" accept=".xlsx,.xlsm,.csv,.tsv,.txt"></label>
+        <label>{{ _("Import as variety") }}<select id="up-variety"></select></label>
+        <label>{{ _("Existing weeks") }}
+          <select id="up-mode">
+            <option value="replace">{{ _("Replace the weeks this file covers") }}</option>
+            <option value="add">{{ _("Keep what is there, fill the gaps") }}</option>
+          </select></label>
+        <button type="button" class="pl-btn primary" data-up="import" disabled>{{ _("Import") }}</button>
+      </div>
+      <div id="up-body"><p class="pl-empty">{{ _("Choose a file to see what it says.") }}</p></div>
+    </div>
   </dialog>
 
   <div id="pl-tip" class="pl-tip" hidden></div>
@@ -4463,6 +4489,218 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
       .finally(() => { btn.disabled = false; btn.textContent = was; });
   }
 
+  // ---- uploading a demand workbook ---------------------------------------
+  // The file is read in the browser and sent as bytes. No File record is created:
+  // an import that leaves an attachment behind on every attempt is a filing
+  // cabinet nobody asked for, and the workbook is not the record -- the register is.
+  const DI = "upande_summer_flowers.summer_flowers.demand_import.";
+  const callDI = (m, a) => new Promise((res, rej) => {
+    let done = false; const fin = (f, v) => { if (!done) { done = true; f(v); } };
+    setTimeout(() => fin(rej, new Error("Timed out: " + m)), 120000);
+    try {
+      frappe.call({ method: DI + m, args: a || {},
+        callback: (r) => fin(res, r && r.message),
+        error: (r) => fin(rej, new Error(m + ": " + ((r && r.responseJSON &&
+          (r.responseJSON.exc_type || r.responseJSON.message)) || "failed"))) });
+    } catch (e) { fin(rej, e); }
+  });
+
+  function openUpload() {
+    const dlg = $("up-dlg");
+    S.upFile = null; S.upPreview = null;
+    $("up-file").value = "";
+    $("up-body").innerHTML = '<p class="pl-empty">Choose a file to see what it says.</p>';
+    document.querySelector('[data-up="import"]').disabled = true;
+    // Varieties come from the scope picker, which lists what this site grows, so a
+    // file naming a variety the site has not got can be pointed at the right one
+    // instead of being refused outright.
+    const vs = $("up-variety");
+    vs.innerHTML = "";
+    [...$("f-variety").options].forEach((o) => {
+      if (o.value) vs.add(new Option(o.textContent, o.value));
+    });
+    if (!dlg.open) dlg.showModal();
+  }
+
+  function readUpload(file) {
+    return new Promise((res, rej) => {
+      const fr = new FileReader();
+      fr.onerror = () => rej(new Error("Could not read that file."));
+      // The base64 payload only, without the data: prefix the reader adds.
+      fr.onload = () => res(String(fr.result).split(",").pop());
+      fr.readAsDataURL(file);
+    });
+  }
+
+  function previewUpload(file) {
+    $("up-body").innerHTML = '<p class="pl-empty">Reading…</p>';
+    return readUpload(file)
+      .then((b64) => {
+        S.upFile = { name: file.name, content: b64 };
+        return callDI("preview", { filename: file.name, content: b64 });
+      })
+      .then((r) => { S.upPreview = r; renderUpload(); })
+      .catch((e) => {
+        S.upPreview = null;
+        $("up-body").innerHTML = `<p class="pl-empty">${esc(e.message)}</p>`;
+        document.querySelector('[data-up="import"]').disabled = true;
+      });
+  }
+
+  function renderUpload() {
+    const r = S.upPreview;
+    if (!r) return;
+    const vs = $("up-variety");
+    if (r.variety_known && [...vs.options].some((o) => o.value === r.variety)) {
+      vs.value = r.variety;
+    }
+    // The only objection a choice on this form can answer is the variety, so it is
+    // not counted against the import once one has been picked.
+    const blocking = (r.problems || []).filter((p) => !/no variety called/i.test(p));
+    document.querySelector('[data-up="import"]').disabled =
+      !!blocking.length || !vs.value;
+
+    $("up-body").innerHTML =
+      '<div class="pl-tiles pl-tiles-sm">' +
+      [{ k: "Financial years", v: num(r.blocks.length),
+         m: r.blocks.map((b) => b.financial_year).join(", ") },
+       { k: "Weeks", v: num(r.weeks), m: "to write to the register" },
+       { k: "Stems", v: num(r.total), m: "across every year in the file" },
+       { k: "Variety in the file", v: esc(r.variety || "—"),
+         m: r.variety_known ? "on this site" : "not on this site — pick one above",
+         c: r.variety_known ? "--good" : "--critical" },
+      ].map(tile).join("") + "</div>" +
+      (blocking.length
+        ? `<div class="pl-callout">${blocking.map(esc).join("<br>")}</div>` : "") +
+      (!r.variety_known
+        ? `<div class="pl-callout">The file names <b>${esc(r.variety || "")}</b>, ` +
+          "which this site has not got. Choose the variety to import it as — " +
+          "nothing is matched by guesswork.</div>" : "") +
+      ((r.notes || []).length
+        ? `<p class="pl-note">${r.notes.map(esc).join("<br>")}</p>` : "") +
+      '<table class="pl-t"><thead><tr><th>Financial year</th><th class="n">Weeks</th>' +
+      '<th>From</th><th>To</th><th class="n">Total</th><th class="n">Peak week</th>' +
+      '<th class="n">Already on the register</th><th>Grade split</th>' +
+      '</tr></thead><tbody>' +
+      r.blocks.map((b) =>
+        `<tr><td>${esc(b.financial_year)}</td><td class="n">${b.weeks}</td>` +
+        `<td>${esc(b.first)}</td><td>${esc(b.last)}</td>` +
+        `<td class="n">${num(b.total)}</td><td class="n">${num(b.peak)}</td>` +
+        `<td class="n"${b.already_on_register ? ' style="color:var(--serious)"' : ""}>` +
+        `${b.already_on_register || "—"}</td>` +
+        `<td class="bf-meta">${b.grades.map((g) =>
+          `${esc(g.grade)} ${g.pct}%`).join(" · ")}</td></tr>`).join("") +
+      "</tbody></table>";
+  }
+
+  function doUpload(btn) {
+    const r = S.upPreview, f = S.upFile;
+    if (!(r && f)) { toast("Choose a file first.", true); return; }
+    const variety = $("up-variety").value, mode = $("up-mode").value;
+    if (!variety) { toast("Pick the variety to import as.", true); return; }
+    const msg = [
+      `Import ${num(r.weeks)} weeks and ${num(r.total)} stems into ${variety}?`,
+      "",
+      mode === "replace"
+        ? "Weeks these years already carry will be replaced by the file's figures."
+        : "Weeks already on the register are left alone; only gaps are filled.",
+      r.variety !== variety
+        ? `The file names ${r.variety}; importing it as ${variety}.` : "",
+    ].filter(Boolean);
+    if (!confirm(msg.join("\n"))) return;
+
+    const was = btn.textContent; btn.disabled = true; btn.textContent = "Importing…";
+    callDI("import_demand", { filename: f.name, content: f.content,
+                              variety: variety, mode: mode })
+      .then((res) => {
+        toast(`${res.created ? "Created" : "Updated"} ${res.market_demand}: ` +
+              `${num(res.weeks_written)} weeks written` +
+              (res.weeks_replaced ? `, ${num(res.weeks_replaced)} replaced` : "") +
+              (res.weeks_skipped ? `, ${num(res.weeks_skipped)} left alone` : "") +
+              `. The register runs ${res.horizon_start} to ${res.horizon_end}, ` +
+              `${num(res.total_demand_stems)} stems.`);
+        $("up-dlg").close();
+        S.upPreview = S.upFile = null;
+        return loadScope();
+      })
+      .catch((e) => toast(esc(e.message), true))
+      .finally(() => { btn.disabled = false; btn.textContent = was; });
+  }
+
+  // ---- extending the demand horizon -------------------------------------
+  // The weeks are proposed, shown, edited and only then written. S.dmProposal holds
+  // what is on screen so an edit survives the fill button and the save reads the
+  // inputs rather than the proposal it started from.
+  function openExtend() {
+    const demand = S.dv && S.dv.market_demand;
+    if (!demand) { toast("No market demand in scope.", true); return; }
+    const dlg = $("dm-dlg");
+    if (!dlg.open) dlg.showModal();
+    loadProposal();
+  }
+
+  function loadProposal() {
+    const demand = S.dv && S.dv.market_demand;
+    $("dm-dlg-body").innerHTML = '<p class="pl-empty">Working out the weeks…</p>';
+    return callOp("propose_horizon",
+                  { market_demand: demand, years: $("dm-years").value || 1 })
+      .then((r) => { S.dmProposal = r; renderProposal(); })
+      .catch((e) => {
+        $("dm-dlg-body").innerHTML = `<p class="pl-empty">${esc(e.message)}</p>`;
+      });
+  }
+
+  function renderProposal() {
+    const r = S.dmProposal;
+    if (!r) return;
+    $("dm-dlg-title").textContent = `Extend ${r.variety} — ${r.market_demand}`;
+    $("dm-dlg-sub").textContent =
+      `${r.weeks.length} weeks to add. The register runs to ${r.horizon_end} ` +
+      `(${r.horizon_status}) across ${num(r.weeks_covered)} weeks. Each row is ` +
+      `filled with what the same week took last year — change what you are ` +
+      `actually selling, then save. Nothing is written until you do.`;
+    if (!r.weeks.length) {
+      $("dm-dlg-body").innerHTML =
+        '<p class="pl-empty">Nothing to add — those weeks are already on the register.</p>';
+      return;
+    }
+    $("dm-dlg-body").innerHTML =
+      '<table class="pl-t"><thead><tr><th>Week</th><th>Starts</th>' +
+      '<th class="n">Demand</th><th>Repeats</th></tr></thead><tbody>' +
+      r.weeks.map((w, i) =>
+        `<tr><td>${esc(w.label)}</td><td>${fdate(w.week_start_date)}</td>` +
+        `<td class="n"><input type="number" class="dm-in" data-i="${i}" min="0" ` +
+        `step="100" value="${cint(w.demand_stems)}"></td>` +
+        `<td class="bf-meta">${esc(w.from_label)}</td></tr>`).join("") +
+      "</tbody></table>";
+  }
+
+  function saveProposal(btn) {
+    const r = S.dmProposal;
+    if (!(r && r.weeks && r.weeks.length)) { toast("Nothing to save.", true); return; }
+    // Read the inputs, not the proposal: the numbers on screen are the decision.
+    const rows = [...document.querySelectorAll("#dm-dlg-body .dm-in")].map((el) => {
+      const w = r.weeks[+el.dataset.i];
+      return { year: w.year, week_no: w.week_no,
+               week_start_date: w.week_start_date,
+               demand_stems: parseInt(el.value, 10) || 0 };
+    });
+    const total = rows.reduce((a, x) => a + x.demand_stems, 0);
+    if (!confirm(`Add ${rows.length} weeks totalling ${num(total)} stems to ` +
+                 `${r.market_demand}?`)) return;
+    const was = btn.textContent; btn.disabled = true; btn.textContent = "Saving…";
+    callOp("add_demand_weeks", { market_demand: r.market_demand,
+                                 weeks: JSON.stringify(rows) })
+      .then((res) => {
+        toast(res.note || `${res.added} weeks added.`);
+        $("dm-dlg").close();
+        S.dmProposal = null;
+        return loadScope();
+      })
+      .catch((e) => toast(esc(e.message), true))
+      .finally(() => { btn.disabled = false; btn.textContent = was; });
+  }
+
   function loadScope() {
     // The plan is part of the scope: every plan-aware endpoint is given the same
     // one, so the tabs cannot end up describing different plans.
@@ -4978,6 +5216,7 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
           return;
         }
         const demand = (S.dv && S.dv.market_demand) || null;
+        if (act === "upload") { openUpload(); return; }
         if (act === "extend") { openExtend(); return; }
         if (act === "plan") {
           if (!(S.chain && S.chain.demand)) {
@@ -4997,6 +5236,17 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
       $("pw-dlg").addEventListener("click", (e) => {
         if (e.target.closest('[data-pw="close"]')) $("pw-dlg").close();
       });
+      $("up-dlg").addEventListener("click", (e) => {
+        const b = e.target.closest("[data-up]");
+        if (!b) return;
+        if (b.dataset.up === "close") { $("up-dlg").close(); return; }
+        if (b.dataset.up === "import") doUpload(b);
+      });
+      $("up-file").addEventListener("change", (e) => {
+        const f = e.target.files && e.target.files[0];
+        if (f) previewUpload(f);
+      });
+      $("up-variety").addEventListener("change", renderUpload);
       $("dm-dlg").addEventListener("click", (e) => {
         const b = e.target.closest("[data-dd]");
         if (!b) return;
