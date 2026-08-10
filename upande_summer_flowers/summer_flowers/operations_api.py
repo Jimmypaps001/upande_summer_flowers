@@ -960,11 +960,13 @@ def create_production_plan(demand, farm=None, season_start_year=None, force_new=
 			doc.regenerate()
 			frappe.db.commit()
 			doc.reload()
-			return {"name": doc.name, "weeks_covered": cint(doc.weeks_covered),
-			        "coverage_pct": flt(doc.coverage_pct),
-			        "new_beds_required": cint(doc.new_beds_required),
-			        "weeks_in_deficit": cint(doc.weeks_in_deficit),
-			        "reused": 1}
+			out = {"name": doc.name, "weeks_covered": cint(doc.weeks_covered),
+			       "coverage_pct": flt(doc.coverage_pct),
+			       "new_beds_required": cint(doc.new_beds_required),
+			       "weeks_in_deficit": cint(doc.weeks_in_deficit),
+			       "reused": 1}
+			out["propagation"] = _propagation_for(doc)
+			return out
 
 	d = frappe.get_doc("Summer Flower Market Demand", demand)
 	name = d.create_production_plan(farm=farm, season_start_year=season_start_year)
@@ -973,7 +975,40 @@ def create_production_plan(demand, farm=None, season_start_year=None, force_new=
 	                        ["name", "weeks_covered", "coverage_pct",
 	                         "new_beds_required", "weeks_in_deficit"], as_dict=True)
 	p["reused"] = 0
+	p["propagation"] = _propagation_for(
+		frappe.get_doc("Summer Flower Production Plan", name))
 	return p
+
+
+def _propagation_for(plan_doc):
+	"""Raise the plan's propagation plan alongside it.
+
+	A plan and its sourcing are one answer to one demand: what to grow, and where
+	the cuttings for it come from. They were split -- the plan on creation, the
+	sourcing not until approval -- so between the two a plan could be read, argued
+	over and changed with no idea whether the cuttings existed, which is the thing
+	most likely to make it undeliverable. There is no useful moment at which the
+	first is worth having without the second.
+
+	Failure here does not lose the plan. The plan is the thing that was asked for,
+	and a sourcing that cannot be built is a fault to report, not a reason to throw
+	away the work.
+	"""
+	try:
+		outcome = plan_doc.create_propagation_plan()
+		frappe.db.commit()
+		row = frappe.db.get_value(
+			"Summer Flower Propagation Plan", outcome["name"],
+			["name", "status", "total_cuttings_required", "mother_plants_required",
+			 "tc_plants_required", "tc_order_date", "cuttings_uncovered",
+			 "plants_short", "stems_at_risk"], as_dict=True)
+		row["created"] = outcome["created"]
+		return row
+	except Exception:
+		frappe.log_error(frappe.get_traceback(),
+		                 "Propagation plan for %s" % plan_doc.name)
+		return {"error": _("The plan was created but its propagation plan could not "
+		                   "be built. Open the plan and raise it from there.")}
 
 
 @frappe.whitelist()

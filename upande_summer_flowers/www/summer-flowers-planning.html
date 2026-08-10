@@ -107,8 +107,7 @@
           <span class="pl-actions">
             <button type="button" class="pl-btn" data-dm="extend">{{ _("Extend the horizon") }}</button>
             <button type="button" class="pl-btn" data-dm="new">{{ _("New market demand") }}</button>
-            <button type="button" class="pl-btn primary" data-dm="plan">{{ _("Create a production plan") }}</button>
-            <button type="button" class="pl-btn" data-dm="prop">{{ _("Create a propagation plan") }}</button>
+            <button type="button" class="pl-btn primary" data-dm="plan">{{ _("Create the plan and its sourcing") }}</button>
           </span>
         </div>
         <div class="pl-tiles pl-tiles-sm" id="dm-tiles"></div>
@@ -2718,8 +2717,23 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
           if (!p.can_create) return;
           run("create_production_plan",
               { demand, farm: S.farm, season_start_year: p.season_start_year }, (r) => {
-            toast(`Plan ${r.name}: ${r.weeks_covered} weeks, ` +
-                  `${r.coverage_pct.toFixed(1)}% coverage, ${num(r.new_beds_required)} beds.`);
+            // Both halves reported, because both were made. A plan whose sourcing
+            // says a tenth of it cannot be stuck is worth knowing about now, not
+            // after it has been argued over.
+            const pg = r.propagation;
+            let msg = `Plan ${r.name}: ${r.weeks_covered} weeks, ` +
+              `${r.coverage_pct.toFixed(1)}% coverage, ${num(r.new_beds_required)} beds.`;
+            if (pg && pg.error) {
+              msg += ` ${pg.error}`;
+            } else if (pg && pg.name) {
+              msg += ` Sourcing ${pg.name}: ${num(pg.tc_plants_required)} plantlets, ` +
+                `${num(pg.mother_plants_required)} mother plants`;
+              msg += pg.plants_short
+                ? `, but ${num(pg.plants_short)} plants cannot be stuck ` +
+                  `(${num(pg.stems_at_risk)} stems at risk).`
+                : `, all of it covered.`;
+            }
+            toast(msg, !!(pg && (pg.error || pg.plants_short)));
             refreshAfterWrite();
           });
         },
@@ -4127,8 +4141,6 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
       prow("Plants per m² of bed", F.plants_per_sqm_net + " pl/m²",
         "plants standing per m² of the ground the crop occupies",
         { field: "plants_per_sqm_net", value: F.plants_per_sqm_net }) +
-      prow("Plants per ha of bed", num(D.plants_per_ha) + " pl/ha",
-        "per hectare of bed, not of block", null, "plants_per_ha") +
       prow("Plants per bed", num(F.plants_per_bed), null,
         { field: "plants_per_bed", value: F.plants_per_bed }) +
       prow("m² per bed", D.sqm_net_per_bed.toFixed(1),
@@ -5110,19 +5122,10 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
           }
           return;
         }
-        if (act === "prop") {
-          if (!(S.dv && S.dv.plan)) { toast("No plan in scope.", true); return; }
-          const was = b.textContent; b.disabled = true; b.textContent = "Working…";
-          callOp("create_propagation_plan", { plan: S.dv.plan })
-            .then((r) => {
-              toast(`${r.created ? "Created" : "Rebuilt"} ${r.name}: ` +
-                    `${num(r.tc_plants_required)} plantlets, ` +
-                    `${num(r.mother_plants_required)} mother plants.`);
-              return loadScope();
-            })
-            .catch((e2) => toast(esc(e2.message), true))
-            .finally(() => { b.disabled = false; b.textContent = was; });
-        }
+        // No button raises a propagation plan on its own. It is one half of one
+        // answer to the demand, and the half that only means anything beside the
+        // other -- there is nothing to source until there is a plan saying what to
+        // grow.
       });
       $("ps-sheet").parentElement.addEventListener("click", (e) => {
         if (!e.target.closest('[data-ps="csv"]')) return;
