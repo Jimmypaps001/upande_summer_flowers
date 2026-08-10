@@ -103,12 +103,13 @@
       <div class="pl-card">
         <div class="pl-card-head">
           <div><h2>{{ _("Full market demand") }}</h2>
-               <p class="pl-note">{{ _("Every week of the horizon: demand, production, variance and the area behind it.") }}</p></div>
-          <div class="pl-toggle" role="group">
-            <button type="button" id="d-all" class="is-on">{{ _("All weeks") }}</button>
-            <button type="button" id="d-short">{{ _("Deficit only") }}</button>
-            <button type="button" id="d-over">{{ _("Surplus only") }}</button>
-          </div>
+               <p class="pl-note">{{ _("Every week of the horizon, as the market asked for it. What it takes to grow this is the production plan's answer, not the register's.") }}</p></div>
+          <span class="pl-actions">
+            <button type="button" class="pl-btn" data-dm="extend">{{ _("Extend the horizon") }}</button>
+            <button type="button" class="pl-btn" data-dm="new">{{ _("New market demand") }}</button>
+            <button type="button" class="pl-btn primary" data-dm="plan">{{ _("Create a production plan") }}</button>
+            <button type="button" class="pl-btn" data-dm="prop">{{ _("Create a propagation plan") }}</button>
+          </span>
         </div>
         <div class="pl-tiles pl-tiles-sm" id="dm-tiles"></div>
         <p class="pl-callout" id="dm-note" hidden></p>
@@ -1093,7 +1094,7 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
 
   const S = { variety: "", farm: "", version: null, grain: "month",
               dv: null, deriv: null, pp: null, bf: null, cal: null, ls: null, pr: null,
-              ppFilter: "all", dmFilter: "all", bfBlock: "", calYear: null,
+              ppFilter: "all", bfBlock: "", calYear: null,
               bfOpen: new Set(), cyc: null, cycle: null, det: null, rv: null,
               plan: "", plans: null, bg: null, chain: null, pg: null,
               year: "", week: "" };
@@ -1385,25 +1386,23 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
   function renderDemand() {
     if (!S.dv) { $("dm-table").innerHTML = '<p class="pl-empty">No plan.</p>'; return; }
     const q = scoped();
-    const w = q.weeks, def = q.deficitWeeks, sur = q.surplusWeeks;
+    const w = q.weeks;
     $("dm-tiles").innerHTML = [
       { k: "Total demand", v: num(q.demand),
         m: q.on ? `${w.length} of ${q.weeksTotal} weeks — ${esc(q.label)}`
                 : w.length + " weeks" },
-      { k: "Total production", v: num(q.production), m: q.coverage.toFixed(1) + "%",
-        why: "coverage_pct" },
-      { k: "Net variance", v: sgn(q.variance), m: "production − demand",
-        c: q.variance >= 0 ? "--good" : "--critical" },
-      { k: "Deficit weeks", v: num(def.length), why: "weeks_in_deficit",
-        m: def.length ? "worst " + num(Math.min(...def.map((r) => r.variance))) : "none",
-        c: def.length ? "--serious" : "--good" },
-      { k: "Surplus weeks", v: num(sur.length),
-        m: sur.length ? "best +" + num(Math.max(...sur.map((r) => r.variance))) : "none" },
+      // Demand only. Production, variance and the weeks either side of it are the
+      // production plan's account of whether this can be met, and belong on it.
+      { k: "Peak week", v: num(w.length ? Math.max(...w.map((r) => r.demand)) : 0),
+        m: "the week that sizes everything" },
+      { k: "Average week", v: num(w.length
+          ? Math.round(w.reduce((a, r) => a + (r.demand || 0), 0) / w.length) : 0),
+        m: "stems a week across the horizon" },
+      { k: "Weeks asked for", v: num(w.filter((r) => r.demand).length),
+        m: `of ${num(w.length)} in the horizon` },
     ].map(tile).join("");
 
     let rows = w;
-    if (S.dmFilter === "short") rows = def;
-    if (S.dmFilter === "over") rows = sur;
     // rows is already inside the period: scoped() narrowed it.
     const shown = rows;
     if (periodOn()) {
@@ -1421,12 +1420,12 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
         // against it is the production plan's question and is answered there, on the
         // plan that produces it. Cumulative went with them -- it was the running
         // total of the variance, so on its own it totalled nothing.
-      ? '<table class="pl-t"><thead><tr><th>Week</th><th>Starts</th><th class="n">Demand</th>' +
-        '<th class="n">Area ha</th></tr></thead><tbody>' +
+      ? '<table class="pl-t"><thead><tr><th>Week</th><th>Starts</th>' +
+        '<th class="n">Demand</th></tr></thead><tbody>' +
         rows.map((r) =>
           `<tr><td>${esc(r.label)}</td>` +
-          `<td>${fdate(r.date)}</td><td class="n">${num(r.demand)}</td>` +
-          `<td class="n">${r.area_ha.toFixed(3)}</td></tr>`).join("") + "</tbody></table>"
+          `<td>${fdate(r.date)}</td>` +
+          `<td class="n">${num(r.demand)}</td></tr>`).join("") + "</tbody></table>"
       : '<p class="pl-empty">No weeks match this filter.</p>';
   }
 
@@ -4938,8 +4937,6 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
       toggleGroup([["g-month", "month"], ["g-week", "week"]], "grain", () =>
         { drawGrouped($("dv-chart"), S.grain === "month" ? S.dv.months : S.dv.weeks);
           renderCumulative(scoped().weeks); });
-      toggleGroup([["d-all", "all"], ["d-short", "short"], ["d-over", "over"]],
-        "dmFilter", renderDemand);
       toggleGroup([["pp-all", "all"], ["pp-alloc", "alloc"], ["pp-flag", "flag"]],
         "ppFilter", renderPlanting);
 
@@ -4978,6 +4975,57 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
         }
         if (b.dataset.tc === "confirm") { confirmTc(b); return; }
         loadTc($("tc-qty").value || null);
+      });
+      $("dm-table").parentElement.addEventListener("click", (e) => {
+        const b = e.target.closest("[data-dm]");
+        if (!b) return;
+        const act = b.dataset.dm;
+        if (act === "new") {
+          window.open("/app/summer-flower-market-demand/new", "_blank");
+          return;
+        }
+        const demand = (S.dv && S.dv.market_demand) || null;
+        if (act === "extend") {
+          if (!demand) { toast("No market demand in scope.", true); return; }
+          const yrs = prompt(
+            "Carry the demand forward by how many years?\n\n" +
+            "Each week is repeated 52 weeks on at the same demand, marked not " +
+            "firm. It is last year again, not a forecast — edit it afterwards. " +
+            "Weeks that already exist are left alone.", "1");
+          if (yrs === null) return;
+          const was = b.textContent; b.disabled = true; b.textContent = "Extending…";
+          callOp("extend_horizon", { market_demand: demand, years: yrs })
+            .then((r) => {
+              toast(r.note || `${r.added} weeks added.`);
+              return loadScope();
+            })
+            .catch((e2) => toast(esc(e2.message), true))
+            .finally(() => { b.disabled = false; b.textContent = was; });
+          return;
+        }
+        if (act === "plan") {
+          if (!(S.chain && S.chain.demand)) {
+            // The plan tab loads the chain; from here it may not be loaded yet.
+            loadChain().then(createPlanFromChain)
+              .catch((e2) => toast(esc(e2.message), true));
+          } else {
+            createPlanFromChain();
+          }
+          return;
+        }
+        if (act === "prop") {
+          if (!(S.dv && S.dv.plan)) { toast("No plan in scope.", true); return; }
+          const was = b.textContent; b.disabled = true; b.textContent = "Working…";
+          callOp("create_propagation_plan", { plan: S.dv.plan })
+            .then((r) => {
+              toast(`${r.created ? "Created" : "Rebuilt"} ${r.name}: ` +
+                    `${num(r.tc_plants_required)} plantlets, ` +
+                    `${num(r.mother_plants_required)} mother plants.`);
+              return loadScope();
+            })
+            .catch((e2) => toast(esc(e2.message), true))
+            .finally(() => { b.disabled = false; b.textContent = was; });
+        }
       });
       $("ps-sheet").parentElement.addEventListener("click", (e) => {
         if (!e.target.closest('[data-ps="csv"]')) return;

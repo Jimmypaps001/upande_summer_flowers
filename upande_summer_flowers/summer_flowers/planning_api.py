@@ -171,6 +171,9 @@ def demand_vs_production(variety=None, farm=None, plan=None):
 		"farm": p.farm,
 		"version": p.protocol,
 		"status": p.status,
+		# The register this plan answers, so the demand tab can act on it without
+		# guessing from the variety name.
+		"market_demand": p.market_demand,
 		"period": f"{p.from_year}-W{p.from_week:02d} to {p.to_year}-W{p.to_week:02d}",
 		"tc_committed": committed,
 		"tc_plants_committed": cint(p.tc_plants_committed),

@@ -12,9 +12,13 @@ validation, approval and role checks as the desk form -- an approval cannot be
 skipped by coming in through the web page.
 """
 
+import datetime
+
 import frappe
 from frappe import _
 from frappe.utils import cint, flt, getdate, nowdate
+
+from upande_summer_flowers.summer_flowers.planning import iso_monday, iso_year_week
 
 REVIEW_SOURCES = (
 	# (doctype, status field, pending value, label, extra fields for the card)
@@ -1150,3 +1154,65 @@ def plan_transitions(plan):
 	return {"plan": doc.name, "state": doc.workflow_state,
 	        "budget": doc.get("budget"),
 	        "transitions": [t.action for t in get_transitions(doc)]}
+
+
+@frappe.whitelist()
+def extend_horizon(market_demand, years=1):
+	"""Carry the demand forward another year, week for week.
+
+	target_years_ahead only ever reported the gap -- "short by 78 weeks" -- and
+	nothing filled it. Filling it needs a rule, and the only honest one available
+	from the register itself is that next year looks like this year: each week is
+	repeated 52 weeks on, at the same demand, marked not firm because nobody has
+	ordered it yet.
+
+	That is a starting point to edit, not a forecast, and it says so. Weeks that
+	already exist are left alone, so extending twice does not double anything and
+	an edited week is never overwritten by the pattern it came from.
+	"""
+	_guard()
+	years = max(1, cint(years))
+	d = frappe.get_doc("Summer Flower Market Demand", market_demand)
+	if not d.demand_weeks:
+		frappe.throw(_("{0} has no weeks to carry forward.").format(market_demand))
+
+	have = {(cint(r.year), cint(r.week_no)) for r in d.demand_weeks}
+	source = list(d.demand_weeks)
+	before = len(source)
+	added = 0
+	for step in range(1, years + 1):
+		for r in source:
+			# 52 weeks on, not the same week number a year later: a 53-week year
+			# would otherwise drop a week or double one.
+			monday = iso_monday(cint(r.year), cint(r.week_no)) + datetime.timedelta(
+				weeks=52 * step)
+			y, w = iso_year_week(monday)
+			if (y, w) in have:
+				continue
+			have.add((y, w))
+			d.append("demand_weeks", {
+				"year": y, "week_no": w, "week_start_date": monday,
+				"demand_stems": cint(r.demand_stems),
+				"is_firm": 0,
+			})
+			added += 1
+
+	if not added:
+		return {"market_demand": market_demand, "added": 0,
+		        "note": _("Every week that would be added is already there.")}
+
+	d.flags.ignore_permissions = True
+	d.save()
+	frappe.db.commit()
+	d.reload()
+	return {
+		"market_demand": market_demand,
+		"added": added,
+		"weeks_covered": cint(d.weeks_covered),
+		"horizon_end": d.horizon_end,
+		"horizon_status": d.horizon_status,
+		"total_demand_stems": cint(d.total_demand_stems),
+		"note": _("Carried {0} weeks forward from the {1} already there, at the same "
+		          "demand and marked not firm. Edit them — this is last year repeated, "
+		          "not a forecast.").format(added, before),
+	}
