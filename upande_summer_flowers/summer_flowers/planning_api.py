@@ -1462,6 +1462,10 @@ EDITABLE_PROTOCOL_FIELDS = (
 	"ramp_profile", "supplier_lead_weeks", "weeks_to_max_production",
 	"cuttings_per_plant_per_week", "plants_per_pot", "pots_per_sqm",
 	"max_multiplication_cycles", "multiplication_factor_per_cycle",
+	# Which waits count as establishment. They decide the length of a build-up
+	# round and so the whole schedule hanging off it, which makes them among the
+	# most consequential settings here -- and they were not editable at all.
+	"establishment_includes_hardening", "establishment_includes_ramp",
 	"cycle_time_weeks", "motherstock_life_weeks", "rooting_success_pct",
 	"field_establishment_pct", "cutting_reject_pct", "stated_yield_stems_per_ha",
 	"ready_cutting_price", "climate_note",
@@ -1792,9 +1796,16 @@ def save_protocol(version, changes, flushes=None, grades=None, change_reason=Non
 		                   v.create_amendment(change_reason, effective_from))
 		amended = True
 
+	# Silently dropping an edit is worse than refusing it: the save reports success,
+	# the figure does not move, and the only clue is that nothing happened.
+	refused = [k for k in (changes or {}) if k not in EDITABLE_PROTOCOL_FIELDS]
+	if refused:
+		frappe.throw(
+			_("These are not editable on a protocol version: {0}.").format(
+				", ".join(sorted(refused))),
+			title=_("Cannot change"))
 	for k, val in (changes or {}).items():
-		if k in EDITABLE_PROTOCOL_FIELDS:
-			v.set(k, val)
+		v.set(k, val)
 
 	if flushes is not None:
 		v.flush_schedule = []

@@ -3727,7 +3727,10 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
       'week. What you leave behind goes to the propagation unit and comes back as its ' +
       'own motherstock pool after establishment, building up to full capacity like any ' +
       'other — so it shows up in Prop-MS and in the total from then on.</p>' +
-      '<table class="pl-t pl-t-cols"><thead><tr><th>Wk</th><th>Week</th><th>Date</th>' +
+      // "Wk" and "Week" were two different things -- weeks since the order, and the
+      // ISO week it lands in -- reading as the same column written twice.
+      '<table class="pl-t pl-t-cols"><thead><tr><th>Wk from order</th>' +
+      '<th>ISO week</th><th>Starts</th>' +
       '<th>Phase</th><th>Source</th>' +
       '<th class="n">Base MS</th><th class="n">Prop-MS</th><th class="n">Total/wk</th>' +
       '<th class="n">To farm</th><th class="n">To prop</th><th class="n">To prop %</th>' +

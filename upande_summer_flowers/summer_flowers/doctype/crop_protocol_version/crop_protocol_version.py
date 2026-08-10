@@ -35,6 +35,15 @@ class CropProtocolVersion(Document):
 		if (frappe.flags.in_migrate or frappe.flags.in_patch or frappe.flags.in_install
 				or frappe.flags.in_test):
 			return
+		# A Draft is not history yet. Nothing is pinned to it -- no plan, no planting,
+		# no crop cycle can be built on a version that has never been approved -- so
+		# there is nothing to falsify by editing it, and save_protocol's whole
+		# contract is that a Draft is edited in place while an Active one is amended
+		# into a new Draft. Guarding the Draft too meant that amendment created a
+		# version it could not then write to, so no approved protocol could be
+		# changed at all: the edit died on the copy it had just made.
+		if (self.version_status or "Draft") == "Draft":
+			return
 		frappe.throw(
 			_("{0} is a snapshot and cannot be edited. Change the protocol on Crop "
 			  "Protocol {1} and approve it — that writes a new version and leaves "
