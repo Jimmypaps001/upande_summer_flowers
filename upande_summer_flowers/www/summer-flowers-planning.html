@@ -3610,7 +3610,13 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
     const rows = (allRows || []).filter((r) => r.total_cap || r.ms_plants);
     if (!rows.length) { el.innerHTML = '<p class="pl-empty">No capacity yet.</p>'; return; }
     const padL = 62, padR = 20, padT = 14, padB = 32, h = 250, plotH = h - padT - padB;
-    const w = Math.max(660, padL + padR + rows.length * 4);
+    // Fill the card. It was drawn at whichever was larger of 660px and four pixels
+    // a week, so on a wide screen a 137-week run sat in a 660px box with the axis
+    // labels crushed together and most of the card empty beside it. The container's
+    // own width is the right answer; four pixels a week is the floor below which
+    // the weeks stop being distinguishable, and past that the wrapper scrolls.
+    const avail = (el.clientWidth || el.parentElement?.clientWidth || 0) - 2;
+    const w = Math.max(avail, 660, padL + padR + rows.length * 4);
     const max = Math.max(...rows.map((r) => Math.max(r.ms_plants, r.total_cap)), 1);
     const mag = Math.pow(10, Math.floor(Math.log10(max)));
     const ts = Math.ceil(max / 4 / mag) * mag, top = Math.ceil(max / ts) * ts;

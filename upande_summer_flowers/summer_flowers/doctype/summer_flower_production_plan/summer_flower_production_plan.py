@@ -30,6 +30,18 @@ MAX_NEW_PLANTINGS = 400
 
 
 class SummerFlowerProductionPlan(Document):
+	def before_insert(self):
+		"""An amendment is a new plan, not a copy that inherits the old one's papers.
+
+		Frappe copies every field forward, the budget link with them, and
+		create_budget returns early when that link points at something that exists.
+		So an amendment quietly adopted the budget the cancelled plan raised -- one
+		budget, two plans, and the figures on it belonging to neither. It raises its
+		own on approval, which is what approval is for.
+		"""
+		if self.amended_from:
+			self.budget = None
+
 	def validate(self):
 		self.pull_header_from_demand()
 		self.set_season()
