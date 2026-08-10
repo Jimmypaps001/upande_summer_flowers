@@ -106,6 +106,11 @@ add_to_apps_screen = [
 # demand weeks, plan weeks, plantings and sticking weeks had no calendar at all.
 app_include_js = "/assets/upande_summer_flowers/js/sf_calendar.js"
 
+# Checked before the migrate that would trip over it, so a malformed customization
+# file in ANY installed app is reported by path instead of killing the run with a
+# KeyError that names nothing. See summer_flowers/customization_check.py.
+before_migrate = "upande_summer_flowers.summer_flowers.customization_check.before_migrate"
+
 # include js, css files in header of web template
 # web_include_css = "/assets/upande_summer_flowers/css/upande_summer_flowers.css"
 # web_include_js = "/assets/upande_summer_flowers/js/upande_summer_flowers.js"

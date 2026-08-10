@@ -204,3 +204,39 @@ def check():
 	if not blocking:
 		print("Nothing here stops a migrate.")
 	return problems
+
+
+def before_migrate():
+	"""Name the file before frappe trips over it.
+
+	sync_customizations runs later in the same migrate and reads three keys out of
+	every custom/*.json with no check that they are there. When one is missing it
+	dies on `data["doctype"]` with a KeyError and no filename, and the migrate is
+	over -- on a bench of a hundred-odd customization files across a dozen apps
+	that identifies nothing.
+
+	This runs first and says which file, in which app, and what is wrong with it.
+	It refuses the migrate only for the faults that would stop it anyway: the
+	migrate was going to fail either way, and failing with the path in the message
+	is the whole point.
+
+	Deliberately checks every installed app, not just this one. The file that stops
+	the migrate is rarely in the app that notices.
+	"""
+	problems = scan()
+	blocking = [p for p in problems if p["breaks"] == "migrate"]
+	if not blocking:
+		return
+
+	lines = [
+		"%s\n      %s%s" % (p["file"], p["problem"],
+		                    (": " + p["detail"]) if p["detail"] else "")
+		for p in blocking
+	]
+	frappe.throw(
+		frappe._("sync_customizations would fail on {0} file(s) later in this "
+		         "migrate, with a KeyError naming no file. They are:\n\n  {1}\n\n"
+		         "Add the missing key, or delete the file if it holds nothing.").format(
+			len(blocking), "\n  ".join(lines)),
+		title=frappe._("Customization file will break this migrate"),
+	)
