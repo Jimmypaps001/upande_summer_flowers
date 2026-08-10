@@ -15,7 +15,7 @@
     <label>{{ _("Variety") }}<select id="f-variety"></select></label>
     <label>{{ _("Farm") }}<select id="f-farm"></select></label>
     <label>{{ _("Production plan") }}<select id="f-plan"></select></label>
-    <label>{{ _("Season") }}<select id="f-season"></select></label>
+    <label>{{ _("Financial year") }}<select id="f-season"></select></label>
     <label>{{ _("Week") }}<select id="f-week"></select></label>
     <span class="pl-asof" id="asof"></span>
   </div>
@@ -112,10 +112,8 @@
           <div><h2>{{ _("Planting plan") }}</h2>
                <p class="pl-note" id="pp-sub"></p></div>
           <div class="pl-toggle" role="group">
-            <button type="button" id="pp-by-stick" class="is-on">{{ _("By sticking") }}</button>
-            <button type="button" id="pp-by-plant">{{ _("By planting") }}</button>
-            <button type="button" id="pp-by-harvest">{{ _("By first harvest") }}</button>
-            <button type="button" id="pp-by-uproot">{{ _("By uprooting") }}</button>
+            <button type="button" id="pp-by-plant" class="is-on">{{ _("By planting week") }}</button>
+            <button type="button" id="pp-by-uproot">{{ _("By uprooting week") }}</button>
           </div>
         </div>
         <div class="pl-tiles pl-tiles-sm" id="pp-tiles"></div>
@@ -1099,7 +1097,7 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
 
   const S = { variety: "", farm: "", version: null, grain: "month",
               dv: null, deriv: null, pp: null, bf: null, cal: null, ls: null, pr: null,
-              ppBasis: "stick", dmYear: "", bfBlock: "", calYear: null,
+              ppBasis: "plant", dmYear: "", bfBlock: "", calYear: null,
               bfOpen: new Set(), cyc: null, cycle: null, det: null, rv: null,
               plan: "", plans: null, bg: null, chain: null, pg: null,
               year: "", week: "" };
@@ -1590,6 +1588,17 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
     return Math.ceil(((t - jan1) / 86400000 + 1) / 7);
   }
 
+  // "2030-W14" from a date. The plan names its own weeks for the dates it stores,
+  // but not for uprooting, which is derived -- so that one is labelled here, on the
+  // same ISO rule the rest of the plan uses.
+  function isoLabel(dateStr) {
+    const d = new Date(dateStr);
+    if (isNaN(d)) return "";
+    const t = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
+    t.setUTCDate(t.getUTCDate() + 4 - ((t.getUTCDay() + 6) % 7 + 1));
+    return `${t.getUTCFullYear()}-W${String(isoWeekOf(d)).padStart(2, "0")}`;
+  }
+
   // "wk10-13" rather than "wk10, wk11, wk12, wk13". A run of consecutive weeks is how
   // a stagger of weekly plantings actually reads, and spelling every one out buried
   // the months where the plan skips a week.
@@ -1721,9 +1730,8 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
     // sequence -- first to last -- and which date puts it in sequence depends on
     // the question: when to stick, when to plant, when the stems arrive, when the
     // beds come back. Same rows, four orders.
-    const BASIS = { stick: "sticking_date", plant: "planting_date",
-                    harvest: "first_harvest_date", uproot: "uproot_date" };
-    const key = BASIS[S.ppBasis] || BASIS.stick;
+    const BASIS = { plant: "planting_date", uproot: "uproot_date" };
+    const key = BASIS[S.ppBasis] || BASIS.plant;
     let rows = pp.plantings.slice().sort((a, b) =>
       String(a[key] || "9999").localeCompare(String(b[key] || "9999")));
     // A proposal is placed against its planting week, so that is what the period
@@ -1746,8 +1754,8 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
     // Numbered in the order shown, so "planting 1 to planting 38" means the
     // sequence on screen rather than a row id that moves when the sort changes.
     $("pp-table").innerHTML =
-      '<table class="pl-t"><thead><tr><th>#</th><th>Stick</th><th>Plant</th><th>Pinch</th>' +
-      '<th>First harvest</th><th>Uproot</th><th class="n">Plants</th>' +
+      '<table class="pl-t"><thead><tr><th>#</th><th>Planting week</th>' +
+      '<th>Uprooting week</th><th class="n">Plants</th>' +
       '<th class="n">Area m²</th><th class="n">Area ha</th>' +
       '<th class="n">Stems over its life</th><th>Flags</th>' +
       '</tr></thead><tbody>' +
@@ -1756,12 +1764,14 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
         if (r.below_minimum) f.push('<span class="pill"><i class="dot2" style="background:var(--warning)"></i>below min</span>');
         if (r.in_past) f.push('<span class="pill"><i class="dot2" style="background:var(--critical)"></i>past</span>');
         const ha = Number(r.net_area_ha) || 0;
+        // Week and date together: the plan is worked in weeks and the calendar is
+        // read in dates, and putting one without the other makes somebody convert.
+        const wk = (label, date) =>
+          `<td>${label ? esc(label) : "—"}` +
+          `${date ? ` <span class="bf-meta">${fdate(date)}</span>` : ""}</td>`;
         return `<tr><td>${i + 1}</td>` +
-          `<td>${r.sticking_date ? fdate(r.sticking_date) : "—"}</td>` +
-          `<td>${r.planting_date ? fdate(r.planting_date) : "—"}</td>` +
-          `<td>${r.pinch_date ? fdate(r.pinch_date) : "—"}</td>` +
-          `<td>${r.first_harvest_date ? fdate(r.first_harvest_date) : "—"}</td>` +
-          `<td>${r.uproot_date ? fdate(r.uproot_date) : "—"}</td>` +
+          wk(r.plant, r.planting_date) +
+          wk(r.uproot_date ? isoLabel(r.uproot_date) : "", r.uproot_date) +
           `<td class="n">${num(r.plants)}</td>` +
           `<td class="n">${num(Math.round(ha * 10000))}</td>` +
           `<td class="n">${ha.toFixed(4)}</td>` +
@@ -2332,8 +2342,8 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
   // Appended to a tile's sub-label when the number could not be narrowed.
   const wholePlan = () => (periodOn() ? " · whole plan" : "");
   const periodLabel = () => S.season && S.week
-    ? `W${String(S.week).padStart(2, "0")} of season ${seasonLabel(S.season)}`
-    : S.season ? `season ${seasonLabel(S.season)} (Jul ${S.season} – Jun ${+S.season + 1})`
+    ? `W${String(S.week).padStart(2, "0")} of ${seasonLabel(S.season)}`
+    : S.season ? `${seasonLabel(S.season)} (Jul ${S.season} – Jun ${+S.season + 1})`
     : S.week ? `week ${S.week} of every season` : "";
 
   function buildPeriodPickers() {
@@ -2342,10 +2352,21 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
     const seasons = [...new Set(weeks.map((r) => seasonOf(r.year, r.week_no)))].sort();
     const keepY = S.season, keepW = S.week;
     ys.innerHTML = "";
-    ys.add(new Option("All seasons", ""));
+    ys.add(new Option("All financial years", ""));
     seasons.forEach((y) => ys.add(new Option(seasonLabel(y), y)));
     S.season = seasons.some((y) => String(y) === String(keepY)) ? keepY : "";
     ys.value = S.season;
+    // A picker with one year in it filters nothing, which is indistinguishable
+    // from a filter that does not work -- and that is how it was reported. A plan
+    // covers one financial year, so this is the normal case: say so and disable it
+    // rather than offering a choice that cannot change anything.
+    ys.disabled = seasons.length < 2;
+    ys.title = seasons.length < 2
+      ? (seasons.length
+          ? `This plan covers one financial year, ${seasonLabel(seasons[0])}. ` +
+            `There is nothing to filter to.`
+          : "No dated weeks to filter.")
+      : "";
 
     // Weeks offered are the ones the selected season actually has, so a season with
     // a 53rd ISO week shows it and one without does not offer a week with no data.
@@ -4843,8 +4864,7 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
 
       toggleGroup([["g-month", "month"], ["g-week", "week"]], "grain", () =>
         drawGrouped($("dv-chart"), S.grain === "month" ? S.dv.months : S.dv.weeks));
-      toggleGroup([["pp-by-stick", "stick"], ["pp-by-plant", "plant"],
-                   ["pp-by-harvest", "harvest"], ["pp-by-uproot", "uproot"]],
+      toggleGroup([["pp-by-plant", "plant"], ["pp-by-uproot", "uproot"]],
         "ppBasis", renderPlanting);
 
       $("f-season").addEventListener("change", (e) => {
