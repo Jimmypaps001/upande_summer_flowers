@@ -3685,7 +3685,6 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
     // the card. These are what the schedule below is built from -- change the
     // build-up and the lead time moves, which moves everything after it -- so they
     // belong on the card being changed, not in a caption.
-    const c0 = (r.cycles && r.cycles[0]) || {};
     $("ls-proto-tiles").innerHTML = [
       { k: "TC per order", v: num(r.tc_qty), m: "plantlets ordered " + esc(r.order_date) },
       { k: "Build-up cycles", v: r.build_up_cycles != null ? r.build_up_cycles : "—",
@@ -3699,10 +3698,6 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
       { k: "MS life", v: p.ms_life_weeks + "w", m: "productive cutting period" },
       { k: "Cut → harvest", v: p.cutting_to_harvest_weeks + "w",
         m: "cutting stuck to first stem cut" },
-      { k: "First cut", v: esc(c0.first_cut_date || "—"),
-        m: c0.full_date ? "full rate " + esc(c0.full_date) : "no schedule yet" },
-      { k: "First harvest", v: esc(c0.first_harvest_date || "—"),
-        m: "first stems off this order" },
       { k: "Generations", v: r.generations != null ? r.generations : "—",
         m: `over ${r.horizon_weeks || 0} weeks` },
     ].map(tile).join("");

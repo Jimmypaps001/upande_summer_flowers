@@ -2236,8 +2236,19 @@ def confirm_tc_choice(plan, tc_qty=None, order_date=None, cycles=None, reason=No
 	changed = []
 	# ---- the propagation plan, where one exists for this variety and season
 	prop_name = None
-	prop = frappe.get_all("Summer Flower Propagation Plan", filters=_prop_filters(plan),
+	# The one raised for THIS plan first. _prop_filters matches on variety and
+	# season, which is right for reading -- a season has one propagation plan -- but
+	# wrong for writing: confirming on one plan would rewrite the propagation plan
+	# belonging to another plan for the same variety and season, which is exactly
+	# what an amended plan and its original are.
+	prop = frappe.get_all("Summer Flower Propagation Plan",
+	                      filters={"production_plan": plan, "docstatus": ["<", 2]},
 	                      fields=["name", "docstatus"], order_by="creation desc", limit=1)
+	# and no fallback. Matching on variety and season would find the propagation
+	# plan of a different plan for the same season -- an amended plan and its
+	# original are exactly that -- and write this plan's order onto it. A plan with
+	# no propagation plan of its own has nothing to carry the choice to yet; one is
+	# raised when the plan is approved.
 	if prop and cint(prop[0].docstatus) == 0:
 		prop_name = prop[0].name
 		pd = frappe.get_doc("Summer Flower Propagation Plan", prop_name)
@@ -2251,6 +2262,9 @@ def confirm_tc_choice(plan, tc_qty=None, order_date=None, cycles=None, reason=No
 	elif prop:
 		changed.append(_("propagation plan {0} is submitted and was left alone")
 		               .format(prop[0].name))
+	else:
+		changed.append(_("no propagation plan is raised for this plan yet, so there "
+		                 "was nothing to carry it to"))
 
 	# ---- the motherstock batches raised for this plan
 	for b in frappe.get_all("Summer Flower Motherstock Batch",

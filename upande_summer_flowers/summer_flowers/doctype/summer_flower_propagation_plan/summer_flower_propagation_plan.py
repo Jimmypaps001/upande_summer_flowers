@@ -390,6 +390,14 @@ class SummerFlowerPropagationPlan(Document):
 			self.first_sticking_date = probe.first_sticking_date
 			self.tc_cost = flt(probe.tc_cost)
 			self.total_cost = flt(probe.total_cost)
+			# The committed order is the order. The probe stays the sizing advice
+			# beside it, which is what the batch's own override fields carry.
+			c = self._committed_choice()
+			if c:
+				if cint(c.tc_plants_committed):
+					self.tc_plants_required = cint(c.tc_plants_committed)
+				if c.tc_order_date_committed:
+					self.tc_order_date = c.tc_order_date_committed
 		else:
 			self.tc_plants_required = 0
 			self.tc_cost = 0
@@ -463,6 +471,22 @@ class SummerFlowerPropagationPlan(Document):
 		lead = (getdate(self.first_sticking_date) - getdate(self.tc_order_date)).days
 		return add_days(getdate(), lead)
 
+	def _committed_choice(self):
+		"""The TC choice the production plan has committed to, if it has.
+
+		The propagation plan sizes its own order from a probe batch, which is right
+		until somebody has decided to buy something else. Then the decision lives on
+		the production plan and this document has to follow it, or confirming a
+		choice writes a figure here that the next save quietly recomputes away.
+		"""
+		if not self.production_plan:
+			return None
+		row = frappe.db.get_value(
+			"Summer Flower Production Plan", self.production_plan,
+			["tc_choice_committed", "tc_plants_committed", "tc_order_date_committed",
+			 "tc_cycles_committed"], as_dict=True)
+		return row if row and cint(row.tc_choice_committed) else None
+
 	def _probe_batch(self):
 		b = frappe.new_doc("Summer Flower Motherstock Batch")
 		b.variety = self.variety
@@ -479,6 +503,13 @@ class SummerFlowerPropagationPlan(Document):
 		# plants; this one is not.
 		b.apply_losses = 0
 		b.first_sticking_date = self._first_needed
+		# A committed build-up is part of the question the probe is answering: it
+		# decides both how many plantlets the pool needs and how long they take, so
+		# a probe run on the protocol default would date the order by a build-up
+		# nobody is doing.
+		c = self._committed_choice()
+		if c and cint(c.tc_cycles_committed):
+			b.build_up_cycles = cint(c.tc_cycles_committed)
 		b.run_method("validate")
 		return b
 
