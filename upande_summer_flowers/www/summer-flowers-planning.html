@@ -1204,7 +1204,8 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
 
   function loadProcess() {
     return callOp("process_overview", { variety: S.variety, farm: S.farm,
-                                        plan: S.plan || null })
+                                        plan: S.plan || null,
+                                        season: S.season || null })
       .then((r) => { S.po = r; renderProcess(); })
       .catch((e) => { S.po = { error: e.message }; renderProcess(); });
   }
@@ -2902,7 +2903,8 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
   // ══════════════════════════ REVIEW ══════════════════════════
   function loadChain() {
     return callOp("chain_status", { variety: S.variety, farm: S.farm,
-                                   plan: S.plan || null })
+                                   plan: S.plan || null,
+                                   season: S.season || null })
       .then((r) => { S.chain = r; renderChain(); })
       .catch((e) => { S.chain = { error: e.message }; renderChain(); });
   }
@@ -5172,7 +5174,16 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
         // Narrow the plan list to that year and load whichever plan it lands on.
         const was = S.plan;
         fillPlanPickers();
-        if (S.plan === was) { buildPeriodPickers(); renderAllPanes(); return; }
+        if (S.plan === was) {
+          buildPeriodPickers();
+          renderAllPanes();
+          // The chain and the process summary are fetched, not re-rendered from
+          // state, so a year that does not change the plan still has to refetch
+          // them or the register keeps reading its whole span.
+          Promise.all([loadChain(), loadProcess()])
+            .catch((e3) => toast(esc(e3.message), true));
+          return;
+        }
         $("pl-loading").hidden = false; $("pl-loading").textContent = "Loading plan…";
         loadScope().then(() => { $("pl-loading").hidden = true; })
           .catch((e2) => { $("pl-loading").hidden = true; toast(esc(e2.message), true); });

@@ -502,7 +502,7 @@ def act(doctype, name, action, reason=None):
 # ---------------------------------------------------------------------------
 
 @frappe.whitelist()
-def chain_status(variety=None, farm=None, demand=None, plan=None):
+def chain_status(variety=None, farm=None, demand=None, plan=None, season=None):
 	"""Where a variety has got to along the chain, and what the next step is.
 
 	One call rather than four, so the dashboard cannot show a plan from one
@@ -527,10 +527,38 @@ def chain_status(variety=None, farm=None, demand=None, plan=None):
 		 "horizon_start", "horizon_end", "horizon_status", "price_per_stem",
 		 "currency"], as_dict=True)
 
+	# Scoped to the financial year when one is chosen, because the rest of this
+	# card already is: every step after the register describes one plan, and a plan
+	# is one financial year. Leaving the register at its full span put 24 years of
+	# demand beside one year of everything else and called the difference a gap.
+	d["season_start_year"] = cint(season) or None
+	if season:
+		start = cint(season)
+		rows = frappe.db.sql("""select year, week_no, demand_stems
+			from `tabSummer Flower Demand Week` where parent = %s
+			  and ((year = %s and week_no >= 27) or (year = %s and week_no <= 26))
+			order by year, week_no""", (demand, start, start + 1), as_dict=True)
+		d["weeks_covered"] = len(rows)
+		d["total_demand_stems"] = sum(cint(r.demand_stems) for r in rows)
+		d["horizon_start"] = ("%s-W%02d" % (rows[0].year, rows[0].week_no)
+		                      if rows else None)
+		d["horizon_end"] = ("%s-W%02d" % (rows[-1].year, rows[-1].week_no)
+		                    if rows else None)
+		d["horizon_status"] = (_("{0} weeks in {1}-{2}").format(
+			len(rows), start, str(start + 1)[2:]) if rows
+			else _("no demand in {0}-{1}").format(start, str(start + 1)[2:]))
+		d["scoped"] = True
+	else:
+		d["scoped"] = False
+
 	plans = frappe.get_all(
 		"Summer Flower Production Plan", filters={"market_demand": demand,
 		                                          "docstatus": ["<", 2]},
-		fields=["name", "workflow_state", "docstatus", "budget", "weeks_covered",
+		# variety and season_start_year are read below to find the propagation
+		# plan, and were not being selected -- so this raised KeyError on every
+		# call and the chain card has been showing its error state throughout.
+		fields=["name", "variety", "farm", "season_start_year",
+		        "workflow_state", "docstatus", "budget", "weeks_covered",
 		        "total_demand_stems", "total_production_stems", "coverage_pct",
 		        "weeks_in_deficit", "new_beds_required", "new_plants_required",
 		        "average_area_ha", "peak_weekly_sticking", "peak_sticking_week",
@@ -596,7 +624,7 @@ def chain_status(variety=None, farm=None, demand=None, plan=None):
 
 
 @frappe.whitelist()
-def process_overview(variety=None, farm=None, plan=None):
+def process_overview(variety=None, farm=None, plan=None, season=None):
 	"""The whole process on one screen: every stage, its documents, and what stops it.
 
 	The tabs each answer one question well and none of them answer "where is this
@@ -655,6 +683,23 @@ def process_overview(variety=None, farm=None, plan=None):
 	# Where no plan was given the register names the variety, since one variety's
 	# demand can be met from several farms and the farm then comes from the plan.
 	variety = d.variety
+
+	# Scoped to the financial year when one is chosen. Every stage after this one
+	# describes a single plan, and a plan is a single financial year, so a register
+	# reading its whole span here put decades of demand at the head of a chain
+	# describing one season of work.
+	if season:
+		start = cint(season)
+		wk = frappe.db.sql("""select year, week_no, demand_stems
+			from `tabSummer Flower Demand Week` where parent = %s
+			  and ((year = %s and week_no >= 27) or (year = %s and week_no <= 26))
+			order by year, week_no""", (d.name, start, start + 1), as_dict=True)
+		d.weeks_covered = len(wk)
+		d.total_demand_stems = sum(cint(r.demand_stems) for r in wk)
+		d.horizon_start = "%s-W%02d" % (wk[0].year, wk[0].week_no) if wk else None
+		d.horizon_end = "%s-W%02d" % (wk[-1].year, wk[-1].week_no) if wk else None
+		d.horizon_status = _("{0}-{1}").format(start, str(start + 1)[2:])
+
 	stage("demand", "Market demand", d.name, d.horizon_status,
 	      "{:,}".format(cint(d.total_demand_stems)) + _(" stems"),
 	      _("{0} weeks, {1} to {2}").format(d.weeks_covered, d.horizon_start,
