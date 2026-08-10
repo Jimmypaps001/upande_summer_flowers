@@ -12,11 +12,11 @@
   </header>
 
   <div class="pl-filters" role="group" aria-label="{{ _('Scope') }}">
-    <label>{{ _("Variety") }}<select id="f-variety"></select></label>
-    <label>{{ _("Farm") }}<select id="f-farm"></select></label>
-    <label>{{ _("Production plan") }}<select id="f-plan"></select></label>
-    <label>{{ _("Financial year") }}<select id="f-season"></select></label>
-    <label>{{ _("Week") }}<select id="f-week"></select></label>
+    <label id="fl-variety">{{ _("Variety") }}<select id="f-variety"></select></label>
+    <label id="fl-farm">{{ _("Farm") }}<select id="f-farm"></select></label>
+    <label id="fl-plan">{{ _("Production plan") }}<select id="f-plan"></select></label>
+    <label id="fl-season">{{ _("Financial year") }}<select id="f-season"></select></label>
+    <label id="fl-week">{{ _("Week") }}<select id="f-week"></select></label>
     <span class="pl-asof" id="asof"></span>
   </div>
 
@@ -117,7 +117,11 @@
           </div>
         </div>
         <div class="pl-tiles pl-tiles-sm" id="pp-tiles"></div>
-        <h3>{{ _("Month by month") }}</h3>
+        <div class="pl-card-head">
+          <div><h3>{{ _("Month by month") }}</h3></div>
+          <label class="pl-inline">{{ _("Financial year") }}
+            <select id="pp-cal-year"></select></label>
+        </div>
         <p class="pl-note" style="margin-top:0">{{ _("Every date the plan commits to, grouped by the month it falls in. Sticking is when cuttings go in the propagation house; planting is when they go to the field; uprooting is when the block comes free again.") }}</p>
         <div class="pl-legend" id="pp-cal-legend"></div>
         <div id="pp-calendar"></div>
@@ -871,6 +875,8 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
   background:var(--surface);color:var(--text)}
 .hc-legend{display:flex;flex-wrap:wrap;gap:14px;margin:10px 0 6px;
   font-size:.72rem;color:var(--text-muted)}
+.pl-filters.is-empty::after{content:"This tab answers for the whole site.";
+  font-size:.76rem;color:var(--text-muted);align-self:center}
 .pl-scopeline{margin:-4px 0 14px;font-size:.78rem;color:var(--text-muted);
   display:flex;flex-wrap:wrap;gap:6px;align-items:center}
 .pl-scopeline b{color:var(--text);font-weight:600}
@@ -1097,7 +1103,7 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
 
   const S = { variety: "", farm: "", version: null, grain: "month",
               dv: null, deriv: null, pp: null, bf: null, cal: null, ls: null, pr: null,
-              ppBasis: "plant", dmYear: "", bfBlock: "", calYear: null,
+              ppBasis: "plant", dmYear: "", ppCalYear: "", bfBlock: "", calYear: null,
               bfOpen: new Set(), cyc: null, cycle: null, det: null, rv: null,
               plan: "", plans: null, bg: null, chain: null, pg: null,
               year: "", week: "" };
@@ -1646,14 +1652,28 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
       put(r.first_harvest_date, "harvest", r);
       put(r.uproot_date, "uproot", r);
     });
-    // Buckets are YYYY-MM. A season runs July to June, so it covers the second half
-    // of its starting year and the first half of the next -- filtering on the first
-    // four characters would have shown half of it.
-    const inSeason = (k) => {
-      if (!S.season) return true;
+    // Buckets are YYYY-MM. A financial year runs July to June, so it covers the
+    // second half of its starting year and the first half of the next -- filtering
+    // on the first four characters would have shown half of it.
+    //
+    // Its own picker, not the scope bar's. This calendar spans the plantings' whole
+    // lives -- three financial years for a crop 111 weeks in the ground -- while the
+    // scope bar offers only the year the plan covers, so filtering by that could
+    // never narrow anything and appeared to do nothing at all.
+    const fyOf = (k) => {
       const y = +k.slice(0, 4), mo = +k.slice(5, 7);
-      return (y === +S.season && mo >= 7) || (y === +S.season + 1 && mo <= 6);
+      return mo >= 7 ? y : y - 1;
     };
+    const years = [...new Set(Object.keys(buckets).map(fyOf))].sort();
+    const ysel = $("pp-cal-year");
+    if (ysel && ysel.dataset.filled !== years.join(",")) {
+      ysel.innerHTML = '<option value="">All years</option>' +
+        years.map((y) => `<option value="${y}">${esc(seasonLabel(y))}</option>`).join("");
+      ysel.dataset.filled = years.join(",");
+      if (!years.map(String).includes(String(S.ppCalYear))) S.ppCalYear = "";
+      ysel.value = S.ppCalYear || "";
+    }
+    const inSeason = (k) => !S.ppCalYear || String(fyOf(k)) === String(S.ppCalYear);
     const keys = Object.keys(buckets).sort().filter(inSeason);
     if (!keys.length) {
       el.innerHTML = '<p class="pl-empty">No dated plantings in this period.</p>';
@@ -4545,6 +4565,39 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
   const TABS = ["overview", "demand", "plan", "motherstock", "propagation", "planting",
                "blocks", "harvest", "review", "protocol", "calendar"];
 
+  // Which of the scope filters each tab actually reads. One bar driving every tab
+  // meant the protocol offered a production plan it cannot use and a week it does
+  // not have -- a control that changes nothing is worse than no control, because
+  // the reader assumes it did something. A tab shows what it answers to.
+  //
+  // Tabs with their own filter keep it on the card: the demand register has its
+  // financial year, the calendar its year, the motherstock its protocol version.
+  const TAB_FILTERS = {
+    overview:    ["variety", "farm", "plan", "season", "week"],
+    demand:      ["variety", "farm"],
+    plan:        ["variety", "farm", "plan", "season", "week"],
+    motherstock: ["variety", "farm", "plan"],
+    propagation: ["variety", "farm", "plan"],
+    planting:    ["variety", "farm", "plan"],
+    blocks:      ["variety", "farm", "plan"],
+    harvest:     ["variety", "farm"],
+    review:      [],
+    protocol:    ["variety", "farm"],
+    calendar:    ["variety", "farm", "plan"],
+  };
+
+  function applyTabFilters(name) {
+    const want = TAB_FILTERS[name] || ["variety", "farm", "plan"];
+    ["variety", "farm", "plan", "season", "week"].forEach((f) => {
+      const el = $("fl-" + f);
+      if (el) el.hidden = !want.includes(f);
+    });
+    // Review answers for the whole site, so a scope bar with nothing in it would
+    // be an empty strip; say what it means instead.
+    const bar = document.querySelector(".pl-filters");
+    if (bar) bar.classList.toggle("is-empty", !want.length);
+  }
+
   function setTab(name, fromHash) {
     // The tab lives in the URL so a workspace shortcut can point straight at
     // Harvest or Review instead of landing on Overview and making the user hunt.
@@ -4557,6 +4610,7 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
     });
     document.querySelectorAll(".pl-pane").forEach((p) =>
       p.classList.toggle("is-on", p.dataset.pane === name));
+    applyTabFilters(name);
     // Charts sized while hidden come out wrong, so redraw on reveal.
     if (name === "overview" && S.dv) {
       drawGrouped($("dv-chart"), S.grain === "month" ? S.dv.months : S.dv.weeks);
@@ -4947,6 +5001,10 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
         if (act === "save") saveProposal(b);
       });
       $("dm-years").addEventListener("change", () => loadProposal());
+      $("pp-cal-year").addEventListener("change", (e) => {
+        S.ppCalYear = e.target.value;
+        renderPlanting();
+      });
       $("dm-year").addEventListener("change", (e) => {
         S.dmYear = e.target.value;
         renderDemand();
