@@ -112,6 +112,13 @@
         </div>
         <div class="pl-tiles pl-tiles-sm" id="dm-tiles"></div>
         <p class="pl-callout" id="dm-note" hidden></p>
+        <div class="pl-card-head">
+          <div><h3>{{ _("Demand by week") }}</h3>
+               <p class="pl-note" id="dm-chart-sub"></p></div>
+          <label class="pl-inline">{{ _("Financial year") }}
+            <select id="dm-year"></select></label>
+        </div>
+        <div class="pl-chart-wrap"><div id="dm-chart" class="pl-chart"></div></div>
         <div id="dm-table" class="pl-scroll pl-tall"></div>
       </div>
     </section>
@@ -1114,7 +1121,7 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
 
   const S = { variety: "", farm: "", version: null, grain: "month",
               dv: null, deriv: null, pp: null, bf: null, cal: null, ls: null, pr: null,
-              ppFilter: "all", bfBlock: "", calYear: null,
+              ppFilter: "all", dmYear: "", bfBlock: "", calYear: null,
               bfOpen: new Set(), cyc: null, cycle: null, det: null, rv: null,
               plan: "", plans: null, bg: null, chain: null, pg: null,
               year: "", week: "" };
@@ -1422,7 +1429,27 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
         m: `of ${num(w.length)} in the horizon` },
     ].map(tile).join("");
 
-    let rows = w;
+    // The financial year runs July to June, so a demand register spans several and
+    // a chart of all of them at once is a wall. The picker is filled from the
+    // seasons the register actually covers, not from a range of years someone
+    // guessed, and it filters the chart and the table together -- a chart showing
+    // one year above a table showing four is the tab contradicting itself.
+    const seasons = [...new Set(w.map((r) => seasonOf(r.year, r.week_no)))].sort();
+    const sel = $("dm-year");
+    if (sel && sel.dataset.filled !== seasons.join(",")) {
+      sel.innerHTML = '<option value="">All years</option>' +
+        seasons.map((y) => `<option value="${y}">${esc(seasonLabel(y))}</option>`).join("");
+      sel.dataset.filled = seasons.join(",");
+      if (S.dmYear && seasons.map(String).includes(String(S.dmYear))) {
+        sel.value = S.dmYear;
+      } else {
+        S.dmYear = "";
+      }
+    }
+    let rows = S.dmYear
+      ? w.filter((r) => String(seasonOf(r.year, r.week_no)) === String(S.dmYear))
+      : w;
+    renderDemandChart(rows, seasons);
     // rows is already inside the period: scoped() narrowed it.
     const shown = rows;
     if (periodOn()) {
@@ -1447,6 +1474,72 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
           `<td>${fdate(r.date)}</td>` +
           `<td class="n">${num(r.demand)}</td></tr>`).join("") + "</tbody></table>"
       : '<p class="pl-empty">No weeks match this filter.</p>';
+  }
+
+  // Weekly demand as a line. One series, because the register is one fact: what the
+  // market asked for. The year boundaries are drawn in, since a register spanning
+  // four financial years otherwise reads as one long unbroken season.
+  function renderDemandChart(rows, seasons) {
+    const el = $("dm-chart");
+    if (!el) return;
+    if (!rows || rows.length < 2) {
+      el.innerHTML = '<p class="pl-empty">Not enough weeks to plot.</p>';
+      $("dm-chart-sub").textContent = "";
+      return;
+    }
+    const peak = rows.reduce((a, r) => (r.demand > a.demand ? r : a), rows[0]);
+    const total = rows.reduce((a, r) => a + (r.demand || 0), 0);
+    $("dm-chart-sub").textContent =
+      `${rows.length} weeks${S.dmYear ? " of " + seasonLabel(S.dmYear)
+        : (seasons.length > 1 ? ` across ${seasons.length} financial years` : "")}` +
+      ` · ${num(total)} stems · peak ${num(peak.demand)} in ` +
+      `${peak.year}-W${String(peak.week_no).padStart(2, "0")}`;
+
+    const avail = (el.clientWidth || el.parentElement?.clientWidth || 0) - 2;
+    const W = Math.max(avail, 660, rows.length * 6);
+    const H = 240, L = 66, R = 12, T = 12, B = 34;
+    const raw = Math.max(...rows.map((r) => r.demand || 0)) || 1;
+    const step = niceStep(raw / 4);
+    const max = Math.ceil(raw / step) * step;
+    const x = (i) => L + (W - L - R) * (rows.length === 1 ? 0 : i / (rows.length - 1));
+    const y = (v) => T + (H - T - B) * (1 - v / max);
+
+    let g = `<svg viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" class="pl-svg" role="img">`;
+    g += '<g class="grid">';
+    for (let v = 0; v <= max; v += step) {
+      g += `<line x1="${L}" x2="${W - R}" y1="${y(v).toFixed(1)}" y2="${y(v).toFixed(1)}"/>`;
+      g += `<text x="${L - 8}" y="${(y(v) + 3).toFixed(1)}" text-anchor="end">${num(v)}</text>`;
+    }
+    g += "</g>";
+
+    // Where one financial year gives way to the next.
+    rows.forEach((r, i) => {
+      if (!i) return;
+      if (seasonOf(r.year, r.week_no) === seasonOf(rows[i - 1].year, rows[i - 1].week_no)) return;
+      g += `<line x1="${x(i).toFixed(1)}" x2="${x(i).toFixed(1)}" y1="${T}" ` +
+        `y2="${H - B}" stroke="var(--baseline)" stroke-dasharray="3 3"/>`;
+      g += `<text x="${(x(i) + 4).toFixed(1)}" y="${T + 10}" class="pl-axis" ` +
+        `fill="var(--text-muted)" font-size="10">${esc(seasonLabel(seasonOf(r.year, r.week_no)))}</text>`;
+    });
+
+    g += `<path d="${rows.map((r, i) =>
+      `${i ? "L" : "M"}${x(i).toFixed(1)},${y(r.demand || 0).toFixed(1)}`).join(" ")}" ` +
+      `fill="none" stroke="var(--series-1)" stroke-width="2"/>`;
+    // The peak is the week the whole plan is sized from, so it is marked.
+    const pi = rows.indexOf(peak);
+    g += `<circle cx="${x(pi).toFixed(1)}" cy="${y(peak.demand).toFixed(1)}" r="4" ` +
+      `fill="var(--series-2)" stroke="var(--surface-1)" stroke-width="1.5"/>`;
+
+    // A label every ~10 weeks: one per week is unreadable at any width.
+    const every = Math.max(1, Math.ceil(rows.length / 12));
+    rows.forEach((r, i) => {
+      if (i % every && i !== rows.length - 1) return;
+      g += `<text x="${x(i).toFixed(1)}" y="${H - B + 16}" text-anchor="middle" ` +
+        `class="pl-axis" font-size="10" fill="var(--text-muted)">` +
+        `${r.year}-W${String(r.week_no).padStart(2, "0")}</text>`;
+    });
+    g += "</svg>";
+    el.innerHTML = g;
   }
 
   function drawGantt(el, occ) {
@@ -4762,6 +4855,9 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
       drawGrouped($("dv-chart"), S.grain === "month" ? S.dv.months : S.dv.weeks);
       renderCumulative(scoped().weeks);
     }
+    // The demand chart measures its container, and a hidden container is 0 wide,
+    // so it falls back to 660 when drawn with the tab closed. Redraw on reveal.
+    if (name === "demand" && S.dv) renderDemand();
     if (name === "planting") {
       if (S.pp) drawGantt($("pp-gantt"), S.pp.occupancy);
       // Wide and only wanted here, so it is fetched on reveal, once.
@@ -5153,6 +5249,10 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
         if (act === "save") saveProposal(b);
       });
       $("dm-years").addEventListener("change", () => loadProposal());
+      $("dm-year").addEventListener("change", (e) => {
+        S.dmYear = e.target.value;
+        renderDemand();
+      });
       $("ls-table").addEventListener("click", (e) => {
         const cell = e.target.closest(".ls-edit");
         if (cell) { lsEditFarm(cell); return; }
