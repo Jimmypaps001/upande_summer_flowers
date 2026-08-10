@@ -107,40 +107,23 @@
 
     <!-- ══ PLANTING PLAN ══ -->
     <section class="pl-pane" data-pane="planting">
-      <!-- The plan as it is actually worked: one row per planting, one column per
-           week. Every other card totals the plan; this one says which planting puts
-           which stems in which week, in the shape the farm's own workbook uses. -->
-      <div class="pl-card">
-        <div class="pl-card-head">
-          <div><h2>{{ _("Production plan by planting") }}</h2>
-               <p class="pl-note" id="ps-sub"></p></div>
-          <span class="pl-actions">
-            <button type="button" class="pl-btn" data-ps="csv">{{ _("Download CSV") }}</button>
-          </span>
-        </div>
-        <div class="pl-tiles pl-tiles-sm" id="ps-tiles"></div>
-        <div id="ps-sheet" class="pl-scroll pl-tall"></div>
-      </div>
-
       <div class="pl-card">
         <div class="pl-card-head">
           <div><h2>{{ _("Planting plan") }}</h2>
                <p class="pl-note" id="pp-sub"></p></div>
           <div class="pl-toggle" role="group">
-            <button type="button" id="pp-all" class="is-on">{{ _("All") }}</button>
-            <button type="button" id="pp-alloc">{{ _("Allocated") }}</button>
-            <button type="button" id="pp-flag">{{ _("Flagged") }}</button>
+            <button type="button" id="pp-by-stick" class="is-on">{{ _("By sticking") }}</button>
+            <button type="button" id="pp-by-plant">{{ _("By planting") }}</button>
+            <button type="button" id="pp-by-harvest">{{ _("By first harvest") }}</button>
+            <button type="button" id="pp-by-uproot">{{ _("By uprooting") }}</button>
           </div>
         </div>
         <div class="pl-tiles pl-tiles-sm" id="pp-tiles"></div>
-        <h3>{{ _("Block occupancy") }}</h3>
-        <p class="pl-note" style="margin-top:0">{{ _("A block holds one planting at a time, so each bar owns its block for the whole cycle.") }}</p>
-        <div class="pl-chart-wrap"><div id="pp-gantt" class="pl-chart"></div></div>
         <h3>{{ _("Month by month") }}</h3>
         <p class="pl-note" style="margin-top:0">{{ _("Every date the plan commits to, grouped by the month it falls in. Sticking is when cuttings go in the propagation house; planting is when they go to the field; uprooting is when the block comes free again.") }}</p>
         <div class="pl-legend" id="pp-cal-legend"></div>
         <div id="pp-calendar"></div>
-        <h3>{{ _("Stick, plant, harvest") }}</h3>
+        <h3>{{ _("Every planting, first to last") }}</h3>
         <p class="pl-note" style="margin-top:0">{{ _("The plan is built from the demand; which beds each planting goes into is decided here. Click a block to see what could hold it.") }}</p>
         <div class="pl-row" id="pp-assign" style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:8px"></div>
         <div id="pp-table" class="pl-scroll pl-tall"></div>
@@ -1116,7 +1099,7 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
 
   const S = { variety: "", farm: "", version: null, grain: "month",
               dv: null, deriv: null, pp: null, bf: null, cal: null, ls: null, pr: null,
-              ppFilter: "all", dmYear: "", bfBlock: "", calYear: null,
+              ppBasis: "stick", dmYear: "", bfBlock: "", calYear: null,
               bfOpen: new Set(), cyc: null, cycle: null, det: null, rv: null,
               plan: "", plans: null, bg: null, chain: null, pg: null,
               year: "", week: "" };
@@ -1734,21 +1717,23 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
       { k: "Week passed", v: num(t.in_past), m: "cannot be planted",
         c: t.in_past ? "--critical" : "--good" },
     ].map(tile).join("");
-    drawGantt($("pp-gantt"), pp.occupancy);
-
-    let rows = pp.plantings;
-    if (S.ppFilter === "alloc") rows = rows.filter((r) => r.block);
-    if (S.ppFilter === "flag") {
-      rows = rows.filter((r) => r.below_minimum || r.in_past || r.unallocated);
-    }
+    // Ordered by whichever date is being read. A planting plan is read as a
+    // sequence -- first to last -- and which date puts it in sequence depends on
+    // the question: when to stick, when to plant, when the stems arrive, when the
+    // beds come back. Same rows, four orders.
+    const BASIS = { stick: "sticking_date", plant: "planting_date",
+                    harvest: "first_harvest_date", uproot: "uproot_date" };
+    const key = BASIS[S.ppBasis] || BASIS.stick;
+    let rows = pp.plantings.slice().sort((a, b) =>
+      String(a[key] || "9999").localeCompare(String(b[key] || "9999")));
     // A proposal is placed against its planting week, so that is what the period
     // filter matches on.
     rows = rows.filter((r) => inPeriod(r.planting_year, r.planting_week));
     renderPlantingCalendar(rows);
     const awaiting = pp.plantings.filter((r) => r.is_new && !r.block).length;
-    // pp-assign, not pp-alloc: the Allocated filter button already had that id, so
-    // this was overwriting the filter's own markup and then toggleGroup bound to a
-    // button that no longer existed -- which is why the whole tab stopped rendering.
+    // Blocks are assigned here and nowhere else on this tab now. The id is
+    // pp-assign because it once clashed with a filter button called pp-alloc, and
+    // the clash silently wiped that button out and stopped the tab rendering.
     $("pp-assign").innerHTML = awaiting
       ? `<span class="pl-note" style="margin:0">${awaiting} ${
           awaiting === 1 ? "planting is" : "plantings are"} waiting on a block. ` +
@@ -1757,29 +1742,30 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
         `Suggest and assign all</button>`
       : `<span class="pl-note" style="margin:0">Every planting has a block.</span>` +
         `<button type="button" class="pl-btn" data-bk-clear="1">Clear all blocks</button>`;
-    const shown = rows.slice(0, 200);
+    const shown = rows.slice(0, 400);
+    // Numbered in the order shown, so "planting 1 to planting 38" means the
+    // sequence on screen rather than a row id that moves when the sort changes.
     $("pp-table").innerHTML =
-      '<table class="pl-t"><thead><tr><th>#</th><th>Stick</th><th>Plant</th><th>1st harvest</th>' +
-      '<th>Harvest weeks</th><th class="n">Beds</th><th class="n">Plants</th>' +
-      '<th class="n">Cuttings</th><th class="n">Stems life</th><th>Block</th><th>Flags</th>' +
+      '<table class="pl-t"><thead><tr><th>#</th><th>Stick</th><th>Plant</th><th>Pinch</th>' +
+      '<th>First harvest</th><th>Uproot</th><th class="n">Plants</th>' +
+      '<th class="n">Area m²</th><th class="n">Area ha</th>' +
+      '<th class="n">Stems over its life</th><th>Flags</th>' +
       '</tr></thead><tbody>' +
-      shown.map((r) => {
+      shown.map((r, i) => {
         const f = [];
-        if (r.unallocated) f.push('<span class="pill"><i class="dot2" style="background:var(--serious)"></i>no block</span>');
         if (r.below_minimum) f.push('<span class="pill"><i class="dot2" style="background:var(--warning)"></i>below min</span>');
         if (r.in_past) f.push('<span class="pill"><i class="dot2" style="background:var(--critical)"></i>past</span>');
-        return `<tr><td>${r.idx}</td><td>${esc(r.stick || "—")}</td><td>${esc(r.plant || "—")}</td>` +
-          `<td>${esc(r.first_harvest || "—")}</td><td>${esc(r.harvest_family || "—")}</td>` +
-          `<td class="n">${num(r.beds)}</td><td class="n">${num(r.plants)}</td>` +
-          `<td class="n">${num(r.cuttings)}</td><td class="n">${num(r.lifetime_stems)}</td>` +
-          // The block is the one thing on this row a planner decides, so it is the
-          // one thing here that is not read-only. Suggestions load on demand: a plan
-          // with thirty-five plantings would otherwise ask the server for thirty-five
-          // ranked block lists before showing anything.
-          `<td>${r.is_new && !S.pp.submitted
-            ? `<button type="button" class="pl-mini" data-bk="${esc(r.row)}"
-                 data-beds="${r.beds}">${esc(shortBlock(r.block) || "assign…")}</button>`
-            : esc(shortBlock(r.block) || "—")}</td>` +
+        const ha = Number(r.net_area_ha) || 0;
+        return `<tr><td>${i + 1}</td>` +
+          `<td>${r.sticking_date ? fdate(r.sticking_date) : "—"}</td>` +
+          `<td>${r.planting_date ? fdate(r.planting_date) : "—"}</td>` +
+          `<td>${r.pinch_date ? fdate(r.pinch_date) : "—"}</td>` +
+          `<td>${r.first_harvest_date ? fdate(r.first_harvest_date) : "—"}</td>` +
+          `<td>${r.uproot_date ? fdate(r.uproot_date) : "—"}</td>` +
+          `<td class="n">${num(r.plants)}</td>` +
+          `<td class="n">${num(Math.round(ha * 10000))}</td>` +
+          `<td class="n">${ha.toFixed(4)}</td>` +
+          `<td class="n">${num(r.lifetime_stems)}</td>` +
           `<td>${f.join(" ")}</td></tr>`;
       }).join("") + "</tbody></table>" +
       (rows.length > shown.length
@@ -4456,267 +4442,6 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
       .finally(() => { btn.disabled = false; btn.textContent = was; });
   }
 
-  // The plan as one row per planting and one column per week. Loaded with the
-  // planting tab rather than at startup: it is 52 columns wide and nobody reads it
-  // by accident.
-  function loadSheet() {
-    if (!(S.dv && S.dv.plan)) { S.ps = null; renderSheet(); return Promise.resolve(); }
-    return call("production_sheet", { plan: S.dv.plan })
-      .then((r) => { S.ps = r; renderSheet(); })
-      .catch((e) => { S.ps = { error: e.message }; renderSheet(); });
-  }
-
-  function renderSheet() {
-    const d = S.ps;
-    if (!d || d.error || !d.plan) {
-      $("ps-sheet").innerHTML = `<p class="pl-empty">${esc(
-        (d && d.error) || "No plan in scope.")}</p>`;
-      $("ps-tiles").innerHTML = ""; $("ps-sub").textContent = "";
-      return;
-    }
-    const t = d.totals;
-    $("ps-sub").textContent =
-      `${d.plantings.length} plantings across ${d.grid.length} weeks of ` +
-      `${d.season || "the season"}, on ${d.protocol}. These are the same stems the ` +
-      `weekly figures are made of, arranged by the planting that grows them.`;
-    $("ps-tiles").innerHTML = [
-      { k: "Plantings", v: num(d.plantings.length), m: `${num(t.beds)} beds` },
-      { k: "Plants", v: num(t.plants), m: `${num(t.net_area_sqm)} m² net` },
-      { k: "Stems this season", v: num(t.season), m: "inside the plan's window" },
-      { k: "Stems over their life", v: num(t.lifetime),
-        m: "most of it lands after this window" },
-      { k: "Season stems/ha", v: num(Math.round(t.season_stems_per_ha)),
-        m: "how plantings compare" },
-    ].map(tile).join("");
-
-    const wk = (g) => `${g.year}-W${String(g.week).padStart(2, "0")}`;
-    // A row of weekly numbers, used for the planting rows and the summary rows
-    // underneath them so both are read against the same columns.
-    const cells = (arr, cls) => arr.map((v) =>
-      `<td class="n${cls ? " " + cls : ""}">${v ? num(v) : ""}</td>`).join("");
-
-    $("ps-sheet").innerHTML =
-      '<table class="pl-t pl-t-cols ps-t"><thead><tr>' +
-      '<th>Block</th><th>Planting</th><th>Pinch</th><th>Uproot</th>' +
-      '<th class="n">Beds</th><th class="n">Plants</th><th class="n">Net m²</th>' +
-      d.grid.map((g) => `<th class="n">${esc(wk(g))}</th>`).join("") +
-      '<th class="n">Season</th><th class="n">Stems/ha</th><th class="n">Lifetime</th>' +
-      "</tr></thead><tbody>" +
-      d.plantings.map((p) =>
-        `<tr${p.not_placed ? ' class="short"' : ""}>` +
-        `<td>${esc(p.block)}${p.not_placed
-          ? ' <span class="pill">no block</span>' : ""}</td>` +
-        `<td>${fdate(p.planting_date)}</td><td>${p.pinch_date ? fdate(p.pinch_date) : "—"}</td>` +
-        `<td>${p.uproot_date ? fdate(p.uproot_date) : "—"}</td>` +
-        `<td class="n">${num(p.beds)}</td><td class="n">${num(p.plants)}</td>` +
-        `<td class="n">${num(p.net_area_sqm)}</td>` +
-        cells(p.weekly) +
-        `<td class="n"><b>${num(p.season_total)}</b></td>` +
-        `<td class="n">${num(Math.round(p.season_stems_per_ha))}</td>` +
-        `<td class="n">${num(p.lifetime_total)}</td></tr>`).join("") +
-      // Under the plantings, the same columns totalled, then what the market asked
-      // for and the difference -- the whole point of laying it out this way.
-      `<tr class="ps-sum"><td colspan="7"><b>Weekly production</b></td>` +
-      cells(d.weekly_production) +
-      `<td class="n"><b>${num(t.season)}</b></td><td></td>` +
-      `<td class="n">${num(t.lifetime)}</td></tr>` +
-      `<tr class="ps-sum"><td colspan="7">Weekly market demand</td>` +
-      cells(d.weekly_demand) + "<td></td><td></td><td></td></tr>" +
-      `<tr class="ps-sum"><td colspan="7">Difference</td>` +
-      d.difference.map((v) =>
-        `<td class="n" style="color:var(${v < 0 ? "--critical" : "--good"})">` +
-        `${v ? sgn(v) : ""}</td>`).join("") +
-      "<td></td><td></td><td></td></tr>" +
-      "</tbody></table>";
-  }
-
-  // Changing the build-up changes what has to be bought and when. Fewer cycles is
-  // less multiplication, so the same pool needs more plantlets; and it is a shorter
-  // lead time, so they are needed later. Leaving the quantity and the date where
-  // they were would show a build-up nobody could actually buy.
-  function syncCyclesToOrder() {
-    const c = $("ls-cycles").value;
-    if (!(S.dv && S.dv.plan)) return runLifecycle();
-    return call("tc_purchase", { plan: S.dv.plan, cycles: c === "" ? null : c })
-      .then((r) => {
-        const wasQ = $("ls-qty").value, wasD = $("ls-date").value;
-        if (r.recommended_tc) $("ls-qty").value = r.recommended_tc;
-        if (r.order_date_used) $("ls-date").value = r.order_date_used;
-        $("ls-confirm-note").innerHTML =
-          `<p class="pl-note">${c === "" ? "Back to the protocol's build-up" :
-            c + " build-up cycle" + (c === "1" ? "" : "s")}: ` +
-          `<b>${num($("ls-qty").value)}</b> plantlets (was ${num(wasQ)}), ` +
-          `ordered <b>${esc($("ls-date").value)}</b> (was ${esc(wasD)}). ` +
-          `Multiplying less means buying more, sooner is not needed — the shorter ` +
-          `lead time moves the order later.</p>`;
-      })
-      .then(runLifecycle)
-      .catch((e) => toast(esc(e.message), true));
-  }
-
-  // Demand against production for whatever is set on the card right now, whether
-  // or not anything was changed. Nothing is written: this is the answer to "what
-  // would this do", which has to be askable without doing it.
-  function showEffect() {
-    if (!(S.dv && S.dv.plan)) { toast("No plan in scope.", true); return; }
-    const dlg = $("pw-dlg");
-    const cyc = $("ls-cycles").value;
-    $("pw-body").innerHTML = '<p class="pl-empty">Working it out…</p>';
-    $("pw-sub").textContent = "";
-    if (!dlg.open) dlg.showModal();
-    call("plan_whatif", {
-      plan: S.dv.plan,
-      tc_qty: $("ls-qty").value || null,
-      order_date: $("ls-date").value || null,
-      cycles: cyc === "" ? null : cyc,
-    })
-      .then(renderEffect)
-      .catch((e) => {
-        $("pw-body").innerHTML = `<p class="pl-empty">${esc(e.message)}</p>`;
-      });
-  }
-
-  function renderEffect(r) {
-    if (!r || r.error || !r.plan) {
-      $("pw-body").innerHTML = `<p class="pl-empty">${esc(
-        (r && r.error) || "No plan in scope.")}</p>`;
-      return;
-    }
-    const b = r.built || {}, base = r.baseline || {}, cur = r.current || {};
-    const cov = b.coverage_pct || 0;
-    const dCov = cov - (base.coverage_pct || 0);
-    const dProd = (b.production_stems || 0) - (base.production_stems || 0);
-
-    $("pw-title").textContent = `${r.variety} at ${r.farm} — ${r.plan}`;
-    $("pw-sub").textContent =
-      `${num(r.tc_qty)} plantlets, ${r.cycles} build-up cycles, ordered ` +
-      `${r.order_date}. Lead time ${r.lead_time_weeks} weeks, ×${r.multiplication_factor} ` +
-      `to ${num(r.mother_plants_from_order)} mother plants. Nothing is saved.`;
-
-    // Changed-from, so a figure is read as a movement rather than a number.
-    const delta = (v, good) => v === 0 ? "no change"
-      : `<span style="color:var(${(v > 0) === good ? "--good" : "--critical"})">` +
-        `${sgn(v)}</span>`;
-
-    const tiles = [
-      { k: "Demand met", v: cov.toFixed(1) + "%",
-        m: `the plan as it stands: ${(base.coverage_pct || 0).toFixed(1)}%`,
-        c: cov >= 100 ? "--good" : "--critical" },
-      { k: "Stems produced", v: num(b.production_stems),
-        m: `${delta(dProd, true)} against the plan on file` },
-      { k: "Stems demanded", v: num(b.demand_stems), m: "unchanged by any of this" },
-      { k: "Weeks short", v: num(b.weeks_in_deficit),
-        m: `${num(b.unmet_stems)} stems unmet`,
-        c: b.weeks_in_deficit ? "--critical" : "--good" },
-      { k: "Plantings", v: `${num(b.plantings_full)} full`,
-        m: `${num(b.plantings_trimmed)} part-planted, ${num(b.plantings_dropped)} dropped`,
-        c: b.plantings_dropped ? "--critical" : "--good" },
-      { k: "Plants stuck", v: num(b.plants_stuck),
-        m: `of ${num(b.plants_wanted)} the plan wants`,
-        c: (b.plants_stuck || 0) < (b.plants_wanted || 0) ? "--serious" : "--good" },
-      { k: "First cut", v: esc(b.first_cut_week || "—"),
-        m: `${r.lead_time_weeks} weeks after the order` },
-      { k: "Against the current order", v: num(r.tc_qty - (cur.tc_qty || 0)),
-        m: `plantlets more than the ${num(cur.tc_qty)} on the plan now` },
-    ];
-
-    const weeks = b.weeks || [];
-    $("pw-body").innerHTML =
-      `<div class="pl-tiles pl-tiles-sm">${tiles.map(tile).join("")}</div>` +
-      (b.dropped_too_early
-        ? `<div class="pl-callout">${num(b.dropped_too_early)} plantings stick before ` +
-          `${esc(b.first_cut_week || "the first cut")}, the earliest week any pool from ` +
-          `this order can be cut. No order size reaches them — they need an earlier ` +
-          `order or cuttings bought in already rooted.</div>`
-        : "") +
-      `<h3>Demand against production, week by week</h3>` +
-      '<div class="pl-scroll pl-tall"><table class="pl-t"><thead><tr>' +
-      '<th>Week</th><th class="n">Demand</th><th class="n">Production</th>' +
-      '<th class="n">Variance</th></tr></thead><tbody>' +
-      weeks.map((w) => {
-        const v = w.variance;
-        return `<tr class="${v < 0 ? "short" : ""}"><td>${esc(w.label)}</td>` +
-          `<td class="n">${num(w.demand)}</td><td class="n">${num(w.production)}</td>` +
-          `<td class="n" style="color:var(${v < 0 ? "--critical" : "--good"})">` +
-          `${v ? sgn(v) : "0"}</td></tr>`;
-      }).join("") +
-      "</tbody></table></div>";
-  }
-
-  // ---- extending the demand horizon -------------------------------------
-  // The weeks are proposed, shown, edited and only then written. S.dmProposal holds
-  // what is on screen so an edit survives the fill button and the save reads the
-  // inputs rather than the proposal it started from.
-  function openExtend() {
-    const demand = S.dv && S.dv.market_demand;
-    if (!demand) { toast("No market demand in scope.", true); return; }
-    const dlg = $("dm-dlg");
-    if (!dlg.open) dlg.showModal();
-    loadProposal();
-  }
-
-  function loadProposal() {
-    const demand = S.dv && S.dv.market_demand;
-    $("dm-dlg-body").innerHTML = '<p class="pl-empty">Working out the weeks…</p>';
-    return callOp("propose_horizon",
-                  { market_demand: demand, years: $("dm-years").value || 1 })
-      .then((r) => { S.dmProposal = r; renderProposal(); })
-      .catch((e) => {
-        $("dm-dlg-body").innerHTML = `<p class="pl-empty">${esc(e.message)}</p>`;
-      });
-  }
-
-  function renderProposal() {
-    const r = S.dmProposal;
-    if (!r) return;
-    $("dm-dlg-title").textContent = `Extend ${r.variety} — ${r.market_demand}`;
-    $("dm-dlg-sub").textContent =
-      `${r.weeks.length} weeks to add. The register runs to ${r.horizon_end} ` +
-      `(${r.horizon_status}) across ${num(r.weeks_covered)} weeks. Each row is ` +
-      `filled with what the same week took last year — change what you are ` +
-      `actually selling, then save. Nothing is written until you do.`;
-    if (!r.weeks.length) {
-      $("dm-dlg-body").innerHTML =
-        '<p class="pl-empty">Nothing to add — those weeks are already on the register.</p>';
-      return;
-    }
-    $("dm-dlg-body").innerHTML =
-      '<table class="pl-t"><thead><tr><th>Week</th><th>Starts</th>' +
-      '<th class="n">Demand</th><th>Repeats</th></tr></thead><tbody>' +
-      r.weeks.map((w, i) =>
-        `<tr><td>${esc(w.label)}</td><td>${fdate(w.week_start_date)}</td>` +
-        `<td class="n"><input type="number" class="dm-in" data-i="${i}" min="0" ` +
-        `step="100" value="${cint(w.demand_stems)}"></td>` +
-        `<td class="bf-meta">${esc(w.from_label)}</td></tr>`).join("") +
-      "</tbody></table>";
-  }
-
-  function saveProposal(btn) {
-    const r = S.dmProposal;
-    if (!(r && r.weeks && r.weeks.length)) { toast("Nothing to save.", true); return; }
-    // Read the inputs, not the proposal: the numbers on screen are the decision.
-    const rows = [...document.querySelectorAll("#dm-dlg-body .dm-in")].map((el) => {
-      const w = r.weeks[+el.dataset.i];
-      return { year: w.year, week_no: w.week_no,
-               week_start_date: w.week_start_date,
-               demand_stems: parseInt(el.value, 10) || 0 };
-    });
-    const total = rows.reduce((a, x) => a + x.demand_stems, 0);
-    if (!confirm(`Add ${rows.length} weeks totalling ${num(total)} stems to ` +
-                 `${r.market_demand}?`)) return;
-    const was = btn.textContent; btn.disabled = true; btn.textContent = "Saving…";
-    callOp("add_demand_weeks", { market_demand: r.market_demand,
-                                 weeks: JSON.stringify(rows) })
-      .then((res) => {
-        toast(res.note || `${res.added} weeks added.`);
-        $("dm-dlg").close();
-        S.dmProposal = null;
-        return loadScope();
-      })
-      .catch((e) => toast(esc(e.message), true))
-      .finally(() => { btn.disabled = false; btn.textContent = was; });
-  }
-
   function loadScope() {
     // The plan is part of the scope: every plan-aware endpoint is given the same
     // one, so the tabs cannot end up describing different plans.
@@ -4822,11 +4547,7 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
     if (name === "plan" && S.dv) {
       renderDemandVsProduction(scoped().weeks, !!(S.dv && S.dv.tc_committed));
     }
-    if (name === "planting") {
-      if (S.pp) drawGantt($("pp-gantt"), S.pp.occupancy);
-      // Wide and only wanted here, so it is fetched on reveal, once.
-      if (!S.ps) loadSheet().catch((e) => toast(esc(e.message), true));
-    }
+    if (name === "planting" && S.pp) renderPlanting();
     if (name === "motherstock" && S.ls) drawPool($("ls-chart"), S.ls.rows);
     // The transactional tabs read live state, so they refetch on reveal rather
     // than showing whatever was true when the page first loaded.
@@ -5122,8 +4843,9 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
 
       toggleGroup([["g-month", "month"], ["g-week", "week"]], "grain", () =>
         drawGrouped($("dv-chart"), S.grain === "month" ? S.dv.months : S.dv.weeks));
-      toggleGroup([["pp-all", "all"], ["pp-alloc", "alloc"], ["pp-flag", "flag"]],
-        "ppFilter", renderPlanting);
+      toggleGroup([["pp-by-stick", "stick"], ["pp-by-plant", "plant"],
+                   ["pp-by-harvest", "harvest"], ["pp-by-uproot", "uproot"]],
+        "ppBasis", renderPlanting);
 
       $("f-season").addEventListener("change", (e) => {
         S.season = e.target.value;
@@ -5185,13 +4907,6 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
         // answer to the demand, and the half that only means anything beside the
         // other -- there is nothing to source until there is a plan saying what to
         // grow.
-      });
-      $("ps-sheet").parentElement.addEventListener("click", (e) => {
-        if (!e.target.closest('[data-ps="csv"]')) return;
-        if (!(S.dv && S.dv.plan)) { toast("No plan in scope.", true); return; }
-        // plan_sheet.sheet_csv writes the download response itself.
-        window.open("/api/method/upande_summer_flowers.summer_flowers.plan_sheet"
-          + ".sheet_csv?plan=" + encodeURIComponent(S.dv.plan), "_blank");
       });
       $("pw-dlg").addEventListener("click", (e) => {
         if (e.target.closest('[data-pw="close"]')) $("pw-dlg").close();
