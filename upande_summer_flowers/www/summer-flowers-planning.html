@@ -800,6 +800,20 @@ table.hc td.neg{color:var(--critical)}
 table.hc td.pos{color:var(--good)}
 table.hc tbody tr:hover td:not(.hc-k):not(.hc-m){background:var(--surface-2)}
 .ls-out{font-size:.78rem;font-weight:600;color:var(--text);padding:5px 0}
+/* One badge colour per build-up tranche, so MS1 and MS2 stay told apart all the
+   way down the column, and a tinted row for the week a tranche lands. */
+.ls-stage{display:inline-block;padding:1px 6px;border-radius:9px;font-size:.68rem;
+  font-weight:700;white-space:nowrap}
+.ls-stage-1{background:color-mix(in srgb,var(--series-1) 18%,transparent);
+  color:var(--series-1)}
+.ls-stage-2{background:color-mix(in srgb,var(--violet) 20%,transparent);
+  color:var(--violet)}
+.ls-stage-3{background:color-mix(in srgb,var(--warning) 24%,transparent);
+  color:var(--serious)}
+.ls-stage-4{background:color-mix(in srgb,var(--good) 18%,transparent);
+  color:var(--good)}
+table.pl-t tr.ls-arrive td{background:color-mix(in srgb,var(--violet) 11%,transparent)}
+table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
 .ls-edit{cursor:pointer;border-bottom:1.5px dashed var(--text-muted);padding:0 3px;
   display:inline-block;min-width:44px;text-align:right;color:var(--good);font-weight:600}
 .ls-edit:hover{background:var(--surface-2);border-color:var(--accent)}
@@ -3645,6 +3659,20 @@ table.hc tbody tr:hover td:not(.hc-k):not(.hc-m){background:var(--surface-2)}
         m: `over ${r.horizon_weeks || 0} weeks` },
     ].map(tile).join("");
 
+    // A build-up cannot stack more rounds than the motherstock lives to see, and
+    // the arithmetic that sizes the order does not know that. Said plainly, with
+    // the number, because it means the order is short.
+    if (r.build_up_capped) {
+      $("ls-proto-tiles").insertAdjacentHTML("afterend",
+        `<div class="pl-callout"><b>${r.stages_ordered} build-up cycles will not all ` +
+        `stand together.</b> A round takes ${p.stage_interval_weeks || 0} weeks and a ` +
+        `motherstock lives ${p.ms_life_weeks} weeks, so only ${r.stages_that_fit} ` +
+        `tranches are ever alive at once — the last arrives after the first has died. ` +
+        `The pool peaks at ${num(r.stages_that_fit)}× the order, not ` +
+        `${num(r.stages_ordered)}×, so dividing the requirement by ` +
+        `${r.stages_ordered} under-buys it.</div>`);
+    }
+
     $("ls-tiles").innerHTML = [
       { k: "Peak MS pool", v: num(t.peak_ms_plants), m: t.peak_ms_week || "—" },
       { k: "Peak bench", v: t.peak_bench_sqm + " m²", m: num(t.peak_pots) + " pots",
@@ -3662,12 +3690,20 @@ table.hc tbody tr:hover td:not(.hc-k):not(.hc-m){background:var(--surface-2)}
 
     $("ls-cycles-tbl").innerHTML =
       '<table class="pl-t"><thead><tr><th>Cycle</th><th class="n">TC</th><th>Order</th>' +
-      '<th>Arrives</th><th>1st cut</th><th>Full</th><th>1st harvest</th>' +
+      '<th>Arrives</th><th>1st cut</th><th>Build-up</th><th>Pool complete</th>' +
+      '<th>1st harvest</th>' +
       '<th>Order next by</th><th>Expires</th></tr></thead><tbody>' +
       r.cycles.map((c) =>
         `<tr><td>${c.cycle}</td><td class="n">${num(c.tc_qty)}</td>` +
         `<td>${esc(c.order_date)}</td><td>${esc(c.arrive_date)}</td>` +
-        `<td>${esc(c.first_cut_date)}</td><td>${esc(c.full_date)}</td>` +
+        `<td>${esc(c.first_cut_date)}</td>` +
+        // Each tranche and the week it lands. The pool is only the size that was
+        // ordered for once the last of them is in, which is a different date from
+        // the first cut and the one the order has to be worked back from.
+        `<td style="font-size:.72rem;white-space:normal">${(c.stages || []).map((st) =>
+          `<span class="ls-stage ls-stage-${((st.stage - 1) % 4) + 1}">${esc(st.label)}` +
+          ` ${esc(st.ready_date)}</span>`).join(" ")}</td>` +
+        `<td>${esc(c.pool_full_date || c.full_date)}</td>` +
         `<td>${esc(c.first_harvest_date)}</td>` +
         `<td style="color:var(--serious)">${esc(c.next_order_date)}</td>` +
         `<td style="color:var(--critical)">${esc(c.expiry_date)}</td></tr>`).join("") +
@@ -3698,9 +3734,21 @@ table.hc tbody tr:hover td:not(.hc-k):not(.hc-m){background:var(--surface-2)}
       '<th class="n">MS plants</th><th class="n">Bench m²</th>' +
       '<th>Harvest wk</th><th>Harvest date</th><th>Event</th></tr></thead><tbody>' +
       rows.map((x) =>
-        `<tr class="${x.total_cap ? "" : "zero"}"><td>${x.sw}</td><td>${esc(x.label)}</td>` +
+        // The week a build-up tranche lands gets its own colour: capacity steps up
+        // that week and the reason is the arrival, which otherwise reads as a jump
+        // out of nowhere. Each tranche keeps its own badge colour for the rest of
+        // its life so MS1 and MS2 stay told apart down the column.
+        `<tr class="${x.stage_arrived ? "ls-arrive" : (x.total_cap ? "" : "zero")}">` +
+        `<td>${x.sw}</td><td>${esc(x.label)}</td>` +
         `<td>${esc(x.date || "")}</td>` +
-        `<td>${esc(x.phase || "—")}</td><td>${esc(x.source || "—")}` +
+        `<td>${esc(x.phase || "—")}</td><td>` +
+        ((x.stage_detail || []).length
+          ? x.stage_detail.map((d) =>
+              `<span class="ls-stage ls-stage-${((d.stage - 1) % 4) + 1}" ` +
+              `title="${esc(d.label)}: ${num(d.plants)} plants at ${d.pct}% — ` +
+              `${num(d.capacity)} cuttings this week">${esc(d.label)}` +
+              `${d.arrived_this_week && d.stage > 1 ? " ▲" : ""}</span>`).join(" ")
+          : esc(x.source || "—")) +
         `${x.prop_cap ? ' <span class="pill">+prop</span>' : ""}</td>` +
         `<td class="n">${x.base_cap ? num(x.base_cap) : "—"}</td>` +
         `<td class="n" style="color:var(--violet)">${x.prop_cap ? num(x.prop_cap) : "—"}</td>` +

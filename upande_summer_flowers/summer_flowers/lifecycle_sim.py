@@ -64,14 +64,15 @@ def params_from_version(version, overrides=None):
 		"weeks_on_pot": int(v.weeks_on_pot or 0),
 		"ramp_weeks": int(v.ramp_weeks or 0),
 		"ms_establishment_weeks": int(v.ms_establishment_weeks or 0),
-		# Delivery to first cut, the same figure the Motherstock Batch dates its
-		# schedule from: tray and pot, and a second establishment when the order is
-		# multiplied up first. NOT ms_establishment_weeks, which includes the build-up --
-		# the simulator then ramps capacity from the first cut as well, so using it
-		# waited out the build-up and reduced capacity for it, counting the same weeks
-		# twice and putting the first cut 11 weeks later than the batch does.
-		"tc_to_first_cut_weeks": int(
-			v.lead_time_for_cycles(cint(v.max_multiplication_cycles)) or 0),
+		# Time to the FIRST cutting, which is one establishment -- not to the full
+		# pool, which is one per build-up cycle. The two were the same field, so a
+		# four-cycle protocol showed nothing coming off the bench for 72 weeks when
+		# in fact it cuts from week 18 off a quarter-built pool.
+		"tc_to_first_cut_weeks": int(v.weeks_tc_to_first_cut() or 0),
+		# One build-up round: cuttings taken off the standing pool, established, and
+		# added to it. The protocol's own establishment, so turning hardening off
+		# there shortens the round here too.
+		"stage_interval_weeks": int(v.weeks_tc_to_first_cut() or 0),
 		# Plantlets are multiplied up before they become mother plants, which is what
 		# the build-up cycles in the lead time are for. The simulator used to treat
 		# one plantlet as one mother while still waiting out the build-up, so an
@@ -148,7 +149,39 @@ def build_cycles(p, tc_qty, order_date, num_cycles):
 			"first_harvest_date": order + datetime.timedelta(
 				weeks=lead + estab + p["cutting_to_harvest_weeks"]),
 		}
-		c["next_order_date"] = c["expiry_date"] - datetime.timedelta(weeks=lead + estab)
+		# The build-up, stage by stage. One order does not become its whole pool at
+		# once: the plantlets establish and give the first tranche of mothers, those
+		# are cut, the cuttings establish in their turn and give the second, and so
+		# on. N cycles is N establishments and the pool is only full at the end of
+		# the last one -- but every tranche before it is cutting the whole time,
+		# which is where the weekly cuttings between first cut and full pool come
+		# from. Modelling the pool as arriving whole hid all of them.
+		bu = max(1, cint(p.get("build_up_cycles") or 0))
+		gap = int(p.get("stage_interval_weeks") or estab)
+		per_stage = (flt(factor) / bu) if bu else 1.0
+		c["stages"] = []
+		for k in range(bu):
+			ready = first_cut_sw + k * gap
+			c["stages"].append({
+				"stage": k + 1,
+				"label": "MS%d.%d" % (i + 1, k + 1) if bu > 1 else "MS%d" % (i + 1),
+				"plants": int(round(int(tc_qty) * per_stage)),
+				"ready_sw": ready,
+				"full_sw": ready + ramp_w - 1,
+				"expiry_sw": ready + life,
+				"ready_date": order + datetime.timedelta(weeks=lead + estab + k * gap),
+				"expiry_date": order + datetime.timedelta(
+					weeks=lead + estab + k * gap + life),
+			})
+		c["pool_full_sw"] = c["stages"][-1]["full_sw"]
+		c["pool_full_date"] = c["stages"][-1]["ready_date"] + datetime.timedelta(
+			weeks=ramp_w - 1)
+		# The cycle is done when its last tranche dies, not its first.
+		c["expiry_sw"] = c["stages"][-1]["expiry_sw"]
+		c["expiry_date"] = c["stages"][-1]["expiry_date"]
+		c["next_order_sw"] = c["expiry_sw"] - (lead + gap * bu)
+		c["next_order_date"] = c["expiry_date"] - datetime.timedelta(
+			weeks=lead + gap * bu)
 		cycles.append(c)
 		# The next cycle starts at the week its own order date says it does. Setting
 		# this to expiry_sw put the replacement order in at the moment the previous
@@ -240,7 +273,18 @@ def simulate(p, tc_qty, order_date, num_cycles=None, farm_overrides=None,
 		ev(c["arrive_sw"] + p["weeks_on_tray"] + p["weeks_on_pot"],
 		   "Pot ends, ramp to full capacity begins")
 		ev(c["first_cut_sw"], f"MS{n} first cut")
-		ev(c["full_sw"], f"MS{n} at full capacity")
+		# Each build-up tranche announces itself, so the week a new one lands is
+		# visible rather than showing up as capacity that rose for no stated reason.
+		for st in c["stages"]:
+			if st["stage"] > 1:
+				ev(st["ready_sw"],
+				   f"{st['label']} arrives — {st['plants']:,} more mother plants, "
+				   f"build-up {st['stage']} of {len(c['stages'])}")
+			ev(st["expiry_sw"], f"{st['label']} expires")
+		if len(c["stages"]) > 1:
+			ev(c["pool_full_sw"],
+			   f"MS{n} pool complete — {c['ms_plants']:,} mother plants after "
+			   f"{len(c['stages'])} build-up cycles")
 		ev(c["first_harvest_sw"], f"First harvest from MS{n} cuttings")
 		ev(c["next_order_sw"], f"Order TC #{n + 1} now, or MS{n + 1} will be late")
 		ev(c["expiry_sw"], f"MS{n} expires after {life} weeks of cutting")
@@ -259,14 +303,38 @@ def simulate(p, tc_qty, order_date, num_cycles=None, farm_overrides=None,
 		phase = ""
 		source = None
 		cycle_no = 0
+		stage_detail = []
 		for c in cycles:
 			if c["first_cut_sw"] <= sw < c["expiry_sw"]:
-				w = sw - c["first_cut_sw"]
-				ramp_pct = ramp_ratio(w, ramp)
-				base_cap = int(round(c["ms_plants"] * per_plant * ramp_pct))
-				phase = (f"Build-up {w + 1} ({int(round(ramp_pct * 100))}%)"
-				         if w < len(ramp) else "Full")
-				source = f"MS{c['cycle']}"
+				# Every tranche of this order that is alive this week, each ramping
+				# from its own arrival. Summing them is what makes the pool climb in
+				# steps instead of appearing whole.
+				for st in c["stages"]:
+					w = sw - st["ready_sw"]
+					if w < 0 or w >= life:
+						continue
+					pct = ramp_ratio(w, ramp)
+					cap = int(round(st["plants"] * per_plant * pct))
+					if not cap:
+						continue
+					base_cap += cap
+					stage_detail.append({
+						"stage": st["stage"], "label": st["label"],
+						"plants": st["plants"], "pct": int(round(pct * 100)),
+						"capacity": cap, "arrived_this_week": w == 0,
+					})
+				if not stage_detail:
+					continue
+				live = len(stage_detail)
+				ramp_pct = max(d["pct"] for d in stage_detail) / 100.0
+				newest = min(d["stage"] for d in stage_detail
+				             if d["pct"] < 100) if any(
+					d["pct"] < 100 for d in stage_detail) else None
+				phase = ("Build-up stage %d of %d (%d%%)"
+				         % (newest, len(c["stages"]), int(round(ramp_pct * 100)))
+				         if newest else "Full")
+				source = (", ".join(d["label"] for d in stage_detail)
+				          if live > 1 else stage_detail[0]["label"])
 				cycle_no = c["cycle"]
 				break
 		else:
@@ -360,6 +428,12 @@ def simulate(p, tc_qty, order_date, num_cycles=None, farm_overrides=None,
 			"cycle": cycle_no,
 			"ramp_pct": int(round(ramp_pct * 100)),
 			"base_cap": base_cap,
+			# Which build-up tranches are cutting this week, and whether one of them
+			# landed in it. The schedule colours a tranche's arrival week off this.
+			"stage_detail": stage_detail,
+			"stage_arrived": next((d["label"] for d in stage_detail
+			                       if d["arrived_this_week"] and d["stage"] > 1), None),
+			"stages_live": len(stage_detail),
 			"prop_cap": prop_cap,
 			"prop_detail": prop_detail,
 			"prop_pool_count": len(prop_detail),
@@ -387,6 +461,11 @@ def simulate(p, tc_qty, order_date, num_cycles=None, farm_overrides=None,
 			r["ms_plants"] / p["plants_per_sqm_bench"], 1
 		) if p["plants_per_sqm_bench"] else 0
 		r["pots"] = -(-r["ms_plants"] // p["plants_per_pot"]) if p["plants_per_pot"] else 0
+
+	# How many build-up rounds the motherstock life actually leaves room for.
+	_gap = int(p.get("stage_interval_weeks") or p.get("ms_establishment_weeks") or 0)
+	stages_ordered = max(1, cint(p.get("build_up_cycles") or 0))
+	stages_that_fit = (int(p["ms_life_weeks"] // _gap) + 1) if _gap else stages_ordered
 
 	peak = max(rows, key=lambda r: r["ms_plants"]) if rows else {}
 	peak_cap = max(rows, key=lambda r: r["total_cap"]) if rows else {}
@@ -426,6 +505,15 @@ def simulate(p, tc_qty, order_date, num_cycles=None, farm_overrides=None,
 		# created rather than asserted up front.
 		"generations": len(cycles) + len(prop_pools),
 		"truncated": truncated,
+		# A build-up cannot stack more tranches than a motherstock lives to see. With
+		# an 18-week round and a 52-week life only three are ever standing together:
+		# the fourth lands two weeks after the first has died, so a fourth cycle buys
+		# nothing and an order sized by dividing the requirement by four arrives a
+		# quarter short. Stated here because it is a property of the protocol, not of
+		# any one order, and it is invisible in the totals.
+		"stages_that_fit": stages_that_fit,
+		"stages_ordered": stages_ordered,
+		"build_up_capped": bool(stages_ordered > stages_that_fit),
 		"max_bench_sqm": flt(max_bench_sqm) if max_bench_sqm else None,
 		"max_ms_plants": max_plants,
 		"bench_limited_weeks": sum(1 for r in rows if r["bench_limited"]),
@@ -449,10 +537,22 @@ def simulate(p, tc_qty, order_date, num_cycles=None, farm_overrides=None,
 
 
 def _pool_plants(cycles, prop_pools, sw, life):
-	"""Mother plants standing this week, base cycle plus every live sub-pool."""
+	"""Mother plants standing this week, base cycle plus every live sub-pool.
+
+	Summed tranche by tranche, each from its own arrival to its own expiry. Counting
+	the order's whole pool from the first cut said 4,000 plants were standing in a
+	week when the first thousand were already dead and the last had not arrived --
+	and it is the figure the bench area, the pot count and the pool chart are all
+	drawn from, so the bench read full when it was not.
+	"""
 	total = 0
 	for c in cycles:
-		if c["first_cut_sw"] <= sw < c["expiry_sw"]:
+		stages = c.get("stages")
+		if stages:
+			for st in stages:
+				if st["ready_sw"] <= sw < st["expiry_sw"]:
+					total += st["plants"]
+		elif c["first_cut_sw"] <= sw < c["expiry_sw"]:
 			total += c["ms_plants"]
 	for pool in prop_pools:
 		if pool["start_sw"] <= sw < pool["start_sw"] + life:

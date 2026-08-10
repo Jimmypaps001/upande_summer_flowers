@@ -1186,8 +1186,13 @@ def simulate_lifecycle(version, tc_qty, order_date, num_cycles=None, to_prop_pct
 		v = frappe.get_cached_doc("Crop Protocol Version", version)
 		c = cint(build_up_cycles)
 		p["multiplication_factor"] = flt(v.multiplication_factor(c))
-		p["tc_to_first_cut_weeks"] = cint(v.lead_time_for_cycles(c))
 		p["build_up_cycles"] = c
+		# NOT lead_time_for_cycles: that is the time to the full pool, which is one
+		# establishment per cycle. The first cutting comes at the end of the first
+		# establishment however many cycles follow it, and setting it from the full
+		# figure pushed the first cut out by a whole build-up -- week 36 for a
+		# two-cycle order whose plantlets are cuttable at 18.
+		p["tc_to_first_cut_weeks"] = cint(v.weeks_tc_to_first_cut())
 
 	res = ls.simulate(
 		p, frappe.utils.cint(tc_qty), order_date,

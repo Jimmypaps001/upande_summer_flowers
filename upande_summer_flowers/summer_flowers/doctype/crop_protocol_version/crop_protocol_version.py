@@ -273,16 +273,26 @@ class CropProtocolVersion(Document):
 		return weeks
 
 	def lead_time_for_cycles(self, cycles):
-		"""Weeks from receiving TC plantlets to the first cutting.
+		"""Weeks from receiving TC plantlets to a pool of the full size.
 
-		With no build-up it is a single establishment. With build-up the multiplied
-		generation needs its own establishment on top, so there is no cheap middle
-		option between 0 and 1 cycle.
+		A multiplication cycle is an establishment, not a week. Buy 1,000 plantlets
+		for 2,000 mother plants: the plantlets establish, and at the end of that you
+		have 1,000 mothers and can cut from them. Those cuttings go back to the
+		propagation unit and establish in their turn, and only then -- two
+		establishments in, not one and a bit -- is the pool the 2,000 that was
+		bought for. So N cycles is N establishments.
+
+		This used to add one cycle_time_weeks per cycle on top of two flat
+		establishments, which made four cycles 40 weeks where the farm's own working
+		is 72. A TC order placed on that arithmetic is eight months late.
+
+		Note this is the time to the FULL pool, which is what the order date has to
+		be worked back from. The first cutting comes much earlier, at the end of the
+		first establishment -- see weeks_tc_to_first_cut -- and the weeks between the
+		two are real cutting weeks off a part-built pool.
 		"""
 		est = self.weeks_tc_to_first_cut()
-		if not cycles:
-			return est
-		return est + (cycles * (self.cycle_time_weeks or 0)) + est
+		return est * max(1, cint(cycles))
 
 	def multiplication_factor(self, cycles=None):
 		"""How many mother plants one TC plantlet ends up as.
