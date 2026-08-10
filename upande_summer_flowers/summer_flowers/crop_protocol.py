@@ -160,6 +160,15 @@ def set_growth_stages(doc):
 	}
 	if not any(env.values()):
 		return
+	# Crop Protocol Growth Stage belongs to upande_agriculture, and its columns have
+	# changed there: the boundary pair days_from/days_to/weeks gave way to a single
+	# mandatory days_to_harvest. Writing whichever of the two a site actually has
+	# keeps this working across both, and writing neither set blind is how a
+	# mandatory field nobody here knew about stopped a protocol being approved.
+	stage_meta = frappe.get_meta("Crop Protocol Growth Stage")
+	has_span = stage_meta.has_field("days_from") and stage_meta.has_field("days_to")
+	has_to_harvest = stage_meta.has_field("days_to_harvest")
+
 	rows = []
 	for order, (label, frm, to) in enumerate(GROWTH_STAGES, start=1):
 		try:
@@ -168,15 +177,23 @@ def set_growth_stages(doc):
 			continue
 		if b <= a:
 			continue
-		rows.append({
+		row = {
 			"stage_name": label,
 			"stage_order": order,
-			"days_from": a * 7,
-			"days_to": b * 7,
-			"weeks": b - a,
 			"description": _("Weeks {0} to {1} {2}").format(
 				a, b, _("from sticking") if order <= 3 else _("from planting")),
-		})
+		}
+		if has_span:
+			row["days_from"] = a * 7
+			row["days_to"] = b * 7
+			if stage_meta.has_field("weeks"):
+				row["weeks"] = b - a
+		if has_to_harvest:
+			# The stage ends when it ends: the day the stage is through, counted on
+			# its own clock. Nothing else on the row carries that once days_to is
+			# gone, and it is mandatory, so it cannot be left out.
+			row["days_to_harvest"] = b * 7
+		rows.append(row)
 	if not rows:
 		return
 	doc.set("growth_stages", [])
