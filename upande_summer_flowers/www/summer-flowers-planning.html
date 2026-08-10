@@ -34,13 +34,13 @@
       <button role="tab" data-tab="overview" class="is-on" aria-selected="true">{{ _("Overview") }}</button>
       <button role="tab" data-tab="demand" aria-selected="false">{{ _("Market Demand") }}</button>
       <button role="tab" data-tab="plan" aria-selected="false">{{ _("Production Plan") }}</button>
+      <button role="tab" data-tab="motherstock" aria-selected="false">{{ _("Motherstock") }}</button>
       <button role="tab" data-tab="propagation" aria-selected="false">{{ _("Propagation") }}</button>
       <button role="tab" data-tab="planting" aria-selected="false">{{ _("Planting Plan") }}</button>
       <button role="tab" data-tab="blocks" aria-selected="false">{{ _("Block Forecast") }}</button>
       <button role="tab" data-tab="harvest" aria-selected="false">{{ _("Harvest") }}</button>
       <button role="tab" data-tab="review" aria-selected="false">{{ _("Review") }}<span id="rv-badge" class="pl-badge" hidden></span></button>
       <button role="tab" data-tab="protocol" aria-selected="false">{{ _("Protocol") }}</button>
-      <button role="tab" data-tab="motherstock" aria-selected="false">{{ _("Motherstock") }}</button>
       <button role="tab" data-tab="calendar" aria-selected="false">{{ _("Calendar") }}</button>
     </nav>
 
@@ -4478,8 +4478,11 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
     });
   }
 
-  const TABS = ["overview", "demand", "plan", "propagation", "planting", "blocks",
-               "harvest", "review", "protocol", "motherstock", "calendar"];
+  // Motherstock sits next to the production plan because it is the same decision
+  // read forwards: the plan says what to grow, the motherstock says what has to be
+  // bought and when for it to be growable at all.
+  const TABS = ["overview", "demand", "plan", "motherstock", "propagation", "planting",
+               "blocks", "harvest", "review", "protocol", "calendar"];
 
   function setTab(name, fromHash) {
     // The tab lives in the URL so a workspace shortcut can point straight at
