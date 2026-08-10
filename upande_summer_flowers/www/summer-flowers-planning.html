@@ -574,6 +574,27 @@
     <div class="pl-dlg-body" id="pw-body"></div>
   </dialog>
 
+  <!-- Extending the horizon. The weeks are proposed with last year's figures in
+       them and nothing is written until Save, because what to sell next year is a
+       commercial judgement and the register is where it gets recorded. -->
+  <dialog id="dm-dlg" class="pl-dlg">
+    <div class="pl-dlg-head">
+      <div><h2 id="dm-dlg-title">{{ _("Extend the horizon") }}</h2>
+           <p class="pl-note" id="dm-dlg-sub"></p></div>
+      <span class="pl-actions">
+        <label class="pl-inline">{{ _("Years") }}
+          <input type="number" id="dm-years" min="1" max="5" step="1" value="1"></label>
+        <button type="button" class="pl-btn" data-dd="reload">{{ _("Reload weeks") }}</button>
+        <label class="pl-inline">{{ _("Set all to") }}
+          <input type="number" id="dm-fill" min="0" step="100"></label>
+        <button type="button" class="pl-btn" data-dd="fill">{{ _("Apply") }}</button>
+        <button type="button" class="pl-btn primary" data-dd="save">{{ _("Save to the register") }}</button>
+        <button type="button" class="pl-btn" data-dd="close">{{ _("Cancel") }}</button>
+      </span>
+    </div>
+    <div class="pl-dlg-body" id="dm-dlg-body"></div>
+  </dialog>
+
   <div id="pl-tip" class="pl-tip" hidden></div>
 </div>
 
@@ -4556,6 +4577,80 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
       "</tbody></table></div>";
   }
 
+  // ---- extending the demand horizon -------------------------------------
+  // The weeks are proposed, shown, edited and only then written. S.dmProposal holds
+  // what is on screen so an edit survives the fill button and the save reads the
+  // inputs rather than the proposal it started from.
+  function openExtend() {
+    const demand = S.dv && S.dv.market_demand;
+    if (!demand) { toast("No market demand in scope.", true); return; }
+    const dlg = $("dm-dlg");
+    if (!dlg.open) dlg.showModal();
+    loadProposal();
+  }
+
+  function loadProposal() {
+    const demand = S.dv && S.dv.market_demand;
+    $("dm-dlg-body").innerHTML = '<p class="pl-empty">Working out the weeks…</p>';
+    return callOp("propose_horizon",
+                  { market_demand: demand, years: $("dm-years").value || 1 })
+      .then((r) => { S.dmProposal = r; renderProposal(); })
+      .catch((e) => {
+        $("dm-dlg-body").innerHTML = `<p class="pl-empty">${esc(e.message)}</p>`;
+      });
+  }
+
+  function renderProposal() {
+    const r = S.dmProposal;
+    if (!r) return;
+    $("dm-dlg-title").textContent = `Extend ${r.variety} — ${r.market_demand}`;
+    $("dm-dlg-sub").textContent =
+      `${r.weeks.length} weeks to add. The register runs to ${r.horizon_end} ` +
+      `(${r.horizon_status}) across ${num(r.weeks_covered)} weeks. Each row is ` +
+      `filled with what the same week took last year — change what you are ` +
+      `actually selling, then save. Nothing is written until you do.`;
+    if (!r.weeks.length) {
+      $("dm-dlg-body").innerHTML =
+        '<p class="pl-empty">Nothing to add — those weeks are already on the register.</p>';
+      return;
+    }
+    $("dm-dlg-body").innerHTML =
+      '<table class="pl-t"><thead><tr><th>Week</th><th>Starts</th>' +
+      '<th class="n">Demand</th><th>Repeats</th></tr></thead><tbody>' +
+      r.weeks.map((w, i) =>
+        `<tr><td>${esc(w.label)}</td><td>${fdate(w.week_start_date)}</td>` +
+        `<td class="n"><input type="number" class="dm-in" data-i="${i}" min="0" ` +
+        `step="100" value="${cint(w.demand_stems)}"></td>` +
+        `<td class="bf-meta">${esc(w.from_label)}</td></tr>`).join("") +
+      "</tbody></table>";
+  }
+
+  function saveProposal(btn) {
+    const r = S.dmProposal;
+    if (!(r && r.weeks && r.weeks.length)) { toast("Nothing to save.", true); return; }
+    // Read the inputs, not the proposal: the numbers on screen are the decision.
+    const rows = [...document.querySelectorAll("#dm-dlg-body .dm-in")].map((el) => {
+      const w = r.weeks[+el.dataset.i];
+      return { year: w.year, week_no: w.week_no,
+               week_start_date: w.week_start_date,
+               demand_stems: parseInt(el.value, 10) || 0 };
+    });
+    const total = rows.reduce((a, x) => a + x.demand_stems, 0);
+    if (!confirm(`Add ${rows.length} weeks totalling ${num(total)} stems to ` +
+                 `${r.market_demand}?`)) return;
+    const was = btn.textContent; btn.disabled = true; btn.textContent = "Saving…";
+    callOp("add_demand_weeks", { market_demand: r.market_demand,
+                                 weeks: JSON.stringify(rows) })
+      .then((res) => {
+        toast(res.note || `${res.added} weeks added.`);
+        $("dm-dlg").close();
+        S.dmProposal = null;
+        return loadScope();
+      })
+      .catch((e) => toast(esc(e.message), true))
+      .finally(() => { btn.disabled = false; btn.textContent = was; });
+  }
+
   function loadScope() {
     // The plan is part of the scope: every plan-aware endpoint is given the same
     // one, so the tabs cannot end up describing different plans.
@@ -5004,24 +5099,7 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
           return;
         }
         const demand = (S.dv && S.dv.market_demand) || null;
-        if (act === "extend") {
-          if (!demand) { toast("No market demand in scope.", true); return; }
-          const yrs = prompt(
-            "Carry the demand forward by how many years?\n\n" +
-            "Each week is repeated 52 weeks on at the same demand, marked not " +
-            "firm. It is last year again, not a forecast — edit it afterwards. " +
-            "Weeks that already exist are left alone.", "1");
-          if (yrs === null) return;
-          const was = b.textContent; b.disabled = true; b.textContent = "Extending…";
-          callOp("extend_horizon", { market_demand: demand, years: yrs })
-            .then((r) => {
-              toast(r.note || `${r.added} weeks added.`);
-              return loadScope();
-            })
-            .catch((e2) => toast(esc(e2.message), true))
-            .finally(() => { b.disabled = false; b.textContent = was; });
-          return;
-        }
+        if (act === "extend") { openExtend(); return; }
         if (act === "plan") {
           if (!(S.chain && S.chain.demand)) {
             // The plan tab loads the chain; from here it may not be loaded yet.
@@ -5056,6 +5134,22 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
       $("pw-dlg").addEventListener("click", (e) => {
         if (e.target.closest('[data-pw="close"]')) $("pw-dlg").close();
       });
+      $("dm-dlg").addEventListener("click", (e) => {
+        const b = e.target.closest("[data-dd]");
+        if (!b) return;
+        const act = b.dataset.dd;
+        if (act === "close") { $("dm-dlg").close(); S.dmProposal = null; return; }
+        if (act === "reload") { loadProposal(); return; }
+        if (act === "fill") {
+          const v = $("dm-fill").value;
+          if (v === "") { toast("Type a figure to set them all to.", true); return; }
+          document.querySelectorAll("#dm-dlg-body .dm-in")
+            .forEach((el) => { el.value = cint(v); });
+          return;
+        }
+        if (act === "save") saveProposal(b);
+      });
+      $("dm-years").addEventListener("change", () => loadProposal());
       $("ls-table").addEventListener("click", (e) => {
         const cell = e.target.closest(".ls-edit");
         if (cell) { lsEditFarm(cell); return; }

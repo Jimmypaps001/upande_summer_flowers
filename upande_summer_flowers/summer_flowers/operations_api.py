@@ -1157,18 +1157,13 @@ def plan_transitions(plan):
 
 
 @frappe.whitelist()
-def extend_horizon(market_demand, years=1):
-	"""Carry the demand forward another year, week for week.
+def propose_horizon(market_demand, years=1):
+	"""The weeks an extension would add, and what last year put in them.
 
-	target_years_ahead only ever reported the gap -- "short by 78 weeks" -- and
-	nothing filled it. Filling it needs a rule, and the only honest one available
-	from the register itself is that next year looks like this year: each week is
-	repeated 52 weeks on, at the same demand, marked not firm because nobody has
-	ordered it yet.
-
-	That is a starting point to edit, not a forecast, and it says so. Weeks that
-	already exist are left alone, so extending twice does not double anything and
-	an edited week is never overwritten by the pattern it came from.
+	Proposes; it does not write. The demand for a week nobody has ordered yet is a
+	commercial judgement, not an arithmetic one, so the weeks come back with last
+	year's figure filled in as a starting point and the decision stays with the
+	person who has to sell them.
 	"""
 	_guard()
 	years = max(1, cint(years))
@@ -1177,9 +1172,13 @@ def extend_horizon(market_demand, years=1):
 		frappe.throw(_("{0} has no weeks to carry forward.").format(market_demand))
 
 	have = {(cint(r.year), cint(r.week_no)) for r in d.demand_weeks}
-	source = list(d.demand_weeks)
-	before = len(source)
-	added = 0
+	# The pattern is the LAST YEAR on the register, not the whole register. Using
+	# every week meant each extension repeated everything that came before it, so a
+	# 157-week register went to 314, then 628, then 1,254 in three presses -- twenty
+	# years of demand nobody asked for, and each press proposing more than the last.
+	source = sorted(d.demand_weeks,
+	                key=lambda r: (cint(r.year), cint(r.week_no)))[-52:]
+	out = []
 	for step in range(1, years + 1):
 		for r in source:
 			# 52 weeks on, not the same week number a year later: a 53-week year
@@ -1190,16 +1189,60 @@ def extend_horizon(market_demand, years=1):
 			if (y, w) in have:
 				continue
 			have.add((y, w))
-			d.append("demand_weeks", {
-				"year": y, "week_no": w, "week_start_date": monday,
+			out.append({
+				"year": y,
+				"week_no": w,
+				"label": "%s-W%02d" % (y, w),
+				"week_start_date": str(monday),
 				"demand_stems": cint(r.demand_stems),
-				"is_firm": 0,
+				"from_label": "%s-W%02d" % (cint(r.year), cint(r.week_no)),
 			})
-			added += 1
+	out.sort(key=lambda x: (x["year"], x["week_no"]))
+	return {
+		"market_demand": market_demand,
+		"variety": d.variety,
+		"weeks": out,
+		"weeks_covered": cint(d.weeks_covered),
+		"horizon_end": d.horizon_end,
+		"horizon_status": d.horizon_status,
+	}
+
+
+@frappe.whitelist()
+def add_demand_weeks(market_demand, weeks):
+	"""Write the weeks that came back edited.
+
+	Takes what it is given rather than recomputing it: the point of proposing was
+	that the figures could be changed, and recalculating them here would throw the
+	edit away. Weeks already on the register are skipped, so saving twice adds
+	nothing and never overwrites a week somebody has already set.
+	"""
+	_guard()
+	if isinstance(weeks, str):
+		weeks = frappe.parse_json(weeks or "[]")
+	if not weeks:
+		frappe.throw(_("No weeks to add."))
+
+	d = frappe.get_doc("Summer Flower Market Demand", market_demand)
+	have = {(cint(r.year), cint(r.week_no)) for r in d.demand_weeks}
+	added = skipped = 0
+	for row in weeks:
+		y, w = cint(row.get("year")), cint(row.get("week_no"))
+		if not y or not w or (y, w) in have:
+			skipped += 1
+			continue
+		have.add((y, w))
+		d.append("demand_weeks", {
+			"year": y, "week_no": w,
+			"week_start_date": row.get("week_start_date") or iso_monday(y, w),
+			"demand_stems": cint(row.get("demand_stems")),
+			"is_firm": cint(row.get("is_firm")),
+		})
+		added += 1
 
 	if not added:
-		return {"market_demand": market_demand, "added": 0,
-		        "note": _("Every week that would be added is already there.")}
+		return {"market_demand": market_demand, "added": 0, "skipped": skipped,
+		        "note": _("Every one of those weeks is already on the register.")}
 
 	d.flags.ignore_permissions = True
 	d.save()
@@ -1208,11 +1251,11 @@ def extend_horizon(market_demand, years=1):
 	return {
 		"market_demand": market_demand,
 		"added": added,
+		"skipped": skipped,
 		"weeks_covered": cint(d.weeks_covered),
 		"horizon_end": d.horizon_end,
 		"horizon_status": d.horizon_status,
 		"total_demand_stems": cint(d.total_demand_stems),
-		"note": _("Carried {0} weeks forward from the {1} already there, at the same "
-		          "demand and marked not firm. Edit them — this is last year repeated, "
-		          "not a forecast.").format(added, before),
+		"note": _("{0} weeks added. The horizon now runs to {1} — {2}.").format(
+			added, d.horizon_end, d.horizon_status),
 	}
