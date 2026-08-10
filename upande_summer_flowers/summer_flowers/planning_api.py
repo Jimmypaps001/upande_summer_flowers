@@ -2293,3 +2293,30 @@ def confirm_tc_choice(plan, tc_qty=None, order_date=None, cycles=None, reason=No
 
 	return {"plan": plan, "before": before, "after": after,
 	        "propagation_plan": prop_name, "changed": changed, "note": note}
+
+
+@frappe.whitelist()
+def production_sheet(plan=None, variety=None, farm=None):
+	"""The plan as one row per planting and one column per week.
+
+	Everything else on this dashboard reads the plan as a total: so many stems in
+	so many weeks. This is the plan the way it is worked -- which planting, in which
+	block, puts which stems in which week -- and it is the shape the farm's own
+	workbook uses, so a plan can be checked against the sheet it replaces.
+
+	Nothing here recalculates a stem. It arranges what _populate already recorded
+	while it folded the plantings in, which is why the columns add up to the plan's
+	own weekly figures rather than to a second opinion about them.
+	"""
+	_guard()
+	plan = resolve_plan(variety, farm, plan)
+	if not plan:
+		return {"plan": None}
+	from upande_summer_flowers.summer_flowers import plan_sheet
+
+	return plan_sheet.build(plan)
+
+
+# The CSV is plan_sheet.sheet_csv, which is whitelisted and writes the download
+# response itself. Wrapping it here would be a second implementation of the one
+# thing this file keeps having to un-duplicate.

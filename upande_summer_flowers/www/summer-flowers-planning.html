@@ -118,6 +118,21 @@
 
     <!-- ══ PLANTING PLAN ══ -->
     <section class="pl-pane" data-pane="planting">
+      <!-- The plan as it is actually worked: one row per planting, one column per
+           week. Every other card totals the plan; this one says which planting puts
+           which stems in which week, in the shape the farm's own workbook uses. -->
+      <div class="pl-card">
+        <div class="pl-card-head">
+          <div><h2>{{ _("Production plan by planting") }}</h2>
+               <p class="pl-note" id="ps-sub"></p></div>
+          <span class="pl-actions">
+            <button type="button" class="pl-btn" data-ps="csv">{{ _("Download CSV") }}</button>
+          </span>
+        </div>
+        <div class="pl-tiles pl-tiles-sm" id="ps-tiles"></div>
+        <div id="ps-sheet" class="pl-scroll pl-tall"></div>
+      </div>
+
       <div class="pl-card">
         <div class="pl-card-head">
           <div><h2>{{ _("Planting plan") }}</h2>
@@ -812,6 +827,9 @@ table.hc tbody tr:hover td:not(.hc-k):not(.hc-m){background:var(--surface-2)}
   color:var(--serious)}
 .ls-stage-4{background:color-mix(in srgb,var(--good) 18%,transparent);
   color:var(--good)}
+table.ps-t tr.ps-sum td{background:var(--surface-2);font-weight:600;
+  border-top:2px solid var(--border)}
+table.ps-t th,table.ps-t td{font-size:.72rem;white-space:nowrap}
 table.pl-t tr.ls-band td{background:var(--surface-2);color:var(--text-secondary);
   font-size:.74rem}
 table.pl-t tr.ls-arrive td{background:color-mix(in srgb,var(--violet) 11%,transparent)}
@@ -4304,6 +4322,80 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
       .finally(() => { btn.disabled = false; btn.textContent = was; });
   }
 
+  // The plan as one row per planting and one column per week. Loaded with the
+  // planting tab rather than at startup: it is 52 columns wide and nobody reads it
+  // by accident.
+  function loadSheet() {
+    if (!(S.dv && S.dv.plan)) { S.ps = null; renderSheet(); return Promise.resolve(); }
+    return call("production_sheet", { plan: S.dv.plan })
+      .then((r) => { S.ps = r; renderSheet(); })
+      .catch((e) => { S.ps = { error: e.message }; renderSheet(); });
+  }
+
+  function renderSheet() {
+    const d = S.ps;
+    if (!d || d.error || !d.plan) {
+      $("ps-sheet").innerHTML = `<p class="pl-empty">${esc(
+        (d && d.error) || "No plan in scope.")}</p>`;
+      $("ps-tiles").innerHTML = ""; $("ps-sub").textContent = "";
+      return;
+    }
+    const t = d.totals;
+    $("ps-sub").textContent =
+      `${d.plantings.length} plantings across ${d.grid.length} weeks of ` +
+      `${d.season || "the season"}, on ${d.protocol}. These are the same stems the ` +
+      `weekly figures are made of, arranged by the planting that grows them.`;
+    $("ps-tiles").innerHTML = [
+      { k: "Plantings", v: num(d.plantings.length), m: `${num(t.beds)} beds` },
+      { k: "Plants", v: num(t.plants), m: `${num(t.net_area_sqm)} m² net` },
+      { k: "Stems this season", v: num(t.season), m: "inside the plan's window" },
+      { k: "Stems over their life", v: num(t.lifetime),
+        m: "most of it lands after this window" },
+      { k: "Season stems/ha", v: num(Math.round(t.season_stems_per_ha)),
+        m: "how plantings compare" },
+    ].map(tile).join("");
+
+    const wk = (g) => `${g.year}-W${String(g.week).padStart(2, "0")}`;
+    // A row of weekly numbers, used for the planting rows and the summary rows
+    // underneath them so both are read against the same columns.
+    const cells = (arr, cls) => arr.map((v) =>
+      `<td class="n${cls ? " " + cls : ""}">${v ? num(v) : ""}</td>`).join("");
+
+    $("ps-sheet").innerHTML =
+      '<table class="pl-t pl-t-cols ps-t"><thead><tr>' +
+      '<th>Block</th><th>Planting</th><th>Pinch</th><th>Uproot</th>' +
+      '<th class="n">Beds</th><th class="n">Plants</th><th class="n">Net m²</th>' +
+      d.grid.map((g) => `<th class="n">${esc(wk(g))}</th>`).join("") +
+      '<th class="n">Season</th><th class="n">Stems/ha</th><th class="n">Lifetime</th>' +
+      "</tr></thead><tbody>" +
+      d.plantings.map((p) =>
+        `<tr${p.not_placed ? ' class="short"' : ""}>` +
+        `<td>${esc(p.block)}${p.not_placed
+          ? ' <span class="pill">no block</span>' : ""}</td>` +
+        `<td>${esc(p.planting_date)}</td><td>${esc(p.pinch_date || "—")}</td>` +
+        `<td>${esc(p.uproot_date || "—")}</td>` +
+        `<td class="n">${num(p.beds)}</td><td class="n">${num(p.plants)}</td>` +
+        `<td class="n">${num(p.net_area_sqm)}</td>` +
+        cells(p.weekly) +
+        `<td class="n"><b>${num(p.season_total)}</b></td>` +
+        `<td class="n">${num(Math.round(p.season_stems_per_ha))}</td>` +
+        `<td class="n">${num(p.lifetime_total)}</td></tr>`).join("") +
+      // Under the plantings, the same columns totalled, then what the market asked
+      // for and the difference -- the whole point of laying it out this way.
+      `<tr class="ps-sum"><td colspan="7"><b>Weekly production</b></td>` +
+      cells(d.weekly_production) +
+      `<td class="n"><b>${num(t.season)}</b></td><td></td>` +
+      `<td class="n">${num(t.lifetime)}</td></tr>` +
+      `<tr class="ps-sum"><td colspan="7">Weekly market demand</td>` +
+      cells(d.weekly_demand) + "<td></td><td></td><td></td></tr>" +
+      `<tr class="ps-sum"><td colspan="7">Difference</td>` +
+      d.difference.map((v) =>
+        `<td class="n" style="color:var(${v < 0 ? "--critical" : "--good"})">` +
+        `${v ? sgn(v) : ""}</td>`).join("") +
+      "<td></td><td></td><td></td></tr>" +
+      "</tbody></table>";
+  }
+
   function loadScope() {
     // The plan is part of the scope: every plan-aware endpoint is given the same
     // one, so the tabs cannot end up describing different plans.
@@ -4400,7 +4492,11 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
       drawGrouped($("dv-chart"), S.grain === "month" ? S.dv.months : S.dv.weeks);
       renderCumulative(scoped().weeks);
     }
-    if (name === "planting" && S.pp) drawGantt($("pp-gantt"), S.pp.occupancy);
+    if (name === "planting") {
+      if (S.pp) drawGantt($("pp-gantt"), S.pp.occupancy);
+      // Wide and only wanted here, so it is fetched on reveal, once.
+      if (!S.ps) loadSheet().catch((e) => toast(esc(e.message), true));
+    }
     if (name === "motherstock" && S.ls) drawPool($("ls-chart"), S.ls.rows);
     // The transactional tabs read live state, so they refetch on reveal rather
     // than showing whatever was true when the page first loaded.
@@ -4737,6 +4833,13 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
         }
         if (b.dataset.tc === "confirm") { confirmTc(b); return; }
         loadTc($("tc-qty").value || null);
+      });
+      $("ps-sheet").parentElement.addEventListener("click", (e) => {
+        if (!e.target.closest('[data-ps="csv"]')) return;
+        if (!(S.dv && S.dv.plan)) { toast("No plan in scope.", true); return; }
+        // plan_sheet.sheet_csv writes the download response itself.
+        window.open("/api/method/upande_summer_flowers.summer_flowers.plan_sheet"
+          + ".sheet_csv?plan=" + encodeURIComponent(S.dv.plan), "_blank");
       });
       $("ls-table").addEventListener("click", (e) => {
         const cell = e.target.closest(".ls-edit");
