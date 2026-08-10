@@ -521,6 +521,7 @@
         <p class="pl-note">{{ _("The quantity and the order date start at what the plan works out to. Change any of them to see what it does; nothing is written until you confirm, and confirming carries the choice to the plan, the propagation plan and the batch.") }}</p>
         <div class="pl-card-head">
           <span class="pl-actions">
+            <button type="button" class="pl-btn" data-ls="effect">{{ _("Effect on the plan") }}</button>
             <button type="button" class="pl-btn" data-ls="reset-inputs">{{ _("Back to the calculated order") }}</button>
             <button type="button" class="pl-btn primary" data-ls="confirm">{{ _("Confirm this order") }}</button>
           </span>
@@ -532,14 +533,14 @@
         <div class="pl-tiles pl-tiles-sm" id="ls-tiles"></div>
         <h3>{{ _("Cycle milestones") }}</h3>
         <div id="ls-cycles-tbl" class="pl-scroll"></div>
+        <h3>{{ _("Week by week") }}</h3>
+        <div id="ls-table" class="pl-scroll pl-tall"></div>
         <h3>{{ _("Motherstock pool and weekly cutting capacity") }}</h3>
         <div class="pl-legend">
           <span class="pl-key"><i class="sw" style="background:var(--series-1)"></i>{{ _("MS plants standing") }}</span>
           <span class="pl-key"><i class="sw" style="background:var(--series-2)"></i>{{ _("Cutting capacity / week") }}</span>
         </div>
         <div class="pl-chart-wrap"><div id="ls-chart" class="pl-chart"></div></div>
-        <h3>{{ _("Week by week") }}</h3>
-        <div id="ls-table" class="pl-scroll pl-tall"></div>
       </div>
     </section>
 
@@ -556,6 +557,18 @@
       </div>
     </section>
   </div>
+
+  <!-- What the settings on the motherstock card do to the plan. Opened on demand
+       and with no change made, because "what does this do" is a question worth
+       asking before touching anything. -->
+  <dialog id="pw-dlg" class="pl-dlg">
+    <div class="pl-dlg-head">
+      <div><h2 id="pw-title">{{ _("Effect on the plan") }}</h2>
+           <p class="pl-note" id="pw-sub"></p></div>
+      <button type="button" class="pl-btn" data-pw="close">{{ _("Close") }}</button>
+    </div>
+    <div class="pl-dlg-body" id="pw-body"></div>
+  </dialog>
 
   <div id="pl-tip" class="pl-tip" hidden></div>
 </div>
@@ -827,6 +840,15 @@ table.hc tbody tr:hover td:not(.hc-k):not(.hc-m){background:var(--surface-2)}
   color:var(--serious)}
 .ls-stage-4{background:color-mix(in srgb,var(--good) 18%,transparent);
   color:var(--good)}
+.pl-dlg{border:1px solid var(--border);border-radius:12px;padding:0;
+  max-width:min(1200px,94vw);width:min(1200px,94vw);max-height:88vh;
+  background:var(--surface-1);color:var(--text-primary)}
+.pl-dlg::backdrop{background:rgba(0,0,0,.45)}
+.pl-dlg-head{display:flex;align-items:flex-start;gap:14px;justify-content:space-between;
+  padding:14px 18px;border-bottom:1px solid var(--border);position:sticky;top:0;
+  background:var(--surface-1);z-index:2}
+.pl-dlg-head h2{font-size:1rem;margin:0}
+.pl-dlg-body{padding:14px 18px 20px;overflow:auto;max-height:calc(88vh - 70px)}
 table.ps-t tr.ps-sum td{background:var(--surface-2);font-weight:600;
   border-top:2px solid var(--border)}
 table.ps-t th,table.ps-t td{font-size:.72rem;white-space:nowrap}
@@ -4402,6 +4424,119 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
       "</tbody></table>";
   }
 
+  // Changing the build-up changes what has to be bought and when. Fewer cycles is
+  // less multiplication, so the same pool needs more plantlets; and it is a shorter
+  // lead time, so they are needed later. Leaving the quantity and the date where
+  // they were would show a build-up nobody could actually buy.
+  function syncCyclesToOrder() {
+    const c = $("ls-cycles").value;
+    if (!(S.dv && S.dv.plan)) return runLifecycle();
+    return call("tc_purchase", { plan: S.dv.plan, cycles: c === "" ? null : c })
+      .then((r) => {
+        const wasQ = $("ls-qty").value, wasD = $("ls-date").value;
+        if (r.recommended_tc) $("ls-qty").value = r.recommended_tc;
+        if (r.order_date_used) $("ls-date").value = r.order_date_used;
+        $("ls-confirm-note").innerHTML =
+          `<p class="pl-note">${c === "" ? "Back to the protocol's build-up" :
+            c + " build-up cycle" + (c === "1" ? "" : "s")}: ` +
+          `<b>${num($("ls-qty").value)}</b> plantlets (was ${num(wasQ)}), ` +
+          `ordered <b>${esc($("ls-date").value)}</b> (was ${esc(wasD)}). ` +
+          `Multiplying less means buying more, sooner is not needed — the shorter ` +
+          `lead time moves the order later.</p>`;
+      })
+      .then(runLifecycle)
+      .catch((e) => toast(esc(e.message), true));
+  }
+
+  // Demand against production for whatever is set on the card right now, whether
+  // or not anything was changed. Nothing is written: this is the answer to "what
+  // would this do", which has to be askable without doing it.
+  function showEffect() {
+    if (!(S.dv && S.dv.plan)) { toast("No plan in scope.", true); return; }
+    const dlg = $("pw-dlg");
+    const cyc = $("ls-cycles").value;
+    $("pw-body").innerHTML = '<p class="pl-empty">Working it out…</p>';
+    $("pw-sub").textContent = "";
+    if (!dlg.open) dlg.showModal();
+    call("plan_whatif", {
+      plan: S.dv.plan,
+      tc_qty: $("ls-qty").value || null,
+      order_date: $("ls-date").value || null,
+      cycles: cyc === "" ? null : cyc,
+    })
+      .then(renderEffect)
+      .catch((e) => {
+        $("pw-body").innerHTML = `<p class="pl-empty">${esc(e.message)}</p>`;
+      });
+  }
+
+  function renderEffect(r) {
+    if (!r || r.error || !r.plan) {
+      $("pw-body").innerHTML = `<p class="pl-empty">${esc(
+        (r && r.error) || "No plan in scope.")}</p>`;
+      return;
+    }
+    const b = r.built || {}, base = r.baseline || {}, cur = r.current || {};
+    const cov = b.coverage_pct || 0;
+    const dCov = cov - (base.coverage_pct || 0);
+    const dProd = (b.production_stems || 0) - (base.production_stems || 0);
+
+    $("pw-title").textContent = `${r.variety} at ${r.farm} — ${r.plan}`;
+    $("pw-sub").textContent =
+      `${num(r.tc_qty)} plantlets, ${r.cycles} build-up cycles, ordered ` +
+      `${r.order_date}. Lead time ${r.lead_time_weeks} weeks, ×${r.multiplication_factor} ` +
+      `to ${num(r.mother_plants_from_order)} mother plants. Nothing is saved.`;
+
+    // Changed-from, so a figure is read as a movement rather than a number.
+    const delta = (v, good) => v === 0 ? "no change"
+      : `<span style="color:var(${(v > 0) === good ? "--good" : "--critical"})">` +
+        `${sgn(v)}</span>`;
+
+    const tiles = [
+      { k: "Demand met", v: cov.toFixed(1) + "%",
+        m: `the plan as it stands: ${(base.coverage_pct || 0).toFixed(1)}%`,
+        c: cov >= 100 ? "--good" : "--critical" },
+      { k: "Stems produced", v: num(b.production_stems),
+        m: `${delta(dProd, true)} against the plan on file` },
+      { k: "Stems demanded", v: num(b.demand_stems), m: "unchanged by any of this" },
+      { k: "Weeks short", v: num(b.weeks_in_deficit),
+        m: `${num(b.unmet_stems)} stems unmet`,
+        c: b.weeks_in_deficit ? "--critical" : "--good" },
+      { k: "Plantings", v: `${num(b.plantings_full)} full`,
+        m: `${num(b.plantings_trimmed)} part-planted, ${num(b.plantings_dropped)} dropped`,
+        c: b.plantings_dropped ? "--critical" : "--good" },
+      { k: "Plants stuck", v: num(b.plants_stuck),
+        m: `of ${num(b.plants_wanted)} the plan wants`,
+        c: (b.plants_stuck || 0) < (b.plants_wanted || 0) ? "--serious" : "--good" },
+      { k: "First cut", v: esc(b.first_cut_week || "—"),
+        m: `${r.lead_time_weeks} weeks after the order` },
+      { k: "Against the current order", v: num(r.tc_qty - (cur.tc_qty || 0)),
+        m: `plantlets more than the ${num(cur.tc_qty)} on the plan now` },
+    ];
+
+    const weeks = b.weeks || [];
+    $("pw-body").innerHTML =
+      `<div class="pl-tiles pl-tiles-sm">${tiles.map(tile).join("")}</div>` +
+      (b.dropped_too_early
+        ? `<div class="pl-callout">${num(b.dropped_too_early)} plantings stick before ` +
+          `${esc(b.first_cut_week || "the first cut")}, the earliest week any pool from ` +
+          `this order can be cut. No order size reaches them — they need an earlier ` +
+          `order or cuttings bought in already rooted.</div>`
+        : "") +
+      `<h3>Demand against production, week by week</h3>` +
+      '<div class="pl-scroll pl-tall"><table class="pl-t"><thead><tr>' +
+      '<th>Week</th><th class="n">Demand</th><th class="n">Production</th>' +
+      '<th class="n">Variance</th></tr></thead><tbody>' +
+      weeks.map((w) => {
+        const v = w.variance;
+        return `<tr class="${v < 0 ? "short" : ""}"><td>${esc(w.label)}</td>` +
+          `<td class="n">${num(w.demand)}</td><td class="n">${num(w.production)}</td>` +
+          `<td class="n" style="color:var(${v < 0 ? "--critical" : "--good"})">` +
+          `${v ? sgn(v) : "0"}</td></tr>`;
+      }).join("") +
+      "</tbody></table></div>";
+  }
+
   function loadScope() {
     // The plan is part of the scope: every plan-aware endpoint is given the same
     // one, so the tabs cannot end up describing different plans.
@@ -4850,6 +4985,9 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
         window.open("/api/method/upande_summer_flowers.summer_flowers.plan_sheet"
           + ".sheet_csv?plan=" + encodeURIComponent(S.dv.plan), "_blank");
       });
+      $("pw-dlg").addEventListener("click", (e) => {
+        if (e.target.closest('[data-pw="close"]')) $("pw-dlg").close();
+      });
       $("ls-table").addEventListener("click", (e) => {
         const cell = e.target.closest(".ls-edit");
         if (cell) { lsEditFarm(cell); return; }
@@ -4858,8 +4996,10 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
       });
       // The three levers on the motherstock card re-run the simulation as they are
       // changed, so the schedule below always belongs to the numbers above it.
-      ["ls-cycles", "ls-gens-in"].forEach((id) =>
-        $(id).addEventListener("change", () => runLifecycle()));
+      // Generations only changes how far the run goes. Build-up cycles changes what
+      // has to be bought and when, so it re-derives the order before re-running.
+      $("ls-gens-in").addEventListener("change", () => runLifecycle());
+      $("ls-cycles").addEventListener("change", () => syncCyclesToOrder());
       $("ls-confirm-note").parentElement.addEventListener("click", (e) => {
         const b = e.target.closest("[data-ls]");
         if (!b) return;
@@ -4874,6 +5014,7 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
           runLifecycle();
           return;
         }
+        if (b.dataset.ls === "effect") { showEffect(); return; }
         if (b.dataset.ls === "confirm") confirmFromLifecycle(b);
       });
       $("hc-scope").addEventListener("change", renderHarvestCalendar);
