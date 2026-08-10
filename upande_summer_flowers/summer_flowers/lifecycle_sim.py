@@ -223,7 +223,7 @@ def ramp_ratio(week_in_pool, ramp):
 
 def simulate(p, tc_qty, order_date, num_cycles=None, farm_overrides=None,
              default_to_prop_pct=0.0, extra_weeks=None, max_bench_sqm=None,
-             horizon_weeks=None):
+             horizon_weeks=None, demand_by_sw=None):
 	"""Walk every week forward, letting diverted cuttings build new pools.
 
 	`farm_overrides` is {sim_week: plants_to_field}; anything not overridden falls
@@ -380,9 +380,16 @@ def simulate(p, tc_qty, order_date, num_cycles=None, farm_overrides=None,
 		total_cap = base_cap + prop_cap
 
 		# ---- split this week's cuttings
+		needed = cint((demand_by_sw or {}).get(sw, 0))
 		if total_cap > 0:
 			if sw in farm_overrides:
 				to_farm = max(0, min(farm_overrides[sw], total_cap))
+			elif demand_by_sw is not None and not default_to_prop_pct:
+				# Send the field what the field has asked for and bank the rest. A week
+				# that cuts more than the plan needs is the only chance to build the
+				# pool for a peak later on, and giving the surplus to a field with
+				# nowhere to put it loses both the cuttings and the chance.
+				to_farm = min(total_cap, needed)
 			else:
 				to_farm = int(round(total_cap * (1 - flt(default_to_prop_pct) / 100)))
 			to_prop = total_cap - to_farm
@@ -427,6 +434,10 @@ def simulate(p, tc_qty, order_date, num_cycles=None, farm_overrides=None,
 			"source": source,
 			"cycle": cycle_no,
 			"ramp_pct": int(round(ramp_pct * 100)),
+			"needed": needed,
+			# Short is the interesting week: the field wants cuttings the pool cannot
+			# cut, and no amount of diverting later fixes a week already past.
+			"shortfall": max(0, needed - total_cap),
 			"base_cap": base_cap,
 			# Which build-up tranches are cutting this week, and whether one of them
 			# landed in it. The schedule colours a tranche's arrival week off this.

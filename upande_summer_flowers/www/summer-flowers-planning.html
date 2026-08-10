@@ -812,6 +812,8 @@ table.hc tbody tr:hover td:not(.hc-k):not(.hc-m){background:var(--surface-2)}
   color:var(--serious)}
 .ls-stage-4{background:color-mix(in srgb,var(--good) 18%,transparent);
   color:var(--good)}
+table.pl-t tr.ls-band td{background:var(--surface-2);color:var(--text-secondary);
+  font-size:.74rem}
 table.pl-t tr.ls-arrive td{background:color-mix(in srgb,var(--violet) 11%,transparent)}
 table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
 .ls-edit{cursor:pointer;border-bottom:1.5px dashed var(--text-muted);padding:0 3px;
@@ -3733,10 +3735,19 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
       '<th>ISO week</th><th>Starts</th>' +
       '<th>Phase</th><th>Source</th>' +
       '<th class="n">Base MS</th><th class="n">Prop-MS</th><th class="n">Total/wk</th>' +
-      '<th class="n">To farm</th><th class="n">To prop</th><th class="n">To prop %</th>' +
+      '<th class="n">Field wants</th>' +
+      '<th class="n">To farm</th><th class="n">To prop</th>' +
       '<th class="n">MS plants</th><th class="n">Bench m²</th>' +
-      '<th>Harvest wk</th><th>Harvest date</th><th>Event</th></tr></thead><tbody>' +
-      rows.map((x) =>
+      '<th>First harvest</th><th>Event</th></tr></thead><tbody>' +
+      rows.map((x) => (!x.total_cap && !x.needed)
+        // Order, tray, pot: real milestones, but nothing is cut and nothing is
+        // planted, so every numeric column is a dash. Thirteen dashes read as a
+        // broken row; one band reads as what it is, the wait before the first cut.
+        ? `<tr class="ls-band"><td>${x.sw}</td><td>${esc(x.label)}</td>` +
+          `<td>${esc(x.date || "")}</td>` +
+          `<td colspan="12"><b>${esc(x.phase || "")}</b>` +
+          `${x.events.length ? " — " + esc(x.events.join(" · ")) : ""}</td></tr>`
+        :
         // The week a build-up tranche lands gets its own colour: capacity steps up
         // that week and the reason is the arrival, which otherwise reads as a jump
         // out of nowhere. Each tranche keeps its own badge colour for the rest of
@@ -3756,20 +3767,26 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
         `<td class="n">${x.base_cap ? num(x.base_cap) : "—"}</td>` +
         `<td class="n" style="color:var(--violet)">${x.prop_cap ? num(x.prop_cap) : "—"}</td>` +
         `<td class="n"><b>${x.total_cap ? num(x.total_cap) : "—"}</b></td>` +
+        // What the plan wants stuck this week. Red where the pool cannot cut it:
+        // a week already short cannot be fixed by diverting in a later one.
+        `<td class="n"${x.shortfall ? ' style="color:var(--critical)"' +
+          ` title="${num(x.shortfall)} short"` : ""}>` +
+        `${x.needed ? num(x.needed) : "—"}${x.shortfall ? " ⚠" : ""}</td>` +
         (x.total_cap
           ? `<td class="n"><span class="ls-edit" data-sw="${x.sw}" ` +
             `data-cap="${x.total_cap}" role="button" tabindex="0" ` +
             `title="Change what goes to the field this week. Max ${num(x.total_cap)}.">` +
             `${num(x.to_farm)}</span></td>`
           : `<td class="n">—</td>`) +
-        `<td class="n" style="color:var(--violet)">${x.to_prop ? num(x.to_prop) : "—"}</td>` +
-        `<td class="n"${x.to_prop ? ' style="color:var(--warning)"' : ""}>` +
-        `${x.total_cap ? x.to_prop_pct + "%" : "—"}</td>` +
+        `<td class="n" style="color:var(--violet)"${x.to_prop
+          ? ` title="Banked for later: becomes motherstock after establishment"` : ""}>` +
+        `${x.to_prop ? num(x.to_prop) : "—"}</td>` +
         `<td class="n">${x.ms_plants ? num(x.ms_plants) : "—"}</td>` +
         `<td class="n"${x.bench_limited ? ' style="color:var(--critical)"' : ""}>` +
         `${x.bench_sqm || "—"}${x.bench_limited ? " ⚠" : ""}</td>` +
-        `<td>${esc(x.harvest_label || "—")}</td>` +
-        `<td>${esc(x.harvest_date || "—")}</td>` +
+        `<td>${x.harvest_label
+          ? esc(x.harvest_label) + (x.harvest_date ? ` <span class="bf-meta">${esc(x.harvest_date)}</span>` : "")
+          : "—"}</td>` +
         `<td style="font-size:.72rem;white-space:normal">${esc(x.events.join(" · "))}</td>` +
         "</tr>").join("") +
       "</tbody></table>" +

@@ -1150,6 +1150,27 @@ def planting_plan(plan=None, variety=None, farm=None):
 	}
 
 
+def _sticking_demand(plan, version):
+	"""Cuttings the field wants each week, from the plan's own sticking schedule.
+
+	This is what makes the weekly split a decision instead of a habit. Sending
+	everything to the field is only right while the field can use it all; in a week
+	the field wants less than the pool cuts, the surplus is either wasted or put
+	back into propagation, where it returns as motherstock in time for a peak that
+	has not arrived yet. That is how a later demand is met without buying more
+	plantlets for it.
+	"""
+	rows = frappe.db.sql("""select sticking_year y, sticking_week w, sum(plants) plants
+		from `tabSummer Flower Plan Block`
+		where parent = %s and is_new_planting = 1 and ifnull(sticking_year, 0) > 0
+		group by sticking_year, sticking_week""", (plan,), as_dict=True)
+	out = {}
+	for r in rows:
+		out[(cint(r.y), cint(r.w))] = int(math.ceil(
+			version.cuttings_for_plants(cint(r.plants))))
+	return out
+
+
 @frappe.whitelist()
 def simulate_lifecycle(version, tc_qty, order_date, num_cycles=None, to_prop_pct=0,
                        farm_overrides=None, max_bench_sqm=None, plan=None,
@@ -1194,6 +1215,17 @@ def simulate_lifecycle(version, tc_qty, order_date, num_cycles=None, to_prop_pct
 		# two-cycle order whose plantlets are cuttable at 18.
 		p["tc_to_first_cut_weeks"] = cint(v.weeks_tc_to_first_cut())
 
+	# What the field asks for, week by week, keyed to the simulation's own clock so
+	# the split can be judged against it rather than guessed at.
+	demand_by_sw = {}
+	if plan:
+		v0 = frappe.get_cached_doc("Crop Protocol Version", version)
+		base = getdate(order_date)
+		for (y, w), cuttings in _sticking_demand(plan, v0).items():
+			sw = int((iso_monday(y, w) - base).days // 7)
+			if sw >= 0:
+				demand_by_sw[sw] = demand_by_sw.get(sw, 0) + cuttings
+
 	res = ls.simulate(
 		p, frappe.utils.cint(tc_qty), order_date,
 		num_cycles=frappe.utils.cint(num_cycles) or None,
@@ -1201,6 +1233,7 @@ def simulate_lifecycle(version, tc_qty, order_date, num_cycles=None, to_prop_pct
 		default_to_prop_pct=flt(to_prop_pct),
 		max_bench_sqm=max_bench_sqm,
 		horizon_weeks=cint(horizon_weeks) or None,
+		demand_by_sw=demand_by_sw or None,
 	)
 	# Trim the row payload: the table only needs weeks where something happens.
 	res["rows"] = [
