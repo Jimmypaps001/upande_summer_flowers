@@ -78,6 +78,9 @@ def params_from_version(version, overrides=None):
 		# order sized by the Motherstock Batch produced a fifth of the capacity that
 		# batch had sized it for.
 		"multiplication_factor": v.multiplication_factor(),
+		# Carried so a caller can see which build-up the numbers assume, and
+		# override it without having to know how the factor is worked out.
+		"build_up_cycles": cint(v.max_multiplication_cycles),
 		# A cutting diverted to the propagation unit becomes a mother plant after
 		# tray and pot, then ramps. Not ms_establishment_weeks, which folds the build-up
 		# in and would wait it out before ramping again; and not the TC path either,

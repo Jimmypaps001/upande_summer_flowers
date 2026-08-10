@@ -490,7 +490,12 @@
           <label>{{ _("Protocol version") }}<select id="ls-version"></select></label>
           <label>{{ _("TC quantity") }}<input type="number" id="ls-qty" min="500" step="500"></label>
           <label>{{ _("TC order date") }}<input type="date" id="ls-date"></label>
-          <span class="pl-inline"><label>{{ _("MS generations") }}</label>
+          <label>{{ _("Build-up cycles") }}
+            <input type="number" id="ls-cycles" min="0" max="12" step="1"></label>
+          <label>{{ _("MS generations") }}
+            <input type="number" id="ls-gens-in" min="1" max="12" step="1"
+                   placeholder="{{ _('auto') }}"></label>
+          <span class="pl-inline"><label>{{ _("Generations run") }}</label>
             <output id="ls-gens" class="ls-out">—</output></span>
           <label>{{ _("% diverted to propagation") }}
             <input type="range" id="ls-prop" min="0" max="60" step="5" value="0">
@@ -498,6 +503,14 @@
           <label>{{ _("Bench available (m²)") }}<input type="number" id="ls-bench" min="0" step="10"></label>
         </div>
         <p class="pl-note">{{ _("Diverting cuttings is the multiplication: they return as their own motherstock 15 weeks later and produce for a life of their own. Divert nothing and capacity stays flat.") }}</p>
+        <p class="pl-note">{{ _("The quantity and the order date start at what the plan works out to. Change any of them to see what it does; nothing is written until you confirm, and confirming carries the choice to the plan, the propagation plan and the batch.") }}</p>
+        <div class="pl-card-head">
+          <span class="pl-actions">
+            <button type="button" class="pl-btn" data-ls="reset-inputs">{{ _("Back to the calculated order") }}</button>
+            <button type="button" class="pl-btn primary" data-ls="confirm">{{ _("Confirm this order") }}</button>
+          </span>
+        </div>
+        <div id="ls-confirm-note"></div>
         <div class="pl-tiles pl-tiles-sm" id="ls-tiles"></div>
         <h3>{{ _("Cycle milestones") }}</h3>
         <div id="ls-cycles-tbl" class="pl-scroll"></div>
@@ -4116,11 +4129,72 @@ table.hc tbody tr:hover td:not(.hc-k):not(.hc-m){background:var(--surface-2)}
       version: S.version, tc_qty: $("ls-qty").value || 20000,
       order_date: $("ls-date").value,
       to_prop_pct: $("ls-prop").value, max_bench_sqm: $("ls-bench").value || null,
-      // The horizon comes from the plan, which is what decides how many
-      // generations are needed. No cycle count is sent.
+      // Two different counts. Generations is how many times the whole
+      // order-grow-expire loop runs, and comes from the plan's horizon unless it is
+      // typed over. Build-up cycles is the multiplication inside one order, and is
+      // what decides how many plantlets that order is worth.
+      num_cycles: $("ls-gens-in").value || null,
+      build_up_cycles: $("ls-cycles").value !== "" ? $("ls-cycles").value : null,
       plan: S.plan || null,
       farm_overrides: JSON.stringify(S.lsOverrides || {}),
     }).then((r) => { S.ls = r; renderLifecycle(); });
+  }
+
+  // Confirming from the motherstock card. The simulator is free to wander onto
+  // another protocol version, but a confirmation is about the plan's order, so it
+  // refuses rather than quietly committing figures worked out on a version the plan
+  // is not built on.
+  function confirmFromLifecycle(btn) {
+    const plan = S.dv && S.dv.plan;
+    if (!plan) { alert("No plan in scope to confirm against."); return; }
+    if (S.deriv && S.deriv.version && S.version && S.version !== S.deriv.version) {
+      alert("This card is simulating " + S.version + ", but the plan is built on " +
+            S.deriv.version + ". Switch the version back before confirming.");
+      return;
+    }
+    const qty = parseInt($("ls-qty").value, 10) || 0;
+    const date = $("ls-date").value || "";
+    const cycles = $("ls-cycles").value !== "" ? parseInt($("ls-cycles").value, 10) : null;
+    if (!qty) { alert("Nothing to confirm: no TC quantity."); return; }
+
+    const d = S.deriv || {};
+    const moved = [];
+    if (d.tc_plants && qty !== d.tc_plants) {
+      moved.push(`${num(qty)} plantlets instead of the calculated ${num(d.tc_plants)}`);
+    }
+    if (d.tc_order_date && date && date !== d.tc_order_date) {
+      moved.push(`ordering ${date} instead of ${d.tc_order_date}`);
+    }
+    if (cycles != null && d.build_up_cycles != null && cycles !== d.build_up_cycles) {
+      moved.push(`${cycles} build-up cycles instead of ${d.build_up_cycles}`);
+    }
+    const msg = [
+      `Confirm ${num(qty)} plantlets` + (date ? `, ordered ${date}` : "") +
+        (cycles != null ? `, ${cycles} build-up cycles?` : "?"),
+      "",
+      moved.length ? "This differs from the calculation: " + moved.join("; ") + "."
+                   : "This is what the calculation asks for.",
+      "",
+      "It writes to the plan, the propagation plan and any draft motherstock " +
+      "batch, and the plan's expected stems follow it.",
+    ].filter(Boolean);
+    if (!confirm(msg.join("\n"))) return;
+
+    const was = btn.textContent;
+    btn.disabled = true; btn.textContent = "Confirming…";
+    call("confirm_tc_choice", {
+      plan: plan, tc_qty: qty, order_date: date || null, cycles: cycles,
+    })
+      .then((r) => {
+        $("ls-confirm-note").innerHTML =
+          `<p class="pl-note"><b>Confirmed.</b> ${esc(r.note || "")}</p>`;
+        return loadScope();
+      })
+      .catch((e) => {
+        $("ls-confirm-note").innerHTML =
+          `<p class="pl-note">Could not confirm: ${esc(e.message)}</p>`;
+      })
+      .finally(() => { btn.disabled = false; btn.textContent = was; });
   }
 
   function loadScope() {
@@ -4176,10 +4250,24 @@ table.hc tbody tr:hover td:not(.hc-k):not(.hc-m){background:var(--surface-2)}
         `v${x.version} — ${x.version_status}`, x.name || "")));
       if (pr && pr.version) pv.value = pr.version;
 
+      // Seed the simulator with the order the plan actually works out to. It used to
+      // start at mother plants rounded to the nearest thousand, and at the first
+      // week of demand -- neither of which is a TC order, so the tab opened on a
+      // quantity nobody had asked for and a date four hundred-odd weeks after the
+      // one the order has to be placed on. The calculated figures are the defaults;
+      // typing over them is the whole point of the card.
       if (!$("ls-qty").value) {
-        $("ls-qty").value = Math.max(500,
-          Math.round(((deriv && deriv.mothers_required) || 20000) / 1000) * 1000);
-        $("ls-date").value = S.dv && S.dv.weeks.length ? S.dv.weeks[0].date : "2026-01-05";
+        const tcq = deriv && (deriv.tc_plants || 0);
+        $("ls-qty").value = tcq
+          ? tcq
+          : Math.max(500, Math.round(((deriv && deriv.mothers_required) || 20000) / 1000) * 1000);
+        $("ls-date").value = (deriv && deriv.tc_order_date)
+          || (S.dv && S.dv.weeks.length ? S.dv.weeks[0].date : "2026-01-05");
+      }
+      // The derivation carries the build-up its own figures assume, so the quantity
+      // and the cycle count on this card always belong to each other.
+      if ($("ls-cycles").value === "" && deriv && deriv.build_up_cycles != null) {
+        $("ls-cycles").value = deriv.build_up_cycles;
       }
       return runLifecycle();
     });
@@ -4548,6 +4636,26 @@ table.hc tbody tr:hover td:not(.hc-k):not(.hc-m){background:var(--surface-2)}
         if (cell) { lsEditFarm(cell); return; }
         const rst = e.target.closest('[data-ls="reset"]');
         if (rst) { S.lsOverrides = {}; runLifecycle(); }
+      });
+      // The three levers on the motherstock card re-run the simulation as they are
+      // changed, so the schedule below always belongs to the numbers above it.
+      ["ls-cycles", "ls-gens-in"].forEach((id) =>
+        $(id).addEventListener("change", () => runLifecycle()));
+      $("ls-confirm-note").parentElement.addEventListener("click", (e) => {
+        const b = e.target.closest("[data-ls]");
+        if (!b) return;
+        if (b.dataset.ls === "reset-inputs") {
+          const d = S.deriv || {};
+          $("ls-qty").value = d.tc_plants || "";
+          $("ls-date").value = d.tc_order_date || "";
+          $("ls-cycles").value = d.build_up_cycles != null ? d.build_up_cycles : "";
+          $("ls-gens-in").value = "";
+          S.lsOverrides = {};
+          $("ls-confirm-note").innerHTML = "";
+          runLifecycle();
+          return;
+        }
+        if (b.dataset.ls === "confirm") confirmFromLifecycle(b);
       });
       $("hc-scope").addEventListener("change", renderHarvestCalendar);
       $("hc-unit").addEventListener("change", renderHarvestCalendar);

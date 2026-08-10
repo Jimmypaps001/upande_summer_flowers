@@ -175,6 +175,7 @@ def demand_vs_production(variety=None, farm=None, plan=None):
 		"tc_committed": committed,
 		"tc_plants_committed": cint(p.tc_plants_committed),
 		"tc_order_date_committed": str(p.tc_order_date_committed or ""),
+		"tc_cycles_committed": cint(p.tc_cycles_committed),
 		"weeks": weeks,
 		"months": months,
 		"totals": {
@@ -238,7 +239,12 @@ def tc_derivation(plan=None, variety=None, farm=None):
 	# document that actually gets approved.
 	tc = {"tc_plants": 0, "tc_order_date": "", "tc_on_farm_date": "",
 	      "first_sticking_date": "", "tc_source": None, "tc_cost": 0,
-	      "ramp_weeks": 0, "full_capacity_date": "", "lost_to_ramp": 0}
+	      "ramp_weeks": 0, "full_capacity_date": "", "lost_to_ramp": 0,
+	      # The build-up these figures assume. Without it a caller seeding a
+	      # simulator from this payload has to go and ask the protocol
+	      # separately, and can seed a quantity and a cycle count that do not
+	      # belong to each other.
+	      "build_up_cycles": 0}
 	rows = frappe.get_all(
 		"Summer Flower Propagation Plan",
 		filters={"production_plan": dv["plan"], "status": ["!=", "Rejected"]},
@@ -325,6 +331,9 @@ def tc_derivation(plan=None, variety=None, farm=None):
 	})
 	tc["tc_late"] = bool(tc["tc_order_date"]
 	                     and getdate(tc["tc_order_date"]) < getdate(nowdate()))
+	tc["build_up_cycles"] = (cint(dv.get("tc_cycles_committed"))
+	                         if dv.get("tc_committed")
+	                         else cint(v.max_multiplication_cycles))
 
 	out = {
 		"plan": dv["plan"], "variety": dv["variety"], "farm": dv["farm"],
@@ -1144,7 +1153,7 @@ def planting_plan(plan=None, variety=None, farm=None):
 @frappe.whitelist()
 def simulate_lifecycle(version, tc_qty, order_date, num_cycles=None, to_prop_pct=0,
                        farm_overrides=None, max_bench_sqm=None, plan=None,
-                       horizon_weeks=None):
+                       horizon_weeks=None, build_up_cycles=None):
 	"""The weekly TC -> motherstock -> cuttings lifecycle, with propagation feedback.
 
 	num_cycles is derived from the horizon unless a caller insists on a number: a
@@ -1165,6 +1174,21 @@ def simulate_lifecycle(version, tc_qty, order_date, num_cycles=None, to_prop_pct
 		                                    "weeks_covered")
 
 	p = ls.params_from_version(version)
+
+	# Two different things are called cycles here and they must not be confused.
+	# num_cycles is generations: how many times the whole TC -> motherstock -> expiry
+	# loop runs over the horizon. build_up_cycles is multiplication: how many rounds
+	# one order is grown through before it becomes mother plants. Only the second
+	# changes what an order is worth, and it pays for the extra plants in lead time,
+	# so both have to move together or the simulation promises a pool weeks before
+	# it could exist.
+	if build_up_cycles not in (None, ""):
+		v = frappe.get_cached_doc("Crop Protocol Version", version)
+		c = cint(build_up_cycles)
+		p["multiplication_factor"] = flt(v.multiplication_factor(c))
+		p["tc_to_first_cut_weeks"] = cint(v.lead_time_for_cycles(c))
+		p["build_up_cycles"] = c
+
 	res = ls.simulate(
 		p, frappe.utils.cint(tc_qty), order_date,
 		num_cycles=frappe.utils.cint(num_cycles) or None,
@@ -1178,6 +1202,9 @@ def simulate_lifecycle(version, tc_qty, order_date, num_cycles=None, to_prop_pct
 		r for r in res["rows"]
 		if r["total_cap"] or r["events"] or r["phase"]
 	]
+	res["build_up_cycles"] = cint(p.get("build_up_cycles"))
+	res["multiplication_factor"] = flt(p.get("multiplication_factor"))
+	res["tc_to_first_cut_weeks"] = cint(p.get("tc_to_first_cut_weeks"))
 	return res
 
 
