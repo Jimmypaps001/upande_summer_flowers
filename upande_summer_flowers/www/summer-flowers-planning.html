@@ -3332,6 +3332,25 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
     if (t.binding_constraint) {
       notes.push(esc(t.binding_constraint));
     }
+    // The plan and its sourcing answer different questions, and the plan's answer
+    // is the optimistic one: it sizes plantings from demand and reports what they
+    // would yield. Whether there are cuttings to stick them with is the
+    // propagation plan's answer, and when the two disagree the plan is the one
+    // that is wrong.
+    const src = t.sourcing;
+    if (src && src.plants_short) {
+      notes.push(`This plan and its sourcing do not agree. The plan grows ` +
+        `${num(t.built_production)} stems from ${num(src.plants_to_stick)} plants; ` +
+        `<a href="/app/summer-flower-propagation-plan/${encodeURIComponent(
+          src.propagation_plan)}" target="_blank">${esc(src.propagation_plan)}</a> ` +
+        `says ${num(src.cuttings_uncovered)} of the ${num(src.cuttings_required)} ` +
+        `cuttings it needs have no source, so <b>${num(src.plants_short)} plants ` +
+        `cannot be stuck</b> and <b>${num(src.stems_at_risk)} stems are at risk</b>. ` +
+        `That is the motherstock ramping, not the order being too small — the pool ` +
+        `cuts at 25% in its first week and reaches full rate three weeks later, and ` +
+        `the plan sticks into those weeks. Move the first plantings later, or order ` +
+        `earlier so the pool is at full rate when they start.`);
+    }
     if (!t.tc_for_demand_solved && t.tc_for_demand_reason) {
       notes.push(`No order size lands the demand: ${esc(t.tc_for_demand_reason)}. ` +
         `The limit is when the pool can cut, not how big it is.`);

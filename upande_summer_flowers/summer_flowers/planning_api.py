@@ -722,7 +722,8 @@ def tc_purchase(plan=None, variety=None, farm=None, tc_qty=None, tolerance_pct=1
 		fields=["name", "tc_plants_required", "mother_plants_required",
 		        "tc_order_date", "tc_on_farm_date", "first_sticking_date",
 		        "full_capacity_date", "ramp_weeks", "cuttings_uncovered",
-		        "total_cuttings_required", "tc_cost", "status"],
+		        "total_cuttings_required", "tc_cost", "status",
+		        "plants_short", "stems_at_risk", "total_plants_to_stick"],
 		order_by="creation desc", limit=1)
 	prop = prop[0] if prop else None
 
@@ -807,6 +808,20 @@ def tc_purchase(plan=None, variety=None, farm=None, tc_qty=None, tolerance_pct=1
 		"build_up_cycles": cycles,
 		# What the plan is actually committed to, so the dashboard can show a tried
 		# figure as tried rather than as decided.
+		# What the sourcing says, as against what the ground would grow. The plan
+		# sizes plantings from demand and reports what they yield; the propagation
+		# plan says whether there are cuttings to stick them with, and the two are
+		# different questions with different answers. The plan cannot ask the
+		# propagation plan for this while it is being built without the two becoming
+		# circular, so it is carried here instead of folded into coverage.
+		"sourcing": ({
+			"propagation_plan": prop.name,
+			"plants_to_stick": cint(prop.total_plants_to_stick),
+			"plants_short": cint(prop.plants_short),
+			"stems_at_risk": cint(prop.stems_at_risk),
+			"cuttings_uncovered": cint(prop.cuttings_uncovered),
+			"cuttings_required": cint(prop.total_cuttings_required),
+		} if prop else None),
 		"committed": bool(p.tc_choice_committed),
 		"committed_tc": cint(p.tc_plants_committed),
 		"committed_order_date": str(p.tc_order_date_committed or ""),
