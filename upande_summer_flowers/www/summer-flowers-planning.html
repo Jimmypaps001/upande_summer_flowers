@@ -511,6 +511,9 @@
           </span>
         </div>
         <div id="ls-confirm-note"></div>
+        <h3>{{ _("How the cycle runs") }}</h3>
+        <div class="pl-tiles pl-tiles-sm" id="ls-proto-tiles"></div>
+        <h3>{{ _("What this order produces") }}</h3>
         <div class="pl-tiles pl-tiles-sm" id="ls-tiles"></div>
         <h3>{{ _("Cycle milestones") }}</h3>
         <div id="ls-cycles-tbl" class="pl-scroll"></div>
@@ -3550,13 +3553,23 @@ table.hc tbody tr:hover td:not(.hc-k):not(.hc-m){background:var(--surface-2)}
   function renderDerivation() {
     const d = S.deriv;
     if (!d || !d.plan) { $("derivation").innerHTML = '<p class="pl-empty">No plan.</p>'; return; }
-    $("derivation").innerHTML = d.steps.map((s, i) =>
-      `<div class="step"><div class="i">${i + 1}</div><div class="t">${esc(s.step)}` +
-      `<small>${esc(s.note)}</small></div><div class="v">${numx(s.value)}` +
-      `<small>${esc(s.unit)}</small></div></div>`).join("") +
-      `<div class="step"><div class="i">→</div><div class="t"><b>Motherstock required</b>` +
-      `<small>${num(d.pots_required)} pots · ${d.bench_sqm} m² of bench</small></div>` +
-      `<div class="v">${num(d.mothers_required)}<small>mother plants</small></div></div>`;
+    // The derivation reads as a row of KPIs rather than a list of steps. It is the
+    // same eight numbers in the same order -- the order is the derivation, so the
+    // step number stays on the tile -- but each is a figure to be read at a glance
+    // and challenged, which a paragraph-shaped step list makes hard.
+    const tiles = d.steps.map((s, i) => ({
+      k: `${i + 1} · ${s.step}`,
+      v: numx(s.value),
+      m: [s.unit, s.note].filter(Boolean).join(" — "),
+      why: s.why || null,
+    }));
+    tiles.push({
+      k: "→ Motherstock required",
+      v: num(d.mothers_required),
+      m: `mother plants — ${num(d.pots_required)} pots · ${d.bench_sqm} m² of bench`,
+    });
+    $("derivation").innerHTML =
+      `<div class="pl-tiles pl-tiles-sm">${tiles.map(tile).join("")}</div>`;
   }
 
   function drawPool(el, allRows) {
@@ -3606,6 +3619,32 @@ table.hc tbody tr:hover td:not(.hc-k):not(.hc-m){background:var(--surface-2)}
     $("ls-sub").textContent = `${num(r.tc_qty)} plantlets ordered ${r.order_date} · ` +
       `supplier lead ${p.supplier_lead_weeks}w → establishment ${p.ms_establishment_weeks}w → ` +
       `${p.ms_life_weeks}w of cutting · cutting to harvest ${p.cutting_to_harvest_weeks}w`;
+    // The constants the cycle runs on, as figures rather than as a sentence above
+    // the card. These are what the schedule below is built from -- change the
+    // build-up and the lead time moves, which moves everything after it -- so they
+    // belong on the card being changed, not in a caption.
+    const c0 = (r.cycles && r.cycles[0]) || {};
+    $("ls-proto-tiles").innerHTML = [
+      { k: "TC per order", v: num(r.tc_qty), m: "plantlets ordered " + esc(r.order_date) },
+      { k: "Build-up cycles", v: r.build_up_cycles != null ? r.build_up_cycles : "—",
+        m: `×${r.multiplication_factor || 1} multiplication` },
+      { k: "Supplier lead", v: p.supplier_lead_weeks + "w", m: "order to delivery" },
+      { k: "Establishment", v: p.ms_establishment_weeks + "w",
+        m: `tray ${p.weeks_on_tray || 0} + pot ${p.weeks_on_pot || 0} + build-up ` +
+           `${(p.ramp || []).length || 0}` },
+      { k: "TC to first cut", v: (r.tc_to_first_cut_weeks || 0) + "w",
+        m: "arrival to the first cutting" },
+      { k: "MS life", v: p.ms_life_weeks + "w", m: "productive cutting period" },
+      { k: "Cut → harvest", v: p.cutting_to_harvest_weeks + "w",
+        m: "cutting stuck to first stem cut" },
+      { k: "First cut", v: esc(c0.first_cut_date || "—"),
+        m: c0.full_date ? "full rate " + esc(c0.full_date) : "no schedule yet" },
+      { k: "First harvest", v: esc(c0.first_harvest_date || "—"),
+        m: "first stems off this order" },
+      { k: "Generations", v: r.generations != null ? r.generations : "—",
+        m: `over ${r.horizon_weeks || 0} weeks` },
+    ].map(tile).join("");
+
     $("ls-tiles").innerHTML = [
       { k: "Peak MS pool", v: num(t.peak_ms_plants), m: t.peak_ms_week || "—" },
       { k: "Peak bench", v: t.peak_bench_sqm + " m²", m: num(t.peak_pots) + " pots",
