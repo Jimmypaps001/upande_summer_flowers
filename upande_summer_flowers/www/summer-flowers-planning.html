@@ -2366,40 +2366,20 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
     : S.season ? `${seasonLabel(S.season)} (Jul ${S.season} – Jun ${+S.season + 1})`
     : S.week ? `week ${S.week} of every season` : "";
 
+  // Weeks only. The financial year is the plan's own and is built with the plan
+  // list, in fillPlanPickers -- rebuilding it here from the open plan's weeks was
+  // what limited it to that one year.
   function buildPeriodPickers() {
     const weeks = (S.dv && S.dv.weeks) || [];
-    const ys = $("f-season"), ws = $("f-week");
-    const seasons = [...new Set(weeks.map((r) => seasonOf(r.year, r.week_no)))].sort();
-    const keepY = S.season, keepW = S.week;
-    ys.innerHTML = "";
-    ys.add(new Option("All financial years", ""));
-    seasons.forEach((y) => ys.add(new Option(seasonLabel(y), y)));
-    S.season = seasons.some((y) => String(y) === String(keepY)) ? keepY : "";
-    ys.value = S.season;
-    // A picker with one year in it filters nothing, which is indistinguishable
-    // from a filter that does not work -- and that is how it was reported. A plan
-    // covers one financial year, so this is the normal case: say so and disable it
-    // rather than offering a choice that cannot change anything.
-    ys.disabled = seasons.length < 2;
-    ys.title = seasons.length < 2
-      ? (seasons.length
-          ? `This plan covers one financial year, ${seasonLabel(seasons[0])}. ` +
-            `There is nothing to filter to.`
-          : "No dated weeks to filter.")
-      : "";
-
-    // Weeks offered are the ones the selected season actually has, so a season with
-    // a 53rd ISO week shows it and one without does not offer a week with no data.
-    const pool = weeks.filter((r) => !S.season
-      || String(seasonOf(r.year, r.week_no)) === String(S.season));
-    const wks = [...new Set(pool.map((r) => r.week_no))].sort((a, b) => a - b);
+    const ws = $("f-week");
+    const keepW = S.week;
+    const wks = [...new Set(weeks.map((r) => r.week_no))].sort((a, b) => a - b);
     ws.innerHTML = "";
     ws.add(new Option("All weeks", ""));
     wks.forEach((w) => ws.add(new Option("W" + String(w).padStart(2, "0"), w)));
     S.week = wks.some((w) => String(w) === String(keepW)) ? keepW : "";
     ws.value = S.week;
   }
-
   function renderAllPanes() {
     renderOverview(); renderDemand(); renderPlanting();
     renderBlocks(); renderCalendar(); renderScopeLine();
@@ -4869,21 +4849,49 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
     function loadPlans() {
       return call("plans", { variety: S.variety, farm: S.farm }).then((r) => {
         S.plans = r;
-        const sel = $("f-plan");
-        sel.innerHTML = "";
-        (r.plans || []).forEach((p) => {
-          const o = new Option(p.label, p.name);
-          if (p.is_authoritative) o.textContent = "★ " + o.textContent;
-          sel.add(o);
-        });
-        if (!r.plans || !r.plans.length) { sel.add(new Option("No plan", "")); S.plan = ""; }
-        else {
-          S.plan = (S.plan && r.plans.some((p) => p.name === S.plan)) ? S.plan
-                   : (r.default || r.plans[0].name);
-          sel.value = S.plan;
-        }
+        fillPlanPickers();
         return S.plan;
       });
+    }
+
+    // The financial year picks the plan, because a plan IS a financial year. It was
+    // built from the weeks of the plan already open, so it offered that plan's one
+    // year and selecting it could not change anything -- which is how it came to be
+    // reported as not working, twice. Built from the years there are plans for, it
+    // narrows the plan list, and choosing a year moves to that year's plan.
+    function fillPlanPickers() {
+      const all = (S.plans && S.plans.plans) || [];
+      const years = [...new Set(all.map((p) => p.season_start_year).filter(Boolean))]
+        .sort((a, b) => a - b);
+      const ys = $("f-season");
+      const keep = S.season;
+      ys.innerHTML = "";
+      ys.add(new Option("All financial years", ""));
+      years.forEach((y) => ys.add(new Option(seasonLabel(y), y)));
+      S.season = years.some((y) => String(y) === String(keep)) ? keep : "";
+      ys.value = S.season;
+      ys.disabled = years.length < 2;
+      ys.title = years.length < 2
+        ? (years.length ? `Only ${seasonLabel(years[0])} has a plan.` : "No plans yet.")
+        : "";
+
+      const shown = S.season
+        ? all.filter((p) => String(p.season_start_year) === String(S.season))
+        : all;
+      const sel = $("f-plan");
+      sel.innerHTML = "";
+      shown.forEach((p) => {
+        const o = new Option(p.label, p.name);
+        if (p.is_authoritative) o.textContent = "★ " + o.textContent;
+        sel.add(o);
+      });
+      if (!shown.length) { sel.add(new Option("No plan", "")); S.plan = ""; }
+      else {
+        S.plan = (S.plan && shown.some((p) => p.name === S.plan)) ? S.plan
+                 : ((S.plans.default && shown.some((p) => p.name === S.plans.default))
+                     ? S.plans.default : shown[0].name);
+        sel.value = S.plan;
+      }
     }
 
     $("f-plan").addEventListener("change", (e) => {
@@ -4923,9 +4931,13 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
 
       $("f-season").addEventListener("change", (e) => {
         S.season = e.target.value;
-        // Rebuild the week list for the season just chosen.
-        buildPeriodPickers();
-        renderAllPanes();
+        // Narrow the plan list to that year and load whichever plan it lands on.
+        const was = S.plan;
+        fillPlanPickers();
+        if (S.plan === was) { buildPeriodPickers(); renderAllPanes(); return; }
+        $("pl-loading").hidden = false; $("pl-loading").textContent = "Loading plan…";
+        loadScope().then(() => { $("pl-loading").hidden = true; })
+          .catch((e2) => { $("pl-loading").hidden = true; toast(esc(e2.message), true); });
       });
       $("f-week").addEventListener("change", (e) => {
         S.week = e.target.value; renderAllPanes();
