@@ -446,14 +446,6 @@
         </div>
       </div>
 
-      <div class="pl-card">
-        <div class="pl-card-head">
-          <div><h2>{{ _("Flush harvest schedule") }}</h2>
-               <p class="pl-note">{{ _("Editing stems per plant or weeks from pinch changes every downstream figure.") }}</p></div>
-        </div>
-        <div id="pr-flushes" class="pl-scroll"></div>
-      </div>
-
       <div class="pl-three">
         <div class="pl-card">
           <div class="pl-card-head"><h2>{{ _("TC establishment") }}</h2></div>
@@ -473,6 +465,17 @@
           <h3>{{ _("Losses") }}</h3>
           <div id="pr-losses"></div>
         </div>
+      </div>
+
+      <!-- Under the establishment block, because the flushes are what the whole
+           establishment is for: the schedule below is when the plants it produces
+           actually yield. -->
+      <div class="pl-card">
+        <div class="pl-card-head">
+          <div><h2>{{ _("Flush harvest schedule") }}</h2>
+               <p class="pl-note">{{ _("Editing stems per plant or weeks from pinch changes every downstream figure.") }}</p></div>
+        </div>
+        <div id="pr-flushes" class="pl-scroll"></div>
       </div>
 
       <div class="pl-card">
@@ -1401,12 +1404,6 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
     let rows = w;
     if (S.dmFilter === "short") rows = def;
     if (S.dmFilter === "over") rows = sur;
-    // The cumulative column is a running total of the whole plan, so it is
-    // computed off the unfiltered weeks -- otherwise a filtered view would
-    // restart it at zero and read as though nothing came before.
-    const cumAt = {};
-    let acc = 0;
-    (S.dv.weeks || []).forEach((r) => { acc += r.variance; cumAt[r.label] = acc; });
     // rows is already inside the period: scoped() narrowed it.
     const shown = rows;
     if (periodOn()) {
@@ -1419,20 +1416,17 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
       $("dm-note").hidden = true;
     }
     rows = shown;
-    let cum = 0;
     $("dm-table").innerHTML = rows.length
+      // Demand only. This is the register of what the market asked for; production
+        // against it is the production plan's question and is answered there, on the
+        // plan that produces it. Cumulative went with them -- it was the running
+        // total of the variance, so on its own it totalled nothing.
       ? '<table class="pl-t"><thead><tr><th>Week</th><th>Starts</th><th class="n">Demand</th>' +
-        '<th class="n">Production</th><th class="n">Variance</th><th class="n">Cumulative</th>' +
         '<th class="n">Area ha</th></tr></thead><tbody>' +
-        rows.map((r) => {
-          cum = cumAt[r.label];
-          const c = r.variance < 0 ? "var(--critical)" : r.variance > 0 ? "var(--good)" : "";
-          return `<tr class="${r.production ? "" : "zero"}"><td>${esc(r.label)}</td>` +
-            `<td>${fdate(r.date)}</td><td class="n">${num(r.demand)}</td>` +
-            `<td class="n">${num(r.production)}</td>` +
-            `<td class="n"${c ? ` style="color:${c}"` : ""}>${sgn(r.variance)}</td>` +
-            `<td class="n">${sgn(cum)}</td><td class="n">${r.area_ha.toFixed(3)}</td></tr>`;
-        }).join("") + "</tbody></table>"
+        rows.map((r) =>
+          `<tr><td>${esc(r.label)}</td>` +
+          `<td>${fdate(r.date)}</td><td class="n">${num(r.demand)}</td>` +
+          `<td class="n">${r.area_ha.toFixed(3)}</td></tr>`).join("") + "</tbody></table>"
       : '<p class="pl-empty">No weeks match this filter.</p>';
   }
 
@@ -4062,12 +4056,10 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
         { field: "weeks_to_pinch", value: F.weeks_to_pinch }) +
       prow("Flush interval", F.flush_interval_weeks + " weeks", "between flushes",
         { field: "flush_interval_weeks", value: F.flush_interval_weeks }) +
-      prow("F1 from planting", d.flushes.length ? d.flushes[0].weeks_from_planting + " weeks" : "—",
-        `pinch(${F.weeks_to_pinch}) + F1(${F.flush_interval_weeks})`) +
       prow("Planting to first harvest", D.first_harvest_offset_weeks + " weeks",
         `pinch(${F.weeks_to_pinch}) + first flush`, null,
         "first_harvest_offset_weeks") +
-      prow("Total flushes", D.total_flushes + " flushes", "from the schedule below") +
+      prow("Total flushes", D.total_flushes + " flushes", "from the flush schedule") +
       prow("Total weeks in ground", D.total_weeks_in_ground + " weeks",
         D.life_expectancy_years.toFixed(2) + " yrs");
 
