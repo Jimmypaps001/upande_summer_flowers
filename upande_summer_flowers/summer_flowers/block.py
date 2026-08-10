@@ -137,7 +137,13 @@ def bed_rows(block, greenhouse=None):
 	reports no measured area, and the note says to link them.
 	"""
 	fields = ["name", "bed", "bed_length", "bed_width", "bed_area", "variety",
-	          "custom_plants", "custom_bed_status", "custom_active", "greenhouse"]
+	          "custom_plants", "custom_bed_status", "greenhouse"]
+	# custom_active belongs to Bed, which this app does not own, and an older
+	# propagation app has not got it. Asked for only where it exists: a column that
+	# is not there takes down the SELECT, and this runs on every Block save, so one
+	# absent field on another app's doctype made blocks impossible to create at all.
+	if frappe.get_meta("Bed").has_field("custom_active"):
+		fields.append("custom_active")
 	return frappe.get_all("Bed", filters={"custom_block": block},
 	                      fields=fields, order_by="bed asc")
 
@@ -176,12 +182,16 @@ def measure_beds(doc):
 		if ok:
 			credible += 1
 			ok_count += sqm
-		if r.get("custom_active"):
+		# Where the field is absent a bed counts as in service: it is what the field
+		# defaults to where it exists, and reading "not in service" off a column that
+		# was never there would report every bed on the farm as out of use.
+		active = r.get("custom_active", 1) if "custom_active" in r else 1
+		if active:
 			in_service += 1
 		doc.append("custom_beds", {
 			"bed": r.name,
 			"bed_no": r.get("bed"),
-			"in_service": 1 if r.get("custom_active") else 0,
+			"in_service": 1 if active else 0,
 			"bed_status": r.get("custom_bed_status"),
 			"bed_length": r.get("bed_length"),
 			"bed_width": r.get("bed_width"),
