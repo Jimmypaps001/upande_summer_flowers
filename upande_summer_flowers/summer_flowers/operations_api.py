@@ -568,14 +568,21 @@ def chain_status(variety=None, farm=None, demand=None, plan=None, season=None):
 		        "peak_concurrent_beds", "peak_beds_week", "plantings_not_placed",
 		        "unmet_stems", "blocks_used"],
 		order_by="creation desc")
+	# The financial year has to reach the plan, not just the register. It was
+	# applied above and nowhere else, so every year answered with the newest plan:
+	# 2026-27, 2027-28 and 2028-29 all showed the 2028-29 plan, and the propagation
+	# plan and budget that hang off it. A year with no plan now says so rather than
+	# borrowing another year's -- which is worse than showing nothing, because the
+	# figures look like an answer to the question that was asked.
+	scoped = ([p for p in plans if cint(p.get("season_start_year")) == cint(season)]
+	          if season else plans)
 	# Describe the plan the dashboard is showing. Falling back to the newest is
 	# what made the chain card name a draft while every tile beside it described
 	# the approved plan the scope bar had selected.
 	wanted = plan
-	plan = next((p for p in plans if p["name"] == wanted), None) \
-		if wanted else (plans[0] if plans else None)
-	if plan is None and plans:
-		plan = plans[0]
+	plan = next((p for p in plans if p["name"] == wanted), None) if wanted else None
+	if plan is None:
+		plan = scoped[0] if scoped else None
 
 	prop = None
 	if plan:
