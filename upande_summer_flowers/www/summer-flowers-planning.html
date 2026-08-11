@@ -90,14 +90,19 @@
             <button type="button" class="pl-btn primary" data-dm="plan">{{ _("Create the plan and its sourcing") }}</button>
           </span>
         </div>
+        <!-- The controls read before the thing they control. The financial year is
+             not repeated here: it is on the scope bar at the top of the page and
+             this tab now answers to it. -->
+        <div class="pl-subfilters">
+          <div class="pl-toggle" role="group" aria-label="{{ _('Grain') }}">
+            <button type="button" data-dmg="week">{{ _("Weekly") }}</button>
+            <button type="button" data-dmg="month" class="is-on">{{ _("Monthly") }}</button>
+            <button type="button" data-dmg="year">{{ _("Yearly") }}</button>
+          </div>
+          <p class="pl-note" id="dm-chart-sub"></p>
+        </div>
         <div class="pl-tiles pl-tiles-sm" id="dm-tiles"></div>
         <p class="pl-callout" id="dm-note" hidden></p>
-        <div class="pl-card-head">
-          <div><h3>{{ _("Demand by week") }}</h3>
-               <p class="pl-note" id="dm-chart-sub"></p></div>
-          <label class="pl-inline">{{ _("Financial year") }}
-            <select id="dm-year"></select></label>
-        </div>
         <div class="pl-chart-wrap"><div id="dm-chart" class="pl-chart"></div></div>
         <div id="dm-table" class="pl-scroll pl-tall"></div>
       </div>
@@ -639,6 +644,8 @@
 .pl-card h3{font-size:.84rem;margin:16px 0 6px;font-weight:600;color:var(--text-secondary)}
 .pl-note{font-size:.76rem;color:var(--text-secondary);margin:6px 0 0}
 
+.pl-subfilters{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin:2px 0 10px}
+.pl-subfilters .pl-note{margin:0}
 .pl-toggle{display:inline-flex;border:1px solid var(--border);border-radius:6px;
   overflow:hidden;flex:none}
 .pl-toggle button{border:0;background:var(--surface-1);padding:5px 11px;font-size:.77rem;
@@ -1106,7 +1113,7 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
 
   const S = { variety: "", farm: "", version: null, grain: "month",
               dv: null, deriv: null, pp: null, bf: null, cal: null, ls: null, pr: null,
-              ppBasis: "plant", dmYear: "", ppCalYear: "", bfBlock: "", calYear: null,
+              ppBasis: "plant", dmGrain: "month", ppCalYear: "", bfBlock: "", calYear: null,
               bfOpen: new Set(), cyc: null, cycle: null, det: null, rv: null,
               plan: "", plans: null, bg: null, chain: null, pg: null,
               year: "", week: "" };
@@ -1313,27 +1320,16 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
         m: `of ${num(w.length)} in the horizon` },
     ].map(tile).join("");
 
-    // The financial year runs July to June, so a demand register spans several and
-    // a chart of all of them at once is a wall. The picker is filled from the
-    // seasons the register actually covers, not from a range of years someone
-    // guessed, and it filters the chart and the table together -- a chart showing
-    // one year above a table showing four is the tab contradicting itself.
+    // The financial year runs July to June, so a register spans several. It is
+    // picked on the scope bar at the top of the page rather than here -- one
+    // control, so the chart and the table cannot disagree about which year they
+    // are showing, and so the tab agrees with every other tab.
     const seasons = [...new Set(w.map((r) => seasonOf(r.year, r.week_no)))].sort();
-    const sel = $("dm-year");
-    if (sel && sel.dataset.filled !== seasons.join(",")) {
-      sel.innerHTML = '<option value="">All years</option>' +
-        seasons.map((y) => `<option value="${y}">${esc(seasonLabel(y))}</option>`).join("");
-      sel.dataset.filled = seasons.join(",");
-      if (S.dmYear && seasons.map(String).includes(String(S.dmYear))) {
-        sel.value = S.dmYear;
-      } else {
-        S.dmYear = "";
-      }
-    }
-    let rows = S.dmYear
-      ? w.filter((r) => String(seasonOf(r.year, r.week_no)) === String(S.dmYear))
+    let rows = S.season
+      ? w.filter((r) => String(seasonOf(r.year, r.week_no)) === String(S.season))
       : w;
-    renderDemandChart(rows, seasons);
+    const grained = demandAtGrain(rows, S.dmGrain);
+    renderDemandChart(grained, seasons);
     // rows is already inside the period: scoped() narrowed it.
     const shown = rows;
     if (periodOn()) {
@@ -1351,12 +1347,35 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
         // against it is the production plan's question and is answered there, on the
         // plan that produces it. Cumulative went with them -- it was the running
         // total of the variance, so on its own it totalled nothing.
-      ? '<table class="pl-t"><thead><tr><th>Week</th><th>Starts</th>' +
-        '<th class="n">Demand</th></tr></thead><tbody>' +
-        rows.map((r) =>
-          `<tr><td>${esc(r.label)}</td>` +
-          `<td>${fdate(r.date)}</td>` +
-          `<td class="n">${num(r.demand)}</td></tr>`).join("") + "</tbody></table>"
+      ? (function () {
+          const g = demandAtGrain(rows, S.dmGrain);
+          const total = g.reduce((a, r) => a + r.demand, 0);
+          const per = g.length ? Math.round(total / g.length) : 0;
+          const head = S.dmGrain === "week" ? "Week"
+                     : S.dmGrain === "month" ? "Month" : "Financial year";
+          // Share of the total, so a row can be read against the whole horizon
+          // without doing the division; and for the coarser grains the weeks
+          // behind the figure, since a short month is not a small month.
+          return '<table class="pl-t"><thead><tr>' +
+            `<th>${head}</th>` +
+            (S.dmGrain === "week" ? "<th>Starts</th>" : '<th class="n">Weeks</th>') +
+            '<th class="n">Demand</th><th class="n">Per week</th>' +
+            '<th class="n">Share</th></tr></thead><tbody>' +
+            g.map((r) =>
+              `<tr><td>${esc(r.label)}</td>` +
+              (S.dmGrain === "week" ? `<td>${fdate(r.date)}</td>`
+                                    : `<td class="n">${num(r.weeks)}</td>`) +
+              `<td class="n">${num(r.demand)}</td>` +
+              `<td class="n">${num(Math.round(r.demand / (r.weeks || 1)))}</td>` +
+              `<td class="n">${total ? (r.demand / total * 100).toFixed(1) : "0.0"}%</td>` +
+              `</tr>`).join("") +
+            '</tbody><tfoot><tr><th>Total</th>' +
+            (S.dmGrain === "week" ? `<th class="n">${num(g.length)} wks</th>`
+                                  : `<th class="n">${num(g.reduce((a, r) => a + r.weeks, 0))}</th>`) +
+            `<th class="n">${num(total)}</th>` +
+            `<th class="n">${num(per)}</th>` +
+            '<th class="n">100.0%</th></tr></tfoot></table>';
+        })()
       : '<p class="pl-empty">No weeks match this filter.</p>';
   }
 
@@ -1426,6 +1445,42 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
     el.innerHTML = g + "</svg>";
   }
 
+  // Weeks rolled up to the grain being asked for. The register is kept in weeks
+  // and nothing else is stored, so a month is its weeks added together and a year
+  // is its financial year's weeks added together: the same figures read at a
+  // different distance, never a second set. A week belongs to the month its
+  // Monday falls in, which is how the plan's own monthly split is built.
+  function demandAtGrain(rows, grain) {
+    if (grain === "week" || !rows.length) {
+      return rows.map((r) => ({
+        key: `${r.year}-W${String(r.week_no).padStart(2, "0")}`,
+        label: r.label, date: r.date, demand: r.demand || 0, weeks: 1,
+        year: r.year, week_no: r.week_no,
+      }));
+    }
+    const bag = new Map();
+    rows.forEach((r) => {
+      let key, label;
+      if (grain === "year") {
+        const sy = seasonOf(r.year, r.week_no);
+        key = String(sy);
+        label = seasonLabel(sy);
+      } else {
+        const d = r.date ? new Date(r.date) : null;
+        const y = d ? d.getFullYear() : r.year;
+        const m = d ? d.getMonth() : 0;
+        key = `${y}-${String(m + 1).padStart(2, "0")}`;
+        label = MONTHS_SHORT[m] + " " + String(y).slice(2);
+      }
+      const cur = bag.get(key) || { key, label, date: r.date, demand: 0, weeks: 0,
+                                    year: r.year, week_no: r.week_no };
+      cur.demand += r.demand || 0;
+      cur.weeks += 1;
+      bag.set(key, cur);
+    });
+    return [...bag.values()].sort((a, b) => (a.key < b.key ? -1 : 1));
+  }
+
   // Weekly demand as a line. One series, because the register is one fact: what the
   // market asked for. The year boundaries are drawn in, since a register spanning
   // four financial years otherwise reads as one long unbroken season.
@@ -1433,17 +1488,25 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
     const el = $("dm-chart");
     if (!el) return;
     if (!rows || rows.length < 2) {
-      el.innerHTML = '<p class="pl-empty">Not enough weeks to plot.</p>';
-      $("dm-chart-sub").textContent = "";
+      // One point is not a line. Say which grain made it one, and still give the
+      // figure -- a blank caption beside "not enough to plot" reads as no data,
+      // when in fact the year total is right there.
+      const one = rows && rows.length === 1 ? rows[0] : null;
+      el.innerHTML = '<p class="pl-empty">' +
+        (one ? `A single ${S.dmGrain === "year" ? "financial year" : S.dmGrain} ` +
+               `is one point, not a line. Switch grain to see it plotted.`
+             : "Nothing to plot.") + "</p>";
+      $("dm-chart-sub").textContent = one
+        ? `${esc(one.label)} · ${num(one.demand)} stems across ${num(one.weeks)} weeks`
+        : "";
       return;
     }
     const peak = rows.reduce((a, r) => (r.demand > a.demand ? r : a), rows[0]);
     const total = rows.reduce((a, r) => a + (r.demand || 0), 0);
     $("dm-chart-sub").textContent =
-      `${rows.length} weeks${S.dmYear ? " of " + seasonLabel(S.dmYear)
+      `${rows.length} ${S.dmGrain === "week" ? "weeks" : S.dmGrain === "month" ? "months" : "financial years"}${S.season ? " of " + seasonLabel(S.season)
         : (seasons.length > 1 ? ` across ${seasons.length} financial years` : "")}` +
-      ` · ${num(total)} stems · peak ${num(peak.demand)} in ` +
-      `${peak.year}-W${String(peak.week_no).padStart(2, "0")}`;
+      ` · ${num(total)} stems · peak ${num(peak.demand)} in ${esc(peak.label)}`;
 
     const avail = (el.clientWidth || el.parentElement?.clientWidth || 0) - 2;
     const W = Math.max(avail, 660, rows.length * 6);
@@ -1486,7 +1549,7 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
       if (i % every && i !== rows.length - 1) return;
       g += `<text x="${x(i).toFixed(1)}" y="${H - B + 16}" text-anchor="middle" ` +
         `class="pl-axis" font-size="10" fill="var(--text-muted)">` +
-        `${r.year}-W${String(r.week_no).padStart(2, "0")}</text>`;
+        `${esc(r.label)}</text>`;
     });
     g += "</svg>";
     el.innerHTML = g;
@@ -2301,6 +2364,9 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
     return d;
   }
   // The season a week falls in, named by the year it starts: July starts the season.
+  const MONTHS_SHORT = ["Jan", "Feb", "Mar", "Apr", "May", "Jun",
+                        "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
   function seasonOf(year, week) {
     const d = isoMonday(year, week);
     return d.getUTCMonth() + 1 >= 7 ? d.getUTCFullYear() : d.getUTCFullYear() - 1;
@@ -4733,7 +4799,7 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
   // financial year, the calendar its year, the motherstock its protocol version.
   const TAB_FILTERS = {
     overview:    ["variety", "farm", "plan", "season", "week"],
-    demand:      ["variety", "farm"],
+    demand:      ["variety", "farm", "season"],
     plan:        ["variety", "farm", "plan", "season", "week"],
     motherstock: ["variety", "farm", "plan"],
     propagation: ["variety", "farm", "plan"],
@@ -5226,9 +5292,16 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
         S.ppCalYear = e.target.value;
         renderPlanting();
       });
-      $("dm-year").addEventListener("change", (e) => {
-        S.dmYear = e.target.value;
-        renderDemand();
+      // Weekly, monthly or yearly. The register is kept in weeks; the coarser
+      // grains are those weeks summed, so every view is the same numbers read at
+      // a different distance rather than three separate figures.
+      document.querySelectorAll("[data-dmg]").forEach((b) => {
+        b.addEventListener("click", () => {
+          S.dmGrain = b.dataset.dmg;
+          document.querySelectorAll("[data-dmg]").forEach((o) =>
+            o.classList.toggle("is-on", o === b));
+          renderDemand();
+        });
       });
       $("ls-table").addEventListener("click", (e) => {
         const cell = e.target.closest(".ls-edit");
