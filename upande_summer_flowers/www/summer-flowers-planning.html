@@ -5101,18 +5101,27 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
     // narrows the plan list, and choosing a year moves to that year's plan.
     function fillPlanPickers() {
       const all = (S.plans && S.plans.plans) || [];
-      const years = [...new Set(all.map((p) => p.season_start_year).filter(Boolean))]
-        .sort((a, b) => a - b);
+      const planYears = [...new Set(all.map((p) => p.season_start_year).filter(Boolean))]
+        .map(Number);
+      // Every year the page can be scoped to, not only the ones already planned.
+      // A register covering four years with one of them planned gave this control
+      // a single option, and a single option disables it -- which is how it kept
+      // being reported as not working. A year with no plan is still worth picking:
+      // the demand is there to be seen, and the plan panes say there is none.
+      const demandYears = ((S.plans && S.plans.demand_seasons) || []).map(Number);
+      const years = [...new Set([...planYears, ...demandYears])].sort((a, b) => a - b);
       const ys = $("f-season");
       const keep = S.season;
       ys.innerHTML = "";
       ys.add(new Option("All financial years", ""));
-      years.forEach((y) => ys.add(new Option(seasonLabel(y), y)));
+      years.forEach((y) => ys.add(new Option(
+        seasonLabel(y) + (planYears.includes(y) ? "" : " · no plan"), y)));
       S.season = years.some((y) => String(y) === String(keep)) ? keep : "";
       ys.value = S.season;
       ys.disabled = years.length < 2;
       ys.title = years.length < 2
-        ? (years.length ? `Only ${seasonLabel(years[0])} has a plan.` : "No plans yet.")
+        ? (years.length ? `Only ${seasonLabel(years[0])} has any demand or plan.`
+                        : "No demand or plans yet.")
         : "";
 
       const shown = S.season

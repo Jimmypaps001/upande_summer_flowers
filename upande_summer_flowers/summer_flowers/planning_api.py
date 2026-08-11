@@ -88,9 +88,32 @@ def plans(variety=None, farm=None):
 			" + budget" if r.budget else "", flt(r.coverage_pct))
 		r["is_authoritative"] = r.docstatus == 1
 	drafts = [r for r in rows if r.docstatus == 0]
+
+	# The financial years the demand register covers, which are not the same as the
+	# years there are plans for. A register carrying three years with one of them
+	# planned left the year picker holding a single option, and a picker with one
+	# option is disabled -- which is what "the financial year is not working" has
+	# meant every time it has been reported. The register is per variety and carries
+	# no farm, so the farm is deliberately not applied here.
+	reg = frappe.get_all("Summer Flower Market Demand",
+	                     filters={"variety": variety} if variety else {}, pluck="name")
+	seasons = set()
+	if reg:
+		for w in frappe.get_all(
+			"Summer Flower Demand Week",
+			filters={"parent": ["in", reg],
+			         "parenttype": "Summer Flower Market Demand"},
+			fields=["year", "week_no"],
+		):
+			y, wk = cint(w.year), cint(w.week_no)
+			if y and wk:
+				# July to June: W27 on belongs to the year it starts in.
+				seasons.add(y if wk >= 27 else y - 1)
+
 	return {
 		"plans": rows,
 		"default": resolve_plan(variety, farm),
+		"demand_seasons": sorted(seasons),
 		"draft_count": len(drafts),
 		"approved_count": len(rows) - len(drafts),
 	}
