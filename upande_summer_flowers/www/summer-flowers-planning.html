@@ -114,22 +114,29 @@
         <div class="pl-card-head">
           <div><h2>{{ _("Planting plan") }}</h2>
                <p class="pl-note" id="pp-sub"></p></div>
-          <div class="pl-toggle" role="group">
+        </div>
+        <!-- Both controls at the top, above everything they act on. The calendar
+             year is its own filter and is named as one: a planting is 111 weeks in
+             the ground, so the calendar spans three financial years while the scope
+             bar offers only the one the plan covers. Filtering it by the scope bar
+             could never narrow anything. -->
+        <div class="pl-subfilters">
+          <div class="pl-toggle" role="group" aria-label="{{ _('Order by') }}">
             <button type="button" id="pp-by-plant" class="is-on">{{ _("By planting week") }}</button>
             <button type="button" id="pp-by-uproot">{{ _("By uprooting week") }}</button>
           </div>
-        </div>
-        <div class="pl-tiles pl-tiles-sm" id="pp-tiles"></div>
-        <div class="pl-card-head">
-          <div><h3>{{ _("Month by month") }}</h3></div>
-          <label class="pl-inline">{{ _("Financial year") }}
+          <label class="pl-inline">{{ _("Calendar year") }}
             <select id="pp-cal-year"></select></label>
         </div>
-        <div class="pl-legend" id="pp-cal-legend"></div>
-        <div id="pp-calendar"></div>
+        <div class="pl-tiles pl-tiles-sm" id="pp-tiles"></div>
         <h3>{{ _("Every planting, first to last") }}</h3>
         <div class="pl-row" id="pp-assign" style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:8px"></div>
         <div id="pp-table" class="pl-scroll pl-tall"></div>
+        <div class="pl-card-head">
+          <div><h3>{{ _("Month by month") }}</h3></div>
+        </div>
+        <div class="pl-legend" id="pp-cal-legend"></div>
+        <div id="pp-calendar"></div>
       </div>
     </section>
 
@@ -644,6 +651,7 @@
 .pl-card h3{font-size:.84rem;margin:16px 0 6px;font-weight:600;color:var(--text-secondary)}
 .pl-note{font-size:.76rem;color:var(--text-secondary);margin:6px 0 0}
 
+.pl-t tr.pl-tot th{border-top:2px solid var(--border);background:var(--surface-2)}
 .pl-subfilters{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin:2px 0 10px}
 .pl-subfilters .pl-note{margin:0}
 .pl-toggle{display:inline-flex;border:1px solid var(--border);border-radius:6px;
@@ -1837,6 +1845,7 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
         `Suggest and assign all</button>`
       : `<span class="pl-note" style="margin:0">Every planting has a block.</span>` +
         `<button type="button" class="pl-btn" data-bk-clear="1">Clear all blocks</button>`;
+    const wig = Number((S.pp && S.pp.totals && S.pp.totals.weeks_in_ground)) || 1;
     const shown = rows.slice(0, 400);
     // Numbered in the order shown, so "planting 1 to planting 38" means the
     // sequence on screen rather than a row id that moves when the sort changes.
@@ -1844,7 +1853,8 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
       '<table class="pl-t"><thead><tr><th>#</th><th>Planting week</th>' +
       '<th>Uprooting week</th><th class="n">Plants</th>' +
       '<th class="n">Area m²</th><th class="n">Area ha</th>' +
-      '<th class="n">Stems over its life</th><th>Flags</th>' +
+      '<th class="n">Stems over its life</th><th class="n">Stems / week</th>' +
+      '<th class="n">Stems / plant</th><th>Flags</th>' +
       '</tr></thead><tbody>' +
       shown.map((r, i) => {
         const f = [];
@@ -1863,8 +1873,28 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
           `<td class="n">${num(Math.round(ha * 10000))}</td>` +
           `<td class="n">${ha.toFixed(4)}</td>` +
           `<td class="n">${num(r.lifetime_stems)}</td>` +
+          // Over the weeks it is actually in the ground, not over the plan's
+          // weeks: a planting that goes in late still produces at its own rate.
+          `<td class="n">${num(Math.round((r.lifetime_stems || 0) / wig))}</td>` +
+          `<td class="n">${r.plants ? ((r.lifetime_stems || 0) / r.plants).toFixed(1) : "—"}</td>` +
           `<td>${f.join(" ")}</td></tr>`;
-      }).join("") + "</tbody></table>" +
+      }).join("") +
+      // The total is of every planting, not only the 400 drawn, so the figure at
+      // the bottom answers for the plan rather than for the page.
+      (function () {
+        const tp = rows.reduce((a, r) => a + (Number(r.plants) || 0), 0);
+        const ts = rows.reduce((a, r) => a + (Number(r.lifetime_stems) || 0), 0);
+        const th = rows.reduce((a, r) => a + (Number(r.net_area_ha) || 0), 0);
+        return '<tr class="pl-tot"><th colspan="3">' +
+          `${num(rows.length)} plantings</th>` +
+          `<th class="n">${num(tp)}</th>` +
+          `<th class="n">${num(Math.round(th * 10000))}</th>` +
+          `<th class="n">${th.toFixed(4)}</th>` +
+          `<th class="n">${num(ts)}</th>` +
+          `<th class="n">${num(Math.round(ts / wig))}</th>` +
+          `<th class="n">${tp ? (ts / tp).toFixed(1) : "—"}</th><th></th></tr>`;
+      })() +
+      "</tbody></table>" +
       (rows.length > shown.length
         ? `<p class="pl-note">Showing ${shown.length} of ${rows.length}.</p>` : "");
   }
