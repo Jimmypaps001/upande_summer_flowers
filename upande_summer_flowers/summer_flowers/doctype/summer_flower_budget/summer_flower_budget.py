@@ -80,6 +80,18 @@ class SummerFlowerBudget(Document):
 		if not self.total_value:
 			frappe.throw(_("Budget has no value to post. Set Price per Stem."))
 
+		# Checked before anything is written, for the same reason the fiscal years
+		# are: a site that cannot budget against Farm has to budget against the cost
+		# centre, and finding that out half way through leaves Monthly Distributions
+		# behind with no Budget to hang them on.
+		if self._budget_dimension() == "Cost Center" and not self.cost_center:
+			frappe.throw(
+				_("This site's Budget cannot be budgeted against Farm, so it has to be "
+				  "budgeted against a Cost Center -- and this budget has none. Set the "
+				  "Cost Center, then post again."),
+				title=_("Cost Center required"),
+			)
+
 		# Check every fiscal year up front. Fiscal Years can be restricted to a
 		# subset of companies, and failing mid-loop would leave some years posted
 		# and the rest not.
@@ -117,20 +129,36 @@ class SummerFlowerBudget(Document):
 	def _distribution_id(self, fiscal_year):
 		return f"SF {self.variety} {self.farm} {fiscal_year}"[:140]
 
+	def _budget_dimension(self):
+		"""What this site's Budget can actually be budgeted against.
+
+		Budget belongs to ERPNext, and budgeting against Farm is a customisation:
+		it needs both a `farm` field and Farm among budget_against's options. A site
+		without them has only Cost Center and Project, so asking for Farm wrote an
+		invalid option and filtering by farm was a SELECT on a column that is not
+		there -- which is why posting to accounts did nothing at all on a site that
+		had never been customised that way.
+		"""
+		meta = frappe.get_meta("Budget")
+		field = meta.get_field("budget_against")
+		options = [o.strip() for o in (field.options or "").split("\n")] if field else []
+		if meta.has_field("farm") and "Farm" in options:
+			return "Farm"
+		return "Cost Center"
+
 	def _find_existing_budget(self, fiscal_year):
-		"""Budget already covering this company / farm / account / fiscal year."""
-		rows = frappe.get_all(
-			"Budget",
-			filters={
-				"company": self.company,
-				"farm": self.farm,
-				"account": self.budget_account,
-				"from_fiscal_year": fiscal_year,
-				"docstatus": ["<", 2],
-			},
-			pluck="name",
-			limit=1,
-		)
+		"""Budget already covering this company / dimension / account / fiscal year."""
+		filters = {
+			"company": self.company,
+			"account": self.budget_account,
+			"from_fiscal_year": fiscal_year,
+			"docstatus": ["<", 2],
+		}
+		if self._budget_dimension() == "Farm":
+			filters["farm"] = self.farm
+		elif self.cost_center:
+			filters["cost_center"] = self.cost_center
+		rows = frappe.get_all("Budget", filters=filters, pluck="name", limit=1)
 		return rows[0] if rows else None
 
 	@staticmethod
@@ -186,8 +214,9 @@ class SummerFlowerBudget(Document):
 		else:
 			doc = frappe.new_doc("Budget")
 
-		doc.budget_against = "Farm"
-		doc.farm = self.farm
+		doc.budget_against = self._budget_dimension()
+		if doc.budget_against == "Farm":
+			doc.farm = self.farm
 		doc.company = self.company
 		doc.account = self.budget_account
 		if self.cost_center:
