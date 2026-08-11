@@ -903,7 +903,8 @@ def plan_whatif(plan=None, variety=None, farm=None, tc_qty=None, week_overrides=
 	prop = frappe.get_all(
 		"Summer Flower Propagation Plan",
 		filters=_prop_filters(plan),
-		fields=["name", "tc_plants_required", "tc_order_date"],
+		fields=["name", "tc_plants_required", "tc_order_date",
+		        "mother_plants_required"],
 		order_by="creation desc", limit=1)
 	prop = prop[0] if prop else None
 
@@ -922,12 +923,33 @@ def plan_whatif(plan=None, variety=None, farm=None, tc_qty=None, week_overrides=
 	if not order_date:
 		return {"plan": plan, "error": "No sticking weeks to plan cuttings for."}
 
-	chosen = cint(tc_qty) or (cint(prop.tc_plants_required) if prop else 0)
-	if not chosen:
+	# What to buy for the cycles being ASKED for, which is the whole point of the
+	# lever: the pool is the same size either way, so twice the build-up rounds is
+	# half the plantlets. Sized off the pool the propagation plan worked out, by the
+	# same helper the motherstock batch uses, so the recommendation and the batch
+	# cannot disagree.
+	same_cycles = cycles == cint(v.max_multiplication_cycles)
+	if prop and cint(prop.mother_plants_required):
+		recommended = int(math.ceil(
+			v.tc_plants_for(cint(prop.mother_plants_required), cycles)))
+	elif prop and same_cycles:
+		recommended = cint(prop.tc_plants_required)
+	else:
 		peak = v.cuttings_for_plants(sizing_peak(p)[0])
 		per_week = flt(v.cuttings_per_plant_per_week) or 1.0
 		factor = v.multiplication_factor(cycles)
-		chosen = int(math.ceil(peak / per_week / factor)) if per_week and factor else 0
+		recommended = int(math.ceil(peak / per_week / factor)) if per_week and factor else 0
+
+	# A typed quantity wins. Otherwise take the plan's own figure only while the
+	# cycles are the plan's own -- reusing it under different cycles is what made
+	# the quantity sit still while the order date moved, so the order on screen
+	# raised a pool that no longer matched the one being asked for.
+	if cint(tc_qty):
+		chosen = cint(tc_qty)
+	elif prop and same_cycles and cint(prop.tc_plants_required):
+		chosen = cint(prop.tc_plants_required)
+	else:
+		chosen = recommended
 
 	built = _tc_production(p, v, chosen, order_date, to_prop_pct=flt(to_prop_pct),
 	                       week_overrides=week_overrides)
@@ -939,7 +961,9 @@ def plan_whatif(plan=None, variety=None, farm=None, tc_qty=None, week_overrides=
 		"order_date": str(order_date),
 		"tc_qty": chosen,
 		"cycles": cycles,
-		"recommended_tc": cint(prop.tc_plants_required) if prop else 0,
+		# For the cycles asked for, not for the plan's. What the plan is running on
+		# is in "current" below, which is what this used to duplicate.
+		"recommended_tc": cint(recommended),
 		"propagation_plan": prop.name if prop else None,
 		# What the plan is running on now, so the three levers can be shown as
 		# changed-from rather than as bare numbers.
