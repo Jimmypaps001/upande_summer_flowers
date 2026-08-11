@@ -1311,6 +1311,22 @@ def simulate_lifecycle(version, tc_qty, order_date, num_cycles=None, to_prop_pct
 	res["build_up_cycles"] = cint(p.get("build_up_cycles"))
 	res["multiplication_factor"] = flt(p.get("multiplication_factor"))
 	res["tc_to_first_cut_weeks"] = cint(p.get("tc_to_first_cut_weeks"))
+
+	# What the pool is being sized against. The simulator knows what the pool can
+	# cut; only the propagation plan knows what the plan needs cut in its busiest
+	# week, and the motherstock card has to show the two together or its capacity
+	# figure is a number with nothing to be judged against.
+	res["peak_cuttings_needed"] = 0
+	res["peak_cuttings_week"] = None
+	if plan:
+		pr = frappe.get_all(
+			"Summer Flower Propagation Plan", filters=_prop_filters(plan),
+			fields=["peak_weekly_cuttings", "peak_week", "mother_plants_required"],
+			order_by="creation desc", limit=1)
+		if pr:
+			res["peak_cuttings_needed"] = cint(pr[0].peak_weekly_cuttings)
+			res["peak_cuttings_week"] = pr[0].peak_week
+			res["mother_plants_required"] = cint(pr[0].mother_plants_required)
 	return res
 
 

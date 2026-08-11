@@ -510,6 +510,7 @@
           </span>
         </div>
         <div id="ls-confirm-note"></div>
+        <div class="pl-tiles pl-tiles-sm" id="ls-key"></div>
         <div id="ls-warn"></div>
         <h3>{{ _("Cycle milestones") }}</h3>
         <div id="ls-cycles-tbl" class="pl-scroll"></div>
@@ -1175,7 +1176,9 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
     `<div class="v"${x.c ? ` style="color:var(${x.c})"` : ""}>${whySpan(x.v, x.why)}</div>` +
     `<div class="m">${esc(x.m || "")}</div></div>`;
 
-  function drawGrouped(el, rows) {
+  function drawGrouped(el, rows, names) {
+    const NM = Object.assign({ a: "Production", b: "Demand", diff: "Variance" },
+                             names || {});
     if (!rows || !rows.length) { el.innerHTML = '<p class="pl-empty">Nothing to plot.</p>'; return; }
     const GAP = 2, bw = rows.length > 60 ? 4 : 11;
     const step = bw * 2 + GAP + (rows.length > 60 ? 3 : 14);
@@ -1201,8 +1204,8 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
     const every = rows.length > 60 ? 13 : rows.length > 18 ? 2 : 1;
     rows.forEach((r, i) => {
       const x = padL + i * step + 5;
-      const meta = `<b>${esc(r.label)}</b><br>Production ${num(r.production)}<br>` +
-        `Demand ${num(r.demand)}<br>Variance ${sgn(r.variance)}`;
+      const meta = `<b>${esc(r.label)}</b><br>${NM.a} ${num(r.production)}<br>` +
+        `${NM.b} ${num(r.demand)}<br>${NM.diff} ${sgn(r.variance)}`;
       s += bar(x, r.production, "var(--series-1)", meta);
       s += bar(x + bw + GAP, r.demand, "var(--series-2)", meta);
       if (i % every === 0) {
@@ -2260,39 +2263,24 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
     const cover = p.cuttings ? (p.existing / p.cuttings * 100) : 0;
     const whole = on ? " · whole plan" : "";
 
+    // Three figures, because three is what the tab is asked. Everything that used
+    // to be a tile up here -- the ramp, the cost, the cover percentage -- is
+    // either in the table below or in the warning, where it can be read against
+    // the week it belongs to instead of as a number with no week attached.
+    const wks = r.weeks || [];
+    const availTot = wks.reduce((a, x) => a + (x.capacity || 0), 0);
+    const reqTot = wks.reduce((a, x) => a + (x.cuttings_required || 0), 0);
     $("pg-tiles").innerHTML = [
-      { k: "Plants to stick", v: num(p.plants),
+      { k: "Total plants required", v: num(p.plants),
         m: on ? `over ${p.weeks} of ${t.weeks_sticking} weeks — ${esc(periodLabel())}`
-              : `over ${p.weeks} weeks` },
-      { k: "Cuttings needed", v: num(p.cuttings),
-        m: `${t.cuttings_per_plant.toFixed(3)} per plant after losses` },
+              : `${num(p.cuttings)} cuttings at ${t.cuttings_per_plant.toFixed(3)} per plant` },
+      { k: "Cuttings available", v: num(availTot),
+        m: reqTot ? `${(availTot / reqTot * 100).toFixed(1)}% of the ${num(reqTot)} needed`
+                  : "nothing needed",
+        c: availTot >= reqTot ? "--good" : "--critical" },
       { k: "Peak week", v: num(p.peak),
         m: `${p.peak_week || "—"} — ${on ? "busiest week shown"
-                                          : "this sizes the motherstock"}` },
-      { k: "From existing MS", v: num(p.existing),
-        m: `${cover.toFixed(1)}% cover`,
-        c: cover > 0 ? "--good" : "--serious" },
-      { k: "New mother plants", v: num(t.mother_plants),
-        m: `${t.bench_sqm} m² of bench${whole}` },
-      { k: "TC plantlets", v: num(t.tc_plants),
-        m: (t.tc_order_date ? "order by " + t.tc_order_date : "none needed") + whole },
-      { k: "Build-up to full capacity", v: `${t.ramp_weeks || 0} wk`,
-        m: t.full_capacity_date
-          ? `full rate from ${fdate(t.full_capacity_date)}` : "no new pool needed",
-        c: t.lost_to_ramp ? "--serious" : "" },
-      { k: "Short during build-up", v: num(t.lost_to_ramp),
-        m: t.lost_to_ramp
-          ? `cuttings over ${t.ramp_short_weeks} week` +
-            (t.ramp_short_weeks === 1 ? "" : "s") + whole
-          : "the climb is covered",
-        c: t.lost_to_ramp ? "--critical" : "--good" },
-      { k: "Uncovered", v: num(p.uncovered),
-        m: t.plants_short
-          ? `${num(t.plants_short)} plants short → ${num(t.stems_at_risk)} stems${whole}`
-          : "no source",
-        c: p.uncovered ? "--critical" : "--good" },
-      { k: "Cost", v: num(Math.round(t.total_cost)),
-        m: `${esc(r.currency || "")} · TC ${num(Math.round(t.tc_cost))}${whole}` },
+                                        : "this sizes the motherstock"}` },
     ].map(tile).join("");
 
     $("pg-warn").innerHTML = r.warning
@@ -2308,6 +2296,39 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
           `<div class="pg-v">${esc(v || "—")}</div></div>` +
           (i < a.length - 1 ? '<div class="pg-arrow">→</div>' : "")
         ).join("") + `</div>`;
+    }
+
+    // One visual and one table over the same weeks: what has to be stuck, what
+    // there is to stick, and the gap. Cuttings required is carried beside
+    // available because a difference with only one of its two sides on the page
+    // cannot be read.
+    if (wks.length) {
+      html += `<h3 class="pl-h3">Week by week</h3>` +
+        '<div class="pl-legend">' +
+        '<span class="pl-key"><i class="sw" style="background:var(--series-1)"></i>Cuttings available</span>' +
+        '<span class="pl-key"><i class="sw" style="background:var(--series-2)"></i>Cuttings required</span>' +
+        '</div><div class="pl-chart-wrap"><div id="pg-chart" class="pl-chart"></div></div>' +
+        '<table class="pl-t"><thead><tr><th>Sticking week</th><th>Delivery week</th>' +
+        '<th class="n">Plants required</th><th class="n">Cuttings required</th>' +
+        '<th class="n">Cuttings available</th><th class="n">Difference</th>' +
+        '</tr></thead><tbody>' +
+        wks.map((x) => {
+          const diff = (x.capacity || 0) - (x.cuttings_required || 0);
+          return `<tr><td>${esc(x.label)}` +
+            `${x.week_start_date ? ` <span class="bf-meta">${fdate(x.week_start_date)}</span>` : ""}</td>` +
+            `<td>${esc(x.plant_week || "—")}</td>` +
+            `<td class="n">${num(x.plants_to_stick)}</td>` +
+            `<td class="n">${num(x.cuttings_required)}</td>` +
+            `<td class="n">${num(x.capacity)}</td>` +
+            `<td class="n" style="color:var(${diff < 0 ? "--critical" : "--good"})">` +
+            `${sgn(diff)}</td></tr>`;
+        }).join("") +
+        `<tr class="pl-tot"><th>${num(wks.length)} weeks</th><th></th>` +
+        `<th class="n">${num(wks.reduce((a, x) => a + (x.plants_to_stick || 0), 0))}</th>` +
+        `<th class="n">${num(reqTot)}</th>` +
+        `<th class="n">${num(availTot)}</th>` +
+        `<th class="n">${sgn(availTot - reqTot)}</th></tr>` +
+        '</tbody></table>';
     }
 
     html += `<h3 class="pl-h3">Where the cuttings come from</h3>` +
@@ -2376,6 +2397,13 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
           "</tbody></table></div>"
         : '<p class="pl-empty">No sticking weeks in this period.</p>');
     $("pg-body").innerHTML = html;
+    if (wks.length && $("pg-chart")) {
+      drawGrouped($("pg-chart"), wks.map((x) => ({
+        label: x.label, production: x.capacity || 0,
+        demand: x.cuttings_required || 0,
+        variance: (x.capacity || 0) - (x.cuttings_required || 0),
+      })), { a: "Available", b: "Required", diff: "Difference" });
+    }
   }
 
   // Variety, farm and protocol are properties of the selected plan, not separate
@@ -3924,6 +3952,30 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
     $("ls-sub").textContent = `${num(r.tc_qty)} plantlets ordered ${r.order_date} · ` +
       `supplier lead ${p.supplier_lead_weeks}w → establishment ${p.ms_establishment_weeks}w → ` +
       `${p.ms_life_weeks}w of cutting · cutting to harvest ${p.cutting_to_harvest_weeks}w`;
+    // The five figures this card is about: what has to be cut at the peak, what
+    // one mother plant yields a week, how many mothers that needs, how many
+    // build-up rounds are being bought, and the plantlets that buys. Everything
+    // else the card used to state is in the table below it, against the week it
+    // belongs to.
+    const need = r.peak_cuttings_needed || 0;
+    const perPlant = Number(p.cuttings_per_plant_per_week) || 0;
+    const mothers = r.mother_plants_required || t.peak_ms_plants || 0;
+    $("ls-key").innerHTML = [
+      { k: "Peak cuttings needed", v: num(need),
+        m: need ? `in ${esc(r.peak_cuttings_week || "—")} — this sizes the pool`
+                : "no propagation plan to size against" },
+      { k: "Productivity per plant", v: perPlant ? perPlant.toFixed(2) : "—",
+        m: "cuttings a week from one mother" },
+      { k: "Mother plants required", v: num(mothers),
+        m: perPlant && need
+          ? `${num(Math.ceil(need / perPlant))} to cover the peak` : "from the plan",
+        c: t.peak_ms_plants && mothers > t.peak_ms_plants ? "--critical" : "" },
+      { k: "Multiplication cycles", v: r.build_up_cycles != null ? r.build_up_cycles : "—",
+        m: `×${r.multiplication_factor || 1} over ${p.ms_establishment_weeks || 0}w each` },
+      { k: "TC plants required", v: num(r.tc_qty),
+        m: "ordered " + fdate(r.order_date) },
+    ].map(tile).join("");
+
     if (r.build_up_capped) {
       $("ls-warn").innerHTML =
         `<div class="pl-callout"><b>${r.stages_ordered} build-up cycles will not all ` +
