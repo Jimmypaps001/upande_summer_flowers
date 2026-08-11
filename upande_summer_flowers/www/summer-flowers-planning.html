@@ -700,6 +700,7 @@ button.cal-k:not(.is-on) .sw{opacity:.25}
 
 .pl-chart-wrap{overflow-x:auto}
 .pl-chart svg{display:block}
+.pl-chart .pl-hit:hover{fill:var(--text-primary);fill-opacity:.045}
 .pl-chart .grid line{stroke:var(--gridline);stroke-width:1}
 .pl-chart .baseline{stroke:var(--baseline);stroke-width:1}
 .pl-chart text{fill:var(--text-muted);font-size:10px}
@@ -1189,6 +1190,106 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
     `<div class="v"${x.c ? ` style="color:var(${x.c})"` : ""}>${whySpan(x.v, x.why)}</div>` +
     `<div class="m">${esc(x.m || "")}</div></div>`;
 
+
+  // Demand against production as two shaded lines. Change over time reads as a
+  // line, not as 24 bars: with a monthly grain the bars were a picket fence and
+  // the shape of the season -- the climb into April, the dip after -- was work to
+  // see. The fill is 12% of the line colour, enough to give each series a body
+  // without either one hiding the other where they cross.
+  //
+  // Two series, so the legend above is load-bearing; the colours are the app's
+  // categorical pair, checked against both surfaces (light ΔE 33.6 normal / 24.7
+  // protan, dark 31.8 / 26.8) rather than assumed.
+  function drawAreaLines(el, rows, names) {
+    if (!el) return;
+    const NM = Object.assign({ a: "Production", b: "Demand", diff: "Variance" }, names || {});
+    if (!rows || rows.length < 2) {
+      el.innerHTML = '<p class="pl-empty">Not enough periods to plot.</p>';
+      return;
+    }
+    const avail = (el.clientWidth || el.parentElement?.clientWidth || 0) - 2;
+    const W = Math.max(avail, 660, rows.length * 26);
+    // R clears the last x label, which was being cut in half by the viewBox.
+    const H = 260, L = 66, R = 30, T = 14, B = 38;
+    const plotW = W - L - R, plotH = H - T - B;
+    const raw = Math.max(...rows.flatMap((r) => [r.production || 0, r.demand || 0]), 1);
+    const step = niceStep(raw / 4);
+    const top = Math.ceil(raw / step) * step;
+    // A single point would divide by zero; two or more spread across the plot.
+    const x = (i) => L + (rows.length === 1 ? plotW / 2 : (i / (rows.length - 1)) * plotW);
+    const y = (v) => T + plotH - (Math.max(0, v) / top) * plotH;
+
+    const path = (key) => rows.map((r, i) =>
+      `${i ? "L" : "M"}${x(i).toFixed(1)} ${y(r[key] || 0).toFixed(1)}`).join(" ");
+    const area = (key) =>
+      `${path(key)} L${x(rows.length - 1).toFixed(1)} ${(T + plotH).toFixed(1)} ` +
+      `L${x(0).toFixed(1)} ${(T + plotH).toFixed(1)} Z`;
+
+    // A flat wash under each line put two translucent fills on top of each other,
+    // and the overlap -- most of the plot -- came out a muddy grey that is neither
+    // series and reads as a third thing. Fading each to nothing well before the
+    // baseline keeps the shading to the line it belongs to, and keeps it light.
+    const gid = "ag" + Math.abs(rows.length * 7919 + Math.round(top)).toString(36);
+    let g = `<svg viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" role="img" ` +
+      `aria-label="${esc(NM.a)} against ${esc(NM.b)}"><defs>` +
+      [["a", "--series-1"]].map(([k, col]) =>
+        `<linearGradient id="${gid}${k}" x1="0" y1="0" x2="0" y2="1">` +
+        `<stop offset="0" stop-color="var(${col})" stop-opacity=".22"/>` +
+        `<stop offset="1" stop-color="var(${col})" stop-opacity="0"/></linearGradient>`
+      ).join("") + `</defs><g class="grid">`;
+    for (let v = 0; v <= top; v += step) {
+      g += `<line x1="${L}" x2="${W - R}" y1="${y(v)}" y2="${y(v)}"/>`;
+      g += `<text x="${L - 8}" y="${(y(v) + 3).toFixed(1)}" text-anchor="end">${num(v)}</text>`;
+    }
+    g += "</g>";
+
+    // Demand under production: the plan is the subject and sits on top where they
+    // overlap, which is most weeks.
+    // Only the plan is shaded. Two fills stacked -- even faded ones -- mix
+    // wherever they overlap, and the overlap is most of the plot: the result was a
+    // brown-grey band belonging to neither series. Production is what the page is
+    // about, so it carries the body; demand is the line it is read against.
+    g += `<path d="${area("production")}" fill="url(#${gid}a)"/>`;
+    g += `<path d="${path("demand")}" fill="none" stroke="var(--series-2)" stroke-width="2" ` +
+      `stroke-linejoin="round" stroke-linecap="round"/>`;
+    g += `<path d="${path("production")}" fill="none" stroke="var(--series-1)" stroke-width="2" ` +
+      `stroke-linejoin="round" stroke-linecap="round"/>`;
+
+    // Markers only when they can be told apart; below that the line is the mark.
+    if (rows.length <= 40) {
+      rows.forEach((r, i) => {
+        g += `<circle cx="${x(i).toFixed(1)}" cy="${y(r.demand || 0).toFixed(1)}" r="4" ` +
+          `fill="var(--series-2)" stroke="var(--surface-1)" stroke-width="2"/>`;
+        g += `<circle cx="${x(i).toFixed(1)}" cy="${y(r.production || 0).toFixed(1)}" r="4" ` +
+          `fill="var(--series-1)" stroke="var(--surface-1)" stroke-width="2"/>`;
+      });
+    }
+
+    const every = rows.length > 60 ? 13 : rows.length > 18 ? 2 : 1;
+    rows.forEach((r, i) => {
+      if (i % every) return;
+      const anchor = i === 0 ? "start" : i === rows.length - 1 ? "end" : "middle";
+      g += `<text x="${x(i).toFixed(1)}" y="${H - B + 16}" text-anchor="${anchor}" ` +
+        `class="pl-axis" font-size="10" fill="var(--text-muted)">${esc(r.label)}</text>`;
+    });
+    g += `<line class="baseline" x1="${L}" x2="${W - R}" y1="${T + plotH}" y2="${T + plotH}"/>`;
+
+    // A crosshair band per period rather than a hit target per point: on a line
+    // chart the reader aims at the week, not at the dot.
+    rows.forEach((r, i) => {
+      const half = rows.length > 1 ? plotW / (rows.length - 1) / 2 : plotW / 2;
+      const x0 = Math.max(L, x(i) - half), x1 = Math.min(W - R, x(i) + half);
+      const v = (r.production || 0) - (r.demand || 0);
+      g += `<rect class="pl-hit" x="${x0.toFixed(1)}" y="${T}" width="${(x1 - x0).toFixed(1)}" ` +
+        `height="${plotH}" fill="transparent" data-tip="${esc(
+          `<b>${r.label}</b><br>${NM.a} ${num(r.production || 0)}<br>` +
+          `${NM.b} ${num(r.demand || 0)}<br>${NM.diff} ${sgn(v)}`)}"/>`;
+    });
+    g += "</svg>";
+    el.innerHTML = g;
+    bindTips(el);
+  }
+
   function drawGrouped(el, rows, names) {
     const NM = Object.assign({ a: "Production", b: "Demand", diff: "Variance" },
                              names || {});
@@ -1341,7 +1442,7 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
     $("dv-sub").textContent = S.dv
       ? `${S.dv.plan} · ${S.dv.variety} at ${S.dv.farm} · ${S.dv.period} · ${S.dv.status}`
       : "No production plan.";
-    drawGrouped($("dv-chart"), S.dv ? (S.grain === "month" ? S.dv.months : S.dv.weeks) : []);
+    drawAreaLines($("dv-chart"), S.dv ? (S.grain === "month" ? S.dv.months : S.dv.weeks) : []);
     // Always weekly and always the scoped weeks: a running total only means anything
     // if it runs over the period the reader is looking at.
   }
@@ -5068,7 +5169,7 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
     applyTabFilters(name);
     // Charts sized while hidden come out wrong, so redraw on reveal.
     if (name === "overview" && S.dv) {
-      drawGrouped($("dv-chart"), S.grain === "month" ? S.dv.months : S.dv.weeks);
+      drawAreaLines($("dv-chart"), S.grain === "month" ? S.dv.months : S.dv.weeks);
     }
     // The demand chart measures its container, and a hidden container is 0 wide,
     // so it falls back to 660 when drawn with the tab closed. Redraw on reveal.
@@ -5409,7 +5510,7 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
       });
 
       toggleGroup([["g-month", "month"], ["g-week", "week"]], "grain", () =>
-        drawGrouped($("dv-chart"), S.grain === "month" ? S.dv.months : S.dv.weeks));
+        drawAreaLines($("dv-chart"), S.grain === "month" ? S.dv.months : S.dv.weeks));
       toggleGroup([["pp-by-plant", "plant"], ["pp-by-uproot", "uproot"]],
         "ppBasis", renderPlanting);
 

@@ -925,7 +925,16 @@ def process_overview(variety=None, farm=None, plan=None, season=None):
 		stage("inputs", "Input requests", state=_("none raised"),
 		      detail=_("Raised per block from the crop cycle"))
 
-	# The one thing worth acting on: the earliest stage that is stuck.
+	# The budget goes to the far end. It is posted off the plan and nothing in the
+	# chain waits on it -- propagation, the TC order and the field all run whether
+	# or not it has reached Accounts -- so sitting third it pushed the six stages
+	# that DO block each other further along, and read as a step the crop was
+	# waiting on. Moved rather than dropped: it is still part of the process, just
+	# not part of the queue.
+	stages.sort(key=lambda s: s["key"] == "budget")
+
+	# The one thing worth acting on: the earliest stage that is stuck. Read after
+	# the sort, so "first" means first in the order shown.
 	stuck = next((s for s in stages if s["blocked"]), None)
 	verdict = (_("{0} is what to deal with first. {1}").format(stuck["label"],
 	                                                           stuck["blocked"])
