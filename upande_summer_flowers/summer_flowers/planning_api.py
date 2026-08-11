@@ -231,6 +231,87 @@ def demand_vs_production(variety=None, farm=None, plan=None):
 
 
 @frappe.whitelist()
+def demand_vs_production_by_variety(farm=None, season=None):
+	"""Every variety's demand and production in one payload, and their sum.
+
+	The rest of the dashboard is built around one plan, because a plan IS one
+	variety at one farm for one year, and every plan-specific figure would be
+	meaningless averaged. The overview chart is the exception: "what is the farm
+	doing this year" is a fair question and it has more than one crop in it.
+
+	Built by summing demand_vs_production per plan rather than by querying the
+	weeks again. A second walk over the same child tables is a second answer
+	waiting to disagree with the first, which is how most of the bugs in this
+	module started.
+	"""
+	_guard()
+	f = {"docstatus": ["<", 2]}
+	if farm:
+		f["farm"] = farm
+	if season:
+		f["season_start_year"] = cint(season)
+	rows = frappe.get_all("Summer Flower Production Plan", filters=f,
+	                      fields=["name", "variety", "docstatus", "creation"],
+	                      order_by="creation desc")
+
+	# One plan per variety: the authoritative one where there is one, else the
+	# newest draft. Summing a variety's draft on top of its approved plan would
+	# count the same crop twice.
+	best = {}
+	for r in rows:
+		cur = best.get(r.variety)
+		if cur is None or (r.docstatus == 1 and cur.docstatus != 1):
+			best[r.variety] = r
+
+	series, weeks, months = [], {}, {}
+	for variety, r in sorted(best.items()):
+		d = demand_vs_production(plan=r.name)
+		if not d.get("plan"):
+			continue
+		t = d["totals"]
+		series.append({
+			"variety": variety, "plan": d["plan"], "farm": d["farm"],
+			"status": d["status"],
+			"demand_stems": cint(t["demand_stems"]),
+			"production_stems": cint(t["production_stems"]),
+			"coverage_pct": flt(t["coverage_pct"]),
+			"weeks": d["weeks"], "months": d["months"],
+		})
+		for grain, bag in (("weeks", weeks), ("months", months)):
+			for w in d[grain]:
+				cell = bag.setdefault(w["label"], {"label": w["label"],
+				                                   "production": 0, "demand": 0})
+				# Sorted on when it happened, never on how it is written. A week
+				# label sorts by accident because it starts with the year; a month
+				# label reads "Apr 29" and sorts alphabetically, which put April
+				# before August and every year interleaved with every other.
+				cell["sort"] = (cint(w.get("year")), cint(w.get("month"))
+				                or cint(w.get("week_no")))
+				cell["production"] += cint(w.get("production"))
+				cell["demand"] += cint(w.get("demand"))
+
+	def ordered(bag):
+		out = sorted(bag.values(), key=lambda c: c["sort"])
+		for c in out:
+			c["variance"] = c["production"] - c["demand"]
+		return out
+
+	tot_d = sum(x["demand_stems"] for x in series)
+	tot_p = sum(x["production_stems"] for x in series)
+	return {
+		"varieties": [x["variety"] for x in series],
+		"series": series,
+		"weeks": ordered(weeks),
+		"months": ordered(months),
+		"totals": {
+			"demand_stems": tot_d, "production_stems": tot_p,
+			"coverage_pct": (tot_p / tot_d * 100) if tot_d else 0,
+			"plans": len(series),
+		},
+	}
+
+
+@frappe.whitelist()
 def tc_derivation(plan=None, variety=None, farm=None):
 	"""Show how the TC order size falls out of demand, step by step."""
 	_guard()

@@ -70,10 +70,18 @@
             <button type="button" id="g-week">{{ _("Weekly") }}</button>
           </div>
         </div>
-        <div class="pl-legend">
-          <span class="pl-key"><i class="sw" style="background:var(--series-1)"></i>{{ _("Production") }}</span>
-          <span class="pl-key"><i class="sw" style="background:var(--series-2)"></i>{{ _("Demand") }}</span>
+        <!-- Which measure, and therefore what the variety filter can do: with one
+             measure chosen the chart splits by variety, with both it sums them.
+             The variety itself is picked on the scope bar, like everything else. -->
+        <div class="pl-subfilters">
+          <div class="pl-toggle" role="group" aria-label="{{ _('Series') }}">
+            <button type="button" data-dvs="both" class="is-on">{{ _("Both") }}</button>
+            <button type="button" data-dvs="production">{{ _("Production only") }}</button>
+            <button type="button" data-dvs="demand">{{ _("Demand only") }}</button>
+          </div>
+          <p class="pl-note" id="dv-note"></p>
         </div>
+        <div class="pl-legend" id="dv-legend"></div>
         <div class="pl-chart-wrap"><div id="dv-chart" class="pl-chart"></div></div>
       </div>
 
@@ -613,16 +621,16 @@
 .pl-root.viz-root{color-scheme:light;
   --surface-1:#fcfcfb;--surface-2:#f4f4f1;--text-primary:#0b0b0b;--text-secondary:#52514e;
   --text-muted:#898781;--gridline:#e1e0d9;--baseline:#c3c2b7;--border:rgba(11,11,11,.10);
-  --series-1:#2a78d6;--series-2:#eb6834;--seq-400:#3987e5;--seq-200:#9ec5f4;
+  --series-1:#2a78d6;--series-2:#eb6834;--series-3:#4a3aa7;--series-4:#0f9b8e;--seq-400:#3987e5;--seq-200:#9ec5f4;
   --good:#0ca30c;--warning:#fab219;--serious:#ec835a;--critical:#d03b3b;--violet:#4a3aa7}
 @media (prefers-color-scheme:dark){:root:where(:not([data-theme="light"])) .pl-root.viz-root{
   color-scheme:dark;--surface-1:#1a1a19;--surface-2:#232322;--text-primary:#fff;
   --text-secondary:#c3c2b7;--gridline:#2c2c2a;--baseline:#383835;
-  --border:rgba(255,255,255,.10);--series-1:#3987e5;--series-2:#d95926;
+  --border:rgba(255,255,255,.10);--series-1:#3987e5;--series-2:#d95926;--series-3:#9085e9;--series-4:#22a897;
   --seq-400:#3987e5;--seq-200:#184f95;--violet:#9085e9}}
 :root[data-theme="dark"] .pl-root.viz-root{color-scheme:dark;--surface-1:#1a1a19;
   --surface-2:#232322;--text-primary:#fff;--text-secondary:#c3c2b7;--gridline:#2c2c2a;
-  --baseline:#383835;--border:rgba(255,255,255,.10);--series-1:#3987e5;--series-2:#d95926;
+  --baseline:#383835;--border:rgba(255,255,255,.10);--series-1:#3987e5;--series-2:#d95926;--series-3:#9085e9;--series-4:#22a897;
   --seq-400:#3987e5;--seq-200:#184f95;--violet:#9085e9}
 
 .pl-root{max-width:1280px;margin:0 auto;padding:8px 0 64px;color:var(--text-primary)}
@@ -1156,7 +1164,7 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
 
   const S = { variety: "", farm: "", version: null, grain: "month",
               dv: null, deriv: null, pp: null, bf: null, cal: null, ls: null, pr: null,
-              ppBasis: "plant", dmGrain: "month", ppCalYear: "", bfBlock: "", calYear: null, calKinds: null,
+              ppBasis: "plant", dmGrain: "month", dvSeries: "both", ppCalYear: "", bfBlock: "", calYear: null, calKinds: null,
               bfOpen: new Set(), cyc: null, cycle: null, det: null, rv: null,
               plan: "", plans: null, bg: null, chain: null, pg: null,
               year: "", week: "" };
@@ -1200,90 +1208,162 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
   // Two series, so the legend above is load-bearing; the colours are the app's
   // categorical pair, checked against both surfaces (light ΔE 33.6 normal / 24.7
   // protan, dark 31.8 / 26.8) rather than assumed.
-  function drawAreaLines(el, rows, names) {
+  // One or more series over the same periods, each a 2px line, the first shaded.
+  // series: [{label, color, values:[], fill:bool}]. Only the first is filled --
+  // stacking translucent fills mixes them into a colour belonging to nothing.
+  // What the overview chart is showing, in one place, because three call sites
+  // deciding it separately is how they end up showing different things.
+  //
+  // With a variety chosen it is that plan: production against demand. With "All
+  // varieties" and both measures it is the farm's total, since four crops' two
+  // measures is eight lines and reads as nothing. With "All varieties" and one
+  // measure it is a line per variety, which is the comparison worth having.
+  const VARIETY_COLORS = ["var(--series-1)", "var(--series-2)",
+                          "var(--series-3)", "var(--series-4)"];
+
+  function dvChart() {
+    const el = $("dv-chart");
     if (!el) return;
-    const NM = Object.assign({ a: "Production", b: "Demand", diff: "Variance" }, names || {});
-    if (!rows || rows.length < 2) {
-      el.innerHTML = '<p class="pl-empty">Not enough periods to plot.</p>';
+    const grain = S.grain === "month" ? "months" : "weeks";
+    const wantP = S.dvSeries !== "demand";
+    const wantD = S.dvSeries !== "production";
+    const multi = !S.variety && S.mv && (S.mv.series || []).length > 1;
+    let labels = [], series = [], note = "";
+
+    if (multi && S.dvSeries !== "both") {
+      const key = S.dvSeries === "demand" ? "demand" : "production";
+      // Biggest first, so the fixed colour order runs down the page in the order
+      // the reader meets the lines. Beyond four, the rest fold into Other rather
+      // than inventing a fifth hue.
+      const ranked = S.mv.series.slice().sort((a, b) =>
+        (b[key + "_stems"] || 0) - (a[key + "_stems"] || 0));
+      labels = (S.mv[grain] || []).map((r) => r.label);
+      const idx = new Map(labels.map((l, i) => [l, i]));
+      const pick = ranked.slice(0, 4), rest = ranked.slice(4);
+      pick.forEach((v, i) => {
+        const vals = new Array(labels.length).fill(0);
+        (v[grain] || []).forEach((r) => {
+          const at = idx.get(r.label);
+          if (at != null) vals[at] = r[key] || 0;
+        });
+        series.push({ label: v.variety, color: VARIETY_COLORS[i], values: vals,
+                      fill: i === 0 });
+      });
+      if (rest.length) {
+        const vals = new Array(labels.length).fill(0);
+        rest.forEach((v) => (v[grain] || []).forEach((r) => {
+          const at = idx.get(r.label);
+          if (at != null) vals[at] += r[key] || 0;
+        }));
+        series.push({ label: `Other (${rest.length})`, color: "var(--text-muted)",
+                      values: vals, fill: false });
+      }
+      note = `${S.dvSeries === "demand" ? "Demand" : "Production"} by variety · ` +
+        `${ranked.length} varieties`;
+    } else {
+      const src = multi ? S.mv : S.dv;
+      const rows = (src && src[grain]) || [];
+      labels = rows.map((r) => r.label);
+      if (wantP) series.push({ label: "Production", color: "var(--series-1)",
+                               values: rows.map((r) => r.production || 0), fill: true });
+      if (wantD) series.push({ label: "Demand", color: "var(--series-2)",
+                               values: rows.map((r) => r.demand || 0),
+                               fill: !wantP });
+      note = multi
+        ? `All varieties · ${S.mv.series.length} plans summed`
+        : (S.dv ? `${S.dv.variety} at ${S.dv.farm}` : "");
+    }
+
+    drawAreaLines(el, labels, series, { diff: "Variance" });
+    const leg = $("dv-legend");
+    if (leg) {
+      leg.innerHTML = series.map((sr) =>
+        `<span class="pl-key"><i class="sw" style="background:${sr.color}"></i>` +
+        `${esc(sr.label)}</span>`).join("");
+    }
+    const n = $("dv-note");
+    if (n) n.textContent = note;
+  }
+
+  function drawAreaLines(el, labels, series, opts) {
+    if (!el) return;
+    const O = Object.assign({ diff: null }, opts || {});
+    const live = (series || []).filter((x) => x && x.values && x.values.length);
+    if (!labels || labels.length < 2 || !live.length) {
+      el.innerHTML = '<p class="pl-empty">' +
+        (!live.length ? "Nothing selected to plot."
+                      : "Not enough periods to plot.") + "</p>";
       return;
     }
     const avail = (el.clientWidth || el.parentElement?.clientWidth || 0) - 2;
-    const W = Math.max(avail, 660, rows.length * 26);
-    // R clears the last x label, which was being cut in half by the viewBox.
+    const W = Math.max(avail, 660, labels.length * 26);
     const H = 260, L = 66, R = 30, T = 14, B = 38;
     const plotW = W - L - R, plotH = H - T - B;
-    const raw = Math.max(...rows.flatMap((r) => [r.production || 0, r.demand || 0]), 1);
+    const raw = Math.max(...live.flatMap((x) => x.values.map((v) => v || 0)), 1);
     const step = niceStep(raw / 4);
     const top = Math.ceil(raw / step) * step;
-    // A single point would divide by zero; two or more spread across the plot.
-    const x = (i) => L + (rows.length === 1 ? plotW / 2 : (i / (rows.length - 1)) * plotW);
+    const x = (i) => L + (labels.length === 1 ? plotW / 2
+                          : (i / (labels.length - 1)) * plotW);
     const y = (v) => T + plotH - (Math.max(0, v) / top) * plotH;
 
-    const path = (key) => rows.map((r, i) =>
-      `${i ? "L" : "M"}${x(i).toFixed(1)} ${y(r[key] || 0).toFixed(1)}`).join(" ");
-    const area = (key) =>
-      `${path(key)} L${x(rows.length - 1).toFixed(1)} ${(T + plotH).toFixed(1)} ` +
-      `L${x(0).toFixed(1)} ${(T + plotH).toFixed(1)} Z`;
+    const line = (vals) => vals.map((v, i) =>
+      `${i ? "L" : "M"}${x(i).toFixed(1)} ${y(v || 0).toFixed(1)}`).join(" ");
 
-    // A flat wash under each line put two translucent fills on top of each other,
-    // and the overlap -- most of the plot -- came out a muddy grey that is neither
-    // series and reads as a third thing. Fading each to nothing well before the
-    // baseline keeps the shading to the line it belongs to, and keeps it light.
-    const gid = "ag" + Math.abs(rows.length * 7919 + Math.round(top)).toString(36);
+    const gid = "ag" + Math.abs(labels.length * 7919 + Math.round(top)).toString(36);
     let g = `<svg viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" role="img" ` +
-      `aria-label="${esc(NM.a)} against ${esc(NM.b)}"><defs>` +
-      [["a", "--series-1"]].map(([k, col]) =>
-        `<linearGradient id="${gid}${k}" x1="0" y1="0" x2="0" y2="1">` +
-        `<stop offset="0" stop-color="var(${col})" stop-opacity=".22"/>` +
-        `<stop offset="1" stop-color="var(${col})" stop-opacity="0"/></linearGradient>`
-      ).join("") + `</defs><g class="grid">`;
+      `aria-label="${esc(live.map((x2) => x2.label).join(" against "))}"><defs>` +
+      `<linearGradient id="${gid}" x1="0" y1="0" x2="0" y2="1">` +
+      `<stop offset="0" stop-color="${live[0].color}" stop-opacity=".22"/>` +
+      `<stop offset="1" stop-color="${live[0].color}" stop-opacity="0"/>` +
+      `</linearGradient></defs><g class="grid">`;
     for (let v = 0; v <= top; v += step) {
       g += `<line x1="${L}" x2="${W - R}" y1="${y(v)}" y2="${y(v)}"/>`;
       g += `<text x="${L - 8}" y="${(y(v) + 3).toFixed(1)}" text-anchor="end">${num(v)}</text>`;
     }
     g += "</g>";
 
-    // Demand under production: the plan is the subject and sits on top where they
-    // overlap, which is most weeks.
-    // Only the plan is shaded. Two fills stacked -- even faded ones -- mix
-    // wherever they overlap, and the overlap is most of the plot: the result was a
-    // brown-grey band belonging to neither series. Production is what the page is
-    // about, so it carries the body; demand is the line it is read against.
-    g += `<path d="${area("production")}" fill="url(#${gid}a)"/>`;
-    g += `<path d="${path("demand")}" fill="none" stroke="var(--series-2)" stroke-width="2" ` +
-      `stroke-linejoin="round" stroke-linecap="round"/>`;
-    g += `<path d="${path("production")}" fill="none" stroke="var(--series-1)" stroke-width="2" ` +
-      `stroke-linejoin="round" stroke-linecap="round"/>`;
-
-    // Markers only when they can be told apart; below that the line is the mark.
-    if (rows.length <= 40) {
-      rows.forEach((r, i) => {
-        g += `<circle cx="${x(i).toFixed(1)}" cy="${y(r.demand || 0).toFixed(1)}" r="4" ` +
-          `fill="var(--series-2)" stroke="var(--surface-1)" stroke-width="2"/>`;
-        g += `<circle cx="${x(i).toFixed(1)}" cy="${y(r.production || 0).toFixed(1)}" r="4" ` +
-          `fill="var(--series-1)" stroke="var(--surface-1)" stroke-width="2"/>`;
+    if (live[0].fill !== false) {
+      g += `<path d="${line(live[0].values)} L${x(labels.length - 1).toFixed(1)} ` +
+        `${(T + plotH).toFixed(1)} L${x(0).toFixed(1)} ${(T + plotH).toFixed(1)} Z" ` +
+        `fill="url(#${gid})"/>`;
+    }
+    // Drawn back to front so the first series, the subject, sits on top.
+    live.slice().reverse().forEach((sr) => {
+      g += `<path d="${line(sr.values)}" fill="none" stroke="${sr.color}" ` +
+        `stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>`;
+    });
+    if (labels.length <= 40) {
+      live.slice().reverse().forEach((sr) => {
+        sr.values.forEach((v, i) => {
+          g += `<circle cx="${x(i).toFixed(1)}" cy="${y(v || 0).toFixed(1)}" r="4" ` +
+            `fill="${sr.color}" stroke="var(--surface-1)" stroke-width="2"/>`;
+        });
       });
     }
-
-    const every = rows.length > 60 ? 13 : rows.length > 18 ? 2 : 1;
-    rows.forEach((r, i) => {
+    const every = labels.length > 60 ? 13 : labels.length > 18 ? 2 : 1;
+    labels.forEach((lb, i) => {
       if (i % every) return;
-      const anchor = i === 0 ? "start" : i === rows.length - 1 ? "end" : "middle";
+      // Pulling the end labels inward only helps when every label is drawn.
+      // Once they are thinned, the shifted first label runs into the next one
+      // still on the axis.
+      const ends = every === 1;
+      const anchor = ends && i === 0 ? "start"
+                   : ends && i === labels.length - 1 ? "end" : "middle";
       g += `<text x="${x(i).toFixed(1)}" y="${H - B + 16}" text-anchor="${anchor}" ` +
-        `class="pl-axis" font-size="10" fill="var(--text-muted)">${esc(r.label)}</text>`;
+        `class="pl-axis" font-size="10" fill="var(--text-muted)">${esc(lb)}</text>`;
     });
     g += `<line class="baseline" x1="${L}" x2="${W - R}" y1="${T + plotH}" y2="${T + plotH}"/>`;
 
-    // A crosshair band per period rather than a hit target per point: on a line
-    // chart the reader aims at the week, not at the dot.
-    rows.forEach((r, i) => {
-      const half = rows.length > 1 ? plotW / (rows.length - 1) / 2 : plotW / 2;
+    labels.forEach((lb, i) => {
+      const half = labels.length > 1 ? plotW / (labels.length - 1) / 2 : plotW / 2;
       const x0 = Math.max(L, x(i) - half), x1 = Math.min(W - R, x(i) + half);
-      const v = (r.production || 0) - (r.demand || 0);
-      g += `<rect class="pl-hit" x="${x0.toFixed(1)}" y="${T}" width="${(x1 - x0).toFixed(1)}" ` +
-        `height="${plotH}" fill="transparent" data-tip="${esc(
-          `<b>${r.label}</b><br>${NM.a} ${num(r.production || 0)}<br>` +
-          `${NM.b} ${num(r.demand || 0)}<br>${NM.diff} ${sgn(v)}`)}"/>`;
+      let tipRows = live.map((sr) => `${esc(sr.label)} ${num(sr.values[i] || 0)}`);
+      if (O.diff && live.length === 2) {
+        tipRows.push(`${esc(O.diff)} ${sgn((live[0].values[i] || 0) - (live[1].values[i] || 0))}`);
+      }
+      g += `<rect class="pl-hit" x="${x0.toFixed(1)}" y="${T}" ` +
+        `width="${(x1 - x0).toFixed(1)}" height="${plotH}" fill="transparent" ` +
+        `data-tip="${esc(`<b>${lb}</b><br>` + tipRows.join("<br>"))}"/>`;
     });
     g += "</svg>";
     el.innerHTML = g;
@@ -1442,7 +1522,7 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
     $("dv-sub").textContent = S.dv
       ? `${S.dv.plan} · ${S.dv.variety} at ${S.dv.farm} · ${S.dv.period} · ${S.dv.status}`
       : "No production plan.";
-    drawAreaLines($("dv-chart"), S.dv ? (S.grain === "month" ? S.dv.months : S.dv.weeks) : []);
+    dvChart();
     // Always weekly and always the scoped weeks: a running total only means anything
     // if it runs over the period the reader is looking at.
   }
@@ -5047,9 +5127,15 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
       // The overview summarises propagation too, so it is fetched with the
       // rest rather than only when its own tab is opened.
       call("propagation_detail", a),
-    ]).then(([dv, deriv, pp, bf, cal, pr, lt, pg]) => {
+      // Every variety, for the overview chart. Scoped by farm and year but
+      // never by variety: its whole job is to show the ones the scope bar is
+      // not currently narrowed to.
+      call("demand_vs_production_by_variety",
+           { farm: S.farm, season: S.season || null }),
+    ]).then(([dv, deriv, pp, bf, cal, pr, lt, pg, mv]) => {
       S.lt = lt;
       S.pg = pg && pg.propagation_plan ? pg : null;
+      S.mv = mv;
       S.dv = dv && dv.plan ? dv : null;
       S.deriv = deriv; S.pp = pp; S.bf = bf; S.cal = cal; S.pr = pr;
       // The simulator's own picker defaults to the plan's version, but it is free
@@ -5169,7 +5255,7 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
     applyTabFilters(name);
     // Charts sized while hidden come out wrong, so redraw on reveal.
     if (name === "overview" && S.dv) {
-      drawAreaLines($("dv-chart"), S.grain === "month" ? S.dv.months : S.dv.weeks);
+      dvChart();
     }
     // The demand chart measures its container, and a hidden container is 0 wide,
     // so it falls back to 660 when drawn with the tab closed. Redraw on reveal.
@@ -5509,8 +5595,7 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
         S.version = vr.value; S.versionPicked = true; runLifecycle();
       });
 
-      toggleGroup([["g-month", "month"], ["g-week", "week"]], "grain", () =>
-        drawAreaLines($("dv-chart"), S.grain === "month" ? S.dv.months : S.dv.weeks));
+      toggleGroup([["g-month", "month"], ["g-week", "week"]], "grain", dvChart);
       toggleGroup([["pp-by-plant", "plant"], ["pp-by-uproot", "uproot"]],
         "ppBasis", renderPlanting);
 
@@ -5626,6 +5711,14 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
       // Weekly, monthly or yearly. The register is kept in weeks; the coarser
       // grains are those weeks summed, so every view is the same numbers read at
       // a different distance rather than three separate figures.
+      document.querySelectorAll("[data-dvs]").forEach((b) => {
+        b.addEventListener("click", () => {
+          S.dvSeries = b.dataset.dvs;
+          document.querySelectorAll("[data-dvs]").forEach((o) =>
+            o.classList.toggle("is-on", o === b));
+          dvChart();
+        });
+      });
       document.querySelectorAll("[data-dmg]").forEach((b) => {
         b.addEventListener("click", () => {
           S.dmGrain = b.dataset.dmg;
