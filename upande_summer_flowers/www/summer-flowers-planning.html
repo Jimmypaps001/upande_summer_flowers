@@ -501,11 +501,6 @@
           <label>{{ _("TC order date") }}<input type="date" id="ls-date"></label>
           <label>{{ _("Build-up cycles") }}
             <input type="number" id="ls-cycles" min="0" max="12" step="1"></label>
-          <label>{{ _("MS generations") }}
-            <input type="number" id="ls-gens-in" min="1" max="12" step="1"
-                   placeholder="{{ _('auto') }}"></label>
-          <span class="pl-inline"><label>{{ _("Generations run") }}</label>
-            <output id="ls-gens" class="ls-out">—</output></span>
           <label>{{ _("% diverted to propagation") }}
             <input type="range" id="ls-prop" min="0" max="60" step="5" value="0">
             <output id="ls-prop-out">0%</output></label>
@@ -563,7 +558,10 @@
     <div class="pl-dlg-head">
       <div><h2 id="pw-title">{{ _("Effect on the plan") }}</h2>
            <p class="pl-note" id="pw-sub"></p></div>
-      <button type="button" class="pl-btn" data-pw="close">{{ _("Close") }}</button>
+      <span class="pl-actions">
+        <button type="button" class="pl-btn primary" id="pw-save" hidden>{{ _("Save and overwrite the plan") }}</button>
+        <button type="button" class="pl-btn" data-pw="close">{{ _("Close") }}</button>
+      </span>
     </div>
     <div class="pl-dlg-body" id="pw-body"></div>
   </dialog>
@@ -4839,7 +4837,9 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
       // order-grow-expire loop runs, and comes from the plan's horizon unless it is
       // typed over. Build-up cycles is the multiplication inside one order, and is
       // what decides how many plantlets that order is worth.
-      num_cycles: $("ls-gens-in").value || null,
+      // Derived from the horizon. It was a typed override that nobody wanted
+      // to set and that quietly contradicted the plan when they did.
+      num_cycles: null,
       build_up_cycles: $("ls-cycles").value !== "" ? $("ls-cycles").value : null,
       plan: S.plan || null,
       farm_overrides: JSON.stringify(S.lsOverrides || {}),
@@ -4850,12 +4850,50 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
   // another protocol version, but a confirmation is about the plan's order, so it
   // refuses rather than quietly committing figures worked out on a version the plan
   // is not built on.
+  // Changing the build-up changes the order, not just the arithmetic after it.
+  // Fewer rounds is a shorter lead time, so the order is placed LATER and has to
+  // buy more plantlets; more rounds, earlier and fewer. The card was sending its
+  // own date box straight back to the simulator, so the one thing this lever is
+  // for never showed on it.
+  //
+  // The new date and quantity come from plan_whatif -- the same endpoint the plan
+  // and the confirm use -- rather than being worked out again here, so the card
+  // cannot quote a date the plan would not agree with.
+  function syncCyclesToOrder() {
+    const plan = S.dv && S.dv.plan;
+    const cyc = $("ls-cycles").value;
+    if (!plan || cyc === "") return runLifecycle();
+    return call("plan_whatif", { plan: plan, cycles: cyc })
+      .then((r) => {
+        if (r && r.plan) {
+          // A quantity typed by hand is a decision and is left alone; the date
+          // follows the cycles either way, because the two are one choice.
+          if (!$("ls-qty").dataset.typed) $("ls-qty").value = r.recommended_tc || "";
+          $("ls-date").value = r.order_date || "";
+          $("ls-confirm-note").innerHTML =
+            `<p class="pl-note">${cyc} build-up cycle${cyc === "1" ? "" : "s"} — ` +
+            `order ${num(r.recommended_tc)} plantlets by ${fdate(r.order_date)}, ` +
+            `lead time ${r.lead_time_weeks} weeks, ×${r.multiplication_factor} to ` +
+            `${num(r.mother_plants_from_order)} mother plants.</p>`;
+        }
+        return runLifecycle();
+      })
+      .catch(() => runLifecycle());
+  }
+
   function confirmFromLifecycle(btn) {
     const plan = S.dv && S.dv.plan;
     if (!plan) { alert("No plan in scope to confirm against."); return; }
     if (S.deriv && S.deriv.version && S.version && S.version !== S.deriv.version) {
       alert("This card is simulating " + S.version + ", but the plan is built on " +
             S.deriv.version + ". Switch the version back before confirming.");
+      return;
+    }
+    if (S.dv && S.dv.status === "Approved") {
+      alert("This plan is approved, so the TC order on it cannot be rewritten in "
+            + "place.\n\nAmend the plan first — Production Plan → Amend — then "
+            + "confirm the order against the amendment. The budget and the "
+            + "planting plan follow the amended plan, not this one.");
       return;
     }
     const qty = parseInt($("ls-qty").value, 10) || 0;
@@ -5113,6 +5151,101 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
       })
       .catch((e) => toast(esc(e.message), true))
       .finally(() => { btn.disabled = false; btn.textContent = was; });
+  }
+
+  function showEffect() {
+    if (!(S.dv && S.dv.plan)) { toast("No plan in scope.", true); return; }
+    const dlg = $("pw-dlg");
+    const cyc = $("ls-cycles").value;
+    $("pw-body").innerHTML = '<p class="pl-empty">Working it out…</p>';
+    $("pw-save").hidden = true;
+    $("pw-sub").textContent = "";
+    if (!dlg.open) dlg.showModal();
+    call("plan_whatif", {
+      plan: S.dv.plan,
+      tc_qty: $("ls-qty").value || null,
+      order_date: $("ls-date").value || null,
+      cycles: cyc === "" ? null : cyc,
+    })
+      .then(renderEffect)
+      .catch((e) => {
+        $("pw-body").innerHTML = `<p class="pl-empty">${esc(e.message)}</p>`;
+      });
+  }
+
+  function renderEffect(r) {
+    if (!r || r.error || !r.plan) {
+      $("pw-body").innerHTML = `<p class="pl-empty">${esc(
+        (r && r.error) || "No plan in scope.")}</p>`;
+      return;
+    }
+    const b = r.built || {}, base = r.baseline || {}, cur = r.current || {};
+    const cov = b.coverage_pct || 0;
+    const dCov = cov - (base.coverage_pct || 0);
+    const dProd = (b.production_stems || 0) - (base.production_stems || 0);
+
+    $("pw-title").textContent = `${r.variety} at ${r.farm} — ${r.plan}`;
+    $("pw-sub").textContent =
+      `${num(r.tc_qty)} plantlets, ${r.cycles} build-up cycles, ordered ` +
+      `${r.order_date}. Lead time ${r.lead_time_weeks} weeks, ×${r.multiplication_factor} ` +
+      `to ${num(r.mother_plants_from_order)} mother plants. Nothing is saved.`;
+
+    // Changed-from, so a figure is read as a movement rather than a number.
+    const delta = (v, good) => v === 0 ? "no change"
+      : `<span style="color:var(${(v > 0) === good ? "--good" : "--critical"})">` +
+        `${sgn(v)}</span>`;
+
+    const tiles = [
+      { k: "Demand met", v: cov.toFixed(1) + "%",
+        m: `the plan as it stands: ${(base.coverage_pct || 0).toFixed(1)}%`,
+        c: cov >= 100 ? "--good" : "--critical" },
+      { k: "Stems produced", v: num(b.production_stems),
+        m: `${delta(dProd, true)} against the plan on file` },
+      { k: "Stems demanded", v: num(b.demand_stems), m: "unchanged by any of this" },
+      { k: "Weeks short", v: num(b.weeks_in_deficit),
+        m: `${num(b.unmet_stems)} stems unmet`,
+        c: b.weeks_in_deficit ? "--critical" : "--good" },
+      { k: "Plantings", v: `${num(b.plantings_full)} full`,
+        m: `${num(b.plantings_trimmed)} part-planted, ${num(b.plantings_dropped)} dropped`,
+        c: b.plantings_dropped ? "--critical" : "--good" },
+      { k: "Plants stuck", v: num(b.plants_stuck),
+        m: `of ${num(b.plants_wanted)} the plan wants`,
+        c: (b.plants_stuck || 0) < (b.plants_wanted || 0) ? "--serious" : "--good" },
+      { k: "First cut", v: esc(b.first_cut_week || "—"),
+        m: `${r.lead_time_weeks} weeks after the order` },
+      { k: "Against the current order", v: num(r.tc_qty - (cur.tc_qty || 0)),
+        m: `plantlets more than the ${num(cur.tc_qty)} on the plan now` },
+    ];
+
+    const weeks = b.weeks || [];
+    $("pw-body").innerHTML =
+      `<div class="pl-tiles pl-tiles-sm">${tiles.map(tile).join("")}</div>` +
+      (b.dropped_too_early
+        ? `<div class="pl-callout">${num(b.dropped_too_early)} plantings stick before ` +
+          `${esc(b.first_cut_week || "the first cut")}, the earliest week any pool from ` +
+          `this order can be cut. No order size reaches them — they need an earlier ` +
+          `order or cuttings bought in already rooted.</div>`
+        : "") +
+      `<h3>Demand against production, week by week</h3>` +
+      '<div class="pl-scroll pl-tall"><table class="pl-t"><thead><tr>' +
+      '<th>Week</th><th class="n">Demand</th><th class="n">Production</th>' +
+      '<th class="n">Variance</th></tr></thead><tbody>' +
+      weeks.map((w) => {
+        const v = w.variance;
+        return `<tr class="${v < 0 ? "short" : ""}"><td>${esc(w.label)}</td>` +
+          `<td class="n">${num(w.demand)}</td><td class="n">${num(w.production)}</td>` +
+          `<td class="n" style="color:var(${v < 0 ? "--critical" : "--good"})">` +
+          `${v ? sgn(v) : "0"}</td></tr>`;
+      }).join("") +
+      "</tbody></table></div>";
+    // Agreeing with the effect is what writes it, and this is where the effect
+    // was read. Sending the reader back to the card to find a button is how one
+    // decision gets made twice.
+    const sv = $("pw-save");
+    sv.hidden = false;
+    sv.dataset.qty = r.tc_qty;
+    sv.dataset.date = r.order_date;
+    sv.dataset.cycles = r.cycles;
   }
 
   function loadScope() {
@@ -5676,6 +5809,16 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
       });
       $("pw-dlg").addEventListener("click", (e) => {
         if (e.target.closest('[data-pw="close"]')) $("pw-dlg").close();
+        // Agreeing with the effect writes it: the same confirm the card does, from
+        // where the effect was actually read.
+        const sv = e.target.closest("#pw-save");
+        if (sv) {
+          $("ls-qty").value = sv.dataset.qty || $("ls-qty").value;
+          $("ls-date").value = sv.dataset.date || $("ls-date").value;
+          if (sv.dataset.cycles !== "") $("ls-cycles").value = sv.dataset.cycles;
+          $("pw-dlg").close();
+          confirmFromLifecycle(document.querySelector('[data-ls="confirm"]'));
+        }
       });
       $("up-dlg").addEventListener("click", (e) => {
         const b = e.target.closest("[data-up]");
@@ -5737,7 +5880,6 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
       // changed, so the schedule below always belongs to the numbers above it.
       // Generations only changes how far the run goes. Build-up cycles changes what
       // has to be bought and when, so it re-derives the order before re-running.
-      $("ls-gens-in").addEventListener("change", () => runLifecycle());
       $("ls-cycles").addEventListener("change", () => syncCyclesToOrder());
       $("ls-confirm-note").parentElement.addEventListener("click", (e) => {
         const b = e.target.closest("[data-ls]");
@@ -5745,9 +5887,9 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
         if (b.dataset.ls === "reset-inputs") {
           const d = S.deriv || {};
           $("ls-qty").value = d.tc_plants || "";
+          $("ls-qty").dataset.typed = "";
           $("ls-date").value = d.tc_order_date || "";
           $("ls-cycles").value = d.build_up_cycles != null ? d.build_up_cycles : "";
-          $("ls-gens-in").value = "";
           S.lsOverrides = {};
           $("ls-confirm-note").innerHTML = "";
           runLifecycle();
@@ -5795,6 +5937,9 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
           S.calKinds = b.dataset.calk === "all" ? null : new Set();
           renderCalendar();
         });
+      });
+      $("ls-qty").addEventListener("input", (e) => {
+        e.target.dataset.typed = e.target.value ? "1" : "";
       });
       ["ls-qty", "ls-date", "ls-bench"].forEach((id) =>
         $(id).addEventListener("change", runLifecycle));
