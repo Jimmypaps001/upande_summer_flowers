@@ -390,12 +390,16 @@
         <div class="pl-card-head">
           <div><h2 id="pr-title">{{ _("Crop Protocol") }}</h2>
                <p class="pl-note" id="pr-sub"></p></div>
-          <div style="display:flex;gap:8px;align-items:flex-end;flex-wrap:wrap">
-            <label class="pl-inline">{{ _("Version") }}<select id="pr-version"></select></label>
+          <span class="pl-actions">
             <button type="button" class="pl-btn" id="pr-edit">{{ _("Edit") }}</button>
             <button type="button" class="pl-btn primary" id="pr-save" hidden>{{ _("Save") }}</button>
             <button type="button" class="pl-btn" id="pr-cancel" hidden>{{ _("Cancel") }}</button>
-          </div>
+          </span>
+        </div>
+        <!-- The version is what the whole tab is read against, so it sits above
+             the tab rather than beside the buttons that act on it. -->
+        <div class="pl-subfilters">
+          <label class="pl-inline">{{ _("Version") }}<select id="pr-version"></select></label>
         </div>
         <div id="pr-banner"></div>
         <div class="pl-tiles" id="pr-tiles"></div>
@@ -525,9 +529,18 @@
       <div class="pl-card">
         <div class="pl-card-head">
           <div><h2>{{ _("Event calendar") }}</h2></div>
-          <label class="pl-inline">{{ _("Year") }}<select id="cal-year"></select></label>
         </div>
-        <div id="cal-legend" class="pl-legend"></div>
+        <!-- The legend is the filter. Every event type is a switch, so the
+             calendar can be read one plan at a time -- just the TC dates, or just
+             what happens in the field -- instead of as nine kinds at once. -->
+        <div class="pl-subfilters">
+          <label class="pl-inline">{{ _("Year") }}<select id="cal-year"></select></label>
+          <span class="pl-actions">
+            <button type="button" class="pl-btn" data-calk="all">{{ _("All events") }}</button>
+            <button type="button" class="pl-btn" data-calk="none">{{ _("None") }}</button>
+          </span>
+        </div>
+        <div id="cal-legend" class="pl-legend cal-filter"></div>
         <div id="cal-body"></div>
       </div>
     </section>
@@ -652,6 +665,13 @@
 .pl-note{font-size:.76rem;color:var(--text-secondary);margin:6px 0 0}
 
 .pl-t tr.pl-tot th{border-top:2px solid var(--border);background:var(--surface-2)}
+.cal-filter{display:flex;flex-wrap:wrap;gap:6px}
+button.cal-k{border:1px solid var(--border);background:var(--surface-1);border-radius:999px;
+  padding:3px 10px;font-size:.74rem;cursor:pointer;color:var(--text-muted);
+  display:inline-flex;align-items:center;gap:6px}
+button.cal-k.is-on{background:var(--surface-2);color:var(--text-primary);
+  border-color:var(--text-muted)}
+button.cal-k:not(.is-on) .sw{opacity:.25}
 .pl-subfilters{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin:2px 0 10px}
 .pl-subfilters .pl-note{margin:0}
 .pl-toggle{display:inline-flex;border:1px solid var(--border);border-radius:6px;
@@ -1121,7 +1141,7 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
 
   const S = { variety: "", farm: "", version: null, grain: "month",
               dv: null, deriv: null, pp: null, bf: null, cal: null, ls: null, pr: null,
-              ppBasis: "plant", dmGrain: "month", ppCalYear: "", bfBlock: "", calYear: null,
+              ppBasis: "plant", dmGrain: "month", ppCalYear: "", bfBlock: "", calYear: null, calKinds: null,
               bfOpen: new Set(), cyc: null, cycle: null, det: null, rv: null,
               plan: "", plans: null, bg: null, chain: null, pg: null,
               year: "", week: "" };
@@ -4061,9 +4081,14 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
 
   function renderCalendar() {
     const c = S.cal; if (!c) return;
+    // Null means "everything", so a calendar that gains a new event type shows it
+    // rather than hiding it behind a filter nobody knew to switch on.
+    const on = (k) => !S.calKinds || S.calKinds.has(k);
     $("cal-legend").innerHTML = Object.entries(c.kinds).map(([k, label]) =>
-      `<span class="pl-key"><i class="sw" style="background:var(${KIND_COLOR[k] || "--text-muted"})"></i>` +
-      `${esc(label)}${c.counts[k] ? " (" + c.counts[k] + ")" : ""}</span>`).join("");
+      `<button type="button" class="pl-key cal-k${on(k) ? " is-on" : ""}" data-calkind="${esc(k)}"` +
+      ` aria-pressed="${on(k)}">` +
+      `<i class="sw" style="background:var(${KIND_COLOR[k] || "--text-muted"})"></i>` +
+      `${esc(label)}${c.counts[k] ? " (" + c.counts[k] + ")" : ""}</button>`).join("");
 
     // The scope bar wins when a season is chosen, so the two cannot disagree. A
     // season starts in July of its own year, so that is the calendar year to show.
@@ -4076,7 +4101,8 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
     const DOW = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
     let html = '<div class="cal-months">';
     for (let m = 1; m <= 12; m++) {
-      const evs = c.by_month[`${yr}-${String(m).padStart(2, "0")}`] || [];
+      const evs = (c.by_month[`${yr}-${String(m).padStart(2, "0")}`] || [])
+        .filter((e) => on(e.kind));
       const byDay = {};
       evs.forEach((e) => { (byDay[e.day] = byDay[e.day] || []).push(e); });
       const lead = (new Date(yr, m - 1, 1).getDay() + 6) % 7;   // Monday first
@@ -5382,6 +5408,26 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
           S.pr = r; prEditing = false; PR_FLUSH.rows = null; renderProtocol(); });
       });
       $("cal-year").addEventListener("change", (e) => { S.calYear = +e.target.value; renderCalendar(); });
+      // Clicking a legend key switches that event type off and on. Starting from
+      // "all" as null rather than as a full set means a calendar that gains a new
+      // event type shows it, instead of hiding it behind a filter built before it
+      // existed.
+      $("cal-legend").addEventListener("click", (e) => {
+        const b = e.target.closest("[data-calkind]");
+        if (!b || !S.cal) return;
+        const all = Object.keys(S.cal.kinds || {});
+        if (!S.calKinds) S.calKinds = new Set(all);
+        const k = b.dataset.calkind;
+        if (S.calKinds.has(k)) S.calKinds.delete(k); else S.calKinds.add(k);
+        if (S.calKinds.size === all.length) S.calKinds = null;
+        renderCalendar();
+      });
+      document.querySelectorAll("[data-calk]").forEach((b) => {
+        b.addEventListener("click", () => {
+          S.calKinds = b.dataset.calk === "all" ? null : new Set();
+          renderCalendar();
+        });
+      });
       ["ls-qty", "ls-date", "ls-bench"].forEach((id) =>
         $(id).addEventListener("change", runLifecycle));
       $("ls-prop").addEventListener("input", () => {
