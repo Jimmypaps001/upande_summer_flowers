@@ -236,25 +236,6 @@
            to move either way and a statement of what moving costs. -->
       <div class="pl-card">
         <div class="pl-card-head">
-          <div><h2>{{ _("TC to buy") }}</h2></div>
-          <span class="pl-actions">
-            <label class="pl-inline">{{ _("Buy") }}
-              <input type="number" id="tc-qty" min="0" step="50"></label>
-            <label class="pl-inline">{{ _("Order on") }}
-              <input type="date" id="tc-date"></label>
-            <label class="pl-inline">{{ _("Cycles") }}
-              <input type="number" id="tc-cycles" min="0" max="12" step="1"></label>
-            <button type="button" class="pl-btn" data-tc="apply">{{ _("Try this") }}</button>
-            <button type="button" class="pl-btn" data-tc="reset">{{ _("Use the recommendation") }}</button>
-            <button type="button" class="pl-btn primary" data-tc="confirm">{{ _("Confirm") }}</button>
-          </span>
-        </div>
-        <div class="pl-tiles pl-tiles-sm" id="tc-tiles"></div>
-        <div id="tc-note"></div>
-      </div>
-
-      <div class="pl-card">
-        <div class="pl-card-head">
           <div><h2>{{ _("Demand against production") }}</h2>
                <p class="pl-note" id="dp-sub"></p></div>
           <div class="pl-legend">
@@ -276,6 +257,25 @@
       <!-- The decision card. Nothing here is saved: the plan on file is untouched
            until it is regenerated or approved, so this is where to find out whether
            it is worth going on with. -->
+      <div class="pl-card">
+        <div class="pl-card-head">
+          <div><h2>{{ _("TC to buy") }}</h2></div>
+          <span class="pl-actions">
+            <label class="pl-inline">{{ _("Buy") }}
+              <input type="number" id="tc-qty" min="0" step="50"></label>
+            <label class="pl-inline">{{ _("Order on") }}
+              <input type="date" id="tc-date"></label>
+            <label class="pl-inline">{{ _("Cycles") }}
+              <input type="number" id="tc-cycles" min="0" max="12" step="1"></label>
+            <button type="button" class="pl-btn" data-tc="apply">{{ _("Try this") }}</button>
+            <button type="button" class="pl-btn" data-tc="reset">{{ _("Use the recommendation") }}</button>
+            <button type="button" class="pl-btn primary" data-tc="confirm">{{ _("Confirm") }}</button>
+          </span>
+        </div>
+        <div class="pl-tiles pl-tiles-sm" id="tc-tiles"></div>
+        <div id="tc-note"></div>
+      </div>
+
       <div class="pl-card">
         <div class="pl-card-head">
           <div><h2>{{ _("Try it before you commit") }}</h2></div>
