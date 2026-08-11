@@ -2129,7 +2129,10 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
       `${pp.plan} · ${t.proposed} plantings · ${t.weeks_in_ground} weeks in ground each`;
     $("pp-tiles").innerHTML = [
       { k: "Plantings proposed", v: num(t.proposed), m: num(t.beds) + " beds" },
-      { k: "Plants", v: num(t.plants), m: num(t.cuttings) + " cuttings to stick",
+      // Cuttings belong to propagation, which is where they are decided and where
+      // the pool that supplies them is. On the planting plan they were a figure
+      // with nothing to be read against.
+      { k: "Plants", v: num(t.plants), m: num(t.beds) + " beds to fill",
         why: "plants_required" },
       { k: "Blocks needed", v: num(t.blocks_needed),
         m: num(t.blocks_available) + " available" + (short > 0 ? " · short " + num(short) : ""),
