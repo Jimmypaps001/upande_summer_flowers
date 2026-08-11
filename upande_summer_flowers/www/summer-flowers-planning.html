@@ -59,7 +59,8 @@
         <div id="po-flow"></div>
       </div>
 
-      <div class="pl-tiles" id="tiles"></div>
+      <div id="ov-summary"></div>
+      <div class="pl-tiles" id="tiles" hidden></div>
       <div class="pl-card">
         <div class="pl-card-head">
           <div><h2>{{ _("Demand vs planned production") }}</h2>
@@ -666,6 +667,18 @@
 .pl-note{font-size:.76rem;color:var(--text-secondary);margin:6px 0 0}
 
 .pl-t tr.pl-tot th{border-top:2px solid var(--border);background:var(--surface-2)}
+.ov-sec{border:1px solid var(--border);border-radius:9px;background:var(--surface-1);
+  margin:0 0 8px;overflow:hidden}
+.ov-h{display:flex;align-items:baseline;gap:10px;padding:7px 12px;
+  background:var(--surface-2);border-bottom:1px solid var(--border)}
+.ov-h b{font-size:.74rem;text-transform:uppercase;letter-spacing:.05em}
+.ov-h span{font-size:.7rem;color:var(--text-muted)}
+.ov-rows{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr))}
+.ov-r{padding:8px 12px;border-right:1px solid var(--border)}
+.ov-r:last-child{border-right:0}
+.ov-k{font-size:.68rem;color:var(--text-muted);text-transform:uppercase;letter-spacing:.04em}
+.ov-v{font-size:1.05rem;font-weight:650;margin-top:1px}
+.ov-m{font-size:.68rem;color:var(--text-muted);margin-top:1px}
 .cal-filter{display:flex;flex-wrap:wrap;gap:6px}
 button.cal-k{border:1px solid var(--border);background:var(--surface-1);border-radius:999px;
   padding:3px 10px;font-size:.74rem;cursor:pointer;color:var(--text-muted);
@@ -1324,6 +1337,7 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
       { k: "Mother plants", v: num(tc.mothers_required || 0),
         m: `${tc.bench_sqm || 0} m² of bench${wholePlan()}` },
     ].map(tile).join("") : '<p class="pl-empty">No plan in this scope.</p>';
+    renderOverviewSummary();
     $("dv-sub").textContent = S.dv
       ? `${S.dv.plan} · ${S.dv.variety} at ${S.dv.farm} · ${S.dv.period} · ${S.dv.status}`
       : "No production plan.";
@@ -1408,6 +1422,110 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
             '<th class="n">100.0%</th></tr></tfoot></table>';
         })()
       : '<p class="pl-empty">No weeks match this filter.</p>';
+  }
+
+
+  // The overview answers "where is this crop" section by section, in the order the
+  // work runs. Two figures a section, because a summary that carries everything is
+  // the tabs again. Each is read from the loader that owns it -- nothing here
+  // recomputes what a tab already worked out, so the overview cannot disagree with
+  // the tab it summarises.
+  function renderOverviewSummary() {
+    const el = $("ov-summary");
+    if (!el) return;
+    const q = scoped();
+    const F = (S.pr && S.pr.fields) || {}, D = (S.pr && S.pr.derived) || {};
+    const tc = S.deriv || {};
+    const ppT = (S.pp && S.pp.totals) || {};
+    const bfT = (S.bf && S.bf.totals) || {};
+    const pgT = (S.pg && S.pg.totals) || {};
+    const pgW = (S.pg && S.pg.weeks) || [];
+    const rvT = (S.rv && S.rv.totals) || {};
+
+    const avail = pgW.reduce((a, x) => a + (x.capacity || 0), 0);
+    const plantsNeeded = Number(ppT.plants || q.plants || 0);
+    const cuttingsNeeded = Number(pgT.cuttings_required || 0);
+    const blocksNeed = Number(ppT.blocks_needed || 0);
+    const blocksFarm = Number(bfT.blocks_total || bfT.blocks || 0);
+    // Summed from the plantings, because the totals block carries beds and
+    // plants but no area -- and the area is what the ground is measured in.
+    const areaHa = ((S.pp && S.pp.plantings) || [])
+      .filter((x) => x.is_new !== false)
+      .reduce((a, x) => a + (Number(x.net_area_ha) || 0), 0);
+
+    const pct = (a, b) => (b ? (a / b * 100).toFixed(1) + "%" : "—");
+    const row = (k, v, m, c) =>
+      `<div class="ov-r"><div class="ov-k">${esc(k)}</div>` +
+      `<div class="ov-v"${c ? ` style="color:var(${c})"` : ""}>${v}</div>` +
+      `<div class="ov-m">${m || ""}</div></div>`;
+    const sec = (title, note, rows) =>
+      `<div class="ov-sec"><div class="ov-h"><b>${esc(title)}</b>` +
+      `<span>${esc(note || "")}</span></div>` +
+      `<div class="ov-rows">${rows.join("")}</div></div>`;
+
+    const secs = [];
+
+    secs.push(sec("Protocol", S.pr ? S.pr.version || "" : "none in scope", [
+      row("Growing protocol",
+          D.total_weeks_in_ground ? D.total_weeks_in_ground + " wks" : "—",
+          `${D.total_flushes || 0} flushes · ${num(D.plants_per_ha || 0)} plants/ha`),
+      row("Propagation protocol",
+          (Number(F.weeks_on_tray || 0) + Number(F.weeks_on_pot || 0)
+           + Number(F.hardening_weeks || 0)) + " wks",
+          `tray ${F.weeks_on_tray || 0} + pot ${F.weeks_on_pot || 0} + hardening ${F.hardening_weeks || 0}`),
+    ]));
+
+    secs.push(sec("Market demand", S.dv ? S.dv.variety || "" : "", [
+      row("Demand", num(q.demand), "stems asked for"),
+      row("Short by", num(q.deficitWeeks.length),
+          `weeks of ${q.weeks.length}`,
+          q.deficitWeeks.length ? "--serious" : "--good"),
+    ]));
+
+    secs.push(sec("Production plan", S.dv ? S.dv.plan || "" : "no plan", [
+      row("Total stems", num(q.production), "planned over the horizon"),
+      row("Of demand", q.coverage.toFixed(1) + "%", "planned against asked for",
+          q.coverage >= 100 ? "--good" : "--serious"),
+    ]));
+
+    secs.push(sec("Planting plan", ppT.proposed ? ppT.proposed + " plantings" : "", [
+      row("Plants required", num(plantsNeeded), num(ppT.beds || q.beds || 0) + " beds"),
+      row("Area to be planted", areaHa ? areaHa.toFixed(3) + " ha" : "—",
+          areaHa ? num(Math.round(areaHa * 10000)) + " m² of bed" : ""),
+    ]));
+
+    secs.push(sec("Propagation plan", S.pg ? S.pg.propagation_plan || "" : "none raised", [
+      row("Cuttings available", num(avail),
+          cuttingsNeeded ? `of ${num(cuttingsNeeded)} needed` : "",
+          avail >= cuttingsNeeded ? "--good" : "--critical"),
+      row("Cover of plants required", pct(avail, cuttingsNeeded),
+          "cuttings available against cuttings needed"),
+    ]));
+
+    secs.push(sec("Motherstock", tc.tc_order_date ? "order by " + fdate(tc.tc_order_date) : "", [
+      row("Mother plants required", num(tc.mothers_required || 0),
+          `${tc.bench_sqm || 0} m² of bench`),
+      row("TC required", num(tc.tc_plants || 0),
+          tc.tc_late ? "order date already past" : "plantlets to buy",
+          tc.tc_late ? "--critical" : ""),
+    ]));
+
+    secs.push(sec("Block forecast", blocksFarm ? blocksFarm + " blocks on the farm" : "", [
+      row("Blocks needed", num(blocksNeed),
+          ppT.blocks_available != null ? `${num(ppT.blocks_available)} free` : ""),
+      row("Of the farm's blocks", pct(blocksNeed, blocksFarm),
+          blocksFarm ? `${num(blocksNeed)} of ${num(blocksFarm)}` : "no block list",
+          blocksFarm && blocksNeed > blocksFarm ? "--critical" : ""),
+    ]));
+
+    const pending = Number(rvT.pending != null ? rvT.pending : (rvT.total || 0));
+    secs.push(sec("Review", "", [
+      row("Waiting on a decision", num(pending),
+          pending ? "approvals outstanding" : "nothing waiting",
+          pending ? "--serious" : "--good"),
+    ]));
+
+    el.innerHTML = secs.join("");
   }
 
   // Demand against production, week by week. The register's own chart plots one
@@ -4825,8 +4943,12 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
       call("block_forecast", a), call("event_calendar", a), call("protocol_detail", a),
       // Past the plan's horizon: what the ground already carries to the end of its life.
       call("lifetime_production", a),
-    ]).then(([dv, deriv, pp, bf, cal, pr, lt]) => {
+      // The overview summarises propagation too, so it is fetched with the
+      // rest rather than only when its own tab is opened.
+      call("propagation_detail", a),
+    ]).then(([dv, deriv, pp, bf, cal, pr, lt, pg]) => {
       S.lt = lt;
+      S.pg = pg && pg.propagation_plan ? pg : null;
       S.dv = dv && dv.plan ? dv : null;
       S.deriv = deriv; S.pp = pp; S.bf = bf; S.cal = cal; S.pr = pr;
       // The simulator's own picker defaults to the plan's version, but it is free
@@ -4906,7 +5028,7 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
   // Tabs with their own filter keep it on the card: the demand register has its
   // financial year, the calendar its year, the motherstock its protocol version.
   const TAB_FILTERS = {
-    overview:    ["variety", "farm", "plan", "season", "week"],
+    overview:    ["variety", "farm", "season"],
     demand:      ["variety", "farm", "season"],
     plan:        ["variety", "farm", "plan", "season", "week"],
     motherstock: ["variety", "farm", "plan"],
