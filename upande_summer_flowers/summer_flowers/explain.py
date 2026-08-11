@@ -12,6 +12,8 @@ The point is that a planner can challenge a number without reading the code.
 
 import frappe
 from frappe import _
+
+from upande_summer_flowers.summer_flowers.doctype.crop_protocol_version.crop_protocol_version import BED_SQM_PER_HA
 from frappe.utils import flt
 
 WEEKS_PER_YEAR = 52
@@ -69,23 +71,25 @@ def _m_spl(v):
 def _m_pph(v):
 	return {
 		"label": _("Plants per hectare"),
-		"value": flt(v.plants_per_sqm_net) * 10_000, "unit": _("plants/ha"),
-		"formula": _("plants per m² of bed × 10,000"),
+		"value": flt(v.plants_per_sqm_net) * BED_SQM_PER_HA, "unit": _("plants/ha"),
+		"formula": _("plants per m² of bed × {0} m² of bed per hectare of ground").format(BED_SQM_PER_HA),
 		"steps": [
 			_step(_("Plants per m² of bed (net)"), v.plants_per_sqm_net,
 			      _("{0} → plants_per_sqm_net, the agronomic density").format(v.name)),
-			_step(_("× 10,000 m² per hectare"), flt(v.plants_per_sqm_net) * 10_000),
+			_step(_("× {0} m² of bed per hectare of ground").format(BED_SQM_PER_HA),
+			      flt(v.plants_per_sqm_net) * BED_SQM_PER_HA),
 		],
 		"caveats": [
-			_("A hectare of BED, not of block. A second, larger area and the ratio between them "
-			  "ratio are no longer carried, so there is one area and it is stated."),
+			_("A hectare of GROUND, of which {0} m² is bed. Paths, headlands and the gaps "
+			  "between beds take the rest, so a hectare never carries 10,000 m² of crop.")
+			.format(BED_SQM_PER_HA),
 		],
 	}
 
 
 @protocol_metric("stems_per_ha_life")
 def _m_sphl(v):
-	pph = flt(v.plants_per_sqm_net) * 10_000
+	pph = flt(v.plants_per_sqm_net) * BED_SQM_PER_HA
 	return {
 		"label": _("Life stems per hectare"),
 		"value": flt(v.stems_per_ha_life), "unit": _("stems/ha"),
@@ -134,7 +138,7 @@ def _m_sphy(v):
 def _m_hwy(v):
 	fam = v.harvest_week_family(1) if v.flush_interval_weeks else []
 	return {
-		"label": _("Harvest weeks per year"),
+		"label": _("Flushes per year"),
 		"value": v.harvest_weeks_per_year, "unit": _("weeks"),
 		"formula": _("52 ÷ flush interval"),
 		"steps": [

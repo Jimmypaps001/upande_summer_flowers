@@ -13,6 +13,9 @@ import frappe
 from frappe import _
 from frappe.utils import add_days, cint, flt, getdate, nowdate
 
+from upande_summer_flowers.summer_flowers.doctype.crop_protocol_version.crop_protocol_version import (
+	BED_SQM_PER_HA,
+)
 from upande_summer_flowers.summer_flowers.doctype.summer_flower_production_plan.summer_flower_production_plan import (
 	protocol_freshness,
 )
@@ -1728,7 +1731,7 @@ def protocol_detail(version=None, variety=None, farm=None, plan=None):
 	flushes = []
 	cum = 0
 	# Per hectare of BED. It is the only area this app carries.
-	plants_per_ha = (v.plants_per_sqm_net or 0) * 10_000
+	plants_per_ha = (v.plants_per_sqm_net or 0) * BED_SQM_PER_HA
 	for r in sorted(v.flush_schedule, key=lambda r: r.flush_number or 0):
 		cum += r.stems_per_plant or 0
 		flushes.append({
@@ -1834,8 +1837,15 @@ def protocol_detail(version=None, variety=None, farm=None, plan=None):
 			"min_planting_area_sqm": flt(v.min_planting_area_sqm),
 			"total_flushes": v.total_flushes or 0,
 			"total_stems_per_plant_life": flt(v.total_stems_per_plant_life),
-			"stems_per_ha_life": flt(v.stems_per_ha_life),
-			"stems_per_ha_year": flt(v.stems_per_ha_year),
+			# Worked out here rather than read off the snapshot, so they agree with
+			# the plants_per_ha above them. A version approved before the per-hectare
+			# basis moved to BED_SQM_PER_HA still carries figures built on 10,000 m²,
+			# and showing those beside a density quoted on 6,667 puts two different
+			# hectares on one card.
+			"stems_per_ha_life": flt(v.total_stems_per_plant_life) * plants_per_ha,
+			"stems_per_ha_year": ((flt(v.total_stems_per_plant_life) * plants_per_ha)
+			                      / flt(v.life_expectancy_years)
+			                      if flt(v.life_expectancy_years) else 0),
 			"stated_yield_stems_per_ha": flt(v.stated_yield_stems_per_ha),
 			"yield_variance_pct": flt(v.yield_variance_pct),
 			"total_weeks_in_ground": v.total_weeks_in_ground or 0,

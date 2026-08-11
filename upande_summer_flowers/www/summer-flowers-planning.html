@@ -33,15 +33,14 @@
     <nav class="pl-tabs" role="tablist" aria-label="{{ _('Sections') }}">
       <button role="tab" data-tab="overview" class="is-on" aria-selected="true">{{ _("Overview") }}</button>
       <button role="tab" data-tab="demand" aria-selected="false">{{ _("Market Demand") }}</button>
-      <button role="tab" data-tab="plan" aria-selected="false">{{ _("Production Plan") }}</button>
-      <button role="tab" data-tab="motherstock" aria-selected="false">{{ _("Motherstock") }}</button>
-      <button role="tab" data-tab="propagation" aria-selected="false">{{ _("Propagation") }}</button>
-      <button role="tab" data-tab="planting" aria-selected="false">{{ _("Planting Plan") }}</button>
-      <button role="tab" data-tab="blocks" aria-selected="false">{{ _("Block Forecast") }}</button>
-      <button role="tab" data-tab="harvest" aria-selected="false">{{ _("Harvest") }}</button>
-      <button role="tab" data-tab="review" aria-selected="false">{{ _("Review") }}<span id="rv-badge" class="pl-badge" hidden></span></button>
       <button role="tab" data-tab="protocol" aria-selected="false">{{ _("Protocol") }}</button>
+      <button role="tab" data-tab="plan" aria-selected="false">{{ _("Production Plan") }}</button>
+      <button role="tab" data-tab="planting" aria-selected="false">{{ _("Planting Plan") }}</button>
+      <button role="tab" data-tab="propagation" aria-selected="false">{{ _("Propagation") }}</button>
+      <button role="tab" data-tab="motherstock" aria-selected="false">{{ _("Motherstock") }}</button>
+      <button role="tab" data-tab="blocks" aria-selected="false">{{ _("Block Forecast") }}</button>
       <button role="tab" data-tab="calendar" aria-selected="false">{{ _("Calendar") }}</button>
+      <button role="tab" data-tab="review" aria-selected="false">{{ _("Review") }}<span id="rv-badge" class="pl-badge" hidden></span></button>
     </nav>
 
     <!-- ══ OVERVIEW ══ -->
@@ -75,7 +74,6 @@
           <span class="pl-key"><i class="sw" style="background:var(--series-2)"></i>{{ _("Demand") }}</span>
         </div>
         <div class="pl-chart-wrap"><div id="dv-chart" class="pl-chart"></div></div>
-        <p class="pl-note">{{ _("Weekly swings hard because a whole block flushes in one week. Monthly is the reliable read.") }}</p>
       </div>
 
     </section>
@@ -84,8 +82,7 @@
     <section class="pl-pane" data-pane="demand">
       <div class="pl-card">
         <div class="pl-card-head">
-          <div><h2>{{ _("Full market demand") }}</h2>
-               <p class="pl-note">{{ _("Every week of the horizon, as the market asked for it. What it takes to grow this is the production plan's answer, not the register's.") }}</p></div>
+          <div><h2>{{ _("Full market demand") }}</h2></div>
           <span class="pl-actions">
             <button type="button" class="pl-btn" data-dm="upload">{{ _("Upload a demand file") }}</button>
             <button type="button" class="pl-btn" data-dm="extend">{{ _("Extend the horizon") }}</button>
@@ -123,11 +120,9 @@
           <label class="pl-inline">{{ _("Financial year") }}
             <select id="pp-cal-year"></select></label>
         </div>
-        <p class="pl-note" style="margin-top:0">{{ _("Every date the plan commits to, grouped by the month it falls in. Sticking is when cuttings go in the propagation house; planting is when they go to the field; uprooting is when the block comes free again.") }}</p>
         <div class="pl-legend" id="pp-cal-legend"></div>
         <div id="pp-calendar"></div>
         <h3>{{ _("Every planting, first to last") }}</h3>
-        <p class="pl-note" style="margin-top:0">{{ _("The plan is built from the demand; which beds each planting goes into is decided here. Click a block to see what could hold it.") }}</p>
         <div class="pl-row" id="pp-assign" style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:8px"></div>
         <div id="pp-table" class="pl-scroll pl-tall"></div>
       </div>
@@ -139,8 +134,7 @@
       <!-- the overlay: everything summed, before any individual block -->
       <div class="pl-card">
         <div class="pl-card-head">
-          <div><h2>{{ _("All blocks overlaid") }}</h2>
-               <p class="pl-note">{{ _("Every standing block summed onto one series, against the same weeks' demand. Proposed plantings are not in here — this is what is actually on the ground.") }}</p></div>
+          <div><h2>{{ _("All blocks overlaid") }}</h2></div>
         </div>
         <div class="pl-tiles pl-tiles-sm" id="bf-otiles"></div>
 
@@ -152,7 +146,6 @@
              against a 52 week plan -- so more than half of what is already in the
              ground falls outside every other chart here. -->
         <h3 class="pl-h3">{{ _("Production to the end of every standing planting") }}</h3>
-        <p class="pl-note" style="margin-top:0">{{ _("What the ground will produce whether or not anyone plans for it, from the plantings that already exist. Not proposals.") }}</p>
         <div class="pl-tiles pl-tiles-sm" id="lt-tiles"></div>
         <div id="lt-table" class="pl-scroll"></div>
 
@@ -171,8 +164,7 @@
            sheet is laid out. -->
       <div class="pl-card">
         <div class="pl-card-head">
-          <div><h2>{{ _("Harvest calendar") }}</h2>
-               <p class="pl-note">{{ _("Every planting as a row, every week as a column, the flush in the cell. The bands underneath sum the same weeks: total production, the grade split it breaks into, the demand for that week and the gap between them.") }}</p></div>
+          <div><h2>{{ _("Harvest calendar") }}</h2></div>
           <span class="pl-actions">
             <label class="pl-inline">{{ _("Show") }}
               <select id="hc-scope">
@@ -192,8 +184,7 @@
       <!-- then the individuals -->
       <div class="pl-card">
         <div class="pl-card-head">
-          <div><h2>{{ _("Each block on its own") }}</h2>
-               <p class="pl-note">{{ _("Click a block to open its beds. Non-harvest weeks are shown as blanks, not hidden — a block between flushes is genuinely not producing.") }}</p></div>
+          <div><h2>{{ _("Each block on its own") }}</h2></div>
           <label class="pl-inline">{{ _("Block") }}
             <select id="bf-block"><option value="">{{ _("All blocks") }}</option></select>
           </label>
@@ -219,8 +210,7 @@
     <section class="pl-pane" data-pane="plan">
       <div class="pl-card">
         <div class="pl-card-head">
-          <div><h2>{{ _("Demand to budget") }}</h2>
-               <p class="pl-note">{{ _("The chain for this variety. Each step runs from here using the same methods the doctypes use, so a plan created here is the same document as one created on the desk.") }}</p></div>
+          <div><h2>{{ _("Demand to budget") }}</h2></div>
           <span id="pn-actions" class="pl-actions"></span>
         </div>
         <div id="ch-steps"></div>
@@ -228,8 +218,7 @@
 
       <div class="pl-card">
         <div class="pl-card-head">
-          <div><h2>{{ _("What this plan asks for") }}</h2>
-               <p class="pl-note">{{ _("Change the plan and regenerate as often as you like: nothing is committed until it is approved, and approval is what posts the budget and lets the propagation plan be built.") }}</p></div>
+          <div><h2>{{ _("What this plan asks for") }}</h2></div>
         </div>
         <div class="pl-tiles pl-tiles-sm" id="pn-tiles"></div>
         <h3 class="pl-h3">{{ _("Space required") }}</h3>
@@ -242,8 +231,7 @@
            to move either way and a statement of what moving costs. -->
       <div class="pl-card">
         <div class="pl-card-head">
-          <div><h2>{{ _("TC to buy") }}</h2>
-               <p class="pl-note">{{ _("The recommended order is the one that makes the pool exactly meet this plan's peak sticking week. Everything downstream is proportional to the pool, so a purchase inside ±10% still lands the plan; below that band, the peak week is short by the same fraction and those plantings do not happen.") }}</p></div>
+          <div><h2>{{ _("TC to buy") }}</h2></div>
           <span class="pl-actions">
             <label class="pl-inline">{{ _("Buy") }}
               <input type="number" id="tc-qty" min="0" step="50"></label>
@@ -275,8 +263,7 @@
 
       <div class="pl-card">
         <div class="pl-card-head">
-          <div><h2>{{ _("Week by week") }}</h2>
-               <p class="pl-note">{{ _("The same weekly read as the demand register, against what this plan produces: the gap each week, and what the confirmed order can supply of it.") }}</p></div>
+          <div><h2>{{ _("Week by week") }}</h2></div>
         </div>
         <div id="pn-weeks" class="pl-scroll pl-tall"></div>
       </div>
@@ -286,8 +273,7 @@
            it is worth going on with. -->
       <div class="pl-card">
         <div class="pl-card-head">
-          <div><h2>{{ _("Try it before you commit") }}</h2>
-               <p class="pl-note">{{ _("Change the order size or the weekly split and watch what it does to the plan. Cuttings you keep back from the field go to the propagation unit and come back as their own motherstock after establishment, so a week given up early can buy capacity later — this shows whether that trade is worth making.") }}</p></div>
+          <div><h2>{{ _("Try it before you commit") }}</h2></div>
           <span class="pl-actions">
             <label class="pl-inline">{{ _("TC to buy") }}
               <input type="number" id="wi-tc" min="0" step="50"></label>
@@ -304,8 +290,7 @@
 
       <div class="pl-card">
         <div class="pl-card-head">
-          <div><h2>{{ _("Motherstock check") }}</h2>
-               <p class="pl-note">{{ _("Read off this plan, before it is agreed: the peak sticking week sizes the pool, the pool sizes the TC order, and the TC order is the longest lead time in the process. If that order date has already passed, the plan cannot be executed as it stands.") }}</p></div>
+          <div><h2>{{ _("Motherstock check") }}</h2></div>
         </div>
         <div class="pl-tiles pl-tiles-sm" id="pn-ms"></div>
         <div id="pn-ms-note"></div>
@@ -330,8 +315,7 @@
     <section class="pl-pane" data-pane="harvest">
       <div class="pl-card">
         <div class="pl-card-head">
-          <div><h2>{{ _("Crop cycles on the ground") }}</h2>
-               <p class="pl-note">{{ _("One cycle per block planting. Pick a cycle to record a pinch, cut a flush, take cuttings or end it.") }}</p></div>
+          <div><h2>{{ _("Crop cycles on the ground") }}</h2></div>
           <label class="pl-inline">{{ _("Cycle") }}
             <select id="hv-cycle"></select>
           </label>
@@ -364,8 +348,7 @@
 
       <div class="pl-card">
         <div class="pl-card-head">
-          <div><h2>{{ _("Waiting on a decision") }}</h2>
-               <p class="pl-note">{{ _("Everything across the module that needs approving or validating. The same rules apply here as on the desk form — an approval you are not entitled to make will be refused.") }}</p></div>
+          <div><h2>{{ _("Waiting on a decision") }}</h2></div>
           <button type="button" class="pl-btn" id="rv-refresh">{{ _("Refresh") }}</button>
         </div>
         <div class="pl-tiles pl-tiles-sm" id="rv-tiles"></div>
@@ -374,16 +357,14 @@
 
       <div class="pl-card">
         <div class="pl-card-head">
-          <div><h2>{{ _("Production plan") }}</h2>
-               <p class="pl-note">{{ _("Drive the plan through its workflow. Approving a plan is what creates the budget and its monthly distributions.") }}</p></div>
+          <div><h2>{{ _("Production plan") }}</h2></div>
         </div>
         <div id="rv-plan"></div>
       </div>
 
       <div class="pl-card">
         <div class="pl-card-head">
-          <div><h2>{{ _("Budget") }}</h2>
-               <p class="pl-note">{{ _("Built from the plan on approval, priced at the plan's stems, then split by month and posted to a Monthly Distribution and an ERPNext Budget per fiscal year.") }}</p></div>
+          <div><h2>{{ _("Budget") }}</h2></div>
           <span id="bg-actions" class="pl-actions"></span>
         </div>
         <div class="pl-tiles pl-tiles-sm" id="bg-tiles"></div>
@@ -416,8 +397,7 @@
       <div class="pl-two">
         <div class="pl-card">
           <div class="pl-card-head">
-            <div><h2>{{ _("Growing cycle") }}</h2>
-                 <p class="pl-note">{{ _("Planting to uprooting. What happens before planting is on the propagation card below.") }}</p></div>
+            <div><h2>{{ _("Growing cycle") }}</h2></div>
           </div>
           <div id="pr-prod"></div>
         </div>
@@ -427,8 +407,7 @@
         </div>
         <div class="pl-card">
           <div class="pl-card-head">
-            <div><h2>{{ _("Propagation house and bench") }}</h2>
-                 <p class="pl-note">{{ _("Everything between taking a cutting and putting a plant in the ground, and the bench it occupies while that happens. These belong to the propagation unit, not to the growing cycle.") }}</p></div>
+            <div><h2>{{ _("Propagation house and bench") }}</h2></div>
           </div>
           <div id="pr-prop"></div>
         </div>
@@ -460,8 +439,7 @@
            actually yield. -->
       <div class="pl-card">
         <div class="pl-card-head">
-          <div><h2>{{ _("Flush harvest schedule") }}</h2>
-               <p class="pl-note">{{ _("Editing stems per plant or weeks from pinch changes every downstream figure.") }}</p></div>
+          <div><h2>{{ _("Flush harvest schedule") }}</h2></div>
         </div>
         <div id="pr-flushes" class="pl-scroll"></div>
       </div>
@@ -508,8 +486,6 @@
             <output id="ls-prop-out">0%</output></label>
           <label>{{ _("Bench available (m²)") }}<input type="number" id="ls-bench" min="0" step="10"></label>
         </div>
-        <p class="pl-note">{{ _("Diverting cuttings is the multiplication: they return as their own motherstock 15 weeks later and produce for a life of their own. Divert nothing and capacity stays flat.") }}</p>
-        <p class="pl-note">{{ _("The quantity and the order date start at what the plan works out to. Change any of them to see what it does; nothing is written until you confirm, and confirming carries the choice to the plan, the propagation plan and the batch.") }}</p>
         <div class="pl-card-head">
           <span class="pl-actions">
             <button type="button" class="pl-btn" data-ls="effect">{{ _("Effect on the plan") }}</button>
@@ -518,10 +494,7 @@
           </span>
         </div>
         <div id="ls-confirm-note"></div>
-        <h3>{{ _("How the cycle runs") }}</h3>
-        <div class="pl-tiles pl-tiles-sm" id="ls-proto-tiles"></div>
-        <h3>{{ _("What this order produces") }}</h3>
-        <div class="pl-tiles pl-tiles-sm" id="ls-tiles"></div>
+        <div id="ls-warn"></div>
         <h3>{{ _("Cycle milestones") }}</h3>
         <div id="ls-cycles-tbl" class="pl-scroll"></div>
         <h3>{{ _("Week by week") }}</h3>
@@ -539,8 +512,7 @@
     <section class="pl-pane" data-pane="calendar">
       <div class="pl-card">
         <div class="pl-card-head">
-          <div><h2>{{ _("Event calendar") }}</h2>
-               <p class="pl-note">{{ _("Everything this demand and plan trigger: sticking, planting, pinching, each flush, uprooting, and the TC milestones.") }}</p></div>
+          <div><h2>{{ _("Event calendar") }}</h2></div>
           <label class="pl-inline">{{ _("Year") }}<select id="cal-year"></select></label>
         </div>
         <div id="cal-legend" class="pl-legend"></div>
@@ -3836,55 +3808,18 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
     $("ls-sub").textContent = `${num(r.tc_qty)} plantlets ordered ${r.order_date} · ` +
       `supplier lead ${p.supplier_lead_weeks}w → establishment ${p.ms_establishment_weeks}w → ` +
       `${p.ms_life_weeks}w of cutting · cutting to harvest ${p.cutting_to_harvest_weeks}w`;
-    // The constants the cycle runs on, as figures rather than as a sentence above
-    // the card. These are what the schedule below is built from -- change the
-    // build-up and the lead time moves, which moves everything after it -- so they
-    // belong on the card being changed, not in a caption.
-    $("ls-proto-tiles").innerHTML = [
-      { k: "TC per order", v: num(r.tc_qty), m: "plantlets ordered " + fdate(r.order_date) },
-      { k: "Build-up cycles", v: r.build_up_cycles != null ? r.build_up_cycles : "—",
-        m: `×${r.multiplication_factor || 1} multiplication` },
-      { k: "Supplier lead", v: p.supplier_lead_weeks + "w", m: "order to delivery" },
-      { k: "Establishment", v: p.ms_establishment_weeks + "w",
-        m: `tray ${p.weeks_on_tray || 0} + pot ${p.weeks_on_pot || 0} + build-up ` +
-           `${(p.ramp || []).length || 0}` },
-      { k: "TC to first cut", v: (r.tc_to_first_cut_weeks || 0) + "w",
-        m: "arrival to the first cutting" },
-      { k: "MS life", v: p.ms_life_weeks + "w", m: "productive cutting period" },
-      { k: "Cut → harvest", v: p.cutting_to_harvest_weeks + "w",
-        m: "cutting stuck to first stem cut" },
-      { k: "Generations", v: r.generations != null ? r.generations : "—",
-        m: `over ${r.horizon_weeks || 0} weeks` },
-    ].map(tile).join("");
-
-    // A build-up cannot stack more rounds than the motherstock lives to see, and
-    // the arithmetic that sizes the order does not know that. Said plainly, with
-    // the number, because it means the order is short.
     if (r.build_up_capped) {
-      $("ls-proto-tiles").insertAdjacentHTML("afterend",
+      $("ls-warn").innerHTML =
         `<div class="pl-callout"><b>${r.stages_ordered} build-up cycles will not all ` +
         `stand together.</b> A round takes ${p.stage_interval_weeks || 0} weeks and a ` +
         `motherstock lives ${p.ms_life_weeks} weeks, so only ${r.stages_that_fit} ` +
         `tranches are ever alive at once — the last arrives after the first has died. ` +
         `The pool peaks at ${num(r.stages_that_fit)}× the order, not ` +
         `${num(r.stages_ordered)}×, so dividing the requirement by ` +
-        `${r.stages_ordered} under-buys it.</div>`);
+        `${r.stages_ordered} under-buys it.</div>`;
+    } else {
+      $("ls-warn").innerHTML = "";
     }
-
-    $("ls-tiles").innerHTML = [
-      { k: "Peak MS pool", v: num(t.peak_ms_plants), m: t.peak_ms_week || "—" },
-      { k: "Peak bench", v: t.peak_bench_sqm + " m²", m: num(t.peak_pots) + " pots",
-        c: r.max_bench_sqm && t.peak_bench_sqm > r.max_bench_sqm ? "--critical" : "" },
-      { k: "Peak capacity", v: num(t.peak_capacity),
-        m: "cuttings/wk at " + (t.peak_capacity_week || "—") },
-      { k: "Sub-pools created", v: num(r.prop_pools), m: "from diverted cuttings" },
-      { k: "Cuttings to farm", v: num(t.cuttings_to_farm),
-        m: num(t.beds_from_farm_cuttings) + " beds" },
-      { k: "Stems from those", v: num(t.stems_from_farm_cuttings), m: "over their life" },
-      { k: "Diverted", v: num(t.cuttings_to_prop),
-        m: t.cuttings_wasted ? num(t.cuttings_wasted) + " wasted, bench full" : "all potted",
-        c: t.cuttings_wasted ? "--critical" : "" },
-    ].map(tile).join("");
 
     $("ls-cycles-tbl").innerHTML =
       '<table class="pl-t"><thead><tr><th>Cycle</th><th class="n">TC</th><th>Order</th>' +
@@ -4167,11 +4102,10 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
     $("pr-banner").innerHTML = banner;
 
     $("pr-tiles").innerHTML = [
-      { k: "Variety", v: d.variety, m: "Summer flower" },
       { k: "Life expectancy", v: D.life_expectancy_years.toFixed(2) + " yrs",
         m: D.total_weeks_in_ground + " weeks in ground", why: "life_expectancy_years" },
       { k: "Plants / ha", v: num(D.plants_per_ha), why: "plants_per_ha",
-        m: `${F.plants_per_sqm_net}/m² of bed × 10,000` },
+        m: `${F.plants_per_sqm_net}/m² of bed × 6,667 m² of bed per ha of ground` },
       { k: "Yield / ha / yr", v: num(D.stems_per_ha_year), why: "stems_per_ha_year",
         m: "stated " + num(D.stated_yield_stems_per_ha),
         c: Math.abs(D.yield_variance_pct) > 1 ? "--serious" : "--good" },
@@ -4179,7 +4113,7 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
         why: "stems_per_ha_life" },
       { k: "Stems / plant life", v: D.total_stems_per_plant_life.toFixed(1),
         m: `across ${D.total_flushes} flushes`, why: "total_stems_per_plant_life" },
-      { k: "Harvest weeks / yr", v: num(D.harvest_weeks_per_year),
+      { k: "Flushes / year", v: num(D.harvest_weeks_per_year),
         m: `every ${F.flush_interval_weeks} weeks`, why: "harvest_weeks_per_year" },
       { k: "Order → 1st harvest", v: D.order_to_first_harvest_weeks + "w",
         m: "TC order to farm harvest", why: "order_to_first_harvest_weeks" },

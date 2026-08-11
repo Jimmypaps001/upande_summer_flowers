@@ -17,6 +17,13 @@ from frappe.utils import add_days, cint, flt, getdate, now_datetime, nowdate
 
 WEEKS_PER_YEAR = 52
 
+# Net bed in a hectare of ground. A hectare is 10,000 m2, but paths, headlands and
+# the gaps between beds take about a third of it, so only this much is ever planted.
+# Quoting per-hectare figures against the full 10,000 overstated every one of them
+# by half: the farm plans against the ground it has, not against the bed it would
+# have if the ground were all bed.
+BED_SQM_PER_HA = 6667
+
 
 class CropProtocolVersion(Document):
 	def guard_snapshot_only(self):
@@ -175,11 +182,12 @@ class CropProtocolVersion(Document):
 
 		self.life_expectancy_years = years
 
-		# Per hectare means per hectare of BED. There is one area in this app -- the
-		# ground the crop occupies -- and every per-hectare figure is quoted against
-		# it. Carrying a second, larger area alongside invited every yield to be read
-		# against whichever one the reader assumed.
-		plants_per_ha = (self.plants_per_sqm_net or 0) * 10_000
+		# Per hectare means per hectare of GROUND, of which BED_SQM_PER_HA is bed.
+		# There is one area in this app -- the ground the crop occupies -- and every
+		# per-hectare figure is quoted against it. Carrying a second, larger area
+		# alongside invited every yield to be read against whichever one the reader
+		# assumed.
+		plants_per_ha = (self.plants_per_sqm_net or 0) * BED_SQM_PER_HA
 		self.plants_per_net_ha = int(round(plants_per_ha))
 		self.stems_per_ha_life = (self.total_stems_per_plant_life or 0) * plants_per_ha
 		self.stems_per_ha_year = (self.stems_per_ha_life / years) if years else 0
