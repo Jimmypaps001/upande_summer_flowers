@@ -2269,6 +2269,12 @@ def propagation_detail(plan=None, propagation_plan=None, variety=None, farm=None
 		propagation_plan = rows[0]
 
 	d = frappe.get_doc("Summer Flower Propagation Plan", propagation_plan)
+	# What one mother plant yields in a week. Everything below converts cuttings to
+	# mother plants with it.
+	per_week = flt(frappe.db.get_value(
+		"Crop Protocol Version",
+		frappe.db.get_value("Summer Flower Production Plan", d.production_plan, "protocol"),
+		"cuttings_per_plant_per_week")) or 1.0
 	batches = frappe.get_all(
 		"Summer Flower Motherstock Batch",
 		filters={"production_plan": d.production_plan},
@@ -2318,12 +2324,23 @@ def propagation_detail(plan=None, propagation_plan=None, variety=None, farm=None
 			"stems_at_risk": cint(d.stems_at_risk),
 		},
 		"warning": d.schedule_warning,
+		# Mother plants, not cuttings. A week's cuttings are what the field wants;
+		# the motherstock is what has to be standing on the bench to cut them, and
+		# that is the number anyone can act on -- you buy, raise and bench mother
+		# plants, you do not buy cuttings. One mother yields
+		# cuttings_per_plant_per_week, so the conversion is that and nothing else,
+		# done here rather than on the page so the table and the card cannot divide
+		# by different figures.
 		"weeks": [{
 			"year": r.year, "week_no": r.week_no,
 			"label": "%s-W%02d" % (r.year, cint(r.week_no)),
 			"week_start_date": str(r.week_start_date or ""),
 			"plants_to_stick": cint(r.plants_to_stick),
 			"cuttings_required": cint(r.cuttings_required),
+			"mothers_required": (int(math.ceil(cint(r.cuttings_required) / per_week))
+			                     if per_week else 0),
+			"mothers_available": (int(cint(r.capacity_available) / per_week)
+			                      if per_week else 0),
 			"from_existing_ms": cint(r.from_existing_ms),
 			"from_new_ms": cint(r.from_new_ms),
 			"shortfall": cint(r.shortfall),

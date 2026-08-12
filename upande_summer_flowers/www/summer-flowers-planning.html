@@ -2605,29 +2605,42 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
     if (wks.length) {
       html += `<h3 class="pl-h3">Week by week</h3>` +
         '<div class="pl-legend">' +
-        '<span class="pl-key"><i class="sw" style="background:var(--series-1)"></i>Cuttings available</span>' +
-        '<span class="pl-key"><i class="sw" style="background:var(--series-2)"></i>Cuttings required</span>' +
+        '<span class="pl-key"><i class="sw" style="background:var(--series-1)"></i>Motherstock available</span>' +
+        '<span class="pl-key"><i class="sw" style="background:var(--series-2)"></i>Motherstock required</span>' +
         '</div><div class="pl-chart-wrap"><div id="pg-chart" class="pl-chart"></div></div>' +
         '<table class="pl-t"><thead><tr><th>Sticking week</th><th>Delivery week</th>' +
-        '<th class="n">Plants required</th><th class="n">Cuttings required</th>' +
-        '<th class="n">Cuttings available</th><th class="n">Difference</th>' +
+        '<th class="n">Motherstock required</th>' +
+        '<th class="n">Motherstock available</th><th class="n">Difference</th>' +
         '</tr></thead><tbody>' +
         wks.map((x) => {
-          const diff = (x.capacity || 0) - (x.cuttings_required || 0);
-          return `<tr><td>${esc(x.label)}` +
+          // Mother plants against mother plants. The cuttings behind them, and the
+          // plants they are for, stay in the row's tooltip: they are how the figure
+          // was reached rather than the figure anyone acts on.
+          const diff = (x.mothers_available || 0) - (x.mothers_required || 0);
+          return `<tr data-tip="${esc(`<b>${x.label}</b><br>` +
+              `${num(x.plants_to_stick)} plants to stick<br>` +
+              `${num(x.cuttings_required)} cuttings needed<br>` +
+              `${num(x.capacity)} cuttings the pool can cut`)}">` +
+            `<td>${esc(x.label)}` +
             `${x.week_start_date ? ` <span class="bf-meta">${fdate(x.week_start_date)}</span>` : ""}</td>` +
             `<td>${esc(x.plant_week || "—")}</td>` +
-            `<td class="n">${num(x.plants_to_stick)}</td>` +
-            `<td class="n">${num(x.cuttings_required)}</td>` +
-            `<td class="n">${num(x.capacity)}</td>` +
+            `<td class="n">${num(x.mothers_required)}</td>` +
+            `<td class="n">${num(x.mothers_available)}</td>` +
             `<td class="n" style="color:var(${diff < 0 ? "--critical" : "--good"})">` +
             `${sgn(diff)}</td></tr>`;
         }).join("") +
-        `<tr class="pl-tot"><th>${num(wks.length)} weeks</th><th></th>` +
-        `<th class="n">${num(wks.reduce((a, x) => a + (x.plants_to_stick || 0), 0))}</th>` +
-        `<th class="n">${num(reqTot)}</th>` +
-        `<th class="n">${num(availTot)}</th>` +
-        `<th class="n">${sgn(availTot - reqTot)}</th></tr>` +
+        (function () {
+          // The peak, not the sum. Mother plants are a standing pool: the same
+          // plants are cut again every week, so adding a weekly requirement across
+          // 38 weeks would claim the farm needs 38 times the bench it needs.
+          const pk = wks.reduce((a, x) => Math.max(a, x.mothers_required || 0), 0);
+          const av = wks.reduce((a, x) => Math.max(a, x.mothers_available || 0), 0);
+          return `<tr class="pl-tot"><th>${num(wks.length)} weeks</th>` +
+            `<th>peak week</th>` +
+            `<th class="n">${num(pk)}</th>` +
+            `<th class="n">${num(av)}</th>` +
+            `<th class="n">${sgn(av - pk)}</th></tr>`;
+        })() +
         '</tbody></table>';
     }
 
@@ -2698,11 +2711,14 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
         : '<p class="pl-empty">No sticking weeks in this period.</p>');
     $("pg-body").innerHTML = html;
     if (wks.length && $("pg-chart")) {
+      // The same two series the table foots, so the picture and the numbers under
+      // it cannot tell different stories.
       drawGrouped($("pg-chart"), wks.map((x) => ({
-        label: x.label, production: x.capacity || 0,
-        demand: x.cuttings_required || 0,
-        variance: (x.capacity || 0) - (x.cuttings_required || 0),
-      })), { a: "Available", b: "Required", diff: "Difference" });
+        label: x.label, production: x.mothers_available || 0,
+        demand: x.mothers_required || 0,
+        variance: (x.mothers_available || 0) - (x.mothers_required || 0),
+      })), { a: "Motherstock available", b: "Motherstock required",
+             diff: "Difference" });
     }
   }
 
