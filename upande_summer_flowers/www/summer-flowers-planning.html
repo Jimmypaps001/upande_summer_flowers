@@ -486,11 +486,6 @@
     <!-- ══ MOTHERSTOCK ══ -->
     <section class="pl-pane" data-pane="motherstock">
       <div class="pl-card">
-        <div class="pl-card-head"><h2>{{ _("From demand to the TC order") }}</h2></div>
-        <div id="derivation"></div>
-      </div>
-
-      <div class="pl-card">
         <div class="pl-card-head">
           <div><h2>{{ _("TC lifecycle and propagation feedback") }}</h2>
                <p class="pl-note" id="ls-sub"></p></div>
@@ -4193,28 +4188,6 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
     bindTips($("bf-body"));
   }
 
-  function renderDerivation() {
-    const d = S.deriv;
-    if (!d || !d.plan) { $("derivation").innerHTML = '<p class="pl-empty">No plan.</p>'; return; }
-    // The derivation reads as a row of KPIs rather than a list of steps. It is the
-    // same eight numbers in the same order -- the order is the derivation, so the
-    // step number stays on the tile -- but each is a figure to be read at a glance
-    // and challenged, which a paragraph-shaped step list makes hard.
-    const tiles = d.steps.map((s, i) => ({
-      k: `${i + 1} · ${s.step}`,
-      v: numx(s.value),
-      m: [s.unit, s.note].filter(Boolean).join(" — "),
-      why: s.why || null,
-    }));
-    tiles.push({
-      k: "→ Motherstock required",
-      v: num(d.mothers_required),
-      m: `mother plants — ${num(d.pots_required)} pots · ${d.bench_sqm} m² of bench`,
-    });
-    $("derivation").innerHTML =
-      `<div class="pl-tiles pl-tiles-sm">${tiles.map(tile).join("")}</div>`;
-  }
-
   function drawPool(el, allRows) {
     const rows = (allRows || []).filter((r) => r.total_cap || r.ms_plants);
     if (!rows.length) { el.innerHTML = '<p class="pl-empty">No capacity yet.</p>'; return; }
@@ -5317,7 +5290,7 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
 
       renderOverview(); renderDemand(); renderPlanting();
       renderBlocks(); renderLifetime();
-      renderDerivation(); renderCalendar(); renderProtocol();
+      renderCalendar(); renderProtocol();
       // Keep the picker honest about which plan the page is actually showing.
       if (dv && dv.plan) { S.plan = dv.plan; const ps = $("f-plan"); if (ps) ps.value = dv.plan; }
       loadPlanState();
