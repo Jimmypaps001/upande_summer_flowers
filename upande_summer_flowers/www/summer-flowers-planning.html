@@ -2163,7 +2163,6 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
         `Suggest and assign all</button>`
       : `<span class="pl-note" style="margin:0">Every planting has a block.</span>` +
         `<button type="button" class="pl-btn" data-bk-clear="1">Clear all blocks</button>`;
-    const wig = Number((S.pp && S.pp.totals && S.pp.totals.weeks_in_ground)) || 1;
     const shown = rows.slice(0, 400);
     // Numbered in the order shown, so "planting 1 to planting 38" means the
     // sequence on screen rather than a row id that moves when the sort changes.
@@ -2171,7 +2170,7 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
       '<table class="pl-t"><thead><tr><th>#</th><th>Planting week</th>' +
       '<th>Uprooting week</th><th class="n">Plants</th>' +
       '<th class="n">Area m²</th><th class="n">Area ha</th>' +
-      '<th class="n">Stems over its life</th><th class="n">Stems / week</th>' +
+      '<th class="n">Stems over its life</th>' +
       '<th class="n">Stems / plant</th><th>Flags</th>' +
       '</tr></thead><tbody>' +
       shown.map((r, i) => {
@@ -2191,9 +2190,6 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
           `<td class="n">${num(Math.round(ha * 10000))}</td>` +
           `<td class="n">${ha.toFixed(4)}</td>` +
           `<td class="n">${num(r.lifetime_stems)}</td>` +
-          // Over the weeks it is actually in the ground, not over the plan's
-          // weeks: a planting that goes in late still produces at its own rate.
-          `<td class="n">${num(Math.round((r.lifetime_stems || 0) / wig))}</td>` +
           `<td class="n">${r.plants ? ((r.lifetime_stems || 0) / r.plants).toFixed(1) : "—"}</td>` +
           `<td>${f.join(" ")}</td></tr>`;
       }).join("") +
@@ -2209,7 +2205,6 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
           `<th class="n">${num(Math.round(th * 10000))}</th>` +
           `<th class="n">${th.toFixed(4)}</th>` +
           `<th class="n">${num(ts)}</th>` +
-          `<th class="n">${num(Math.round(ts / wig))}</th>` +
           `<th class="n">${tp ? (ts / tp).toFixed(1) : "—"}</th><th></th></tr>`;
       })() +
       "</tbody></table>" +
