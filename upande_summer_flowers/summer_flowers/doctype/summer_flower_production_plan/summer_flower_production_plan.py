@@ -20,9 +20,11 @@ from upande_summer_flowers.summer_flowers.doctype.planting_calendar.planting_cal
 )
 from upande_summer_flowers.summer_flowers.planning import (
 	MONTH_NAMES,
+	SEASON_FIRST_WEEK,
 	iso_monday,
 	iso_year_week,
 	week_sequence,
+	weeks_between,
 )
 
 # Stop the greedy filler running away if a protocol is misconfigured.
@@ -196,16 +198,21 @@ class SummerFlowerProductionPlan(Document):
 		self.season_start_date = start
 		self.season_end_date = end
 
-		# A week belongs to the season its MONDAY falls in. Taking the week that
-		# CONTAINS 1 July and the one that contains 30 June counts the boundary week
-		# twice -- 30 June 2027 and 1 July 2027 are both in 2027-W26 -- which made
-		# every season 53 weeks and gave consecutive seasons a week in common.
-		first_monday = start + datetime.timedelta(days=(7 - start.weekday()) % 7)
-		next_start = datetime.date(year + 1, 7, 1)
-		last_monday = next_start + datetime.timedelta(days=(7 - next_start.weekday()) % 7) \
-			- datetime.timedelta(weeks=1)
-		self.from_year, self.from_week = iso_year_week(first_monday)
-		self.weeks_covered = ((last_monday - first_monday).days // 7) + 1
+		# A season runs W27 to W26, which is how the demand register numbers it and
+		# how the workbook it is loaded from is laid out: W27 onward belongs to the
+		# year the season starts in, W1-W26 to the next.
+		#
+		# It used to take the first Monday on or after 1 July instead. Those agree in
+		# most years and disagree whenever 1 July falls after a Monday: in 2026 it is
+		# a Wednesday, so the first Monday is 6 July -- W28 -- and the plan opened a
+		# week after the register did. FY2026-27 came out 52 weeks and 3,355,000
+		# stems against the register's 53 and 3,410,000, the whole difference being
+		# 2026-W27 on its own. One boundary, defined twice, is a plan that cannot
+		# reconcile with the demand it was built from.
+		self.from_year, self.from_week = year, SEASON_FIRST_WEEK
+		last_year, last_week = year + 1, SEASON_FIRST_WEEK - 1
+		self.weeks_covered = weeks_between(
+			self.from_year, self.from_week, last_year, last_week) + 1
 
 	def set_period_end(self):
 		if not (self.from_year and self.from_week and self.weeks_covered):

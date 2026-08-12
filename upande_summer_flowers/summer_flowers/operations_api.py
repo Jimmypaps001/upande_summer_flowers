@@ -18,7 +18,11 @@ import frappe
 from frappe import _
 from frappe.utils import cint, flt, getdate, nowdate
 
-from upande_summer_flowers.summer_flowers.planning import iso_monday, iso_year_week
+from upande_summer_flowers.summer_flowers.planning import (
+	SEASON_FIRST_WEEK,
+	iso_monday,
+	iso_year_week,
+)
 
 REVIEW_SOURCES = (
 	# (doctype, status field, pending value, label, extra fields for the card)
@@ -539,8 +543,10 @@ def chain_status(variety=None, farm=None, demand=None, plan=None, season=None):
 		start = cint(season)
 		rows = frappe.db.sql("""select year, week_no, demand_stems
 			from `tabSummer Flower Demand Week` where parent = %s
-			  and ((year = %s and week_no >= 27) or (year = %s and week_no <= 26))
-			order by year, week_no""", (demand, start, start + 1), as_dict=True)
+			  and ((year = %s and week_no >= %s) or (year = %s and week_no < %s))
+			order by year, week_no""",
+			(demand, start, SEASON_FIRST_WEEK, start + 1, SEASON_FIRST_WEEK),
+			as_dict=True)
 		d["weeks_covered"] = len(rows)
 		d["total_demand_stems"] = sum(cint(r.demand_stems) for r in rows)
 		d["horizon_start"] = ("%s-W%02d" % (rows[0].year, rows[0].week_no)
@@ -702,8 +708,10 @@ def process_overview(variety=None, farm=None, plan=None, season=None):
 		start = cint(season)
 		wk = frappe.db.sql("""select year, week_no, demand_stems
 			from `tabSummer Flower Demand Week` where parent = %s
-			  and ((year = %s and week_no >= 27) or (year = %s and week_no <= 26))
-			order by year, week_no""", (d.name, start, start + 1), as_dict=True)
+			  and ((year = %s and week_no >= %s) or (year = %s and week_no < %s))
+			order by year, week_no""",
+			(d.name, start, SEASON_FIRST_WEEK, start + 1, SEASON_FIRST_WEEK),
+			as_dict=True)
 		d.weeks_covered = len(wk)
 		d.total_demand_stems = sum(cint(r.demand_stems) for r in wk)
 		d.horizon_start = "%s-W%02d" % (wk[0].year, wk[0].week_no) if wk else None

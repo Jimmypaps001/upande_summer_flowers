@@ -18,6 +18,14 @@ MONTH_NAMES = [
 ]
 
 
+# The week a financial year opens on. July to June, and the register numbers it by
+# ISO week rather than by date: W27 onward belongs to the year the season starts in,
+# W1-W26 to the next. Everything that has to agree about which season a week is in
+# reads this, because deriving it twice is how a plan came to open a week after the
+# register it was built from.
+SEASON_FIRST_WEEK = 27
+
+
 def iso_monday(year, week):
 	"""Date of the Monday starting ISO `week` of ISO `year`."""
 	return datetime.date.fromisocalendar(int(year), int(week), 1)

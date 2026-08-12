@@ -26,6 +26,7 @@ from upande_summer_flowers.summer_flowers.motherstock_sim import (
 	tc_needed_for,
 )
 from upande_summer_flowers.summer_flowers.planning import (
+	SEASON_FIRST_WEEK,
 	iso_monday,
 	iso_year_week,
 	week_sequence,
@@ -111,7 +112,7 @@ def plans(variety=None, farm=None):
 			y, wk = cint(w.year), cint(w.week_no)
 			if y and wk:
 				# July to June: W27 on belongs to the year it starts in.
-				seasons.add(y if wk >= 27 else y - 1)
+				seasons.add(y if wk >= SEASON_FIRST_WEEK else y - 1)
 
 	return {
 		"plans": rows,
