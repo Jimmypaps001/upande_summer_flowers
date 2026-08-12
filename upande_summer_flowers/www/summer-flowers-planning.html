@@ -2605,41 +2605,23 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
         '</div><div class="pl-chart-wrap"><div id="pg-chart" class="pl-chart"></div></div>' +
         '<table class="pl-t"><thead><tr><th>Sticking week</th><th>Delivery week</th>' +
         '<th class="n">Plants required</th>' +
-        '<th class="n">Motherstock required</th>' +
-        '<th class="n">Motherstock available</th><th class="n">Difference</th>' +
         '</tr></thead><tbody>' +
         wks.map((x) => {
-          // Mother plants against mother plants. The cuttings behind them, and the
-          // plants they are for, stay in the row's tooltip: they are how the figure
-          // was reached rather than the figure anyone acts on.
-          const diff = (x.mothers_available || 0) - (x.mothers_required || 0);
+          // The week's sticking, and what stands behind it in the tooltip: what
+          // the cuttings come to, and what the pool can actually cut that week.
           return `<tr data-tip="${esc(`<b>${x.label}</b><br>` +
               `${num(x.cuttings_required)} cuttings needed<br>` +
-              `${num(x.capacity)} cuttings the pool can cut`)}">` +
+              `${num(x.capacity)} the pool can cut<br>` +
+              `${num(x.mothers_required)} mother plants to cut them`)}">` +
             `<td>${esc(x.label)}` +
             `${x.week_start_date ? ` <span class="bf-meta">${fdate(x.week_start_date)}</span>` : ""}</td>` +
             `<td>${esc(x.plant_week || "—")}</td>` +
-            `<td class="n">${num(x.plants_to_stick)}</td>` +
-            `<td class="n">${num(x.mothers_required)}</td>` +
-            `<td class="n">${num(x.mothers_available)}</td>` +
-            `<td class="n" style="color:var(${diff < 0 ? "--critical" : "--good"})">` +
-            `${sgn(diff)}</td></tr>`;
+            `<td class="n">${num(x.plants_to_stick)}</td></tr>`;
         }).join("") +
         (function () {
-          // The peak, not the sum. Mother plants are a standing pool: the same
-          // plants are cut again every week, so adding a weekly requirement across
-          // 38 weeks would claim the farm needs 38 times the bench it needs.
-          const pk = wks.reduce((a, x) => Math.max(a, x.mothers_required || 0), 0);
-          const av = wks.reduce((a, x) => Math.max(a, x.mothers_available || 0), 0);
-          // Plants add up across the weeks; motherstock does not, so the two
-          // columns are footed differently and the row says which is which.
           const pl = wks.reduce((a, x) => a + (x.plants_to_stick || 0), 0);
-          return `<tr class="pl-tot"><th>${num(wks.length)} weeks</th>` +
-            `<th>total · peak</th>` +
-            `<th class="n">${num(pl)}</th>` +
-            `<th class="n">${num(pk)}</th>` +
-            `<th class="n">${num(av)}</th>` +
-            `<th class="n">${sgn(av - pk)}</th></tr>`;
+          return `<tr class="pl-tot"><th>${num(wks.length)} weeks</th><th></th>` +
+            `<th class="n">${num(pl)}</th></tr>`;
         })() +
         '</tbody></table>';
     }
