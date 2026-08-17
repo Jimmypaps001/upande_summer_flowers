@@ -17,6 +17,10 @@
   "cb_ident",
   "company",
   "crop_class",
+  "route_section",
+  "growing_cycle",
+  "route_summary",
+  "material_route",
   "climate_note",
   "version_section",
   "version",
@@ -308,11 +312,11 @@
   },
   {
    "default": "20",
+   "description": "Plants standing per square metre of BED \u2014 the ground the crop actually occupies, not the block it sits in. This and Plants per Bed set the bed size, the plants per block and every per-hectare figure in the protocol.",
    "fieldname": "plants_per_sqm_net",
    "fieldtype": "Int",
    "label": "Plants per m\u00b2 of bed (net)",
-   "reqd": 1,
-   "description": "Plants standing per square metre of BED \u2014 the ground the crop actually occupies, not the block it sits in. This and Plants per Bed set the bed size, the plants per block and every per-hectare figure in the protocol."
+   "reqd": 1
   },
   {
    "fieldname": "cb_geo",
@@ -320,37 +324,37 @@
   },
   {
    "default": "1000",
+   "description": "Bed area at the planting density. Not typed: an area at a density is a plant count, and typing both let them disagree.",
    "fieldname": "plants_per_bed",
    "fieldtype": "Int",
    "label": "Plants Per Bed",
-   "read_only": 1,
-   "description": "Bed area at the planting density. Not typed: an area at a density is a plant count, and typing both let them disagree."
+   "read_only": 1
   },
   {
+   "description": "The smallest planting worth making, as an area. Beds are whole, so this rounds up to whole beds and then to plants.",
    "fieldname": "min_planting_area_sqm",
    "fieldtype": "Float",
-   "label": "Minimum planting area (m\u00b2 net)",
-   "description": "The smallest planting worth making, as an area. Beds are whole, so this rounds up to whole beds and then to plants."
+   "label": "Minimum planting area (m\u00b2 net)"
   },
   {
+   "description": "Read-only: every figure here is calculated from plants per m\u00b2 and plants per bed. Change those and these follow.",
    "fieldname": "derived_geo_section",
    "fieldtype": "Section Break",
-   "label": "Worked out from the geometry above",
-   "description": "Read-only: every figure here is calculated from plants per m\u00b2 and plants per bed. Change those and these follow."
+   "label": "Worked out from the geometry above"
   },
   {
+   "description": "The net planted area of one bed. Karen's beds are 50 m\u00b2 each. Plants per bed follows from this and the density.",
    "fieldname": "sqm_net_per_bed",
    "fieldtype": "Float",
    "label": "m\u00b2 net per bed",
-   "precision": "2",
-   "description": "The net planted area of one bed. Karen's beds are 50 m\u00b2 each. Plants per bed follows from this and the density."
+   "precision": "2"
   },
   {
+   "description": "The minimum area above, rounded up to whole beds.",
    "fieldname": "min_planting_beds_derived",
    "fieldtype": "Int",
    "label": "Minimum planting (whole beds)",
-   "read_only": 1,
-   "description": "The minimum area above, rounded up to whole beds."
+   "read_only": 1
   },
   {
    "fieldname": "min_planting_plants",
@@ -391,10 +395,10 @@
    "fieldtype": "Column Break"
   },
   {
+   "description": "Read-only: calculated from the pinch week, the flush interval and the flush schedule.",
    "fieldname": "derived_time_section",
    "fieldtype": "Section Break",
-   "label": "Worked out from the timeline above",
-   "description": "Read-only: calculated from the pinch week, the flush interval and the flush schedule."
+   "label": "Worked out from the timeline above"
   },
   {
    "fieldname": "first_harvest_offset_weeks",
@@ -476,23 +480,23 @@
   {
    "fieldname": "plants_per_net_ha",
    "fieldtype": "Int",
-   "read_only": 1,
-   "label": "Plants per Net Hectare"
+   "label": "Plants per Net Hectare",
+   "read_only": 1
   },
   {
+   "description": "The most stems one plant yields in any 52 consecutive weeks of its life. A plant's best year is not its average year, and the workbook quotes both.",
    "fieldname": "best_year_stems_per_plant",
    "fieldtype": "Float",
-   "read_only": 1,
-   "precision": "2",
    "label": "Best Year: Stems per Plant",
-   "description": "The most stems one plant yields in any 52 consecutive weeks of its life. A plant's best year is not its average year, and the workbook quotes both."
+   "precision": "2",
+   "read_only": 1
   },
   {
    "fieldname": "best_year_stems_per_net_ha",
    "fieldtype": "Float",
-   "read_only": 1,
+   "label": "Best Year: Stems per Net Hectare",
    "precision": "0",
-   "label": "Best Year: Stems per Net Hectare"
+   "read_only": 1
   },
   {
    "fieldname": "propagation_tab",
@@ -534,10 +538,10 @@
   },
   {
    "default": "3",
+   "description": "Weeks between a cutting going into the propagation house and the rooted plant going to the field.",
    "fieldname": "sticking_to_planting_weeks",
    "fieldtype": "Int",
-   "label": "Weeks sticking \u2192 planting",
-   "description": "Weeks between a cutting going into the propagation house and the rooted plant going to the field."
+   "label": "Weeks sticking \u2192 planting"
   },
   {
    "fieldname": "est_derived_section",
@@ -604,10 +608,10 @@
    "precision": "3"
   },
   {
+   "description": "Plantlets that do not survive the lab-to-bench transfer. The order is the requirement divided by (1 - this), which is the workbook's TC ORDER column: 4,000 needed is 4,444 ordered at 10%. Without it the order is the requirement exactly and arrives short.",
    "fieldname": "tc_order_loss_pct",
    "fieldtype": "Percent",
-   "label": "TC Order Loss Allowance",
-   "description": "Plantlets that do not survive the lab-to-bench transfer. The order is the requirement divided by (1 - this), which is the workbook's TC ORDER column: 4,000 needed is 4,444 ordered at 10%. Without it the order is the requirement exactly and arrives short."
+   "label": "TC Order Loss Allowance"
   },
   {
    "fieldname": "cb_mult",
@@ -626,10 +630,10 @@
    "label": "Motherstock Life Weeks"
   },
   {
+   "description": "Read-only: what the multiplication achieves and how long it takes.",
    "fieldname": "mult_derived_section",
    "fieldtype": "Section Break",
-   "label": "Worked out from the multiplication settings above",
-   "description": "Read-only: what the multiplication achieves and how long it takes."
+   "label": "Worked out from the multiplication settings above"
   },
   {
    "fieldname": "max_multiplication_factor",
@@ -739,22 +743,22 @@
    "read_only": 1
   },
   {
+   "description": "Whether the weeks from a TC plantlet to its first cutting include the climb to full cutting rate. Off means the build-up is cut through at the reducing rate, not waited out.",
    "fieldname": "establishment_includes_ramp",
    "fieldtype": "Check",
-   "label": "TC Establishment Includes the Build-up",
-   "description": "Whether the weeks from a TC plantlet to its first cutting include the climb to full cutting rate. Off means the build-up is cut through at the reducing rate, not waited out."
+   "label": "TC Establishment Includes the Build-up"
   },
   {
+   "description": "Whether hardening counts against the mother plant on the bench. The planning workbook counts it: tray 3 + pot 8 + build-up 4 + hardening 3 = 18 weeks, and its 40 week lab lead time depends on it.",
    "fieldname": "establishment_includes_hardening",
    "fieldtype": "Check",
-   "label": "TC Establishment Includes Hardening",
-   "description": "Whether hardening counts against the mother plant on the bench. The planning workbook counts it: tray 3 + pot 8 + build-up 4 + hardening 3 = 18 weeks, and its 40 week lab lead time depends on it."
+   "label": "TC Establishment Includes Hardening"
   },
   {
    "fieldname": "weeks_tc_to_first_cut_derived",
    "fieldtype": "Int",
-   "read_only": 1,
-   "label": "Weeks from TC to First Cutting"
+   "label": "Weeks from TC to First Cutting",
+   "read_only": 1
   },
   {
    "description": "Hardening + pinch + first flush.",
@@ -804,6 +808,31 @@
    "fieldname": "beds_per_block",
    "fieldtype": "Int",
    "label": "Beds per Block"
+  },
+  {
+   "fieldname": "route_section",
+   "fieldtype": "Section Break",
+   "label": "Plant Material Route"
+  },
+  {
+   "fieldname": "growing_cycle",
+   "fieldtype": "Select",
+   "label": "Growing Cycle",
+   "options": "\nPerennial - distinct flushes\nPerennial - continuous\nSingle flush cycle",
+   "read_only": 1
+  },
+  {
+   "fieldname": "route_summary",
+   "fieldtype": "Data",
+   "label": "Route",
+   "read_only": 1
+  },
+  {
+   "fieldname": "material_route",
+   "fieldtype": "Table",
+   "label": "Material Route",
+   "options": "Crop Material Stage",
+   "read_only": 1
   }
  ],
  "grid_page_length": 50,

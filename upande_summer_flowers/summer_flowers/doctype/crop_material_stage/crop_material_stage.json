@@ -1,0 +1,78 @@
+{
+ "actions": [],
+ "allow_rename": 1,
+ "creation": "2026-08-17 09:00:00.000000",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "stage",
+  "weeks",
+  "loss_pct",
+  "column_break_main",
+  "is_purchase",
+  "yields_per_unit",
+  "notes"
+ ],
+ "fields": [
+  {
+   "fieldname": "stage",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "label": "Stage",
+   "options": "TC\nSeeds\nCuttings (Own)\nRoots (Own)\nBudwoods\nBought-in Plants\nMotherstock\nRoots\nCooling\nPropagation\nPlants",
+   "reqd": 1
+  },
+  {
+   "description": "Weeks this stage takes. The lead time to a planted bed is the sum along the route.",
+   "fieldname": "weeks",
+   "fieldtype": "Int",
+   "in_list_view": 1,
+   "label": "Weeks",
+   "non_negative": 1
+  },
+  {
+   "description": "Material lost at this stage. Applied in sequence, so 10% here and 10% next is 81% surviving, not 80%.",
+   "fieldname": "loss_pct",
+   "fieldtype": "Percent",
+   "in_list_view": 1,
+   "label": "Loss %"
+  },
+  {
+   "fieldname": "column_break_main",
+   "fieldtype": "Column Break"
+  },
+  {
+   "default": "0",
+   "description": "The stage the material is bought at. The lead time before it starts is the supplier's, and the cost of the route is charged here.",
+   "fieldname": "is_purchase",
+   "fieldtype": "Check",
+   "label": "Bought at this stage"
+  },
+  {
+   "default": "1",
+   "description": "Units out per unit in. 1 for a stage that carries material through; a motherstock stage multiplies, so it is the cuttings one mother yields over its life.",
+   "fieldname": "yields_per_unit",
+   "fieldtype": "Float",
+   "label": "Yields per unit",
+   "precision": "3"
+  },
+  {
+   "fieldname": "notes",
+   "fieldtype": "Small Text",
+   "label": "Notes"
+  }
+ ],
+ "index_web_pages_for_search": 1,
+ "istable": 1,
+ "links": [],
+ "modified": "2026-08-17 09:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Summer Flowers",
+ "name": "Crop Material Stage",
+ "owner": "Administrator",
+ "permissions": [],
+ "sort_field": "idx",
+ "sort_order": "ASC",
+ "states": []
+}

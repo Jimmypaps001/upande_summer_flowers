@@ -69,6 +69,55 @@ def is_summer_flower(doc):
 	return bool(cint(doc.get("custom_is_summer_flower")))
 
 
+# The stages material can be bought at, and the one every route has to end on.
+# A route that starts halfway through nothing, or stops before a plant exists, is
+# a route that cannot be costed or scheduled.
+ROUTE_ENTRY = ("TC", "Seeds", "Cuttings (Own)", "Roots (Own)", "Budwoods",
+               "Bought-in Plants")
+ROUTE_END = "Plants"
+
+
+def set_route_summary(doc):
+	"""State the route as one line, read off the stages rather than typed.
+
+	Two ways to say the same thing is two things to keep in step, and this is the
+	one people read: the summary is derived on every save so a route edited in the
+	table cannot leave a stale sentence above it.
+	"""
+	rows = [r for r in (doc.get("custom_sf_material_route") or []) if r.stage]
+	if not rows:
+		doc.set("custom_sf_route_summary", "")
+		return
+	doc.set("custom_sf_route_summary", " -> ".join(r.stage for r in rows))
+
+
+def check_route(doc):
+	"""A route has to begin somewhere real and end in a plant."""
+	rows = [r for r in (doc.get("custom_sf_material_route") or []) if r.stage]
+	if not rows:
+		return
+	if rows[0].stage not in ROUTE_ENTRY:
+		frappe.throw(
+			_("A route starts with the material that is bought or taken: {0}. "
+			  "{1} cannot be the first stage.").format(
+				", ".join(ROUTE_ENTRY), frappe.bold(rows[0].stage)),
+			title=_("Route has no beginning"))
+	if rows[-1].stage != ROUTE_END:
+		frappe.throw(
+			_("Every route ends at {0}, because that is what goes in the ground. "
+			  "This one ends at {1}.").format(
+				frappe.bold(ROUTE_END), frappe.bold(rows[-1].stage)),
+			title=_("Route has no end"))
+	# Bought-in Plants IS the plant, so it needs no stages after it.
+	if rows[0].stage == "Bought-in Plants" and len(rows) > 2:
+		frappe.throw(
+			_("Plants bought ready to plant do not pass through {0}. The route is "
+			  "Bought-in Plants then Plants, or the material is not bought as "
+			  "plants.").format(
+				", ".join(r.stage for r in rows[1:-1])),
+			title=_("Route buys plants and then grows them"))
+
+
 def to_version(doc, version=None):
 	"""Load a Crop Protocol's values onto an (unsaved) Crop Protocol Version."""
 	v = version or frappe.new_doc("Crop Protocol Version")
@@ -306,6 +355,8 @@ def validate(doc, method=None):
 	if is_summer_flower(doc) and cint(doc.get("custom_sf_ramp_weeks")):
 		doc.custom_sf_weeks_to_max_pc = cint(doc.get("custom_sf_ramp_weeks"))
 	derive(doc)
+	set_route_summary(doc)
+	check_route(doc)
 	fill_native_gaps(doc)
 	set_status(doc)
 	set_growth_stages(doc)
