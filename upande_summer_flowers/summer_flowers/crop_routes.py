@@ -269,3 +269,106 @@ def report(dry_run=1):
 		for v, c in r["conflicts"].items():
 			print("   %s: %s" % (v, c))
 	return r
+
+
+# The farms named in the source document, as spelled there.
+FARMS = ["Carzan Ks", "Carzan Mr", "Carzan St", "Kariki Juja", "Kariki Naivasha",
+         "Kudenga", "Bondet"]
+
+ITEM_GROUP = "Summer Flowers"
+
+
+def _ensure_item(variety, dry_run):
+	"""The variety as an Item, because that is what a protocol links to."""
+	if frappe.db.exists("Item", variety):
+		return "have"
+	hit = frappe.db.get_value("Item", {"item_name": variety}, "name")
+	if hit:
+		return "have"
+	if dry_run:
+		return "would create"
+	group = (ITEM_GROUP if frappe.db.exists("Item Group", ITEM_GROUP)
+	         else frappe.db.get_value("Item Group", {"is_group": 0}, "name"))
+	doc = frappe.new_doc("Item")
+	doc.item_code = variety
+	doc.item_name = variety
+	doc.item_group = group
+	doc.stock_uom = "Nos" if frappe.db.exists("UOM", "Nos") else \
+		frappe.db.get_value("UOM", {}, "name")
+	doc.is_stock_item = 0
+	doc.flags.ignore_permissions = True
+	doc.flags.ignore_mandatory = True
+	doc.insert()
+	return "created"
+
+
+@frappe.whitelist()
+def provision(farm, dry_run=1, only_route=None):
+	"""Create the varieties and their protocols for one farm.
+
+	One farm at a time, because a Crop Protocol is per variety AND farm -- the same
+	crop is grown differently at Kudenga and at Bondet, which is the whole reason
+	the protocol carries the farm. Run it once per farm as each is rolled out.
+
+	Protocols are created carrying their route and their growing cycle and nothing
+	else. Density, flush schedule, losses and lead times are per crop and per farm
+	and are not in the categories document, so they are left empty rather than
+	guessed: an approved protocol full of invented numbers plans real plantings.
+	A protocol created here cannot be approved until someone fills them in, which
+	is the intended order.
+	"""
+	dry_run = int(dry_run or 0)
+	if not frappe.db.exists("Farm", farm):
+		frappe.throw(_("No farm called {0} on this site.").format(frappe.bold(farm)))
+
+	by_variety, _clash = _lookup()
+	items, protocols, existing = {"have": 0, "created": 0, "would create": 0}, [], []
+
+	for variety, (route, cycle) in sorted(by_variety.items()):
+		if only_route and route != only_route:
+			continue
+		items[_ensure_item(variety, dry_run)] += 1
+		name = "%s-%s" % (variety, farm)
+		if frappe.db.exists("Crop Protocol", name):
+			existing.append(name)
+			continue
+		if not dry_run:
+			doc = frappe.new_doc("Crop Protocol")
+			doc.variety = variety
+			doc.variety_item = variety
+			doc.farm = farm
+			doc.crop_type = "Summer Flowers"
+			doc.custom_is_summer_flower = 1
+			doc.custom_sf_crop_class = "Summer Flower"
+			doc.custom_sf_growing_cycle = cycle
+			for row in stages_for(route):
+				doc.append("custom_sf_material_route", row)
+			doc.custom_sf_change_reason = _("Created from the crop categories of "
+			                                "14 August 2026.")
+			doc.flags.ignore_permissions = True
+			doc.flags.ignore_mandatory = True
+			doc.insert()
+		protocols.append("%s | %s | %s" % (name, " -> ".join(ROUTES[route]), cycle))
+
+	if not dry_run:
+		frappe.db.commit()
+	return {"farm": farm, "dry_run": bool(dry_run), "items": items,
+	        "protocols_created": protocols, "protocols_already_there": existing}
+
+
+def provision_report(farm, dry_run=1, only_route=None):
+	"""Readable provision(), for the console.
+
+	    bench --site SITE execute \
+	        upande_summer_flowers.summer_flowers.crop_routes.provision_report \
+	        --kwargs "{'farm': 'Kudenga'}"
+	"""
+	r = provision(farm=farm, dry_run=dry_run, only_route=only_route)
+	print("%s -- %s\n" % (r["farm"], "DRY RUN, nothing written" if r["dry_run"] else "WRITTEN"))
+	print("items: %s" % r["items"])
+	print("\nprotocols (%d):" % len(r["protocols_created"]))
+	for x in r["protocols_created"][:80]:
+		print("   ", x)
+	if r["protocols_already_there"]:
+		print("\nalready there (%d)" % len(r["protocols_already_there"]))
+	return r
