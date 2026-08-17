@@ -77,18 +77,17 @@ ROUTE_ENTRY = ("TC", "Seeds", "Cuttings (Own)", "Roots (Own)", "Budwoods",
 ROUTE_END = "Plants"
 
 
-def set_route_summary(doc):
-	"""State the route as one line, read off the stages rather than typed.
+def route_summary(doc):
+	"""The route as one line: "TC -> Motherstock -> Plants".
 
-	Two ways to say the same thing is two things to keep in step, and this is the
-	one people read: the summary is derived on every save so a route edited in the
-	table cannot leave a stale sentence above it.
+	Derived, never stored on Crop Protocol. That table is at MariaDB's row limit
+	with the custom fields it already carries, and a string that can be read off
+	the stages in one pass is the last thing that should occupy a column. The
+	version snapshot does keep it, because a snapshot is a record of what was
+	approved and has to read without walking a child table.
 	"""
 	rows = [r for r in (doc.get("custom_sf_material_route") or []) if r.stage]
-	if not rows:
-		doc.set("custom_sf_route_summary", "")
-		return
-	doc.set("custom_sf_route_summary", " -> ".join(r.stage for r in rows))
+	return " -> ".join(r.stage for r in rows)
 
 
 def check_route(doc):
@@ -134,6 +133,8 @@ def to_version(doc, version=None):
 				})
 			continue
 		v.set(f.fieldname, doc.get(src))
+	# Derived on the protocol, stored on the snapshot: see route_summary().
+	v.route_summary = route_summary(doc)
 	v.crop_protocol = doc.name
 	return v
 
@@ -355,7 +356,6 @@ def validate(doc, method=None):
 	if is_summer_flower(doc) and cint(doc.get("custom_sf_ramp_weeks")):
 		doc.custom_sf_weeks_to_max_pc = cint(doc.get("custom_sf_ramp_weeks"))
 	derive(doc)
-	set_route_summary(doc)
 	check_route(doc)
 	fill_native_gaps(doc)
 	set_status(doc)

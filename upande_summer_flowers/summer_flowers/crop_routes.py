@@ -201,8 +201,15 @@ def classify(dry_run=1, farm=None):
 	if farm:
 		f["farm"] = farm
 	protocols = frappe.get_all("Crop Protocol", filters=f,
-	                           fields=["name", "variety", "farm",
-	                                   "custom_sf_route_summary"])
+	                           fields=["name", "variety", "farm"])
+	# Whether a protocol already carries a route is read from the stages, not from
+	# a summary column: Crop Protocol has no room for one, so the table is the
+	# only record of it.
+	routed = {r.parent for r in frappe.get_all(
+		"Crop Material Stage",
+		filters={"parenttype": "Crop Protocol",
+		         "parentfield": "custom_sf_material_route"},
+		fields=["parent"], limit_page_length=0)}
 
 	done, skipped, unmatched = [], [], []
 	for p in protocols:
@@ -210,8 +217,8 @@ def classify(dry_run=1, farm=None):
 		if not hit:
 			unmatched.append(p.variety)
 			continue
-		if p.custom_sf_route_summary:
-			skipped.append("%s (%s)" % (p.name, p.custom_sf_route_summary))
+		if p.name in routed:
+			skipped.append(p.name)
 			continue
 		route, cycle = hit
 		if not dry_run:
@@ -295,7 +302,12 @@ def _ensure_item(variety, dry_run):
 	doc.item_group = group
 	doc.stock_uom = "Nos" if frappe.db.exists("UOM", "Nos") else \
 		frappe.db.get_value("UOM", {}, "name")
-	doc.is_stock_item = 0
+	# Matched to the summer flower items this site already has. A site rule refuses
+	# an Item that is neither stocked, an asset nor a service, and a variety here is
+	# stocked: Craspedia Gold Drum is the model.
+	doc.is_stock_item = 1
+	doc.is_purchase_item = 1
+	doc.is_sales_item = 1
 	doc.flags.ignore_permissions = True
 	doc.flags.ignore_mandatory = True
 	doc.insert()
