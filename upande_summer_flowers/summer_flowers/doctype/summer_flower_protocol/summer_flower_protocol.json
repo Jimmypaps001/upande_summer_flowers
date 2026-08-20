@@ -1,0 +1,858 @@
+{
+ "actions": [],
+ "allow_rename": 1,
+ "autoname": "format:{variety}-{farm}",
+ "creation": "2026-08-18 10:00:00.000000",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "variety",
+  "variety_item",
+  "farm",
+  "crop_type",
+  "colour",
+  "breeder",
+  "plants_per_sqm",
+  "weeks_to_pinch",
+  "weeks_between_flushes",
+  "yield_stems_per_ha",
+  "total_weeks_in_ground",
+  "total_flushes",
+  "total_stems_per_plant_life",
+  "life_expectancy_years",
+  "average_stem_length_cm",
+  "weeks_pinch_to_first_harvest",
+  "weeks_in_propagation",
+  "growth_stages",
+  "custom_summer_flowers_section",
+  "custom_is_summer_flower",
+  "custom_cb_sf_1",
+  "custom_version_count",
+  "custom_farms_with_versions",
+  "custom_sf_approval_section",
+  "custom_sf_protocol_status",
+  "custom_sf_change_reason",
+  "custom_sf_current_version",
+  "custom_sf_approved_by",
+  "custom_sf_approved_on",
+  "custom_sf_pending_changes",
+  "custom_sf_company",
+  "custom_sf_crop_class",
+  "custom_sf_climate_note",
+  "custom_sf_route_section",
+  "custom_sf_growing_cycle",
+  "custom_sf_material_route",
+  "custom_sf_tab_geometry",
+  "custom_sf_density_section",
+  "custom_sf_plants_per_bed",
+  "custom_sf_min_planting_area_sqm",
+  "custom_sf_beds_per_block",
+  "custom_sf_derived_geo_section",
+  "custom_sf_sqm_net_per_bed",
+  "custom_sf_min_planting_beds_derived",
+  "custom_sf_min_planting_plants",
+  "custom_sf_plants_per_block",
+  "custom_sf_tab_cycle",
+  "custom_sf_timeline_section",
+  "custom_sf_first_harvest_offset_weeks",
+  "custom_sf_harvest_weeks_per_year",
+  "custom_sf_flushes_per_year",
+  "custom_sf_flush_section",
+  "custom_sf_flush_schedule",
+  "custom_sf_flush_totals_section",
+  "custom_sf_growth_section",
+  "custom_sf_stems_per_ha_life",
+  "custom_sf_stems_per_ha_year",
+  "custom_sf_tab_prop",
+  "custom_sf_establishment_section",
+  "custom_sf_weeks_on_tray",
+  "custom_sf_weeks_on_pot",
+  "custom_sf_hardening_weeks",
+  "custom_sf_sticking_to_planting_weeks",
+  "custom_sf_est_derived_section",
+  "custom_sf_establishment_weeks",
+  "custom_sf_ms_establishment_weeks",
+  "custom_sf_cutting_to_harvest_weeks",
+  "custom_sf_bench_section",
+  "custom_sf_cuttings_per_plant_per_week",
+  "custom_sf_plants_per_pot",
+  "custom_sf_pots_per_sqm",
+  "custom_sf_plants_per_sqm_bench",
+  "custom_sf_multiplication_section",
+  "custom_sf_max_multiplication_cycles",
+  "custom_sf_multiplication_factor_per_cycle",
+  "custom_sf_cycle_time_weeks",
+  "custom_sf_motherstock_life_weeks",
+  "custom_sf_supplier_lead_weeks",
+  "custom_sf_ramp_weeks",
+  "custom_sf_ramp_profile",
+  "custom_sf_ready_cutting_price",
+  "custom_sf_mult_derived_section",
+  "custom_sf_max_multiplication_factor",
+  "custom_sf_lead_time_weeks",
+  "custom_sf_tab_grades",
+  "custom_sf_grade_section2",
+  "custom_sf_grade_allocation",
+  "custom_sf_grade_total_pct",
+  "custom_sf_loss_section",
+  "custom_sf_rooting_success_pct",
+  "custom_sf_field_establishment_pct",
+  "custom_sf_cutting_reject_pct",
+  "custom_sf_cuttings_per_plant_required",
+  "custom_sf_yield_variance_pct",
+  "custom_sf_tc_order_loss_pct",
+  "custom_sf_weeks_to_max_production",
+  "custom_sf_establishment_includes_ramp",
+  "custom_sf_establishment_includes_hardening",
+  "custom_sf_weeks_tc_to_first_cut_derived",
+  "custom_sf_weeks_to_max_pc",
+  "custom_sf_plants_per_net_ha",
+  "custom_sf_best_year_stems_per_plant",
+  "custom_sf_best_year_stems_per_net_ha"
+ ],
+ "fields": [
+  {
+   "fieldname": "variety",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "label": "Variety",
+   "options": "Item",
+   "reqd": 1
+  },
+  {
+   "depends_on": "eval:!doc.custom_is_summer_flower",
+   "fieldname": "variety_item",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "label": "Variety",
+   "options": "Item",
+   "reqd": 1
+  },
+  {
+   "fieldname": "farm",
+   "fieldtype": "Link",
+   "label": "Farm",
+   "options": "Farm"
+  },
+  {
+   "depends_on": "eval:!doc.custom_is_summer_flower",
+   "fieldname": "crop_type",
+   "fieldtype": "Link",
+   "label": "Crop Type",
+   "options": "Item Group",
+   "reqd": 1
+  },
+  {
+   "depends_on": "eval:!doc.custom_is_summer_flower",
+   "fetch_from": "variety.custom_color",
+   "fieldname": "colour",
+   "fieldtype": "Link",
+   "label": "Colour",
+   "options": "Color"
+  },
+  {
+   "depends_on": "eval:!doc.custom_is_summer_flower",
+   "fieldname": "breeder",
+   "fieldtype": "Link",
+   "label": "Breeder",
+   "options": "Supplier"
+  },
+  {
+   "fieldname": "plants_per_sqm",
+   "fieldtype": "Int",
+   "label": "Plants per m\u00b2 of bed (net)"
+  },
+  {
+   "fieldname": "weeks_to_pinch",
+   "fieldtype": "Int",
+   "label": "Weeks planting \u2192 pinch"
+  },
+  {
+   "fieldname": "weeks_between_flushes",
+   "fieldtype": "Int",
+   "label": "Flush Interval Weeks"
+  },
+  {
+   "fieldname": "yield_stems_per_ha",
+   "fieldtype": "Int",
+   "label": "Stated Yield (stems/ha/yr)"
+  },
+  {
+   "fieldname": "total_weeks_in_ground",
+   "fieldtype": "Int",
+   "label": "Total Weeks In Ground"
+  },
+  {
+   "fieldname": "total_flushes",
+   "fieldtype": "Int",
+   "label": "Total Flushes",
+   "read_only": 1
+  },
+  {
+   "fieldname": "total_stems_per_plant_life",
+   "fieldtype": "Float",
+   "label": "Total Stems Per Plant Life"
+  },
+  {
+   "fieldname": "life_expectancy_years",
+   "fieldtype": "Float",
+   "label": "Life Expectancy (years)",
+   "reqd": 1
+  },
+  {
+   "depends_on": "eval:!doc.custom_is_summer_flower",
+   "fieldname": "average_stem_length_cm",
+   "fieldtype": "Float",
+   "label": "Weighted Average Stem Length (cm)",
+   "precision": "1",
+   "read_only": 1
+  },
+  {
+   "depends_on": "eval:!doc.custom_is_summer_flower",
+   "fieldname": "weeks_pinch_to_first_harvest",
+   "fieldtype": "Int",
+   "label": "Weeks Pinch to First Harvest"
+  },
+  {
+   "depends_on": "eval:!doc.custom_is_summer_flower",
+   "fieldname": "weeks_in_propagation",
+   "fieldtype": "Int",
+   "label": "Weeks in Propagation"
+  },
+  {
+   "fieldname": "growth_stages",
+   "fieldtype": "Table",
+   "label": "Growth Stages",
+   "options": "Summer Flower Growth Stage"
+  },
+  {
+   "collapsible": 1,
+   "description": "Injected by Upande Summer Flowers. Per-farm, versioned parameter sets hang off this variety master; the master itself is not versioned.",
+   "fieldname": "custom_summer_flowers_section",
+   "fieldtype": "Section Break",
+   "label": "Summer Flowers"
+  },
+  {
+   "default": "0",
+   "description": "Marks this variety as a summer flower, keeping it separable from roses and other crops in planning and reporting.",
+   "fieldname": "custom_is_summer_flower",
+   "fieldtype": "Check",
+   "label": "Is Summer Flower"
+  },
+  {
+   "fieldname": "custom_cb_sf_1",
+   "fieldtype": "Column Break",
+   "label": "custom_cb_sf_1"
+  },
+  {
+   "description": "Number of per-farm versions defined against this variety.",
+   "fieldname": "custom_version_count",
+   "fieldtype": "Int",
+   "label": "Protocol Versions",
+   "read_only": 1
+  },
+  {
+   "description": "Farms that currently have an Active version for this variety.",
+   "fieldname": "custom_farms_with_versions",
+   "fieldtype": "Small Text",
+   "label": "Farms Covered",
+   "read_only": 1
+  },
+  {
+   "depends_on": "eval:doc.custom_is_summer_flower",
+   "fieldname": "custom_sf_approval_section",
+   "fieldtype": "Section Break",
+   "label": "Summer Flower \u2014 approval and history"
+  },
+  {
+   "default": "Draft",
+   "depends_on": "eval:doc.custom_is_summer_flower",
+   "description": "A protocol is approved before it can be planned against. Approving it writes a read-only Crop Protocol Version \u2014 the snapshot every plan, planting and crop cycle pins to.",
+   "fieldname": "custom_sf_protocol_status",
+   "fieldtype": "Select",
+   "label": "Protocol Status",
+   "options": "Draft\nPending Approval\nApproved",
+   "read_only": 1
+  },
+  {
+   "depends_on": "eval:doc.custom_is_summer_flower",
+   "description": "Required to approve. Kept on the snapshot, so the history says why the numbers moved and not just that they did.",
+   "fieldname": "custom_sf_change_reason",
+   "fieldtype": "Small Text",
+   "label": "Reason for this change"
+  },
+  {
+   "depends_on": "eval:doc.custom_is_summer_flower",
+   "description": "The snapshot in force. Plans built before it keep reading the snapshot they were built on.",
+   "fieldname": "custom_sf_current_version",
+   "fieldtype": "Link",
+   "label": "Current Version",
+   "options": "Crop Protocol Version",
+   "read_only": 1
+  },
+  {
+   "depends_on": "eval:doc.custom_is_summer_flower",
+   "fieldname": "custom_sf_approved_by",
+   "fieldtype": "Link",
+   "label": "Approved By",
+   "options": "User",
+   "read_only": 1
+  },
+  {
+   "depends_on": "eval:doc.custom_is_summer_flower",
+   "fieldname": "custom_sf_approved_on",
+   "fieldtype": "Datetime",
+   "label": "Approved On",
+   "read_only": 1
+  },
+  {
+   "depends_on": "eval:doc.custom_is_summer_flower",
+   "description": "What differs from the snapshot in force.",
+   "fieldname": "custom_sf_pending_changes",
+   "fieldtype": "Small Text",
+   "label": "Unapproved changes",
+   "read_only": 1
+  },
+  {
+   "depends_on": "eval:doc.custom_is_summer_flower",
+   "fieldname": "custom_sf_company",
+   "fieldtype": "Link",
+   "label": "Company",
+   "options": "Company"
+  },
+  {
+   "depends_on": "eval:doc.custom_is_summer_flower",
+   "description": "Keeps summer flowers separable from other crops.",
+   "fieldname": "custom_sf_crop_class",
+   "fieldtype": "Select",
+   "label": "Crop Class",
+   "options": "Summer Flower\nRose\nOther"
+  },
+  {
+   "depends_on": "eval:doc.custom_is_summer_flower",
+   "description": "Altitude, temperature, light \u2014 what makes this farm's curve differ from the same variety elsewhere.",
+   "fieldname": "custom_sf_climate_note",
+   "fieldtype": "Small Text",
+   "label": "Why this farm differs"
+  },
+  {
+   "fieldname": "custom_sf_route_section",
+   "fieldtype": "Section Break",
+   "label": "Plant Material Route"
+  },
+  {
+   "description": "How the crop yields once it is in the ground.",
+   "fieldname": "custom_sf_growing_cycle",
+   "fieldtype": "Select",
+   "label": "Growing Cycle",
+   "options": "\nPerennial - distinct flushes\nPerennial - continuous\nSingle flush cycle"
+  },
+  {
+   "description": "In order, from what is bought to a plant in the ground.",
+   "fieldname": "custom_sf_material_route",
+   "fieldtype": "Table",
+   "label": "Material Route",
+   "options": "Crop Material Stage"
+  },
+  {
+   "depends_on": "eval:doc.custom_is_summer_flower",
+   "fieldname": "custom_sf_tab_geometry",
+   "fieldtype": "Tab Break",
+   "label": "Geometry"
+  },
+  {
+   "depends_on": "eval:doc.custom_is_summer_flower",
+   "fieldname": "custom_sf_density_section",
+   "fieldtype": "Section Break",
+   "label": "Planting Density"
+  },
+  {
+   "depends_on": "eval:doc.custom_is_summer_flower",
+   "fieldname": "custom_sf_plants_per_bed",
+   "fieldtype": "Int",
+   "label": "Plants Per Bed",
+   "read_only": 1
+  },
+  {
+   "depends_on": "eval:doc.custom_is_summer_flower",
+   "description": "The smallest planting worth making, as net bed area. The planner will not propose anything below it; it converts the area to whole beds using the bed size above.",
+   "fieldname": "custom_sf_min_planting_area_sqm",
+   "fieldtype": "Float",
+   "label": "Minimum planting area (m\u00b2 net)"
+  },
+  {
+   "depends_on": "eval:doc.custom_is_summer_flower",
+   "fieldname": "custom_sf_beds_per_block",
+   "fieldtype": "Int",
+   "label": "Beds per Block"
+  },
+  {
+   "depends_on": "eval:doc.custom_is_summer_flower",
+   "fieldname": "custom_sf_derived_geo_section",
+   "fieldtype": "Section Break",
+   "label": "Worked out from the geometry above"
+  },
+  {
+   "depends_on": "eval:doc.custom_is_summer_flower",
+   "fieldname": "custom_sf_sqm_net_per_bed",
+   "fieldtype": "Float",
+   "label": "m\u00b2 net per bed",
+   "precision": "2"
+  },
+  {
+   "depends_on": "eval:doc.custom_is_summer_flower",
+   "description": "The minimum area above, rounded up to whole beds.",
+   "fieldname": "custom_sf_min_planting_beds_derived",
+   "fieldtype": "Int",
+   "label": "Minimum planting (whole beds)",
+   "read_only": 1
+  },
+  {
+   "depends_on": "eval:doc.custom_is_summer_flower",
+   "fieldname": "custom_sf_min_planting_plants",
+   "fieldtype": "Int",
+   "label": "Minimum planting (plants)",
+   "read_only": 1
+  },
+  {
+   "depends_on": "eval:doc.custom_is_summer_flower",
+   "fieldname": "custom_sf_plants_per_block",
+   "fieldtype": "Int",
+   "label": "Plants per Block (max)",
+   "read_only": 1
+  },
+  {
+   "depends_on": "eval:doc.custom_is_summer_flower",
+   "fieldname": "custom_sf_tab_cycle",
+   "fieldtype": "Tab Break",
+   "label": "Growing Cycle"
+  },
+  {
+   "depends_on": "eval:doc.custom_is_summer_flower",
+   "fieldname": "custom_sf_timeline_section",
+   "fieldtype": "Section Break",
+   "label": "Timeline (planting to uproot)"
+  },
+  {
+   "depends_on": "eval:doc.custom_is_summer_flower",
+   "fieldname": "custom_sf_first_harvest_offset_weeks",
+   "fieldtype": "Int",
+   "label": "Weeks planting \u2192 first harvest",
+   "read_only": 1
+  },
+  {
+   "depends_on": "eval:doc.custom_is_summer_flower",
+   "description": "52 \u00f7 flush interval. The planting returns to the same weeks each year.",
+   "fieldname": "custom_sf_harvest_weeks_per_year",
+   "fieldtype": "Int",
+   "label": "Harvest Weeks Per Year",
+   "read_only": 1
+  },
+  {
+   "depends_on": "eval:doc.custom_is_summer_flower",
+   "fieldname": "custom_sf_flushes_per_year",
+   "fieldtype": "Float",
+   "label": "Flushes Per Year",
+   "precision": "2",
+   "read_only": 1
+  },
+  {
+   "depends_on": "eval:doc.custom_is_summer_flower",
+   "fieldname": "custom_sf_flush_section",
+   "fieldtype": "Section Break",
+   "label": "Flush Schedule"
+  },
+  {
+   "depends_on": "eval:doc.custom_is_summer_flower",
+   "fieldname": "custom_sf_flush_schedule",
+   "fieldtype": "Table",
+   "label": "Flush Schedule",
+   "options": "Summer Flower Protocol Flush"
+  },
+  {
+   "depends_on": "eval:doc.custom_is_summer_flower",
+   "fieldname": "custom_sf_flush_totals_section",
+   "fieldtype": "Section Break",
+   "label": "Flush Totals"
+  },
+  {
+   "collapsible": 1,
+   "depends_on": "eval:doc.custom_is_summer_flower",
+   "fieldname": "custom_sf_growth_section",
+   "fieldtype": "Section Break",
+   "label": "Growth Stages"
+  },
+  {
+   "depends_on": "eval:doc.custom_is_summer_flower",
+   "fieldname": "custom_sf_stems_per_ha_life",
+   "fieldtype": "Float",
+   "label": "Stems Per Ha Life",
+   "precision": "0",
+   "read_only": 1
+  },
+  {
+   "depends_on": "eval:doc.custom_is_summer_flower",
+   "fieldname": "custom_sf_stems_per_ha_year",
+   "fieldtype": "Float",
+   "label": "Stems Per Ha Year",
+   "precision": "0",
+   "read_only": 1
+  },
+  {
+   "depends_on": "eval:doc.custom_is_summer_flower",
+   "fieldname": "custom_sf_tab_prop",
+   "fieldtype": "Tab Break",
+   "label": "Propagation & Motherstock"
+  },
+  {
+   "depends_on": "eval:doc.custom_is_summer_flower",
+   "fieldname": "custom_sf_establishment_section",
+   "fieldtype": "Section Break",
+   "label": "Establishment (TC \u2192 productive motherstock)"
+  },
+  {
+   "depends_on": "eval:doc.custom_is_summer_flower",
+   "fieldname": "custom_sf_weeks_on_tray",
+   "fieldtype": "Int",
+   "label": "Weeks On Tray"
+  },
+  {
+   "depends_on": "eval:doc.custom_is_summer_flower",
+   "fieldname": "custom_sf_weeks_on_pot",
+   "fieldtype": "Int",
+   "label": "Weeks on pot to first harvest"
+  },
+  {
+   "depends_on": "eval:doc.custom_is_summer_flower",
+   "fieldname": "custom_sf_hardening_weeks",
+   "fieldtype": "Int",
+   "label": "Hardening Weeks"
+  },
+  {
+   "depends_on": "eval:doc.custom_is_summer_flower",
+   "description": "Weeks between a cutting going into the propagation house and the rooted plant going to the field.",
+   "fieldname": "custom_sf_sticking_to_planting_weeks",
+   "fieldtype": "Int",
+   "label": "Weeks sticking \u2192 planting"
+  },
+  {
+   "depends_on": "eval:doc.custom_is_summer_flower",
+   "fieldname": "custom_sf_est_derived_section",
+   "fieldtype": "Section Break",
+   "label": "Worked out from the establishment weeks above"
+  },
+  {
+   "depends_on": "eval:doc.custom_is_summer_flower",
+   "fieldname": "custom_sf_establishment_weeks",
+   "fieldtype": "Int",
+   "label": "Establishment total (weeks)",
+   "read_only": 1
+  },
+  {
+   "depends_on": "eval:doc.custom_is_summer_flower",
+   "description": "Tray + pot + build-up. What a cutting needs to become a productive mother; hardening belongs to the cutting-to-harvest path.",
+   "fieldname": "custom_sf_ms_establishment_weeks",
+   "fieldtype": "Int",
+   "label": "MS Establishment (weeks)",
+   "read_only": 1
+  },
+  {
+   "depends_on": "eval:doc.custom_is_summer_flower",
+   "description": "Hardening + pinch + first flush.",
+   "fieldname": "custom_sf_cutting_to_harvest_weeks",
+   "fieldtype": "Int",
+   "label": "Cutting to Harvest (weeks)",
+   "read_only": 1
+  },
+  {
+   "depends_on": "eval:doc.custom_is_summer_flower",
+   "fieldname": "custom_sf_bench_section",
+   "fieldtype": "Section Break",
+   "label": "Bench & Cutting Yield"
+  },
+  {
+   "depends_on": "eval:doc.custom_is_summer_flower",
+   "fieldname": "custom_sf_cuttings_per_plant_per_week",
+   "fieldtype": "Float",
+   "label": "Cuttings Per Plant Per Week",
+   "precision": "3"
+  },
+  {
+   "depends_on": "eval:doc.custom_is_summer_flower",
+   "fieldname": "custom_sf_plants_per_pot",
+   "fieldtype": "Int",
+   "label": "Plants Per Pot"
+  },
+  {
+   "depends_on": "eval:doc.custom_is_summer_flower",
+   "fieldname": "custom_sf_pots_per_sqm",
+   "fieldtype": "Int",
+   "label": "Pots per m\u00b2"
+  },
+  {
+   "depends_on": "eval:doc.custom_is_summer_flower",
+   "fieldname": "custom_sf_plants_per_sqm_bench",
+   "fieldtype": "Float",
+   "label": "Plants per m\u00b2 of bench",
+   "precision": "1",
+   "read_only": 1
+  },
+  {
+   "depends_on": "eval:doc.custom_is_summer_flower",
+   "fieldname": "custom_sf_multiplication_section",
+   "fieldtype": "Section Break",
+   "label": "Multiplication"
+  },
+  {
+   "depends_on": "eval:doc.custom_is_summer_flower",
+   "fieldname": "custom_sf_max_multiplication_cycles",
+   "fieldtype": "Int",
+   "label": "Max Multiplication Cycles"
+  },
+  {
+   "depends_on": "eval:doc.custom_is_summer_flower",
+   "fieldname": "custom_sf_multiplication_factor_per_cycle",
+   "fieldtype": "Float",
+   "label": "Multiplication Factor Per Cycle",
+   "precision": "3"
+  },
+  {
+   "depends_on": "eval:doc.custom_is_summer_flower",
+   "fieldname": "custom_sf_cycle_time_weeks",
+   "fieldtype": "Int",
+   "label": "Cycle Time Weeks"
+  },
+  {
+   "depends_on": "eval:doc.custom_is_summer_flower",
+   "fieldname": "custom_sf_motherstock_life_weeks",
+   "fieldtype": "Int",
+   "label": "Motherstock Life Weeks"
+  },
+  {
+   "depends_on": "eval:doc.custom_is_summer_flower",
+   "description": "Order to delivery at the TC lab. Distinct from on-farm establishment.",
+   "fieldname": "custom_sf_supplier_lead_weeks",
+   "fieldtype": "Int",
+   "label": "Supplier Lead (weeks)"
+  },
+  {
+   "depends_on": "eval:doc.custom_is_summer_flower",
+   "description": "Weeks a new motherstock takes to reach full cutting capacity.",
+   "fieldname": "custom_sf_ramp_weeks",
+   "fieldtype": "Int",
+   "label": "Build-up Weeks to Full Capacity"
+  },
+  {
+   "depends_on": "eval:doc.custom_is_summer_flower",
+   "description": "Capacity per build-up week, comma separated. The last value holds for the rest of the life.",
+   "fieldname": "custom_sf_ramp_profile",
+   "fieldtype": "Data",
+   "label": "Build-up Profile (%)"
+  },
+  {
+   "depends_on": "eval:doc.custom_is_summer_flower",
+   "fieldname": "custom_sf_ready_cutting_price",
+   "fieldtype": "Currency",
+   "label": "Ready Cutting Price"
+  },
+  {
+   "depends_on": "eval:doc.custom_is_summer_flower",
+   "fieldname": "custom_sf_mult_derived_section",
+   "fieldtype": "Section Break",
+   "label": "Worked out from the multiplication settings above"
+  },
+  {
+   "depends_on": "eval:doc.custom_is_summer_flower",
+   "fieldname": "custom_sf_max_multiplication_factor",
+   "fieldtype": "Float",
+   "label": "Max Multiplication Factor",
+   "precision": "2",
+   "read_only": 1
+  },
+  {
+   "depends_on": "eval:doc.custom_is_summer_flower",
+   "fieldname": "custom_sf_lead_time_weeks",
+   "fieldtype": "Int",
+   "label": "Lead time at max cycles (weeks)",
+   "read_only": 1
+  },
+  {
+   "depends_on": "eval:doc.custom_is_summer_flower",
+   "fieldname": "custom_sf_tab_grades",
+   "fieldtype": "Tab Break",
+   "label": "Grades & Losses"
+  },
+  {
+   "depends_on": "eval:doc.custom_is_summer_flower",
+   "fieldname": "custom_sf_grade_section2",
+   "fieldtype": "Section Break",
+   "label": "Grade Allocation"
+  },
+  {
+   "depends_on": "eval:doc.custom_is_summer_flower",
+   "fieldname": "custom_sf_grade_allocation",
+   "fieldtype": "Table",
+   "label": "Grade Allocation",
+   "options": "Summer Flower Protocol Grade"
+  },
+  {
+   "depends_on": "eval:doc.custom_is_summer_flower",
+   "fieldname": "custom_sf_grade_total_pct",
+   "fieldtype": "Percent",
+   "label": "Total %",
+   "read_only": 1
+  },
+  {
+   "depends_on": "eval:doc.custom_is_summer_flower",
+   "fieldname": "custom_sf_loss_section",
+   "fieldtype": "Section Break",
+   "label": "Losses"
+  },
+  {
+   "depends_on": "eval:doc.custom_is_summer_flower",
+   "fieldname": "custom_sf_rooting_success_pct",
+   "fieldtype": "Percent",
+   "label": "Rooting success %"
+  },
+  {
+   "depends_on": "eval:doc.custom_is_summer_flower",
+   "fieldname": "custom_sf_field_establishment_pct",
+   "fieldtype": "Percent",
+   "label": "Field establishment %"
+  },
+  {
+   "depends_on": "eval:doc.custom_is_summer_flower",
+   "description": "Applied when a Production Plan converts extra plants into cuttings.",
+   "fieldname": "custom_sf_cutting_reject_pct",
+   "fieldtype": "Percent",
+   "label": "Cutting reject %"
+  },
+  {
+   "depends_on": "eval:doc.custom_is_summer_flower",
+   "description": "Cuttings to stick per plant standing in the field.",
+   "fieldname": "custom_sf_cuttings_per_plant_required",
+   "fieldtype": "Float",
+   "label": "Cuttings Per Plant Required",
+   "precision": "3",
+   "read_only": 1
+  },
+  {
+   "depends_on": "eval:doc.custom_is_summer_flower",
+   "fieldname": "custom_sf_yield_variance_pct",
+   "fieldtype": "Percent",
+   "label": "Computed vs Stated",
+   "read_only": 1
+  },
+  {
+   "depends_on": "eval:doc.custom_is_summer_flower",
+   "description": "Plantlets lost between the lab and the bench. The order is the requirement divided by (1 - this). 10% on the planning workbook: 4,000 needed, 4,444 ordered.",
+   "fieldname": "custom_sf_tc_order_loss_pct",
+   "fieldtype": "Percent",
+   "label": "TC Order Loss Allowance"
+  },
+  {
+   "depends_on": "eval:doc.custom_is_summer_flower",
+   "fieldname": "custom_sf_weeks_to_max_production",
+   "fieldtype": "Int",
+   "hidden": 1,
+   "label": "Weeks to Max Production",
+   "read_only": 1
+  },
+  {
+   "depends_on": "eval:doc.custom_is_summer_flower",
+   "description": "Off means the build-up to full cutting rate is cut through, not waited out.",
+   "fieldname": "custom_sf_establishment_includes_ramp",
+   "fieldtype": "Check",
+   "label": "TC Establishment Includes the Build-up"
+  },
+  {
+   "depends_on": "eval:doc.custom_is_summer_flower",
+   "description": "The workbook counts it: tray 3 + pot 8 + build-up 4 + hardening 3 = 18 weeks, which is what makes its lab lead time 40 weeks.",
+   "fieldname": "custom_sf_establishment_includes_hardening",
+   "fieldtype": "Check",
+   "label": "TC Establishment Includes Hardening"
+  },
+  {
+   "depends_on": "eval:doc.custom_is_summer_flower",
+   "fieldname": "custom_sf_weeks_tc_to_first_cut_derived",
+   "fieldtype": "Int",
+   "label": "Weeks from TC to First Cutting",
+   "read_only": 1
+  },
+  {
+   "depends_on": "eval:doc.custom_is_summer_flower",
+   "description": "Follows Build-up Weeks: they are the same span. Kept because the establishment total is built from it.",
+   "fieldname": "custom_sf_weeks_to_max_pc",
+   "fieldtype": "Int",
+   "hidden": 1,
+   "label": "Weeks to max PC",
+   "read_only": 1
+  },
+  {
+   "depends_on": "eval:doc.custom_is_summer_flower",
+   "fieldname": "custom_sf_plants_per_net_ha",
+   "fieldtype": "Int",
+   "label": "Plants per Net Hectare",
+   "read_only": 1
+  },
+  {
+   "depends_on": "eval:doc.custom_is_summer_flower",
+   "fieldname": "custom_sf_best_year_stems_per_plant",
+   "fieldtype": "Float",
+   "label": "Best Year: Stems per Plant",
+   "precision": "2",
+   "read_only": 1
+  },
+  {
+   "depends_on": "eval:doc.custom_is_summer_flower",
+   "fieldname": "custom_sf_best_year_stems_per_net_ha",
+   "fieldtype": "Float",
+   "label": "Best Year: Stems per Net Hectare",
+   "precision": "0",
+   "read_only": 1
+  }
+ ],
+ "index_web_pages_for_search": 1,
+ "links": [],
+ "modified": "2026-08-18 10:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Summer Flowers",
+ "name": "Summer Flower Protocol",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Agriculture Manager",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "read": 1,
+   "report": 1,
+   "role": "Agriculture User"
+  }
+ ],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": [],
+ "track_changes": 1
+}
