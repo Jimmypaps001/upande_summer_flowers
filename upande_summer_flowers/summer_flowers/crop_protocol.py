@@ -45,6 +45,11 @@ NATIVE = {
 	"life_expectancy_years": "life_expectancy_years",
 	"stated_yield_stems_per_ha": "yield_stems_per_ha",
 }
+# The doctype this app's protocol lives on. It was upande_agriculture's
+# Crop Protocol until that became the rose master and dropped variety and
+# farm; named once here so nothing has to know twice.
+PROTOCOL_DOCTYPE = "Summer Flower Protocol"
+
 SKIP = ("Section Break", "Column Break", "Tab Break", "HTML")
 # Machinery that belongs to the snapshot, never to the editable protocol.
 MACHINERY = {
@@ -268,16 +273,21 @@ def set_length_distribution(doc):
 
 
 def set_native_flush_schedule(doc):
-	"""Mirror the flush schedule into Crop Protocol's own table.
+	"""Mirror the flush schedule into the protocol's own native table, if it has one.
 
-	The two child doctypes are not interchangeable -- ours carries weeks from pinch,
-	weeks from planting and the harvest week of the year, Crop Protocol Flush carries
-	the gap from the previous flush -- so the summer flower schedule is authored in
-	ours. Without this mirror the protocol showed an EMPTY flush schedule in its
-	standard layout while the real eight rows sat in the custom table below, which is
-	exactly the sort of two-places-one-fact this restructure is meant to remove.
+	It had one while these fields lived on upande_agriculture's Crop Protocol: that
+	doctype has a flush_schedule of its own, and leaving it empty showed a blank
+	schedule in the standard layout while the real eight rows sat in the custom
+	table below it.
+
+	Summer Flower Protocol has no such table. custom_sf_flush_schedule IS the flush
+	schedule there, so there is nothing to mirror into and nothing to keep in step
+	-- which was the point of separating. Guarded rather than deleted because a
+	protocol still on Crop Protocol has to keep working until every site has moved.
 	"""
 	if not is_summer_flower(doc):
+		return
+	if not doc.meta.has_field("flush_schedule"):
 		return
 	rows = sorted((doc.get("custom_sf_flush_schedule") or []),
 	              key=lambda r: cint(r.flush_number))
@@ -436,7 +446,7 @@ def set_status(doc):
 		# meant the Approve button set Approved, this reset it to Draft, and on_update
 		# then saw Draft and did nothing, so the button appeared dead.
 		status = doc.get("custom_sf_protocol_status")
-		was = frappe.db.get_value("Crop Protocol", doc.name,
+		was = frappe.db.get_value(doc.doctype, doc.name,
 		                          "custom_sf_protocol_status") if not doc.is_new() else None
 		approving_now = status == "Approved" and was != "Approved"
 		if status != "Pending Approval" and not approving_now:
@@ -464,7 +474,7 @@ def set_status(doc):
 
 @frappe.whitelist()
 def submit_for_approval(protocol):
-	doc = frappe.get_doc("Crop Protocol", protocol)
+	doc = frappe.get_doc(PROTOCOL_DOCTYPE, protocol)
 	if not is_summer_flower(doc):
 		frappe.throw(_("Not a summer flower protocol."))
 	if not doc.get("custom_sf_change_reason"):
@@ -482,7 +492,7 @@ def approve(protocol):
 	cycles keep pointing at whichever snapshot they were built on, so approving here
 	never rewrites what an approved plan says it was built on.
 	"""
-	doc = frappe.get_doc("Crop Protocol", protocol)
+	doc = frappe.get_doc(PROTOCOL_DOCTYPE, protocol)
 	if not is_summer_flower(doc):
 		frappe.throw(_("Not a summer flower protocol."))
 	if not _has_role():

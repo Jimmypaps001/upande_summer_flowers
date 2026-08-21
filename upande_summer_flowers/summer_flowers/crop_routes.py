@@ -20,6 +20,10 @@ Source: Crop Categories, 14 August 2026.
 import frappe
 from frappe import _
 
+from upande_summer_flowers.summer_flowers.crop_protocol import (
+	PROTOCOL_DOCTYPE,
+)
+
 DISTINCT = "Perennial - distinct flushes"
 CONTINUOUS = "Perennial - continuous"
 SINGLE = "Single flush cycle"
@@ -200,14 +204,14 @@ def classify(dry_run=1, farm=None):
 	f = {}
 	if farm:
 		f["farm"] = farm
-	protocols = frappe.get_all("Crop Protocol", filters=f,
+	protocols = frappe.get_all(PROTOCOL_DOCTYPE, filters=f,
 	                           fields=["name", "variety", "farm"])
 	# Whether a protocol already carries a route is read from the stages, not from
 	# a summary column: Crop Protocol has no room for one, so the table is the
 	# only record of it.
 	routed = {r.parent for r in frappe.get_all(
 		"Crop Material Stage",
-		filters={"parenttype": "Crop Protocol",
+		filters={"parenttype": PROTOCOL_DOCTYPE,
 		         "parentfield": "custom_sf_material_route"},
 		fields=["parent"], limit_page_length=0)}
 
@@ -222,7 +226,7 @@ def classify(dry_run=1, farm=None):
 			continue
 		route, cycle = hit
 		if not dry_run:
-			doc = frappe.get_doc("Crop Protocol", p.name)
+			doc = frappe.get_doc(PROTOCOL_DOCTYPE, p.name)
 			doc.set("custom_sf_material_route", [])
 			for row in stages_for(route):
 				doc.append("custom_sf_material_route", row)
@@ -341,11 +345,11 @@ def provision(farm, dry_run=1, only_route=None):
 			continue
 		items[_ensure_item(variety, dry_run)] += 1
 		name = "%s-%s" % (variety, farm)
-		if frappe.db.exists("Crop Protocol", name):
+		if frappe.db.exists(PROTOCOL_DOCTYPE, name):
 			existing.append(name)
 			continue
 		if not dry_run:
-			doc = frappe.new_doc("Crop Protocol")
+			doc = frappe.new_doc(PROTOCOL_DOCTYPE)
 			doc.variety = variety
 			doc.variety_item = variety
 			doc.farm = farm

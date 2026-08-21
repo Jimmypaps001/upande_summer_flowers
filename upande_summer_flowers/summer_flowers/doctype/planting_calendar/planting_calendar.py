@@ -92,7 +92,8 @@ class PlantingCalendar(Document):
 			resolve_version,
 		)
 
-		protocol = frappe.db.get_value("Crop Protocol", {"variety": self.variety}, "name")
+		protocol = frappe.db.get_value("Summer Flower Protocol",
+		                            {"variety": self.variety}, "name")
 		farm = self.farm or frappe.db.get_value("Block", self.block, "farm")
 		if not (protocol and farm):
 			return None

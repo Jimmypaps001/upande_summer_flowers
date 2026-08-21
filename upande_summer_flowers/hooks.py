@@ -253,7 +253,7 @@ doc_events = {
 	# parameters live on it as custom_sf_ fields and every derived figure is
 	# computed here, so the protocol is edited in one place and Crop Protocol
 	# Version is only ever the read-only snapshot taken when a change is approved.
-	"Crop Protocol": {
+	"Summer Flower Protocol": {
 		"validate": "upande_summer_flowers.summer_flowers.crop_protocol.validate",
 		# The workflow moves the status; this turns reaching Approved into an actual
 		# snapshot, which is the only thing that creates a Crop Protocol Version.
