@@ -123,6 +123,17 @@ app_include_js = "/assets/upande_summer_flowers/js/sf_calendar.js"
 # KeyError that names nothing. See summer_flowers/customization_check.py.
 before_migrate = "upande_summer_flowers.summer_flowers.customization_check.before_migrate"
 
+# after_migrate, not a patch, for the two things a patch cannot do:
+#
+#   frappe.migrate syncs customisations AFTER patches run, so on the migrate that
+#   creates a Custom Field shadowing one of agriculture's native fields, a patch
+#   has already been and gone. Only this phase sees the shadow.
+#
+#   and a site whose agriculture predates crop_type cannot be reconciled at all
+#   until agriculture is deployed. A patch would be recorded as run and never
+#   return; this comes back every migrate, and everything it does is idempotent.
+after_migrate = "upande_summer_flowers.summer_flowers.protocol_merge.after_migrate"
+
 # include js, css files in header of web template
 # web_include_css = "/assets/upande_summer_flowers/css/upande_summer_flowers.css"
 # web_include_js = "/assets/upande_summer_flowers/js/upande_summer_flowers.js"
