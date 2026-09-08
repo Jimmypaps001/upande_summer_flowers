@@ -12,6 +12,79 @@ deployed.
 
 ---
 
+## One protocol doctype again, and demand per farm — `6fb2cbc`, `94d1d9e` (2026-09-09)
+
+`c2b8237` split the summer flower protocol onto its own doctype so agriculture's
+Crop Protocol could move without breaking planning. It did its job, and it is now
+reversed: the split left **two masters for the same varieties**, with 75 protocols on
+both doctypes and the twelve newest Aster rows on only one, so `/desk/crop-protocol`
+listed summer flowers without listing all of them.
+
+Undoing it moved no data. Agriculture dropped `variety` and `farm` from the doctype
+but not from the table, so both columns and their contents survived — `variety` on all
+224 rows, `farm` on the 75 summer ones, agreeing with the record name on every one.
+Re-declaring them as Custom Fields from this app re-exposes what is already there,
+which keeps the ownership the split was after: agriculture's JSON still never mentions
+a summer flower field.
+
+**Probe:** `crop_protocol.PROTOCOL_DOCTYPE` is `"Crop Protocol"`, and
+`frappe.get_meta("Crop Protocol")` has `variety` and `farm`.
+
+**A naming bug went with it.** The autoname rule this app has always shipped,
+`format:{variety}-{farm}`, had been resolving to the literal string `variety-farm`
+ever since those two fields left the doctype. The first protocol anyone created took
+that as its name and the next would have failed as a duplicate.
+
+**One switch, not three.** `crop_type` is a two-option Select — Roses or Summer
+Flowers — chosen straight after the farm. `custom_is_summer_flower` and
+`custom_sf_crop_class` are derived from it in `before_validate` and hidden; every
+Python guard still reads the flag and every field shows or hides on an `eval` of
+`crop_type`. Narrowing `crop_type` lost nothing: it duplicated the variety Item's own
+`item_group` on 236 of 237 records.
+
+15 of the 101 rewritten `depends_on` rules could never have fired — they compared
+`crop_type` against `"Rose"`, `"Spray Rose"` and `"Summer Flower"`, which no record
+has ever held. That is why the rose cut-cycle and yield sections never appeared.
+
+**Two guards had to move, because these hooks now fire for every crop.** `validate`
+returned nothing early, so a rose save ran the whole summer flower derivation and
+threw on the first thing it wanted — Crop Protocol Version refuses to derive without
+a net m² per bed. And the `sf_protocol_move` guard lived on the `SummerFlowerProtocol`
+class, which this retires.
+
+**The form asked "Variety" twice**, on Crop Protocol and again on Crop Cycle. On Crop
+Protocol `breeder`, `crop_type` and `variety_item` each existed as both a native
+DocField and a stale Custom Field, so `get_meta` returned them twice.
+
+**And selecting Roses showed nothing at all.** This app's whole block was anchored at
+native field 7 of 31, so its four tabs opened in the middle of agriculture's field
+order and every native field after that point fell inside one of them — 15 rose
+fields sat in `custom_sf_tab_cycle` and `custom_sf_tab_grades`, correctly gated to
+Roses and permanently unreachable, because the tab closed before the rule was
+consulted. The block now follows the last native field: Roses reaches 20 fields
+across 6 sections.
+
+**`94d1d9e` — market demand per variety and farm.** Summer Flower Market Demand
+carried a `farm` field but named itself `format:{variety}`, so a variety could hold
+demand for one farm only. That is also what orphaned the grade rows: all seven still
+carried older `<variety>-<farm>` parents. Naming now matches the protocol it is
+planned against and `farm` is mandatory, so renaming the four existing records
+re-adopts those rows. `Summer Flower Demand Grade` had rows but **no doctype pointed
+a Table field at it**, leaving the split unreachable from any form; it is wired back
+on as `grade_allocation`. `vbn_code` and `product_group` are added for the sheet's
+buyer-side codes.
+
+Grade stays a percentage rather than a column on the weekly row: the sheet's per-grade
+figures are strict proportions of the variety's weekly total in all 52 weeks, and they
+are the same percentages the orphaned rows already held.
+
+**Probe:** `frappe.get_meta("Summer Flower Market Demand").autoname` is
+`format:{variety}-{farm}`.
+
+**Loading these sheets:** see `summer_flowers/console/`.
+
+---
+
 ## Reading another app's doctype defensively — `1a6fcd4`, `de88d31`, `3065466` (2026-08-10)
 
 Three commits, one mistake: this app read doctypes it does not own as though their
