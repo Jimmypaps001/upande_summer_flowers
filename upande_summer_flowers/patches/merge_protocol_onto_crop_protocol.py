@@ -48,6 +48,8 @@ def execute():
 
 	drop_duplicate_custom_fields()
 	move_crop_type_to_the_switch()
+	rescue_unmapped_crop_type()
+	report_stranded_protocols()
 	derive_discriminators()
 	settle_variety()
 	settle_crop_cycle_variety()
@@ -78,6 +80,82 @@ def move_crop_type_to_the_switch():
 		frappe.db.sql("""update `tabCrop Protocol` set crop_type = %s
 		                 where crop_type = %s and name is not null""", (new, old))
 		print("crop_type: %d x %r -> %r" % (n, old, new))
+
+
+SWITCH = ("Roses", "Summer Flowers")
+
+
+def rescue_unmapped_crop_type():
+	"""Anything the map did not cover still has to land on one of the two.
+
+	This is the failure that would be hardest to diagnose: every field on the
+	form now shows or hides on an eval of crop_type, so a record holding a value
+	that is neither "Roses" nor "Summer Flowers" -- "Other", "Fillers", or
+	nothing at all -- opens with an empty form and no clue why. crop_type is
+	mandatory now too, so it cannot be saved without choosing.
+
+	Two derivations before giving up, in order of how much they are worth
+	trusting: the flag this app has always maintained, then the variety Item's
+	own group, which agreed with crop_type on 236 of 237 records here. Anything
+	left is named rather than guessed at.
+	"""
+	rows = frappe.db.sql("""select name, crop_type, variety_item,
+	                               ifnull(custom_is_summer_flower, 0) as flag
+	                        from `tabCrop Protocol`
+	                        where ifnull(crop_type, '') not in %(ok)s""",
+	                     {"ok": SWITCH}, as_dict=True)
+	if not rows:
+		return
+	has_flag = frappe.db.has_column("Crop Protocol", "custom_is_summer_flower")
+	stuck = []
+	for r in rows:
+		guess = None
+		if has_flag and r.flag:
+			guess = "Summer Flowers"
+		elif has_flag and r.crop_type:
+			# A value was typed and the flag says it is not a summer flower.
+			guess = "Roses"
+		if not guess and r.variety_item:
+			group = frappe.db.get_value("Item", r.variety_item, "item_group") or ""
+			if "Rose" in group:
+				guess = "Roses"
+			elif group:
+				guess = "Summer Flowers"
+		if not guess:
+			stuck.append((r.name, r.crop_type))
+			continue
+		frappe.db.set_value("Crop Protocol", r.name, "crop_type", guess,
+		                    update_modified=False)
+		print("crop_type %r -> %r on %s" % (r.crop_type, guess, r.name))
+	for name, was in stuck:
+		print("Crop Protocol %s has crop_type %r and nothing to derive one from -- "
+		      "its form will be empty until someone picks Roses or Summer Flowers"
+		      % (name, was))
+
+
+def report_stranded_protocols():
+	"""Summer flower protocols left behind on the retired doctype.
+
+	The app reads Crop Protocol now. It does not move records, and
+	protocol_split.move() only runs the other way, so anything still sitting on
+	Summer Flower Protocol is invisible to planning rather than wrong. Naming it
+	is the whole job here: protocol_split.move_back() does the copy, when
+	somebody who can see both is satisfied.
+	"""
+	if not frappe.db.table_exists("Summer Flower Protocol"):
+		return
+	names = frappe.get_all("Summer Flower Protocol", pluck="name")
+	stranded = [n for n in names if not frappe.db.exists("Crop Protocol", n)]
+	if not stranded:
+		return
+	print("%d protocol(s) are still only on Summer Flower Protocol and the app no "
+	      "longer reads that doctype. Run "
+	      "upande_summer_flowers.summer_flowers.protocol_split.move_back(dry_run=0) "
+	      "to copy them onto Crop Protocol:" % len(stranded))
+	for n in stranded[:20]:
+		print("    " + n)
+	if len(stranded) > 20:
+		print("    ... and %d more" % (len(stranded) - 20))
 
 
 def derive_discriminators():
