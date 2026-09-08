@@ -69,10 +69,14 @@ def reconcile():
 		      "deploy agriculture first, then migrate again. Nothing changed.")
 		return
 
+	# settle_variety first: rescue_unmapped_crop_type derives from the variety
+	# Item's group, and on a site coming from an older agriculture variety_item
+	# is empty until this fills it. Getting this order wrong on marginpar left
+	# all 13 protocols with no crop_type and nothing to work it out from.
+	settle_variety()
 	move_crop_type_to_the_switch()
 	rescue_unmapped_crop_type()
 	derive_discriminators()
-	settle_variety()
 
 
 def drop_duplicate_custom_fields():
@@ -189,7 +193,13 @@ def derive_discriminators():
 	"""
 	if not frappe.db.has_column("Crop Protocol", "custom_is_summer_flower"):
 		return
-	wrong = """custom_is_summer_flower != if(crop_type = 'Summer Flowers', 1, 0)"""
+	# Only where crop_type actually says something. A protocol whose crop_type
+	# is still unresolved is not a rose, it is unanswered, and writing 0 and
+	# "Rose" onto it destroys the very flag rescue_unmapped_crop_type reads --
+	# which is how marginpar's 13 Aster protocols came to be labelled roses.
+	decided = "crop_type in ('Roses', 'Summer Flowers')"
+	wrong = decided + """ and custom_is_summer_flower !=
+	         if(crop_type = 'Summer Flowers', 1, 0)"""
 	n = frappe.db.sql("select count(*) from `tabCrop Protocol` where " + wrong)[0][0]
 	if n:
 		frappe.db.sql("""update `tabCrop Protocol`
@@ -197,8 +207,8 @@ def derive_discriminators():
 		                 where name is not null and """ + wrong)
 		print("custom_is_summer_flower derived from crop_type on %d protocol(s)" % n)
 	if frappe.db.has_column("Crop Protocol", "custom_sf_crop_class"):
-		klass = """ifnull(custom_sf_crop_class, '') !=
-		           if(crop_type = 'Summer Flowers', 'Summer Flower', 'Rose')"""
+		klass = decided + """ and ifnull(custom_sf_crop_class, '') !=
+		         if(crop_type = 'Summer Flowers', 'Summer Flower', 'Rose')"""
 		n = frappe.db.sql("select count(*) from `tabCrop Protocol` where " + klass)[0][0]
 		if n:
 			frappe.db.sql("""update `tabCrop Protocol`
