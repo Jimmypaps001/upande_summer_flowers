@@ -45,10 +45,14 @@ NATIVE = {
 	"life_expectancy_years": "life_expectancy_years",
 	"stated_yield_stems_per_ha": "yield_stems_per_ha",
 }
-# The doctype this app's protocol lives on. It was upande_agriculture's
-# Crop Protocol until that became the rose master and dropped variety and
-# farm; named once here so nothing has to know twice.
-PROTOCOL_DOCTYPE = "Summer Flower Protocol"
+# The doctype this app's protocol lives on. Back on upande_agriculture's Crop
+# Protocol: variety and farm are re-declared as Custom Fields from this app, so
+# the naming rule this app already shipped -- format:{variety}-{farm} -- resolves
+# again, and one doctype holds every protocol whatever the crop. The summer
+# flower fields are hidden behind custom_is_summer_flower, which is what keeps a
+# rose protocol from showing a hundred fields that mean nothing to it.
+# Named once here so nothing has to know twice.
+PROTOCOL_DOCTYPE = "Crop Protocol"
 
 SKIP = ("Section Break", "Column Break", "Tab Break", "HTML")
 # Machinery that belongs to the snapshot, never to the editable protocol.
@@ -72,6 +76,43 @@ def source_field(fieldname):
 
 def is_summer_flower(doc):
 	return bool(cint(doc.get("custom_is_summer_flower")))
+
+
+# The one thing a user picks, and everything that used to be picked separately.
+SUMMER_FLOWER = "Summer Flowers"
+ROSES = "Roses"
+
+
+def before_validate(doc, method=None):
+	"""Derive the discriminators from crop_type, for every crop.
+
+	Three fields used to say what kind of crop this was -- crop_type,
+	custom_is_summer_flower and custom_sf_crop_class -- and nothing kept them
+	agreeing, so a protocol could be a summer flower by one and a rose by
+	another. crop_type is now the only one anyone sets: a two-option Select,
+	Roses or Summer Flowers, chosen straight after the farm. The other two are
+	derived here and hidden on the form.
+
+	custom_is_summer_flower stays because every guard in this module reads it,
+	and every field on the form shows or hides on an eval of crop_type. Deriving
+	one from the other is what lets both be true at once.
+
+	Runs for roses too -- it has to, or a rose would keep whatever flag it was
+	last saved with -- so it must not depend on is_summer_flower() itself.
+	"""
+	ct = doc.get("crop_type")
+	if ct in (SUMMER_FLOWER, ROSES):
+		doc.custom_is_summer_flower = 1 if ct == SUMMER_FLOWER else 0
+		doc.custom_sf_crop_class = "Summer Flower" if ct == SUMMER_FLOWER else "Rose"
+
+	# variety and variety_item are the same Item under two labels, which is why
+	# the form read "Variety" twice. variety is the one that is typed and the one
+	# the naming rule uses; variety_item is filled from it because
+	# upande_agriculture reads that name.
+	if doc.get("variety") and not doc.get("variety_item"):
+		doc.variety_item = doc.get("variety")
+	elif doc.get("variety_item") and not doc.get("variety"):
+		doc.variety = doc.get("variety_item")
 
 
 # The stages material can be bought at, and the one every route has to end on.
@@ -348,6 +389,13 @@ def on_update(doc, method=None):
 	"""
 	if not is_summer_flower(doc):
 		return
+	# A bulk move is not an edit. This guard used to live on the
+	# SummerFlowerProtocol class, which the merge back onto Crop Protocol
+	# retires; without it, copying a protocol that was already approved tries to
+	# snapshot it again and is refused for having changed nothing -- the right
+	# answer to the wrong question.
+	if frappe.flags.get("sf_protocol_move"):
+		return
 	if doc.get("custom_sf_protocol_status") != "Approved":
 		return
 	changed = diff_against_current(doc)
@@ -361,9 +409,18 @@ def on_update(doc, method=None):
 
 
 def validate(doc, method=None):
+	# Crop Protocol now holds every crop, so this runs on rose and chrysanthemum
+	# protocols too, and none of what follows means anything to them: the whole
+	# derivation is worked out from summer flower parameters that are zero on a
+	# rose, and it throws outright on the first of them -- Crop Protocol Version
+	# refuses to derive without a net m2 per bed. So leave early, exactly as
+	# on_update does, and let upande_agriculture's own controller be the only
+	# thing that validates a rose.
+	if not is_summer_flower(doc):
+		return
 	# The ramp drives weeks-to-max-PC, and the establishment total is built from
 	# that, so it is squared away before anything is derived.
-	if is_summer_flower(doc) and cint(doc.get("custom_sf_ramp_weeks")):
+	if cint(doc.get("custom_sf_ramp_weeks")):
 		doc.custom_sf_weeks_to_max_pc = cint(doc.get("custom_sf_ramp_weeks"))
 	derive(doc)
 	check_route(doc)

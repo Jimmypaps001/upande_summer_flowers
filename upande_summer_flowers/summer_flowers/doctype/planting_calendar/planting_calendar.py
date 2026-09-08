@@ -92,10 +92,16 @@ class PlantingCalendar(Document):
 			resolve_version,
 		)
 
-		protocol = frappe.db.get_value("Summer Flower Protocol",
-		                            {"variety": self.variety}, "name")
 		farm = self.farm or frappe.db.get_value("Block", self.block, "farm")
-		if not (protocol and farm):
+		if not farm:
+			return None
+		# Crop Protocol is per variety AND farm, so the farm has to be in the
+		# lookup: the same variety yields 22.3 stems at Carzan Ks and 15.5 at
+		# Kariki Juja, and picking whichever row came back first would silently
+		# plan the calendar off another farm's numbers.
+		protocol = frappe.db.get_value(
+			"Crop Protocol", {"variety": self.variety, "farm": farm}, "name")
+		if not protocol:
 			return None
 		name = resolve_version(protocol, farm, self.planting_date)
 		if name:

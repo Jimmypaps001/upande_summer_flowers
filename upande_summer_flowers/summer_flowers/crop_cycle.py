@@ -103,6 +103,23 @@ class EffectiveProtocol:
 
 
 class SummerFlowerCropCycle(CropCycle):
+	# ----------------------------------------------------------- one variety
+	def before_validate(self):
+		"""Keep custom_sf_variety filled from the native variety.
+
+		Both are Link fields to Item, both were labelled "Variety", and both were
+		visible, so the form asked the same question twice. custom_sf_variety is
+		now hidden and derived: crop_cycle_api filters on it directly, so it has
+		to hold a value even though nobody types one any more.
+		"""
+		if self.get("variety") and not self.get("custom_sf_variety"):
+			self.custom_sf_variety = self.get("variety")
+		elif self.get("custom_sf_variety") and not self.get("variety"):
+			self.variety = self.get("custom_sf_variety")
+		parent = getattr(super(), "before_validate", None)
+		if parent:
+			parent()
+
 	# --------------------------------------------------------------- naming
 	def autoname(self):
 		"""Name summer flower cycles per block-planting.

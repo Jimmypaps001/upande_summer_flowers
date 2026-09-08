@@ -28,7 +28,7 @@ frappe.ui.form.on("Summer Flower Production Plan", {
 			// The assumptions at the foot of the sheet are this protocol. Editing it
 			// puts it back to Draft for re-approval, which then writes a new version
 			// and this plan can be regenerated against it.
-			frappe.set_route("Form", "Summer Flower Protocol",
+			frappe.set_route("Form", "Crop Protocol",
 				`${frm.doc.variety}-${frm.doc.farm}`);
 		});
 

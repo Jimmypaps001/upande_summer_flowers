@@ -249,11 +249,17 @@ override_doctype_class = {
 # Hook on document methods and events
 
 doc_events = {
-	# Crop Protocol is upande_agriculture's variety master. The summer flower
+	# Crop Protocol is the variety master for every crop. The summer flower
 	# parameters live on it as custom_sf_ fields and every derived figure is
 	# computed here, so the protocol is edited in one place and Crop Protocol
 	# Version is only ever the read-only snapshot taken when a change is approved.
-	"Summer Flower Protocol": {
+	# validate and on_update both return immediately for a protocol that is not a
+	# summer flower, so a rose protocol runs upande_agriculture's controller alone.
+	"Crop Protocol": {
+		# Unconditional: it derives the summer-flower flag from crop_type, so it
+		# cannot be behind a guard that reads that flag.
+		"before_validate": "upande_summer_flowers.summer_flowers.crop_protocol"
+		                   ".before_validate",
 		"validate": "upande_summer_flowers.summer_flowers.crop_protocol.validate",
 		# The workflow moves the status; this turns reaching Approved into an actual
 		# snapshot, which is the only thing that creates a Crop Protocol Version.
