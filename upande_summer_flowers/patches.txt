@@ -6,3 +6,6 @@
 # Patches added in this section will be executed after doctypes are migrated
 upande_summer_flowers.patches.backfill_bed_area
 upande_summer_flowers.patches.recount_submitted_plan_placement
+upande_summer_flowers.patches.merge_protocol_onto_crop_protocol
+upande_summer_flowers.patches.backfill_protocol_company_from_version
+upande_summer_flowers.patches.name_market_demand_per_farm
