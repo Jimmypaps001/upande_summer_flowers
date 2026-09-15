@@ -177,7 +177,8 @@ else:
             doc = frappe.new_doc("Summer Flower Market Demand")
             doc.variety = variety
             doc.farm = farm
-        doc.vbn_code = vbn
+        # The VBN column is read so the sheet still parses, but it is the buyer's
+        # own product code and the register has no use for it.
         doc.product_group = group
         doc.target_years_ahead = 1
         if COMPANY:

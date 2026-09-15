@@ -19,6 +19,7 @@ from upande_summer_flowers.summer_flowers.doctype.planting_calendar.planting_cal
 	standing_plantings,
 )
 from upande_summer_flowers.summer_flowers.planning import (
+	week_family_label,
 	MONTH_NAMES,
 	SEASON_FIRST_WEEK,
 	iso_monday,
@@ -116,12 +117,19 @@ class SummerFlowerProductionPlan(Document):
 			return
 		d = frappe.get_cached_doc("Summer Flower Market Demand", self.market_demand)
 		self.variety = d.variety
-		# The farm is the plan's, not the register's. One variety's demand can be met
-		# from several farms, each with its own protocol and its own blocks, so the
-		# farm is chosen here and the protocol resolves against it.
+		# The farm is the register's. The market sheet is stated by farm -- a row is
+		# farm, product group, variety, VBN, grade -- so a register is already one
+		# farm's order book and the plan inherits it rather than asking again.
 		if not self.farm:
-			frappe.throw(_("Choose the farm this plan is grown on. The demand is for "
-			               "the variety; the plan is what a farm commits to."))
+			self.farm = d.farm
+		if d.farm and self.farm != d.farm:
+			frappe.throw(_(
+				"{0} is the demand register for {1}, but this plan is for {2}. A plan "
+				"grows what its register asks for, at the farm that asked for it."
+			).format(d.name, d.farm, self.farm))
+		if not self.farm:
+			frappe.throw(_("Demand register {0} has no farm, so there is nothing for "
+			               "the plan to be grown on.").format(d.name))
 		# The demand register is authoritative. Do not fall back to whatever
 		# frappe.new_doc pre-filled from the global default company -- on a
 		# multi-company site that silently plans against the wrong entity.
@@ -989,10 +997,15 @@ def plan_preview(market_demand, farm=None, season_start_year=None):
 	firm = sum(cint(r.demand_stems) for r in weeks if r.is_firm)
 
 	notes, blocking = [], []
+	# The register names the farm, so the caller no longer has to.
+	farm = farm or d.farm
 	version = current_version(d.variety, farm) if farm else None
 	if not farm:
-		blocking.append(_("Choose the farm. The demand is for the variety; a plan is "
-		                  "what one farm commits to."))
+		blocking.append(_("Demand register {0} has no farm. Set the farm on the "
+		                  "register -- it is what the plan is grown on.").format(d.name))
+	elif d.farm and farm != d.farm:
+		blocking.append(_("{0} asks for stems at {1}, not at {2}.")
+		                .format(d.name, d.farm, farm))
 	elif not frappe.db.exists("Farm", farm):
 		blocking.append(_("{0} is not a Farm.").format(farm))
 	elif not version:
@@ -1200,6 +1213,7 @@ def build_from_demand(market_demand, farm=None, season_start_year=None,
 		frappe.throw(_("Demand register {0} has no weeks.").format(market_demand))
 
 	first = demand.demand_weeks[0]
+	farm = farm or demand.farm
 	if farm and not frappe.db.exists("Farm", farm):
 		# Caught a year arriving here as the farm once already, from a positional call
 		# made before this signature grew. Fail with the value rather than silently
@@ -1310,19 +1324,29 @@ def _populate(plan):
 			per_row.append({"weeks": dict(mine), "uproot": str(planting.end_date())})
 
 	# ---- close the remaining deficits
+	# The harvest profile, whichever kind of crop this is: flushes for one that
+	# flushes, a run of weeks for one that cuts continuously, a single week for one
+	# that is cut once. Nothing below this line asks which.
 	offsets = protocol.flush_offsets()
 	if not offsets:
+		cycle = protocol.growing_cycle or _("unset")
+		need = {
+			protocol.CONTINUOUS: _("weeks planting to first cut, productive weeks "
+			                       "and stems per plant per week"),
+			protocol.SINGLE: _("weeks planting to first cut and lifetime stems "
+			                   "per plant"),
+		}.get(cycle, _("a flush schedule"))
 		frappe.throw(
-			_("Protocol {0} has no flush schedule, so production cannot be projected.").format(
-				protocol.name
-			)
-		)
+			_("Protocol {0} is a {1} crop and needs {2} before production can be "
+			  "projected.").format(frappe.bold(protocol.name), cycle, need),
+			title=_("Nothing to project"))
 
 	stems_f1 = offsets[0][1]
 	first_offset = protocol.first_harvest_offset_weeks or offsets[0][0]
 	plants_per_bed = protocol.plants_per_bed or 1
 	life_weeks = protocol.total_weeks_in_ground or 0
 	stick_weeks = protocol.sticking_to_planting_weeks or 0
+	turnaround = cint(protocol.turnaround_weeks)
 	today = getdate(nowdate())
 	# The protocol states the minimum as net area; it has already rounded that up
 	# to whole beds, because a bed is the unit that gets planted.
@@ -1350,19 +1374,25 @@ def _populate(plan):
 		# this planting's own flush weeks and the greedy loop then proposes fewer
 		# plantings overall, which is the point.
 		beds = max(wanted, min_beds)
-		# One planting cannot span two blocks, because a block is the unit that is
-		# held exclusively.
-		beds = min(beds, block_capacity) if block_capacity else beds
+		# What the market needs is not trimmed to fit the ground. A planting larger
+		# than any single block is a real requirement that will be split across
+		# blocks when it is allocated; capping it here made the plan quietly answer
+		# a smaller question than the one it was asked.
+		oversize = bool(block_capacity and beds > block_capacity)
 		plants = beds * plants_per_bed
 		planting_date = monday - datetime.timedelta(weeks=first_offset)
 		p_year, p_week = iso_year_week(planting_date)
 		sticking_date = planting_date - datetime.timedelta(weeks=stick_weeks)
 		s_year, s_week = iso_year_week(sticking_date)
 		uproot = planting_date + datetime.timedelta(weeks=life_weeks)
+		# The block is not free the day the crop comes out: it is fallow, sterilised
+		# and prepared first. On a crop cut once and replanted five times a year that
+		# gap is the difference between a workable rotation and a double-booked bed.
+		released = uproot + datetime.timedelta(weeks=turnaround)
 
 		# A block if one is free, and the planting either way. Which block a planting
 		# goes in is decided when blocks are assigned; the plan does not wait for it.
-		block = calendar.place(beds, planting_date, uproot)
+		block = calendar.place(beds, planting_date, released)
 		if not block:
 			not_placed += 1
 			unmet += deficit
@@ -1389,7 +1419,9 @@ def _populate(plan):
 		net_ha = (beds * (protocol.sqm_net_per_bed or 0)) / 10_000
 		footprints.append((planting_date, uproot, net_ha))
 
-		note = None
+		note = (_("Needs {0} beds, more than any single block here holds ({1}); "
+		          "it will be split when blocks are allocated.").format(beds, block_capacity)
+		        if oversize else None)
 		plan.append("plan_blocks", {
 			"is_new_planting": 1,
 			"block": block or None,
@@ -1405,7 +1437,7 @@ def _populate(plan):
 			),
 			"first_harvest_year": year,
 			"first_harvest_week": week,
-			"harvest_week_family": ", ".join(f"wk{w}" for w in sorted(family)),
+			"harvest_week_family": week_family_label(family),
 			"net_area_ha": net_ha,
 			"lifetime_stems": int(round(
 				(protocol.total_stems_per_plant_life or 0) * plants
@@ -1651,3 +1683,98 @@ class BlockCalendar:
 
 	def get(self, name):
 		return self._get(name)
+
+
+@frappe.whitelist()
+def build_all(season_start_year=None, farm=None, dry_run=1, rebuild=0):
+	"""A plan for every variety the market asks for, each on its own protocol.
+
+	The register says what the market wants, variety by variety. The protocol says
+	what that variety does -- how it is raised, how long it takes, and whether it
+	flushes, cuts every week, or is cut once and pulled. Nothing here decides any of
+	that: it walks the registers and lets each variety's own protocol shape its plan,
+	which is the whole reason a plan can be made for Aster and Bupleurum at once.
+
+	A register that already has a plan for the season is left alone unless rebuild is
+	asked for, so this is safe to press twice. A variety whose protocol cannot yet
+	project says so and the rest still build -- one unfinished protocol should not
+	cost you the other eleven plans.
+
+	    bench --site SITE execute \
+	        upande_summer_flowers.summer_flowers.doctype.summer_flower_production_plan\
+.summer_flower_production_plan.report_build_all
+	"""
+	dry_run, rebuild = cint(dry_run), cint(rebuild)
+	filters = {"farm": farm} if farm else {}
+	rows = []
+	for reg in frappe.get_all("Summer Flower Market Demand", filters=filters,
+	                          fields=["name", "variety", "farm"], order_by="variety"):
+		out = {"register": reg.name, "variety": reg.variety, "farm": reg.farm,
+		       "cycle": None, "plan": None, "status": None, "beds": 0, "plants": 0,
+		       "plantings": 0}
+		try:
+			demand = frappe.get_doc("Summer Flower Market Demand", reg.name)
+			if not demand.demand_weeks:
+				out["status"] = _("register has no weeks")
+				rows.append(out); continue
+			first = demand.demand_weeks[0]
+			season = cint(season_start_year) or season_for(
+				first.week_start_date or iso_monday(cint(first.year), cint(first.week_no)))
+
+			existing = frappe.get_all(
+				"Summer Flower Production Plan",
+				filters={"market_demand": reg.name, "season_start_year": season,
+				         "docstatus": ["<", 2]},
+				fields=["name"], limit_page_length=1)
+			if existing and not rebuild:
+				out.update(plan=existing[0].name, status=_("already planned"))
+				rows.append(out); continue
+
+			plan = frappe.new_doc("Summer Flower Production Plan")
+			plan.market_demand = reg.name
+			if reg.farm:
+				plan.farm = reg.farm
+			plan.season_start_year = season
+			plan.pull_header_from_demand()
+			plan.set_season()
+			plan.resolve_protocol()
+			out["cycle"] = frappe.db.get_value(
+				"Crop Protocol Version", plan.protocol, "growing_cycle")
+
+			_populate(plan)
+			new = [b for b in plan.plan_blocks if b.is_new_planting]
+			out.update(plantings=len(new),
+			           beds=sum(cint(b.beds) for b in new),
+			           plants=sum(cint(b.plants) for b in new))
+			if dry_run:
+				out["status"] = _("would build")
+			else:
+				plan.insert()
+				out.update(plan=plan.name, status=_("built"))
+		except Exception as e:
+			# One protocol that cannot project must not cost the other plans.
+			out["status"] = "%s: %s" % (type(e).__name__,
+			                            frappe.utils.strip_html(str(e))[:140])
+		rows.append(out)
+
+	if not dry_run:
+		frappe.db.commit()
+	return {"dry_run": bool(dry_run), "season": cint(season_start_year) or None,
+	        "rows": rows}
+
+
+def report_build_all(season_start_year=None, farm=None, dry_run=1, rebuild=0):
+	"""Readable build_all(), for the console."""
+	r = build_all(season_start_year=season_start_year, farm=farm,
+	              dry_run=dry_run, rebuild=rebuild)
+	print("DRY RUN -- nothing created\n" if r["dry_run"] else "BUILT\n")
+	print("%-40s %-16s %-28s %6s %6s %9s  %s" % (
+		"variety", "farm", "cycle", "plants", "beds", "plants", "status"))
+	for x in r["rows"]:
+		print("%-40s %-16s %-28s %6s %6s %9s  %s" % (
+			(x["variety"] or "")[:40], (x["farm"] or "-")[:16],
+			(x["cycle"] or "-")[:28], x["plantings"], x["beds"], x["plants"],
+			x["status"]))
+	ok = [x for x in r["rows"] if x["status"] in ("would build", "built")]
+	print("\n%d of %d registers planned" % (len(ok), len(r["rows"])))
+	return r

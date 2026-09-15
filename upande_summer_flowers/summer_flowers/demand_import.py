@@ -185,8 +185,25 @@ def check(blocks):
     return notes, problems
 
 
+def _register_for(variety, farm=None):
+    """The demand register for this variety, and the farms that have one.
+
+    Named farm wins. With no farm named, a single register is unambiguous and is
+    used; several are not, and the caller is told rather than being given one of
+    them at random.
+    """
+    rows = frappe.get_all("Summer Flower Market Demand",
+                          filters={"variety": variety}, fields=["name", "farm"])
+    farms = sorted(r.farm for r in rows if r.farm)
+    if farm:
+        return next((r.name for r in rows if r.farm == farm), None), farms
+    if len(rows) == 1:
+        return rows[0].name, farms
+    return None, farms
+
+
 @frappe.whitelist()
-def preview(filename, content):
+def preview(filename, content, farm=None):
     """What the file says and what importing it would do. Writes nothing."""
     if frappe.session.user == "Guest":
         frappe.throw(_("Please sign in."), frappe.PermissionError)
@@ -199,8 +216,13 @@ def preview(filename, content):
     notes, problems = check(blocks)
     variety = next((b["variety"] for b in blocks if b["variety"]), None)
     known = bool(variety and frappe.db.exists("Item", variety))
-    existing = frappe.db.get_value(
-        "Summer Flower Market Demand", {"variety": variety}, "name") if known else None
+    # A register is one farm's order book, so a variety can have several. Looking one
+    # up by variety alone returns whichever the database happens to hand back first,
+    # and the file would land on a farm nobody named.
+    existing, others = _register_for(variety, farm) if known else (None, [])
+    if others and not farm:
+        problems.append(_("{0} has a demand register at {1}. Name the farm this file "
+                          "is for.").format(variety, ", ".join(others)))
 
     have = set()
     if existing:
@@ -238,6 +260,8 @@ def preview(filename, content):
         "filename": filename,
         "variety": variety,
         "variety_known": known,
+        "farm": farm,
+        "farms_with_a_register": others,
         "market_demand": existing,
         "blocks": out_blocks,
         "total": sum(b["total"] for b in out_blocks),
@@ -249,7 +273,7 @@ def preview(filename, content):
 
 
 @frappe.whitelist()
-def import_demand(filename, content, variety=None, mode="replace"):
+def import_demand(filename, content, variety=None, farm=None, mode="replace"):
     """Write the Total row of every block into the variety's demand register.
 
     mode=replace clears the weeks the file covers and writes the file's figures --
@@ -272,13 +296,20 @@ def import_demand(filename, content, variety=None, mode="replace"):
     if not variety or not frappe.db.exists("Item", variety):
         frappe.throw(_("Pick a variety that exists on this site."))
 
-    name = frappe.db.get_value("Summer Flower Market Demand", {"variety": variety}, "name")
+    name, others = _register_for(variety, farm)
+    if not name and not farm:
+        frappe.throw(_("Name the farm this demand is for. A register is one farm's "
+                       "order book for one variety.")
+                     if not others else
+                     _("{0} already has a register at {1}. Name the farm this file "
+                       "is for.").format(variety, ", ".join(others)))
     if name:
         d = frappe.get_doc("Summer Flower Market Demand", name)
         created = False
     else:
         d = frappe.new_doc("Summer Flower Market Demand")
         d.variety = variety
+        d.farm = farm
         created = True
 
     incoming = {}
