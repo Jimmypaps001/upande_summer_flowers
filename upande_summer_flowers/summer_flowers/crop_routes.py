@@ -4,9 +4,9 @@
 
 Two things decide how a crop is planned, and they are independent of each other.
 
-The ROUTE is how plant material becomes a plant in the ground. Nine of them are
-written down, and they are nine paths through one short list of stages -- so they
-are held as ordered stages rather than as nine names. A tenth route is then data.
+The ROUTE is how plant material becomes a plant in the ground. Eleven of them are
+written down, and they are eleven paths through one short list of stages -- so they
+are held as ordered stages rather than as eleven names. A twelfth route is then data.
 
 The CYCLE is how the plant yields once it is there. Distinct flushes are scheduled
 one at a time, which is the only thing the planner can currently do. Continuous
@@ -19,6 +19,7 @@ Source: Crop Categories, 14 August 2026.
 
 import frappe
 from frappe import _
+from frappe.utils import cint, flt
 
 from upande_summer_flowers.summer_flowers.crop_protocol import (
 	PROTOCOL_DOCTYPE,
@@ -40,6 +41,11 @@ ROUTES = {
 	"Own roots, cooled": ["Roots (Own)", "Cooling", "Plants"],
 	"Own roots, direct": ["Roots (Own)", "Plants"],
 	"Budwood": ["Budwoods", "Propagation", "Plants"],
+	# Tubers. Not in the categories document of 14 August -- Dahlia is listed there
+	# under TC to motherstock, which is not how a tuber crop is raised. Added so the
+	# process can be planned before the farm reaches it.
+	"Own tubers, direct": ["Tubers (Own)", "Plants"],
+	"Tubers through cuttings": ["Tubers", "Sprouting", "Propagation", "Plants"],
 }
 
 # (route, cycle, [varieties]). Written out as the document has them, including the
@@ -54,6 +60,10 @@ CATALOGUE = [
 		"Aster (Novi-belgii Grp) Double Date Milka",
 		"Aster (Novi-belgii Grp) Double Date Pink",
 		"Aster (Novi-belgii Grp) 'Flash'",
+		# Not in the categories document of 14 August, but grown at Carzan Ks with a
+		# full protocol -- 103 weeks, 12-week flushes, 16 stems a plant. The document
+		# missed it rather than the farm dropping it.
+		"Aster Double Date Dusk",
 		"Aster Teeny Tiny White",
 		"Phlox (Paniculata Grp) Pink Eyes",
 		"Phlox (Paniculata Grp) Violet Eyes",
@@ -61,6 +71,7 @@ CATALOGUE = [
 		"Solidago Carzan Glory",
 		"Solidago Carzan Moonlight",
 		"Solidago Carzan Taramba",
+		"Bouvardia",
 	]),
 	("TC to motherstock", CONTINUOUS, [
 		"Scabiosa atropurpurea Bon Bon Marachino Cherry Scoop",
@@ -140,6 +151,13 @@ CATALOGUE = [
 	("Own roots, direct", CONTINUOUS, [
 		"Agapanthus 'Gletsjer'",
 	]),
+	# Dahlia produces from roughly 9-12 weeks after the tuber goes in and then keeps
+	# producing for as long as the season lasts; with no frost to end it, continuous
+	# is the closer reading. The source document has it under distinct flushes --
+	# worth a second opinion from the farm before any of it is planted.
+	("Tubers through cuttings", CONTINUOUS, [
+		"Dahlia",
+	]),
 	("Budwood", CONTINUOUS, [
 		"Rosa large flowered Confidential",
 		"Rosa large flowered Esperance",
@@ -162,6 +180,7 @@ PURCHASED_AT = {
 	"Seed raised": "Seeds",
 	"Bought as plants": "Bought-in Plants",
 	"Budwood": "Budwoods",
+	"Tubers through cuttings": "Tubers",
 }
 
 
@@ -388,3 +407,112 @@ def provision_report(farm, dry_run=1, only_route=None):
 	if r["protocols_already_there"]:
 		print("\nalready there (%d)" % len(r["protocols_already_there"]))
 	return r
+
+
+# The shape of a season is a fact about a crop, so it is not written here. A crop
+# states its own on its protocol; a farm states a house default in Summer Flower
+# Settings; and the weights are relative, normalised across however many producing
+# weeks the protocol states, so one shape fits a 20-week season and a 40-week one.
+def _weights(raw):
+	out = []
+	for part in str(raw or "").replace(";", ",").split(","):
+		part = part.strip()
+		if not part:
+			continue
+		try:
+			out.append(float(part))
+		except ValueError:
+			frappe.throw(_("{0} is not a number. A season curve is a list of weights, "
+			               "like 40,55,70,85,95.").format(frappe.bold(part)))
+	return out
+
+
+def season_shape_for(doc):
+	"""The build-up and tail-off weights for this crop: its own, or the farm's."""
+	build = _weights(doc.get("custom_sf_season_curve_build"))
+	tail = _weights(doc.get("custom_sf_season_curve_tail"))
+	if not build and not tail:
+		s = frappe.get_cached_doc("Summer Flower Settings")
+		build = _weights(s.get("season_curve_build"))
+		tail = _weights(s.get("season_curve_tail"))
+	return {"build": build, "tail": tail, "peak": 100.0}
+
+
+def season_weights(weeks, shape):
+	"""Relative weight per producing week, for `weeks` weeks.
+
+	The shape rises, holds and falls. A long season gets the whole of it with the
+	peak stretched to fill the middle; a short one -- four weeks of picking before
+	the block comes out -- is the same shape sampled at four points, so it still
+	rises and still falls. Trimming the ends instead used to hand a four-week flush
+	a curve that only went up, which is not how anything is picked.
+	"""
+	build = list(shape.get("build") or [])
+	tail = list(shape.get("tail") or [])
+	peak = shape.get("peak", 100.0)
+	if not build and not tail:
+		# Nothing stated: the season is flat, which is at least a shape someone chose
+		# rather than one this module invented.
+		return [peak] * weeks
+	if weeks <= 1:
+		return [peak] * max(weeks, 0)
+
+	full = build + [peak] + tail
+	if weeks >= len(full):
+		middle = [peak] * (weeks - len(build) - len(tail))
+		return build + middle + tail
+	# Shorter than the shape: sample it evenly rather than cut an end off.
+	last = len(full) - 1
+	return [full[int(round(i * last / (weeks - 1)))] for i in range(weeks)]
+
+
+@frappe.whitelist()
+def spread_season(protocol, dry_run=1, shape=None):
+	"""Allocate a continuous crop's whole life across its producing weeks.
+
+	A crop that cuts every week has no flushes, but it has the same thing underneath:
+	a hundred percent of a life, handed out over a season until it is used up. So it
+	gets a row per producing week carrying that week's share, and from there it is
+	read, planned and totalled exactly like a crop that flushes.
+
+	The share is not flat. A dahlia in its first producing week is not the plant it is
+	ten weeks later, and it is winding down before the season ends.
+	"""
+	from upande_summer_flowers.summer_flowers.crop_protocol import PROTOCOL_DOCTYPE
+
+	dry_run = int(dry_run or 0)
+	doc = frappe.get_doc(PROTOCOL_DOCTYPE, protocol)
+	weeks = cint(doc.get("custom_sf_productive_weeks"))
+	# Where the picking starts. Stated outright on a continuous crop; on a crop that
+	# flushes it is already the offset of its first flush, so it is read from there
+	# rather than asked for twice.
+	first = (cint(doc.get("custom_sf_weeks_planting_to_first_cut"))
+	         or cint(doc.get("custom_sf_first_harvest_offset_weeks")))
+	life = flt(doc.get("custom_sf_stated_stems_per_plant_life")) or \
+		flt(doc.get("total_stems_per_plant_life"))
+	if not weeks or not life:
+		frappe.throw(_("{0} needs productive weeks and a life yield before its season "
+		               "can be shared out.").format(frappe.bold(protocol)))
+
+	weights = season_weights(weeks, shape or season_shape_for(doc))
+	total = sum(weights) or 1
+	rows = []
+	for i, w in enumerate(weights):
+		rows.append({
+			"flush_number": i + 1,
+			"weeks_from_planting": first + i,
+			"pct_of_life": w / total * 100.0,
+			"stems_per_plant": life * w / total,
+		})
+	if not dry_run:
+		doc.set("custom_sf_flush_schedule", [])
+		for r in rows:
+			doc.append("custom_sf_flush_schedule", r)
+		doc.flags.ignore_permissions = True
+		doc.flags.ignore_mandatory = True
+		frappe.flags.sf_protocol_move = True
+		doc.save()
+		frappe.db.commit()
+		frappe.flags.sf_protocol_move = False
+	return {"protocol": protocol, "weeks": weeks, "life": life,
+	        "dry_run": bool(dry_run), "rows": rows}

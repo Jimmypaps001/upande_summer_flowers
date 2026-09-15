@@ -83,7 +83,7 @@
    "columns": 0,
    "creation": "2026-07-30 14:54:50.720723",
    "default": null,
-   "depends_on": null,
+   "depends_on": "eval:!doc.__islocal",
    "description": "Farms that currently have an Active version for this variety.",
    "docstatus": 0,
    "dt": "Crop Protocol",
@@ -152,7 +152,7 @@
    "creation": "2026-07-30 14:54:50.707642",
    "default": "0",
    "depends_on": null,
-   "description": "Marks this variety as a summer flower, keeping it separable from roses and other crops in planning and reporting.",
+   "description": "Marks this variety as a summer flower, keeping it separable from roses and other crops in plann",
    "docstatus": 0,
    "dt": "Crop Protocol",
    "fetch_from": null,
@@ -217,7 +217,7 @@
    "name": "Crop Protocol-custom_sf_approval_section"
   },
   {
-   "depends_on": "eval:doc.crop_type==\"Summer Flowers\"",
+   "depends_on": "eval:(doc.crop_type==\"Summer Flowers\") && !doc.__islocal",
    "doctype": "Custom Field",
    "dt": "Crop Protocol",
    "fieldname": "custom_sf_approved_by",
@@ -230,7 +230,7 @@
    "read_only": 1
   },
   {
-   "depends_on": "eval:doc.crop_type==\"Summer Flowers\"",
+   "depends_on": "eval:(doc.crop_type==\"Summer Flowers\") && !doc.__islocal",
    "doctype": "Custom Field",
    "dt": "Crop Protocol",
    "fieldname": "custom_sf_approved_on",
@@ -243,14 +243,17 @@
   },
   {
    "depends_on": "eval:doc.crop_type==\"Summer Flowers\"",
+   "description": "From this farm's blocks; typed only if it has none.",
    "doctype": "Custom Field",
    "dt": "Crop Protocol",
    "fieldname": "custom_sf_beds_per_block",
    "fieldtype": "Int",
+   "hidden": 1,
    "insert_after": "custom_sf_min_planting_area_sqm",
    "label": "Beds per Block",
    "module": "Summer Flowers",
-   "name": "Crop Protocol-custom_sf_beds_per_block"
+   "name": "Crop Protocol-custom_sf_beds_per_block",
+   "read_only": 0
   },
   {
    "depends_on": "eval:doc.crop_type==\"Summer Flowers\"",
@@ -278,7 +281,7 @@
    "columns": 0,
    "creation": "2026-07-30 14:54:50.713754",
    "default": null,
-   "depends_on": "eval:doc.crop_type==\"Summer Flowers\"",
+   "depends_on": "eval:(doc.crop_type==\"Summer Flowers\") && !doc.__islocal",
    "description": "",
    "docstatus": 0,
    "dt": "Crop Protocol",
@@ -346,7 +349,7 @@
    "columns": 0,
    "creation": "2026-07-30 14:54:50.713754",
    "default": null,
-   "depends_on": "eval:doc.crop_type==\"Summer Flowers\"",
+   "depends_on": "eval:(doc.crop_type==\"Summer Flowers\") && !doc.__islocal",
    "description": "",
    "docstatus": 0,
    "dt": "Crop Protocol",
@@ -400,8 +403,8 @@
    "width": null
   },
   {
-   "depends_on": "eval:doc.crop_type==\"Summer Flowers\"",
-   "description": "Required to approve. Kept on the snapshot, so the history says why the numbers moved and not just that they did.",
+   "depends_on": "eval:(doc.crop_type==\"Summer Flowers\") && !doc.__islocal",
+   "description": "What moved and why. Required before approval.",
    "doctype": "Custom Field",
    "dt": "Crop Protocol",
    "fieldname": "custom_sf_change_reason",
@@ -413,7 +416,7 @@
   },
   {
    "depends_on": "eval:doc.crop_type==\"Summer Flowers\"",
-   "description": "Altitude, temperature, light \u2014 what makes this farm's curve differ from the same variety elsewhere.",
+   "description": "Altitude, temperature, light \u2014 what makes this farm's curve differ from the same variety elsewh",
    "doctype": "Custom Field",
    "dt": "Crop Protocol",
    "fieldname": "custom_sf_climate_note",
@@ -449,7 +452,7 @@
    "options": "Summer Flower\nRose\nOther"
   },
   {
-   "depends_on": "eval:doc.crop_type==\"Summer Flowers\"",
+   "depends_on": "eval:(doc.crop_type==\"Summer Flowers\") && !doc.__islocal",
    "description": "The snapshot in force. Plans built before it keep reading the snapshot they were built on.",
    "doctype": "Custom Field",
    "dt": "Crop Protocol",
@@ -475,7 +478,7 @@
    "name": "Crop Protocol-custom_sf_cutting_reject_pct"
   },
   {
-   "depends_on": "eval:doc.crop_type==\"Summer Flowers\"",
+   "depends_on": "eval:(doc.crop_type==\"Summer Flowers\") && !doc.__islocal",
    "description": "Hardening + pinch + first flush.",
    "doctype": "Custom Field",
    "dt": "Crop Protocol",
@@ -494,13 +497,13 @@
    "fieldname": "custom_sf_cuttings_per_plant_per_week",
    "fieldtype": "Float",
    "insert_after": "custom_sf_bench_section",
-   "label": "Cuttings Per Plant Per Week",
+   "label": "Cuttings/plant/wk",
    "module": "Summer Flowers",
    "name": "Crop Protocol-custom_sf_cuttings_per_plant_per_week",
    "precision": "3"
   },
   {
-   "depends_on": "eval:doc.crop_type==\"Summer Flowers\"",
+   "depends_on": "eval:(doc.crop_type==\"Summer Flowers\") && !doc.__islocal",
    "description": "Cuttings to stick per plant standing in the field.",
    "doctype": "Custom Field",
    "dt": "Crop Protocol",
@@ -530,17 +533,20 @@
    "dt": "Crop Protocol",
    "fieldname": "custom_sf_density_section",
    "fieldtype": "Section Break",
+   "hidden": 1,
    "insert_after": "custom_sf_current_version",
-   "label": "Planting Density",
+   "label": "Bed and block, from this farm",
    "module": "Summer Flowers",
    "name": "Crop Protocol-custom_sf_density_section"
   },
   {
+   "collapsible": 1,
    "depends_on": "eval:doc.crop_type==\"Summer Flowers\"",
    "doctype": "Custom Field",
    "dt": "Crop Protocol",
    "fieldname": "custom_sf_derived_geo_section",
    "fieldtype": "Section Break",
+   "hidden": 1,
    "insert_after": "custom_sf_beds_per_block",
    "label": "Worked out from the geometry above",
    "module": "Summer Flowers",
@@ -573,7 +579,7 @@
    "creation": "2026-07-30 14:54:50.713754",
    "default": null,
    "depends_on": "eval:doc.crop_type==\"Summer Flowers\"",
-   "description": "The workbook counts it: tray 3 + pot 8 + build-up 4 + hardening 3 = 18 weeks, which is what makes its lab lead time 40 weeks.",
+   "description": "The workbook counts it: tray 3 + pot 8 + build-up 4 + hardening 3 = 18 weeks, which is what mak",
    "docstatus": 0,
    "dt": "Crop Protocol",
    "fetch_from": "",
@@ -705,19 +711,20 @@
    "name": "Crop Protocol-custom_sf_establishment_section"
   },
   {
-   "depends_on": "eval:doc.crop_type==\"Summer Flowers\"",
+   "depends_on": "eval:(doc.crop_type==\"Summer Flowers\") && !doc.__islocal",
    "doctype": "Custom Field",
    "dt": "Crop Protocol",
    "fieldname": "custom_sf_establishment_weeks",
    "fieldtype": "Int",
    "insert_after": "custom_sf_est_derived_section",
-   "label": "Establishment total (weeks)",
+   "label": "Total weeks to full establishment",
    "module": "Summer Flowers",
    "name": "Crop Protocol-custom_sf_establishment_weeks",
    "read_only": 1
   },
   {
    "depends_on": "eval:doc.crop_type==\"Summer Flowers\"",
+   "description": "Read off the material route where the route carries steps; typed only where it does not.",
    "doctype": "Custom Field",
    "dt": "Crop Protocol",
    "fieldname": "custom_sf_field_establishment_pct",
@@ -725,16 +732,17 @@
    "insert_after": "custom_sf_rooting_success_pct",
    "label": "Field establishment %",
    "module": "Summer Flowers",
-   "name": "Crop Protocol-custom_sf_field_establishment_pct"
+   "name": "Crop Protocol-custom_sf_field_establishment_pct",
+   "read_only_depends_on": "eval:(doc.custom_sf_material_route||[]).some(function(r){return r.row_type=='Step';})"
   },
   {
-   "depends_on": "eval:doc.crop_type==\"Summer Flowers\"",
+   "depends_on": "eval:(doc.crop_type==\"Summer Flowers\") && !doc.__islocal",
    "doctype": "Custom Field",
    "dt": "Crop Protocol",
    "fieldname": "custom_sf_first_harvest_offset_weeks",
    "fieldtype": "Int",
    "insert_after": "weeks_between_flushes",
-   "label": "Weeks planting \u2192 first harvest",
+   "label": "Weeks from planting to harvesting",
    "module": "Summer Flowers",
    "name": "Crop Protocol-custom_sf_first_harvest_offset_weeks",
    "read_only": 1
@@ -758,11 +766,12 @@
    "fieldname": "custom_sf_flush_section",
    "fieldtype": "Section Break",
    "insert_after": "custom_sf_flushes_per_year",
-   "label": "Flush Schedule",
+   "label": "Harvest shape",
    "module": "Summer Flowers",
    "name": "Crop Protocol-custom_sf_flush_section"
   },
   {
+   "collapsible": 1,
    "depends_on": "eval:doc.crop_type==\"Summer Flowers\"",
    "doctype": "Custom Field",
    "dt": "Crop Protocol",
@@ -774,13 +783,13 @@
    "name": "Crop Protocol-custom_sf_flush_totals_section"
   },
   {
-   "depends_on": "eval:doc.crop_type==\"Summer Flowers\"",
+   "depends_on": "eval:(doc.crop_type==\"Summer Flowers\") && !doc.__islocal",
    "doctype": "Custom Field",
    "dt": "Crop Protocol",
    "fieldname": "custom_sf_flushes_per_year",
    "fieldtype": "Float",
    "insert_after": "custom_sf_harvest_weeks_per_year",
-   "label": "Flushes Per Year",
+   "label": "Flushes/Year",
    "module": "Summer Flowers",
    "name": "Crop Protocol-custom_sf_flushes_per_year",
    "precision": "2",
@@ -810,7 +819,7 @@
    "name": "Crop Protocol-custom_sf_grade_section2"
   },
   {
-   "depends_on": "eval:doc.crop_type==\"Summer Flowers\"",
+   "depends_on": "eval:(doc.crop_type==\"Summer Flowers\") && !doc.__islocal",
    "doctype": "Custom Field",
    "dt": "Crop Protocol",
    "fieldname": "custom_sf_grade_total_pct",
@@ -829,12 +838,13 @@
    "fieldname": "custom_sf_growth_section",
    "fieldtype": "Section Break",
    "insert_after": "custom_sf_flush_totals_section",
-   "label": "Growth Stages",
+   "label": "Yield per hectare",
    "module": "Summer Flowers",
    "name": "Crop Protocol-custom_sf_growth_section"
   },
   {
    "depends_on": "eval:doc.crop_type==\"Summer Flowers\"",
+   "description": "Read off the material route where the route carries steps; typed only where it does not.",
    "doctype": "Custom Field",
    "dt": "Crop Protocol",
    "fieldname": "custom_sf_hardening_weeks",
@@ -842,10 +852,11 @@
    "insert_after": "custom_sf_weeks_on_pot",
    "label": "Hardening Weeks",
    "module": "Summer Flowers",
-   "name": "Crop Protocol-custom_sf_hardening_weeks"
+   "name": "Crop Protocol-custom_sf_hardening_weeks",
+   "read_only_depends_on": "eval:(doc.custom_sf_material_route||[]).some(function(r){return r.row_type=='Step';})"
   },
   {
-   "depends_on": "eval:doc.crop_type==\"Summer Flowers\"",
+   "depends_on": "eval:(doc.crop_type==\"Summer Flowers\") && !doc.__islocal",
    "description": "52 \u00f7 flush interval. The planting returns to the same weeks each year.",
    "doctype": "Custom Field",
    "dt": "Crop Protocol",
@@ -858,7 +869,7 @@
    "read_only": 1
   },
   {
-   "depends_on": "eval:doc.crop_type==\"Summer Flowers\"",
+   "depends_on": "eval:(doc.crop_type==\"Summer Flowers\") && !doc.__islocal",
    "doctype": "Custom Field",
    "dt": "Crop Protocol",
    "fieldname": "custom_sf_lead_time_weeks",
@@ -882,17 +893,19 @@
   },
   {
    "depends_on": "eval:doc.crop_type==\"Summer Flowers\"",
+   "description": "Read off the material route where the route carries steps; typed only where it does not.",
    "doctype": "Custom Field",
    "dt": "Crop Protocol",
    "fieldname": "custom_sf_max_multiplication_cycles",
    "fieldtype": "Int",
    "insert_after": "custom_sf_multiplication_section",
-   "label": "Max Multiplication Cycles",
+   "label": "Multiplication cycles",
    "module": "Summer Flowers",
-   "name": "Crop Protocol-custom_sf_max_multiplication_cycles"
+   "name": "Crop Protocol-custom_sf_max_multiplication_cycles",
+   "read_only_depends_on": "eval:(doc.custom_sf_material_route||[]).some(function(r){return r.row_type=='Step';})"
   },
   {
-   "depends_on": "eval:doc.crop_type==\"Summer Flowers\"",
+   "depends_on": "eval:(doc.crop_type==\"Summer Flowers\") && !doc.__islocal",
    "doctype": "Custom Field",
    "dt": "Crop Protocol",
    "fieldname": "custom_sf_max_multiplication_factor",
@@ -906,23 +919,24 @@
   },
   {
    "depends_on": "eval:doc.crop_type==\"Summer Flowers\"",
-   "description": "The smallest planting worth making, as net bed area. The planner will not propose anything below it; it converts the area to whole beds using the bed size above.",
+   "description": "Smallest block worth planting. Plants follow from this and the density.",
    "doctype": "Custom Field",
    "dt": "Crop Protocol",
    "fieldname": "custom_sf_min_planting_area_sqm",
    "fieldtype": "Float",
    "insert_after": "custom_sf_plants_per_bed",
-   "label": "Minimum planting area (m\u00b2 net)",
+   "label": "Minimum planting area (sqm)",
    "module": "Summer Flowers",
    "name": "Crop Protocol-custom_sf_min_planting_area_sqm"
   },
   {
-   "depends_on": "eval:doc.crop_type==\"Summer Flowers\"",
+   "depends_on": "eval:(doc.crop_type==\"Summer Flowers\") && !doc.__islocal",
    "description": "The minimum area above, rounded up to whole beds.",
    "doctype": "Custom Field",
    "dt": "Crop Protocol",
    "fieldname": "custom_sf_min_planting_beds_derived",
    "fieldtype": "Int",
+   "hidden": 1,
    "insert_after": "custom_sf_sqm_net_per_bed",
    "label": "Minimum planting (whole beds)",
    "module": "Summer Flowers",
@@ -930,11 +944,13 @@
    "read_only": 1
   },
   {
-   "depends_on": "eval:doc.crop_type==\"Summer Flowers\"",
+   "depends_on": "eval:(doc.crop_type==\"Summer Flowers\") && !doc.__islocal",
+   "description": "Worked out from the minimum area and the density.",
    "doctype": "Custom Field",
    "dt": "Crop Protocol",
    "fieldname": "custom_sf_min_planting_plants",
    "fieldtype": "Int",
+   "hidden": 1,
    "insert_after": "custom_sf_min_planting_beds_derived",
    "label": "Minimum planting (plants)",
    "module": "Summer Flowers",
@@ -948,13 +964,13 @@
    "fieldname": "custom_sf_motherstock_life_weeks",
    "fieldtype": "Int",
    "insert_after": "custom_sf_cycle_time_weeks",
-   "label": "Motherstock Life Weeks",
+   "label": "Motherstock life (weeks)",
    "module": "Summer Flowers",
    "name": "Crop Protocol-custom_sf_motherstock_life_weeks"
   },
   {
-   "depends_on": "eval:doc.crop_type==\"Summer Flowers\"",
-   "description": "Tray + pot + build-up. What a cutting needs to become a productive mother; hardening belongs to the cutting-to-harvest path.",
+   "depends_on": "eval:(doc.crop_type==\"Summer Flowers\") && !doc.__islocal",
+   "description": "Tray + pot + build-up.",
    "doctype": "Custom Field",
    "dt": "Crop Protocol",
    "fieldname": "custom_sf_ms_establishment_weeks",
@@ -966,6 +982,7 @@
    "read_only": 1
   },
   {
+   "collapsible": 1,
    "depends_on": "eval:doc.crop_type==\"Summer Flowers\"",
    "doctype": "Custom Field",
    "dt": "Crop Protocol",
@@ -1000,7 +1017,7 @@
    "name": "Crop Protocol-custom_sf_multiplication_section"
   },
   {
-   "depends_on": "eval:doc.crop_type==\"Summer Flowers\"",
+   "depends_on": "eval:(doc.crop_type==\"Summer Flowers\") && !doc.__islocal",
    "description": "What differs from the snapshot in force.",
    "doctype": "Custom Field",
    "dt": "Crop Protocol",
@@ -1013,22 +1030,24 @@
    "read_only": 1
   },
   {
-   "depends_on": "eval:doc.crop_type==\"Summer Flowers\"",
+   "depends_on": "eval:(doc.crop_type==\"Summer Flowers\") && !doc.__islocal",
    "doctype": "Custom Field",
    "dt": "Crop Protocol",
    "fieldname": "custom_sf_plants_per_bed",
    "fieldtype": "Int",
+   "hidden": 1,
    "insert_after": "growth_stages",
    "label": "Plants Per Bed",
    "module": "Summer Flowers",
    "name": "Crop Protocol-custom_sf_plants_per_bed"
   },
   {
-   "depends_on": "eval:doc.crop_type==\"Summer Flowers\"",
+   "depends_on": "eval:(doc.crop_type==\"Summer Flowers\") && !doc.__islocal",
    "doctype": "Custom Field",
    "dt": "Crop Protocol",
    "fieldname": "custom_sf_plants_per_block",
    "fieldtype": "Int",
+   "hidden": 1,
    "insert_after": "custom_sf_min_planting_plants",
    "label": "Plants per Block (max)",
    "module": "Summer Flowers",
@@ -1050,7 +1069,7 @@
    "columns": 0,
    "creation": "2026-07-30 14:54:50.713754",
    "default": null,
-   "depends_on": "eval:doc.crop_type==\"Summer Flowers\"",
+   "depends_on": "eval:(doc.crop_type==\"Summer Flowers\") && !doc.__islocal",
    "description": "",
    "docstatus": 0,
    "dt": "Crop Protocol",
@@ -1110,12 +1129,12 @@
    "fieldname": "custom_sf_plants_per_pot",
    "fieldtype": "Int",
    "insert_after": "custom_sf_cuttings_per_plant_per_week",
-   "label": "Plants Per Pot",
+   "label": "Plants/pot",
    "module": "Summer Flowers",
    "name": "Crop Protocol-custom_sf_plants_per_pot"
   },
   {
-   "depends_on": "eval:doc.crop_type==\"Summer Flowers\"",
+   "depends_on": "eval:(doc.crop_type==\"Summer Flowers\") && !doc.__islocal",
    "doctype": "Custom Field",
    "dt": "Crop Protocol",
    "fieldname": "custom_sf_plants_per_sqm_bench",
@@ -1140,8 +1159,8 @@
   },
   {
    "default": "Draft",
-   "depends_on": "eval:doc.crop_type==\"Summer Flowers\"",
-   "description": "A protocol is approved before it can be planned against. Approving it writes a read-only Crop Protocol Version \u2014 the snapshot every plan, planting and crop cycle pins to.",
+   "depends_on": "eval:(doc.crop_type==\"Summer Flowers\") && !doc.__islocal",
+   "description": "Approved protocols can be planned against.",
    "doctype": "Custom Field",
    "dt": "Crop Protocol",
    "fieldname": "custom_sf_protocol_status",
@@ -1161,7 +1180,7 @@
    "fieldname": "custom_sf_ramp_profile",
    "fieldtype": "Data",
    "insert_after": "custom_sf_ramp_weeks",
-   "label": "Build-up Profile (%)",
+   "label": "Build up % by week",
    "module": "Summer Flowers",
    "name": "Crop Protocol-custom_sf_ramp_profile"
   },
@@ -1173,9 +1192,10 @@
    "fieldname": "custom_sf_ramp_weeks",
    "fieldtype": "Int",
    "insert_after": "custom_sf_supplier_lead_weeks",
-   "label": "Build-up Weeks to Full Capacity",
+   "label": "Build up wks to max capacity",
    "module": "Summer Flowers",
-   "name": "Crop Protocol-custom_sf_ramp_weeks"
+   "name": "Crop Protocol-custom_sf_ramp_weeks",
+   "read_only_depends_on": "eval:(doc.custom_sf_material_route||[]).some(function(r){return r.row_type=='Step';})"
   },
   {
    "depends_on": "eval:doc.crop_type==\"Summer Flowers\"",
@@ -1190,6 +1210,7 @@
   },
   {
    "depends_on": "eval:doc.crop_type==\"Summer Flowers\"",
+   "description": "Read off the material route where the route carries steps; typed only where it does not.",
    "doctype": "Custom Field",
    "dt": "Crop Protocol",
    "fieldname": "custom_sf_rooting_success_pct",
@@ -1197,14 +1218,17 @@
    "insert_after": "custom_sf_loss_section",
    "label": "Rooting success %",
    "module": "Summer Flowers",
-   "name": "Crop Protocol-custom_sf_rooting_success_pct"
+   "name": "Crop Protocol-custom_sf_rooting_success_pct",
+   "read_only_depends_on": "eval:(doc.custom_sf_material_route||[]).some(function(r){return r.row_type=='Step';})"
   },
   {
    "depends_on": "eval:doc.crop_type==\"Summer Flowers\"",
+   "description": "From this farm's beds; typed only if it has none.",
    "doctype": "Custom Field",
    "dt": "Crop Protocol",
    "fieldname": "custom_sf_sqm_net_per_bed",
    "fieldtype": "Float",
+   "hidden": 1,
    "insert_after": "custom_sf_derived_geo_section",
    "label": "m\u00b2 net per bed",
    "module": "Summer Flowers",
@@ -1213,7 +1237,7 @@
    "read_only": 1
   },
   {
-   "depends_on": "eval:doc.crop_type==\"Summer Flowers\"",
+   "depends_on": "eval:(doc.crop_type==\"Summer Flowers\") && !doc.__islocal",
    "doctype": "Custom Field",
    "dt": "Crop Protocol",
    "fieldname": "custom_sf_stems_per_ha_life",
@@ -1226,7 +1250,7 @@
    "read_only": 1
   },
   {
-   "depends_on": "eval:doc.crop_type==\"Summer Flowers\"",
+   "depends_on": "eval:(doc.crop_type==\"Summer Flowers\") && !doc.__islocal",
    "doctype": "Custom Field",
    "dt": "Crop Protocol",
    "fieldname": "custom_sf_stems_per_ha_year",
@@ -1240,27 +1264,29 @@
   },
   {
    "depends_on": "eval:doc.crop_type==\"Summer Flowers\"",
-   "description": "Weeks between a cutting going into the propagation house and the rooted plant going to the field.",
+   "description": "Cutting stuck to rooted plant in the ground.",
    "doctype": "Custom Field",
    "dt": "Crop Protocol",
    "fieldname": "custom_sf_sticking_to_planting_weeks",
    "fieldtype": "Int",
    "insert_after": "custom_sf_hardening_weeks",
-   "label": "Weeks sticking \u2192 planting",
+   "label": "Rooting wks (sticking to planting)",
    "module": "Summer Flowers",
-   "name": "Crop Protocol-custom_sf_sticking_to_planting_weeks"
+   "name": "Crop Protocol-custom_sf_sticking_to_planting_weeks",
+   "read_only_depends_on": "eval:(doc.custom_sf_material_route||[]).some(function(r){return r.row_type=='Step';})"
   },
   {
    "depends_on": "eval:doc.crop_type==\"Summer Flowers\"",
-   "description": "Order to delivery at the TC lab. Distinct from on-farm establishment.",
+   "description": "Order to delivery at the TC lab.",
    "doctype": "Custom Field",
    "dt": "Crop Protocol",
    "fieldname": "custom_sf_supplier_lead_weeks",
    "fieldtype": "Int",
    "insert_after": "custom_sf_motherstock_life_weeks",
-   "label": "Supplier Lead (weeks)",
+   "label": "Supplier lead time",
    "module": "Summer Flowers",
-   "name": "Crop Protocol-custom_sf_supplier_lead_weeks"
+   "name": "Crop Protocol-custom_sf_supplier_lead_weeks",
+   "read_only_depends_on": "eval:(doc.custom_sf_material_route||[]).some(function(r){return r.row_type=='Step';})"
   },
   {
    "depends_on": "eval:doc.crop_type==\"Summer Flowers\"",
@@ -1279,6 +1305,7 @@
    "dt": "Crop Protocol",
    "fieldname": "custom_sf_tab_geometry",
    "fieldtype": "Tab Break",
+   "hidden": 1,
    "insert_after": "custom_sf_company",
    "label": "Geometry",
    "module": "Summer Flowers",
@@ -1322,7 +1349,7 @@
    "creation": "2026-07-30 14:54:50.713754",
    "default": null,
    "depends_on": "eval:doc.crop_type==\"Summer Flowers\"",
-   "description": "Plantlets lost between the lab and the bench. The order is the requirement divided by (1 - this). 10% on the planning workbook: 4,000 needed, 4,444 ordered.",
+   "description": "Plantlets lost between the lab and the bench.",
    "docstatus": 0,
    "dt": "Crop Protocol",
    "fetch_from": "",
@@ -1363,7 +1390,7 @@
    "print_hide_if_no_value": 0,
    "print_width": null,
    "read_only": 0,
-   "read_only_depends_on": null,
+   "read_only_depends_on": "eval:(doc.custom_sf_material_route||[]).some(function(r){return r.row_type=='Step';})",
    "report_hide": 0,
    "reqd": 0,
    "search_index": 0,
@@ -1387,25 +1414,29 @@
   },
   {
    "depends_on": "eval:doc.crop_type==\"Summer Flowers\"",
+   "description": "Read off the material route where the route carries steps; typed only where it does not.",
    "doctype": "Custom Field",
    "dt": "Crop Protocol",
    "fieldname": "custom_sf_weeks_on_pot",
    "fieldtype": "Int",
    "insert_after": "custom_sf_weeks_on_tray",
-   "label": "Weeks on pot to first harvest",
+   "label": "Weeks on pot",
    "module": "Summer Flowers",
-   "name": "Crop Protocol-custom_sf_weeks_on_pot"
+   "name": "Crop Protocol-custom_sf_weeks_on_pot",
+   "read_only_depends_on": "eval:(doc.custom_sf_material_route||[]).some(function(r){return r.row_type=='Step';})"
   },
   {
    "depends_on": "eval:doc.crop_type==\"Summer Flowers\"",
+   "description": "Read off the material route where the route carries steps; typed only where it does not.",
    "doctype": "Custom Field",
    "dt": "Crop Protocol",
    "fieldname": "custom_sf_weeks_on_tray",
    "fieldtype": "Int",
    "insert_after": "custom_sf_establishment_section",
-   "label": "Weeks On Tray",
+   "label": "Weeks on tray",
    "module": "Summer Flowers",
-   "name": "Crop Protocol-custom_sf_weeks_on_tray"
+   "name": "Crop Protocol-custom_sf_weeks_on_tray",
+   "read_only_depends_on": "eval:(doc.custom_sf_material_route||[]).some(function(r){return r.row_type=='Step';})"
   },
   {
    "_assign": null,
@@ -1422,7 +1453,7 @@
    "columns": 0,
    "creation": "2026-07-30 14:54:50.713754",
    "default": null,
-   "depends_on": "eval:doc.crop_type==\"Summer Flowers\"",
+   "depends_on": "eval:(doc.crop_type==\"Summer Flowers\") && !doc.__islocal",
    "description": "",
    "docstatus": 0,
    "dt": "Crop Protocol",
@@ -1476,8 +1507,8 @@
    "width": null
   },
   {
-   "depends_on": "eval:doc.crop_type==\"Summer Flowers\"",
-   "description": "Follows Build-up Weeks: they are the same span. Kept because the establishment total is built from it.",
+   "depends_on": "eval:(doc.crop_type==\"Summer Flowers\") && !doc.__islocal",
+   "description": "Follows Build-up Weeks: they are the same span.",
    "doctype": "Custom Field",
    "dt": "Crop Protocol",
    "fieldname": "custom_sf_weeks_to_max_pc",
@@ -1490,7 +1521,7 @@
    "read_only": 1
   },
   {
-   "depends_on": "eval:doc.crop_type==\"Summer Flowers\"",
+   "depends_on": "eval:(doc.crop_type==\"Summer Flowers\") && !doc.__islocal",
    "doctype": "Custom Field",
    "dt": "Crop Protocol",
    "fieldname": "custom_sf_weeks_to_max_production",
@@ -1503,7 +1534,7 @@
    "read_only": 1
   },
   {
-   "depends_on": "eval:doc.crop_type==\"Summer Flowers\"",
+   "depends_on": "eval:(doc.crop_type==\"Summer Flowers\") && !doc.__islocal",
    "doctype": "Custom Field",
    "dt": "Crop Protocol",
    "fieldname": "custom_sf_yield_variance_pct",
@@ -1530,7 +1561,7 @@
    "creation": "2026-07-30 14:54:50.702683",
    "default": null,
    "depends_on": null,
-   "description": "Injected by Upande Summer Flowers. Per-farm, versioned parameter sets hang off this variety master; the master itself is not versioned.",
+   "description": "Injected by Upande Summer Flowers.",
    "docstatus": 0,
    "dt": "Crop Protocol",
    "fetch_from": null,
@@ -1551,7 +1582,7 @@
    "insert_after": "custom_sf_approval_section",
    "is_system_generated": 0,
    "is_virtual": 0,
-   "label": "Summer Flowers",
+   "label": "Protocol status",
    "length": 0,
    "link_filters": null,
    "mandatory_depends_on": null,
@@ -1597,7 +1628,7 @@
    "columns": 0,
    "creation": "2026-07-30 14:54:50.717543",
    "default": null,
-   "depends_on": null,
+   "depends_on": "eval:!doc.__islocal",
    "description": "Number of per-farm versions defined against this variety.",
    "docstatus": 0,
    "dt": "Crop Protocol",
@@ -1662,7 +1693,7 @@
    "in_list_view": 0,
    "in_standard_filter": 0,
    "insert_after": "custom_sf_growing_cycle",
-   "label": "Plant Material Route",
+   "label": "Growing cycle",
    "module": "Summer Flowers",
    "name": "Crop Protocol-custom_sf_route_section",
    "options": "",
@@ -1672,7 +1703,7 @@
   {
    "default": null,
    "depends_on": "",
-   "description": "How the crop yields. Distinct flushes are scheduled one by one; continuous produces every week across a window; a single flush is cut once and the block comes out.",
+   "description": "How the crop yields.",
    "doctype": "Custom Field",
    "dt": "Crop Protocol",
    "fieldname": "custom_sf_growing_cycle",
@@ -1690,7 +1721,7 @@
   {
    "default": null,
    "depends_on": "",
-   "description": "In order, from what is bought to a plant in the ground. Nine routes on this farm are nine paths through the same stages.",
+   "description": "In order, from what is bought to a plant in the ground.",
    "doctype": "Custom Field",
    "dt": "Crop Protocol",
    "fieldname": "custom_sf_material_route",
@@ -1790,7 +1821,7 @@
    "creation": null,
    "default": null,
    "depends_on": null,
-   "description": "The farm this protocol applies at. The same variety is grown differently at each, so a protocol is per variety AND farm; the other half of the record name.",
+   "description": "The farm this protocol applies at.",
    "docstatus": 0,
    "doctype": "Custom Field",
    "dt": "Crop Protocol",
@@ -1859,7 +1890,7 @@
    "creation": null,
    "default": null,
    "depends_on": null,
-   "description": "Pinching, not bending: the rose equivalent is weeks_to_first_bending. Held here for every crop: 142 of the 149 rose protocols carry a value in this column, left behind when agriculture renamed the field.",
+   "description": "Planting to pinching. Left empty for a crop that is not pinched.",
    "docstatus": 0,
    "doctype": "Custom Field",
    "dt": "Crop Protocol",
@@ -1881,7 +1912,7 @@
    "insert_after": "custom_sf_timeline_section",
    "is_system_generated": 0,
    "is_virtual": 0,
-   "label": "Weeks From Planting To Pinching",
+   "label": "Weeks from planting to pinching",
    "length": 0,
    "link_filters": null,
    "mandatory_depends_on": null,
@@ -1928,7 +1959,7 @@
    "creation": null,
    "default": null,
    "depends_on": null,
-   "description": "Weeks between one flush and the next. The rose equivalent is flush_interval_weeks. Held here for every crop: 142 of the 149 rose protocols carry a value in this column, left behind when agriculture renamed the field.",
+   "description": "Weeks between one flush and the next.",
    "docstatus": 0,
    "doctype": "Custom Field",
    "dt": "Crop Protocol",
@@ -1950,7 +1981,7 @@
    "insert_after": "weeks_to_pinch",
    "is_system_generated": 0,
    "is_virtual": 0,
-   "label": "Flush Interval (Weeks)",
+   "label": "Flush interval (weeks)",
    "length": 0,
    "link_filters": null,
    "mandatory_depends_on": null,
@@ -1997,7 +2028,7 @@
    "creation": null,
    "default": null,
    "depends_on": null,
-   "description": "Planting to uproot. The rose equivalent is productive_life_weeks. Held here for every crop: 142 of the 149 rose protocols carry a value in this column, left behind when agriculture renamed the field.",
+   "description": "Planting to uproot.",
    "docstatus": 0,
    "doctype": "Custom Field",
    "dt": "Crop Protocol",
@@ -2019,7 +2050,7 @@
    "insert_after": "custom_sf_first_harvest_offset_weeks",
    "is_system_generated": 0,
    "is_virtual": 0,
-   "label": "Croplife (Weeks)",
+   "label": "Croplife (weeks)",
    "length": 0,
    "link_filters": null,
    "mandatory_depends_on": null,
@@ -2066,7 +2097,7 @@
    "creation": null,
    "default": null,
    "depends_on": null,
-   "description": "The yield the farm states, kept so the derived figure can be checked against it. Held here for every crop: 142 of the 149 rose protocols carry a value in this column, left behind when agriculture renamed the field.",
+   "description": "The yield the farm states, kept so the worked-out figure can be checked against it.",
    "docstatus": 0,
    "doctype": "Custom Field",
    "dt": "Crop Protocol",
@@ -2118,6 +2149,231 @@
    "translatable": 0,
    "unique": 0,
    "width": null
+  },
+  {
+   "depends_on": "eval:doc.crop_type==\"Summer Flowers\"",
+   "description": "Fallow and bed prep between one crop out and the next in.",
+   "doctype": "Custom Field",
+   "dt": "Crop Protocol",
+   "fieldname": "custom_sf_turnaround_weeks",
+   "fieldtype": "Int",
+   "insert_after": "custom_sf_flushes_per_year",
+   "label": "Turnaround weeks (clear \u2192 replant)",
+   "module": "Summer Flowers",
+   "name": "Crop Protocol-custom_sf_turnaround_weeks",
+   "non_negative": 1
+  },
+  {
+   "depends_on": "eval:doc.crop_type==\"Summer Flowers\" && doc.custom_sf_growing_cycle==\"Perennial - continuous\"",
+   "description": "Seeds the schedule for a crop with no flush rows yet.",
+   "doctype": "Custom Field",
+   "dt": "Crop Protocol",
+   "fieldname": "custom_sf_weeks_planting_to_first_cut",
+   "fieldtype": "Int",
+   "insert_after": "custom_sf_turnaround_weeks",
+   "label": "Weeks planting \u2192 first cut",
+   "module": "Summer Flowers",
+   "name": "Crop Protocol-custom_sf_weeks_planting_to_first_cut",
+   "non_negative": 1
+  },
+  {
+   "depends_on": "eval:doc.crop_type==\"Summer Flowers\" && (doc.custom_sf_growing_cycle==\"Perennial - continuous\"||doc.custom_sf_growing_cycle==\"Single flush cycle\")",
+   "description": "Weeks the block is picked once it starts.",
+   "doctype": "Custom Field",
+   "dt": "Crop Protocol",
+   "fieldname": "custom_sf_productive_weeks",
+   "fieldtype": "Int",
+   "insert_after": "custom_sf_weeks_planting_to_first_cut",
+   "label": "Harvest weeks (picking window)",
+   "module": "Summer Flowers",
+   "name": "Crop Protocol-custom_sf_productive_weeks",
+   "non_negative": 1
+  },
+  {
+   "depends_on": "eval:doc.crop_type==\"Summer Flowers\" && doc.custom_sf_growing_cycle==\"Perennial - continuous\"",
+   "description": "Seeds the schedule for a crop with no flush rows yet.",
+   "doctype": "Custom Field",
+   "dt": "Crop Protocol",
+   "fieldname": "custom_sf_stems_per_plant_per_week",
+   "fieldtype": "Float",
+   "insert_after": "custom_sf_productive_weeks",
+   "label": "Stems per plant per week",
+   "module": "Summer Flowers",
+   "name": "Crop Protocol-custom_sf_stems_per_plant_per_week",
+   "precision": "3"
+  },
+  {
+   "depends_on": "eval:doc.crop_type==\"Summer Flowers\" && (doc.custom_sf_growing_cycle==\"Perennial - continuous\"||doc.custom_sf_growing_cycle==\"Single flush cycle\")",
+   "description": "Weeks of the year it produces. Leave empty if any week.",
+   "doctype": "Custom Field",
+   "dt": "Crop Protocol",
+   "fieldname": "custom_sf_harvest_window_start_week",
+   "fieldtype": "Int",
+   "insert_after": "custom_sf_stems_per_plant_per_week",
+   "label": "Harvest window: first week of year",
+   "module": "Summer Flowers",
+   "name": "Crop Protocol-custom_sf_harvest_window_start_week",
+   "non_negative": 1
+  },
+  {
+   "depends_on": "eval:doc.crop_type==\"Summer Flowers\" && (doc.custom_sf_growing_cycle==\"Perennial - continuous\"||doc.custom_sf_growing_cycle==\"Single flush cycle\")",
+   "description": "",
+   "doctype": "Custom Field",
+   "dt": "Crop Protocol",
+   "fieldname": "custom_sf_harvest_window_end_week",
+   "fieldtype": "Int",
+   "insert_after": "custom_sf_harvest_window_start_week",
+   "label": "Harvest window: last week of year",
+   "module": "Summer Flowers",
+   "name": "Crop Protocol-custom_sf_harvest_window_end_week",
+   "non_negative": 1
+  },
+  {
+   "depends_on": "eval:doc.crop_type==\"Summer Flowers\"",
+   "description": "Only needed when the harvest is entered as percentages.",
+   "doctype": "Custom Field",
+   "dt": "Crop Protocol",
+   "fieldname": "custom_sf_stated_stems_per_plant_life",
+   "fieldtype": "Float",
+   "insert_after": "custom_sf_flush_schedule",
+   "label": "Stem/Plantlife (stated)",
+   "module": "Summer Flowers",
+   "name": "Crop Protocol-custom_sf_stated_stems_per_plant_life",
+   "non_negative": 1,
+   "precision": "3"
+  },
+  {
+   "depends_on": "eval:doc.crop_type==\"Summer Flowers\" && (doc.custom_sf_growing_cycle==\"Perennial - continuous\"||doc.custom_sf_growing_cycle==\"Single flush cycle\")",
+   "description": "Relative weights per week as the season builds. Empty = the house curve.",
+   "doctype": "Custom Field",
+   "dt": "Crop Protocol",
+   "fieldname": "custom_sf_season_curve_build",
+   "fieldtype": "Data",
+   "insert_after": "custom_sf_stated_stems_per_plant_life",
+   "label": "Season curve: build-up weights",
+   "module": "Summer Flowers",
+   "name": "Crop Protocol-custom_sf_season_curve_build"
+  },
+  {
+   "depends_on": "eval:doc.crop_type==\"Summer Flowers\" && (doc.custom_sf_growing_cycle==\"Perennial - continuous\"||doc.custom_sf_growing_cycle==\"Single flush cycle\")",
+   "description": "Relative weights per week as it tails off. Empty = the house curve.",
+   "doctype": "Custom Field",
+   "dt": "Crop Protocol",
+   "fieldname": "custom_sf_season_curve_tail",
+   "fieldtype": "Data",
+   "insert_after": "custom_sf_season_curve_build",
+   "label": "Season curve: tail-off weights",
+   "module": "Summer Flowers",
+   "name": "Crop Protocol-custom_sf_season_curve_tail"
+  },
+  {
+   "doctype": "Custom Field",
+   "dt": "Crop Protocol",
+   "fieldname": "custom_sf_cb_timeline_a",
+   "fieldtype": "Column Break",
+   "insert_after": "custom_sf_timeline_section",
+   "module": "Summer Flowers",
+   "name": "Crop Protocol-custom_sf_cb_timeline_a"
+  },
+  {
+   "doctype": "Custom Field",
+   "dt": "Crop Protocol",
+   "fieldname": "custom_sf_cb_timeline_b",
+   "fieldtype": "Column Break",
+   "insert_after": "custom_sf_timeline_section",
+   "module": "Summer Flowers",
+   "name": "Crop Protocol-custom_sf_cb_timeline_b"
+  },
+  {
+   "doctype": "Custom Field",
+   "dt": "Crop Protocol",
+   "fieldname": "custom_sf_cb_flush_a",
+   "fieldtype": "Column Break",
+   "insert_after": "custom_sf_flush_section",
+   "module": "Summer Flowers",
+   "name": "Crop Protocol-custom_sf_cb_flush_a"
+  },
+  {
+   "doctype": "Custom Field",
+   "dt": "Crop Protocol",
+   "fieldname": "custom_sf_cb_loss_a",
+   "fieldtype": "Column Break",
+   "insert_after": "custom_sf_loss_section",
+   "module": "Summer Flowers",
+   "name": "Crop Protocol-custom_sf_cb_loss_a"
+  },
+  {
+   "doctype": "Custom Field",
+   "dt": "Crop Protocol",
+   "fieldname": "custom_sf_cb_mult_a",
+   "fieldtype": "Column Break",
+   "insert_after": "custom_sf_multiplication_section",
+   "module": "Summer Flowers",
+   "name": "Crop Protocol-custom_sf_cb_mult_a"
+  },
+  {
+   "doctype": "Custom Field",
+   "dt": "Crop Protocol",
+   "fieldname": "custom_sf_cb_est_a",
+   "fieldtype": "Column Break",
+   "insert_after": "custom_sf_establishment_section",
+   "module": "Summer Flowers",
+   "name": "Crop Protocol-custom_sf_cb_est_a"
+  },
+  {
+   "depends_on": "eval:doc.crop_type==\"Summer Flowers\"",
+   "doctype": "Custom Field",
+   "dt": "Crop Protocol",
+   "fieldname": "custom_sf_flush_table_section",
+   "fieldtype": "Section Break",
+   "insert_after": "custom_sf_flush_section",
+   "label": "Flush Schedule",
+   "module": "Summer Flowers",
+   "name": "Crop Protocol-custom_sf_flush_table_section"
+  },
+  {
+   "depends_on": "eval:doc.crop_type==\"Summer Flowers\"",
+   "doctype": "Custom Field",
+   "dt": "Crop Protocol",
+   "fieldname": "custom_sf_route_table_section",
+   "fieldtype": "Section Break",
+   "insert_after": "custom_sf_flush_section",
+   "label": "Material Route",
+   "module": "Summer Flowers",
+   "name": "Crop Protocol-custom_sf_route_table_section"
+  },
+  {
+   "depends_on": "eval:doc.crop_type==\"Summer Flowers\"",
+   "doctype": "Custom Field",
+   "dt": "Crop Protocol",
+   "fieldname": "custom_sf_grade_table_section",
+   "fieldtype": "Section Break",
+   "insert_after": "custom_sf_flush_section",
+   "label": "Grade Allocation",
+   "module": "Summer Flowers",
+   "name": "Crop Protocol-custom_sf_grade_table_section"
+  },
+  {
+   "depends_on": "eval:doc.crop_type==\"Summer Flowers\"",
+   "doctype": "Custom Field",
+   "dt": "Crop Protocol",
+   "fieldname": "custom_sf_grade_total_section",
+   "fieldtype": "Section Break",
+   "insert_after": "custom_sf_flush_section",
+   "label": "Grade total",
+   "module": "Summer Flowers",
+   "name": "Crop Protocol-custom_sf_grade_total_section"
+  },
+  {
+   "depends_on": "eval:doc.crop_type==\"Roses\"",
+   "doctype": "Custom Field",
+   "dt": "Crop Protocol",
+   "fieldname": "custom_sf_rose_flush_table_section",
+   "fieldtype": "Section Break",
+   "insert_after": "custom_sf_flush_section",
+   "label": "Flush Schedule",
+   "module": "Summer Flowers",
+   "name": "Crop Protocol-custom_sf_rose_flush_table_section"
   }
  ],
  "custom_perms": [
@@ -2410,7 +2666,7 @@
    "name": "Crop Protocol-plants_per_sqm-label",
    "property": "label",
    "property_type": "Data",
-   "value": "Plants per m\u00b2 of bed (net)"
+   "value": "Plant density (plants/sqm)"
   },
   {
    "doc_type": "Crop Protocol",
@@ -2540,7 +2796,7 @@
    "name": "Crop Protocol-total_weeks_in_ground-label",
    "property": "label",
    "property_type": "Data",
-   "value": "Total Weeks In Ground"
+   "value": "Croplife (weeks)"
   },
   {
    "doc_type": "Crop Protocol",
@@ -2580,7 +2836,7 @@
    "name": "Crop Protocol-weeks_between_flushes-label",
    "property": "label",
    "property_type": "Data",
-   "value": "Flush Interval (Weeks)"
+   "value": "Flush interval (weeks)"
   },
   {
    "doc_type": "Crop Protocol",
@@ -2630,7 +2886,7 @@
    "name": "Crop Protocol-weeks_to_pinch-label",
    "property": "label",
    "property_type": "Data",
-   "value": "Weeks planting \u2192 pinch"
+   "value": "Weeks from planting to pinching"
   },
   {
    "doc_type": "Crop Protocol",
@@ -2640,7 +2896,7 @@
    "name": "Crop Protocol-yield_stems_per_ha-label",
    "property": "label",
    "property_type": "Data",
-   "value": "Stated Yield (stems/ha/yr)"
+   "value": "Stated Yield (Stems/ha)"
   },
   {
    "doc_type": "Crop Protocol",
@@ -2948,7 +3204,7 @@
    "name": "Crop Protocol-section_flush-depends_on",
    "property": "depends_on",
    "property_type": "Data",
-   "value": "eval:doc.crop_type==\"Summer Flowers\""
+   "value": "eval:doc.crop_type==\"Roses\""
   },
   {
    "doc_type": "Crop Protocol",
@@ -2962,7 +3218,7 @@
    "name": "Crop Protocol-weeks_to_first_flush-depends_on",
    "property": "depends_on",
    "property_type": "Data",
-   "value": "eval:doc.crop_type==\"Summer Flowers\""
+   "value": "eval:doc.crop_type==\"Roses\""
   },
   {
    "doc_type": "Crop Protocol",
@@ -2976,7 +3232,7 @@
    "name": "Crop Protocol-flush_interval_weeks-depends_on",
    "property": "depends_on",
    "property_type": "Data",
-   "value": "eval:doc.crop_type==\"Summer Flowers\""
+   "value": "eval:doc.crop_type==\"Roses\""
   },
   {
    "doc_type": "Crop Protocol",
@@ -3004,7 +3260,7 @@
    "name": "Crop Protocol-total_flushes-depends_on",
    "property": "depends_on",
    "property_type": "Data",
-   "value": "eval:doc.crop_type==\"Summer Flowers\""
+   "value": "eval:(doc.crop_type==\"Summer Flowers\") && !doc.__islocal"
   },
   {
    "doc_type": "Crop Protocol",
@@ -3018,7 +3274,7 @@
    "name": "Crop Protocol-total_stems_per_plant_life-depends_on",
    "property": "depends_on",
    "property_type": "Data",
-   "value": "eval:doc.crop_type==\"Summer Flowers\""
+   "value": "eval:(doc.crop_type==\"Summer Flowers\") && !doc.__islocal"
   },
   {
    "doc_type": "Crop Protocol",
@@ -3089,6 +3345,515 @@
    "property": "label",
    "property_type": "Data",
    "value": "Flush Interval (Weeks) - rose model"
+  },
+  {
+   "doc_type": "Crop Protocol",
+   "doctype": "Property Setter",
+   "doctype_or_field": "DocField",
+   "field_name": "section_establishment",
+   "name": "Crop Protocol-section_establishment-depends_on",
+   "property": "depends_on",
+   "property_type": "Data",
+   "value": "eval:doc.crop_type==\"Roses\""
+  },
+  {
+   "doc_type": "Crop Protocol",
+   "doctype": "Property Setter",
+   "doctype_or_field": "DocField",
+   "field_name": "reject_pct",
+   "name": "Crop Protocol-reject_pct-depends_on",
+   "property": "depends_on",
+   "property_type": "Data",
+   "value": "eval:doc.crop_type==\"Roses\""
+  },
+  {
+   "doc_type": "Crop Protocol",
+   "doctype": "Property Setter",
+   "doctype_or_field": "DocField",
+   "field_name": "productive_life_years",
+   "name": "Crop Protocol-productive_life_years-depends_on",
+   "property": "depends_on",
+   "property_type": "Data",
+   "value": "eval:doc.crop_type==\"Roses\""
+  },
+  {
+   "doc_type": "Crop Protocol",
+   "doctype": "Property Setter",
+   "doctype_or_field": "DocField",
+   "field_name": "productive_life_weeks",
+   "name": "Crop Protocol-productive_life_weeks-depends_on",
+   "property": "depends_on",
+   "property_type": "Data",
+   "value": "eval:doc.crop_type==\"Roses\""
+  },
+  {
+   "doc_type": "Crop Protocol",
+   "doctype": "Property Setter",
+   "doctype_or_field": "DocType",
+   "name": "Crop Protocol-DocType-field_order",
+   "property": "field_order",
+   "property_type": "Text",
+   "value": "[\"protocol_name\", \"farm\", \"variety_item\", \"crop_type\", \"variety\", \"column_break_variety\", \"breeder\", \"color\", \"custom_is_summer_flower\", \"custom_sf_crop_class\", \"custom_sf_company\", \"life_expectancy_years\", \"reject_pct\", \"plants_per_sqm\", \"custom_sf_min_planting_area_sqm\", \"custom_summer_flowers_section\", \"custom_sf_protocol_status\", \"custom_sf_current_version\", \"custom_version_count\", \"custom_farms_with_versions\", \"custom_sf_approval_section\", \"custom_sf_approved_by\", \"custom_sf_approved_on\", \"custom_cb_sf_1\", \"custom_sf_change_reason\", \"custom_sf_pending_changes\", \"custom_sf_climate_note\", \"section_establishment\", \"weeks_to_first_bending\", \"weeks_to_second_bending\", \"column_break_establishment\", \"productive_life_years\", \"productive_life_weeks\", \"section_cycle\", \"weeks_between_cuts\", \"section_yield\", \"stems_per_plant_first_harvest\", \"stems_per_cut\", \"actual_stems_per_cut\", \"column_break_yield\", \"max_stems_per_plant_per_cut\", \"section_flush\", \"weeks_to_first_flush\", \"flush_interval_weeks\", \"column_break_flush\", \"custom_sf_rose_flush_table_section\", \"flush_schedule\", \"section_grade_allocation\", \"section_grade_mix\", \"grade_mix\", \"section_growth_stages\", \"growth_stages\", \"custom_sf_tab_geometry\", \"custom_sf_density_section\", \"custom_sf_derived_geo_section\", \"custom_sf_sqm_net_per_bed\", \"custom_sf_beds_per_block\", \"custom_sf_plants_per_bed\", \"custom_sf_min_planting_beds_derived\", \"custom_sf_min_planting_plants\", \"custom_sf_plants_per_block\", \"custom_sf_tab_cycle\", \"custom_sf_flush_section\", \"custom_sf_weeks_planting_to_first_cut\", \"custom_sf_stated_stems_per_plant_life\", \"custom_sf_stems_per_plant_per_week\", \"custom_sf_cb_flush_a\", \"custom_sf_season_curve_build\", \"custom_sf_season_curve_tail\", \"custom_sf_flush_table_section\", \"custom_sf_flush_schedule\", \"custom_sf_flush_totals_section\", \"total_flushes\", \"total_stems_per_plant_life\", \"custom_sf_route_section\", \"custom_sf_growing_cycle\", \"custom_sf_route_table_section\", \"custom_sf_material_route\", \"custom_sf_timeline_section\", \"weeks_to_pinch\", \"custom_sf_first_harvest_offset_weeks\", \"custom_sf_cb_timeline_a\", \"weeks_between_flushes\", \"total_weeks_in_ground\", \"custom_sf_turnaround_weeks\", \"custom_sf_productive_weeks\", \"custom_sf_cb_timeline_b\", \"custom_sf_harvest_window_start_week\", \"custom_sf_harvest_window_end_week\", \"yield_stems_per_ha\", \"custom_sf_harvest_weeks_per_year\", \"custom_sf_flushes_per_year\", \"custom_sf_growth_section\", \"custom_sf_stems_per_ha_life\", \"custom_sf_stems_per_ha_year\", \"custom_sf_plants_per_net_ha\", \"custom_sf_best_year_stems_per_plant\", \"custom_sf_best_year_stems_per_net_ha\", \"custom_sf_tab_prop\", \"custom_sf_establishment_section\", \"custom_sf_weeks_on_tray\", \"custom_sf_weeks_on_pot\", \"custom_sf_hardening_weeks\", \"custom_sf_cb_est_a\", \"custom_sf_sticking_to_planting_weeks\", \"custom_sf_est_derived_section\", \"custom_sf_establishment_weeks\", \"custom_sf_ms_establishment_weeks\", \"custom_sf_cutting_to_harvest_weeks\", \"custom_sf_weeks_tc_to_first_cut_derived\", \"custom_sf_weeks_to_max_pc\", \"custom_sf_establishment_includes_ramp\", \"custom_sf_establishment_includes_hardening\", \"custom_sf_bench_section\", \"custom_sf_cuttings_per_plant_per_week\", \"custom_sf_plants_per_pot\", \"custom_sf_pots_per_sqm\", \"custom_sf_plants_per_sqm_bench\", \"custom_sf_multiplication_section\", \"custom_sf_max_multiplication_cycles\", \"custom_sf_multiplication_factor_per_cycle\", \"custom_sf_cycle_time_weeks\", \"custom_sf_cb_mult_a\", \"custom_sf_motherstock_life_weeks\", \"custom_sf_supplier_lead_weeks\", \"custom_sf_ramp_weeks\", \"custom_sf_ramp_profile\", \"custom_sf_ready_cutting_price\", \"custom_sf_mult_derived_section\", \"custom_sf_max_multiplication_factor\", \"custom_sf_lead_time_weeks\", \"custom_sf_weeks_to_max_production\", \"custom_sf_tab_grades\", \"custom_sf_grade_section2\", \"custom_sf_grade_table_section\", \"custom_sf_grade_allocation\", \"custom_sf_grade_total_section\", \"custom_sf_grade_total_pct\", \"custom_sf_loss_section\", \"custom_sf_rooting_success_pct\", \"custom_sf_field_establishment_pct\", \"custom_sf_cutting_reject_pct\", \"custom_sf_cb_loss_a\", \"custom_sf_tc_order_loss_pct\", \"custom_sf_cuttings_per_plant_required\", \"custom_sf_yield_variance_pct\"]"
+  },
+  {
+   "doc_type": "Crop Protocol",
+   "doctype": "Property Setter",
+   "doctype_or_field": "DocField",
+   "field_name": "total_flushes",
+   "name": "Crop Protocol-total_flushes-label",
+   "property": "label",
+   "property_type": "Data",
+   "value": "Lifetime flushes"
+  },
+  {
+   "doc_type": "Crop Protocol",
+   "doctype": "Property Setter",
+   "doctype_or_field": "DocField",
+   "field_name": "total_stems_per_plant_life",
+   "name": "Crop Protocol-total_stems_per_plant_life-label",
+   "property": "label",
+   "property_type": "Data",
+   "value": "Lifetime stems/plant"
+  },
+  {
+   "doc_type": "Crop Protocol",
+   "doctype": "Property Setter",
+   "doctype_or_field": "DocField",
+   "field_name": "weeks_to_pinch",
+   "name": "Crop Protocol-weeks_to_pinch-description",
+   "property": "description",
+   "property_type": "Text",
+   "value": "Planting to pinching. Left empty for a crop that is not pinched."
+  },
+  {
+   "doc_type": "Crop Protocol",
+   "doctype": "Property Setter",
+   "doctype_or_field": "DocField",
+   "field_name": "weeks_between_flushes",
+   "name": "Crop Protocol-weeks_between_flushes-description",
+   "property": "description",
+   "property_type": "Text",
+   "value": "Weeks between one flush and the next."
+  },
+  {
+   "doc_type": "Crop Protocol",
+   "doctype": "Property Setter",
+   "doctype_or_field": "DocField",
+   "field_name": "total_weeks_in_ground",
+   "name": "Crop Protocol-total_weeks_in_ground-description",
+   "property": "description",
+   "property_type": "Text",
+   "value": "Planting to uproot."
+  },
+  {
+   "doc_type": "Crop Protocol",
+   "doctype": "Property Setter",
+   "doctype_or_field": "DocField",
+   "field_name": "yield_stems_per_ha",
+   "name": "Crop Protocol-yield_stems_per_ha-description",
+   "property": "description",
+   "property_type": "Text",
+   "value": "The yield the farm states, kept so the worked-out figure can be checked against it."
+  },
+  {
+   "doc_type": "Crop Protocol",
+   "doctype": "Property Setter",
+   "doctype_or_field": "DocField",
+   "field_name": "life_expectancy_years",
+   "name": "Crop Protocol-life_expectancy_years-read_only",
+   "property": "read_only",
+   "property_type": "Check",
+   "value": "1"
+  },
+  {
+   "doc_type": "Crop Protocol",
+   "doctype": "Property Setter",
+   "doctype_or_field": "DocField",
+   "field_name": "life_expectancy_years",
+   "name": "Crop Protocol-life_expectancy_years-description",
+   "property": "description",
+   "property_type": "Text",
+   "value": "Croplife in years."
+  },
+  {
+   "doc_type": "Crop Protocol",
+   "doctype": "Property Setter",
+   "doctype_or_field": "DocField",
+   "field_name": "custom_is_summer_flower",
+   "name": "Crop Protocol-custom_is_summer_flower-description",
+   "property": "description",
+   "property_type": "Text",
+   "value": "Marks this variety as a summer flower, keeping it separable from roses and other crops in plann"
+  },
+  {
+   "doc_type": "Crop Protocol",
+   "doctype": "Property Setter",
+   "doctype_or_field": "DocField",
+   "field_name": "custom_sf_beds_per_block",
+   "name": "Crop Protocol-custom_sf_beds_per_block-description",
+   "property": "description",
+   "property_type": "Text",
+   "value": "From this farm's blocks; typed only if it has none."
+  },
+  {
+   "doc_type": "Crop Protocol",
+   "doctype": "Property Setter",
+   "doctype_or_field": "DocField",
+   "field_name": "custom_sf_change_reason",
+   "name": "Crop Protocol-custom_sf_change_reason-description",
+   "property": "description",
+   "property_type": "Text",
+   "value": "What moved and why. Required before approval."
+  },
+  {
+   "doc_type": "Crop Protocol",
+   "doctype": "Property Setter",
+   "doctype_or_field": "DocField",
+   "field_name": "custom_sf_climate_note",
+   "name": "Crop Protocol-custom_sf_climate_note-description",
+   "property": "description",
+   "property_type": "Text",
+   "value": "Altitude, temperature, light \u2014 what makes this farm's curve differ from the same variety elsewh"
+  },
+  {
+   "doc_type": "Crop Protocol",
+   "doctype": "Property Setter",
+   "doctype_or_field": "DocField",
+   "field_name": "custom_sf_establishment_includes_hardening",
+   "name": "Crop Protocol-custom_sf_establishment_includes_hardening-description",
+   "property": "description",
+   "property_type": "Text",
+   "value": "The workbook counts it: tray 3 + pot 8 + build-up 4 + hardening 3 = 18 weeks, which is what mak"
+  },
+  {
+   "doc_type": "Crop Protocol",
+   "doctype": "Property Setter",
+   "doctype_or_field": "DocField",
+   "field_name": "custom_sf_min_planting_area_sqm",
+   "name": "Crop Protocol-custom_sf_min_planting_area_sqm-description",
+   "property": "description",
+   "property_type": "Text",
+   "value": "Smallest block worth planting. Plants follow from this and the density."
+  },
+  {
+   "doc_type": "Crop Protocol",
+   "doctype": "Property Setter",
+   "doctype_or_field": "DocField",
+   "field_name": "custom_sf_min_planting_plants",
+   "name": "Crop Protocol-custom_sf_min_planting_plants-description",
+   "property": "description",
+   "property_type": "Text",
+   "value": "Worked out from the minimum area and the density."
+  },
+  {
+   "doc_type": "Crop Protocol",
+   "doctype": "Property Setter",
+   "doctype_or_field": "DocField",
+   "field_name": "custom_sf_ms_establishment_weeks",
+   "name": "Crop Protocol-custom_sf_ms_establishment_weeks-description",
+   "property": "description",
+   "property_type": "Text",
+   "value": "Tray + pot + build-up."
+  },
+  {
+   "doc_type": "Crop Protocol",
+   "doctype": "Property Setter",
+   "doctype_or_field": "DocField",
+   "field_name": "custom_sf_protocol_status",
+   "name": "Crop Protocol-custom_sf_protocol_status-description",
+   "property": "description",
+   "property_type": "Text",
+   "value": "Approved protocols can be planned against."
+  },
+  {
+   "doc_type": "Crop Protocol",
+   "doctype": "Property Setter",
+   "doctype_or_field": "DocField",
+   "field_name": "custom_sf_ramp_weeks",
+   "name": "Crop Protocol-custom_sf_ramp_weeks-description",
+   "property": "description",
+   "property_type": "Text",
+   "value": "Weeks a new motherstock takes to reach full cutting capacity."
+  },
+  {
+   "doc_type": "Crop Protocol",
+   "doctype": "Property Setter",
+   "doctype_or_field": "DocField",
+   "field_name": "custom_sf_sqm_net_per_bed",
+   "name": "Crop Protocol-custom_sf_sqm_net_per_bed-description",
+   "property": "description",
+   "property_type": "Text",
+   "value": "From this farm's beds; typed only if it has none."
+  },
+  {
+   "doc_type": "Crop Protocol",
+   "doctype": "Property Setter",
+   "doctype_or_field": "DocField",
+   "field_name": "custom_sf_sticking_to_planting_weeks",
+   "name": "Crop Protocol-custom_sf_sticking_to_planting_weeks-description",
+   "property": "description",
+   "property_type": "Text",
+   "value": "Cutting stuck to rooted plant in the ground."
+  },
+  {
+   "doc_type": "Crop Protocol",
+   "doctype": "Property Setter",
+   "doctype_or_field": "DocField",
+   "field_name": "custom_sf_supplier_lead_weeks",
+   "name": "Crop Protocol-custom_sf_supplier_lead_weeks-description",
+   "property": "description",
+   "property_type": "Text",
+   "value": "Order to delivery at the TC lab."
+  },
+  {
+   "doc_type": "Crop Protocol",
+   "doctype": "Property Setter",
+   "doctype_or_field": "DocField",
+   "field_name": "custom_sf_tc_order_loss_pct",
+   "name": "Crop Protocol-custom_sf_tc_order_loss_pct-description",
+   "property": "description",
+   "property_type": "Text",
+   "value": "Plantlets lost between the lab and the bench."
+  },
+  {
+   "doc_type": "Crop Protocol",
+   "doctype": "Property Setter",
+   "doctype_or_field": "DocField",
+   "field_name": "custom_sf_weeks_to_max_pc",
+   "name": "Crop Protocol-custom_sf_weeks_to_max_pc-description",
+   "property": "description",
+   "property_type": "Text",
+   "value": "Follows Build-up Weeks: they are the same span."
+  },
+  {
+   "doc_type": "Crop Protocol",
+   "doctype": "Property Setter",
+   "doctype_or_field": "DocField",
+   "field_name": "custom_summer_flowers_section",
+   "name": "Crop Protocol-custom_summer_flowers_section-description",
+   "property": "description",
+   "property_type": "Text",
+   "value": "Injected by Upande Summer Flowers."
+  },
+  {
+   "doc_type": "Crop Protocol",
+   "doctype": "Property Setter",
+   "doctype_or_field": "DocField",
+   "field_name": "custom_sf_growing_cycle",
+   "name": "Crop Protocol-custom_sf_growing_cycle-description",
+   "property": "description",
+   "property_type": "Text",
+   "value": "How the crop yields."
+  },
+  {
+   "doc_type": "Crop Protocol",
+   "doctype": "Property Setter",
+   "doctype_or_field": "DocField",
+   "field_name": "custom_sf_material_route",
+   "name": "Crop Protocol-custom_sf_material_route-description",
+   "property": "description",
+   "property_type": "Text",
+   "value": "In order, from what is bought to a plant in the ground."
+  },
+  {
+   "doc_type": "Crop Protocol",
+   "doctype": "Property Setter",
+   "doctype_or_field": "DocField",
+   "field_name": "farm",
+   "name": "Crop Protocol-farm-description",
+   "property": "description",
+   "property_type": "Text",
+   "value": "The farm this protocol applies at."
+  },
+  {
+   "doc_type": "Crop Protocol",
+   "doctype": "Property Setter",
+   "doctype_or_field": "DocField",
+   "field_name": "custom_sf_turnaround_weeks",
+   "name": "Crop Protocol-custom_sf_turnaround_weeks-description",
+   "property": "description",
+   "property_type": "Text",
+   "value": "Fallow and bed prep between one crop out and the next in."
+  },
+  {
+   "doc_type": "Crop Protocol",
+   "doctype": "Property Setter",
+   "doctype_or_field": "DocField",
+   "field_name": "custom_sf_weeks_planting_to_first_cut",
+   "name": "Crop Protocol-custom_sf_weeks_planting_to_first_cut-description",
+   "property": "description",
+   "property_type": "Text",
+   "value": "Seeds the schedule for a crop with no flush rows yet."
+  },
+  {
+   "doc_type": "Crop Protocol",
+   "doctype": "Property Setter",
+   "doctype_or_field": "DocField",
+   "field_name": "custom_sf_productive_weeks",
+   "name": "Crop Protocol-custom_sf_productive_weeks-description",
+   "property": "description",
+   "property_type": "Text",
+   "value": "Weeks the block is picked once it starts."
+  },
+  {
+   "doc_type": "Crop Protocol",
+   "doctype": "Property Setter",
+   "doctype_or_field": "DocField",
+   "field_name": "custom_sf_stems_per_plant_per_week",
+   "name": "Crop Protocol-custom_sf_stems_per_plant_per_week-description",
+   "property": "description",
+   "property_type": "Text",
+   "value": "Seeds the schedule for a crop with no flush rows yet."
+  },
+  {
+   "doc_type": "Crop Protocol",
+   "doctype": "Property Setter",
+   "doctype_or_field": "DocField",
+   "field_name": "custom_sf_harvest_window_start_week",
+   "name": "Crop Protocol-custom_sf_harvest_window_start_week-description",
+   "property": "description",
+   "property_type": "Text",
+   "value": "Weeks of the year it produces. Leave empty if any week."
+  },
+  {
+   "doc_type": "Crop Protocol",
+   "doctype": "Property Setter",
+   "doctype_or_field": "DocField",
+   "field_name": "custom_sf_harvest_window_end_week",
+   "name": "Crop Protocol-custom_sf_harvest_window_end_week-description",
+   "property": "description",
+   "property_type": "Text",
+   "value": ""
+  },
+  {
+   "doc_type": "Crop Protocol",
+   "doctype": "Property Setter",
+   "doctype_or_field": "DocField",
+   "field_name": "custom_sf_stated_stems_per_plant_life",
+   "name": "Crop Protocol-custom_sf_stated_stems_per_plant_life-description",
+   "property": "description",
+   "property_type": "Text",
+   "value": "Only needed when the harvest is entered as percentages."
+  },
+  {
+   "doc_type": "Crop Protocol",
+   "doctype": "Property Setter",
+   "doctype_or_field": "DocField",
+   "field_name": "custom_sf_season_curve_build",
+   "name": "Crop Protocol-custom_sf_season_curve_build-description",
+   "property": "description",
+   "property_type": "Text",
+   "value": "Relative weights per week as the season builds. Empty = the house curve."
+  },
+  {
+   "doc_type": "Crop Protocol",
+   "doctype": "Property Setter",
+   "doctype_or_field": "DocField",
+   "field_name": "custom_sf_season_curve_tail",
+   "name": "Crop Protocol-custom_sf_season_curve_tail-description",
+   "property": "description",
+   "property_type": "Text",
+   "value": "Relative weights per week as it tails off. Empty = the house curve."
+  },
+  {
+   "doc_type": "Crop Protocol",
+   "doctype": "Property Setter",
+   "doctype_or_field": "DocField",
+   "field_name": "custom_sf_sqm_net_per_bed",
+   "name": "Crop Protocol-custom_sf_sqm_net_per_bed-hidden",
+   "property": "hidden",
+   "property_type": "Check",
+   "value": "1"
+  },
+  {
+   "doc_type": "Crop Protocol",
+   "doctype": "Property Setter",
+   "doctype_or_field": "DocField",
+   "field_name": "custom_sf_beds_per_block",
+   "name": "Crop Protocol-custom_sf_beds_per_block-hidden",
+   "property": "hidden",
+   "property_type": "Check",
+   "value": "1"
+  },
+  {
+   "doc_type": "Crop Protocol",
+   "doctype": "Property Setter",
+   "doctype_or_field": "DocField",
+   "field_name": "custom_sf_plants_per_bed",
+   "name": "Crop Protocol-custom_sf_plants_per_bed-hidden",
+   "property": "hidden",
+   "property_type": "Check",
+   "value": "1"
+  },
+  {
+   "doc_type": "Crop Protocol",
+   "doctype": "Property Setter",
+   "doctype_or_field": "DocField",
+   "field_name": "custom_sf_min_planting_beds_derived",
+   "name": "Crop Protocol-custom_sf_min_planting_beds_derived-hidden",
+   "property": "hidden",
+   "property_type": "Check",
+   "value": "1"
+  },
+  {
+   "doc_type": "Crop Protocol",
+   "doctype": "Property Setter",
+   "doctype_or_field": "DocField",
+   "field_name": "custom_sf_min_planting_plants",
+   "name": "Crop Protocol-custom_sf_min_planting_plants-hidden",
+   "property": "hidden",
+   "property_type": "Check",
+   "value": "1"
+  },
+  {
+   "doc_type": "Crop Protocol",
+   "doctype": "Property Setter",
+   "doctype_or_field": "DocField",
+   "field_name": "custom_sf_plants_per_block",
+   "name": "Crop Protocol-custom_sf_plants_per_block-hidden",
+   "property": "hidden",
+   "property_type": "Check",
+   "value": "1"
+  },
+  {
+   "doc_type": "Crop Protocol",
+   "doctype": "Property Setter",
+   "doctype_or_field": "DocField",
+   "field_name": "custom_sf_tab_geometry",
+   "name": "Crop Protocol-custom_sf_tab_geometry-hidden",
+   "property": "hidden",
+   "property_type": "Check",
+   "value": "1"
+  },
+  {
+   "doc_type": "Crop Protocol",
+   "doctype": "Property Setter",
+   "doctype_or_field": "DocField",
+   "field_name": "custom_sf_density_section",
+   "name": "Crop Protocol-custom_sf_density_section-hidden",
+   "property": "hidden",
+   "property_type": "Check",
+   "value": "1"
+  },
+  {
+   "doc_type": "Crop Protocol",
+   "doctype": "Property Setter",
+   "doctype_or_field": "DocField",
+   "field_name": "custom_sf_derived_geo_section",
+   "name": "Crop Protocol-custom_sf_derived_geo_section-hidden",
+   "property": "hidden",
+   "property_type": "Check",
+   "value": "1"
+  },
+  {
+   "doc_type": "Crop Protocol",
+   "doctype": "Property Setter",
+   "doctype_or_field": "DocField",
+   "field_name": "life_expectancy_years",
+   "name": "Crop Protocol-life_expectancy_years-reqd",
+   "property": "reqd",
+   "property_type": "Check",
+   "value": "0"
   }
  ],
  "sync_on_migrate": 1

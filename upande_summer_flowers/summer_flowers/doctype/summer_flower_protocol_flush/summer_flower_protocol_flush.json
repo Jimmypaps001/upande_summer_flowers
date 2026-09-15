@@ -8,27 +8,30 @@
  "engine": "InnoDB",
  "field_order": [
   "flush_number",
-  "weeks_from_pinch",
-  "stems_per_plant",
   "weeks_from_planting",
+  "stems_per_plant",
+  "pct_of_life",
+  "cumulative_pct",
+  "weeks_from_pinch",
   "harvest_week_of_year"
  ],
  "fields": [
   {
    "columns": 1,
+   "description": "Numbered by its position in the table.",
    "fieldname": "flush_number",
    "fieldtype": "Int",
    "in_list_view": 1,
    "label": "Flush Number",
-   "reqd": 1
+   "read_only": 1
   },
   {
    "columns": 2,
-   "description": "Weeks after pinching that this flush is harvested",
-   "fieldname": "weeks_from_pinch",
+   "description": "Planting to this harvest. Typed here because it is what every crop has: not all of them are pinched.",
+   "fieldname": "weeks_from_planting",
    "fieldtype": "Int",
    "in_list_view": 1,
-   "label": "Weeks From Pinch",
+   "label": "Weeks from planting to harvesting",
    "reqd": 1
   },
   {
@@ -36,16 +39,33 @@
    "fieldname": "stems_per_plant",
    "fieldtype": "Float",
    "in_list_view": 1,
-   "label": "Stems Per Plant",
-   "precision": "3",
-   "reqd": 1
+   "label": "Stems/plant",
+   "precision": "3"
+  },
+  {
+   "description": "This flush's share of everything the plant gives. Worked out from the stems if they are stated; typed instead when the shape of the harvest is known before the stems are.",
+   "fieldname": "pct_of_life",
+   "fieldtype": "Percent",
+   "in_list_view": 1,
+   "label": "% of life",
+   "precision": "4"
+  },
+  {
+   "description": "Everything gathered by the end of this flush. The last row is 100%: the plant may carry on, but planning stops where the yield it was planned for is in.",
+   "fieldname": "cumulative_pct",
+   "fieldtype": "Percent",
+   "in_list_view": 1,
+   "label": "Cumulative %",
+   "precision": "4",
+   "read_only": 1
   },
   {
    "columns": 2,
-   "fieldname": "weeks_from_planting",
+   "description": "Worked out: weeks from planting, less the weeks to pinching. Meaningless on a crop that is never pinched, where it is simply the same as weeks from planting.",
+   "fieldname": "weeks_from_pinch",
    "fieldtype": "Int",
-   "in_list_view": 1,
-   "label": "Weeks From Planting",
+   "in_list_view": 0,
+   "label": "Weeks from pinch",
    "read_only": 1
   },
   {

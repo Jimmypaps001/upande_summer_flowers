@@ -6,25 +6,53 @@
  "editable_grid": 1,
  "engine": "InnoDB",
  "field_order": [
+  "row_type",
+  "step",
   "stage",
   "weeks",
   "loss_pct",
   "column_break_main",
   "is_purchase",
+  "lead_weeks",
+  "rate",
   "yields_per_unit",
+  "max_cycles",
+  "item",
+  "returns_per_plant",
   "notes"
  ],
  "fields": [
   {
+   "columns": 1,
+   "default": "Stage",
+   "description": "A stage is where the material becomes a different thing. A step is where the same material sits for a while. A step belongs to the stage above it.",
+   "fieldname": "row_type",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "label": "Row",
+   "options": "Stage\nStep",
+   "reqd": 1
+  },
+  {
+   "depends_on": "eval:doc.row_type=='Step'",
+   "fieldname": "step",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "label": "Step",
+   "mandatory_depends_on": "eval:doc.row_type=='Step'",
+   "options": "\nOrder to arrival\nTray\nHardening\nPot\nSticking\nRooting\nGermination\nGrowing on\nBulking\nDivision\nCooling\nStorage\nField establishment"
+  },
+  {
+   "depends_on": "eval:doc.row_type!='Step'",
    "fieldname": "stage",
    "fieldtype": "Select",
    "in_list_view": 1,
    "label": "Stage",
-   "options": "TC\nSeeds\nCuttings (Own)\nRoots (Own)\nBudwoods\nBought-in Plants\nMotherstock\nRoots\nCooling\nPropagation\nPlants",
-   "reqd": 1
+   "mandatory_depends_on": "eval:doc.row_type!='Step'",
+   "options": "\nTC\nSeeds\nCuttings (Own)\nRoots (Own)\nTubers (Own)\nBudwoods\nBought-in Plants\nMotherstock\nRoots\nTubers\nSprouting\nCooling\nPropagation\nPlants"
   },
   {
-   "description": "Weeks this stage takes. The lead time to a planted bed is the sum along the route.",
+   "description": "Weeks this row takes. A stage that has steps under it is the sum of those steps and is worked out, not typed.",
    "fieldname": "weeks",
    "fieldtype": "Int",
    "in_list_view": 1,
@@ -44,17 +72,58 @@
   },
   {
    "default": "0",
-   "description": "The stage the material is bought at. The lead time before it starts is the supplier's, and the cost of the route is charged here.",
+   "depends_on": "eval:doc.row_type!='Step'",
+   "description": "A stage the material can be bought at. More than one may be ticked -- the plan chooses where to enter the route.",
    "fieldname": "is_purchase",
    "fieldtype": "Check",
    "label": "Bought at this stage"
   },
   {
+   "depends_on": "eval:doc.is_purchase",
+   "description": "Order to arrival, when bought at this stage.",
+   "fieldname": "lead_weeks",
+   "fieldtype": "Int",
+   "label": "Supplier Lead (weeks)",
+   "non_negative": 1
+  },
+  {
+   "depends_on": "eval:doc.is_purchase",
+   "description": "What one unit costs here. A plantlet, a rooted plant and a tuber are different money.",
+   "fieldname": "rate",
+   "fieldtype": "Currency",
+   "label": "Rate per unit"
+  },
+  {
    "default": "1",
-   "description": "Units out per unit in. 1 for a stage that carries material through; a motherstock stage multiplies, so it is the cuttings one mother yields over its life.",
+   "depends_on": "eval:doc.row_type!='Step'",
+   "description": "Units out per unit in. 1 for a stage that carries material through; a stage that multiplies -- motherstock, a sprouted tuber -- is what one unit yields. A step never multiplies: if it did, it would be a stage.",
    "fieldname": "yields_per_unit",
    "fieldtype": "Float",
    "label": "Yields per unit",
+   "precision": "3"
+  },
+  {
+   "depends_on": "eval:doc.row_type!='Step'",
+   "description": "How many times material may go round at this stage -- motherstock generations, tuber divisions. 0 means it does not recycle.",
+   "fieldname": "max_cycles",
+   "fieldtype": "Int",
+   "label": "Max Cycles",
+   "non_negative": 1
+  },
+  {
+   "depends_on": "eval:doc.row_type!='Step'",
+   "description": "The item material is held as at this stage. What lets stock already on hand -- roots in store, motherstock standing, tubers in the cold room -- be counted against what a plan needs instead of being bought again.",
+   "fieldname": "item",
+   "fieldtype": "Link",
+   "label": "Item",
+   "options": "Item"
+  },
+  {
+   "depends_on": "eval:doc.row_type!='Step'",
+   "description": "Material handed back when the crop is lifted -- tubers off a dahlia clump, roots off an eryngium. Nets off next season's requirement.",
+   "fieldname": "returns_per_plant",
+   "fieldtype": "Float",
+   "label": "Returns per plant at lift",
    "precision": "3"
   },
   {

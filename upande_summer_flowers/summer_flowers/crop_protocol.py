@@ -118,9 +118,56 @@ def before_validate(doc, method=None):
 # The stages material can be bought at, and the one every route has to end on.
 # A route that starts halfway through nothing, or stops before a plant exists, is
 # a route that cannot be costed or scheduled.
-ROUTE_ENTRY = ("TC", "Seeds", "Cuttings (Own)", "Roots (Own)", "Budwoods",
-               "Bought-in Plants")
+ROUTE_ENTRY = ("TC", "Seeds", "Cuttings (Own)", "Roots (Own)", "Tubers (Own)",
+               "Tubers", "Budwoods", "Bought-in Plants")
 ROUTE_END = "Plants"
+
+
+def route_rows(doc):
+	"""Every row of the route in order, stages and the steps inside them."""
+	return [r for r in (doc.get("custom_sf_material_route") or [])
+	        if (r.get("stage") or r.get("step"))]
+
+
+def is_step(row):
+	return (row.get("row_type") or "Stage") == "Step"
+
+
+def route_blocks(doc):
+	"""The route as [(stage row, [its step rows])], in order.
+
+	A step belongs to the stage above it. Membership is the ordering and nothing
+	else: a column naming the parent would be the same fact written twice, and
+	dragging a step under another stage IS the act of moving it.
+	"""
+	blocks, current = [], None
+	for row in route_rows(doc):
+		if is_step(row):
+			if current:
+				current[1].append(row)
+		else:
+			current = (row, [])
+			blocks.append(current)
+	return blocks
+
+
+def block_weeks(stage, steps):
+	"""How long a stage lasts: its steps if it has any, else what it says itself."""
+	return sum(cint(s.weeks) for s in steps) if steps else cint(stage.weeks)
+
+
+def survival(rows):
+	"""What is left after these rows, as a fraction.
+
+	Losses compound, they do not add: 12% then 5% leaves 83.6%, not 83%. Every
+	loss appears on exactly one row and is applied on exactly one walk, which is
+	the point of keeping them here rather than as percentages on the protocol that
+	two different simulators each helped themselves to.
+	"""
+	out = 1.0
+	for r in rows:
+		out *= 1.0 - flt(r.get("loss_pct")) / 100.0
+	return out
 
 
 def route_summary(doc):
@@ -132,15 +179,91 @@ def route_summary(doc):
 	version snapshot does keep it, because a snapshot is a record of what was
 	approved and has to read without walking a child table.
 	"""
-	rows = [r for r in (doc.get("custom_sf_material_route") or []) if r.stage]
-	return " -> ".join(r.stage for r in rows)
+	return " -> ".join(r.stage for r, _steps in route_blocks(doc))
+
+
+def farm_bed_geometry(farm):
+	"""The bed and block a farm actually has, read off its own records.
+
+	A protocol describes a variety: how densely it is planted and the smallest block
+	worth planting. How big a bed is, and how many of them a block holds, are facts
+	about the farm's ground -- they are already on the Bed and Block records, in 114
+	different bed sizes across twenty-five thousand beds. Asserting one number for
+	them on the protocol made every variety at a farm claim the same carpentry, and
+	made a change of protocol look like a change of ground.
+	"""
+	if not farm:
+		return None, None
+	area = frappe.db.sql(
+		"""select avg(bed_area) from tabBed where farm=%s and ifnull(bed_area,0)>0""",
+		farm)[0][0]
+	beds = frappe.db.sql(
+		"""select avg(custom_total_beds) from tabBlock
+		   where farm=%s and ifnull(custom_total_beds,0)>0""", farm)[0][0]
+	return (round(flt(area), 4) or None), (cint(round(flt(beds))) or None)
+
+
+def set_farm_geometry(doc):
+	"""Fill the bed figures from the farm. NOT called when a protocol is saved.
+
+	A protocol is what a variety does; beds and blocks are the ground it is planted
+	in. This is here for whatever plans against real ground and needs to know how
+	many plants a bed of that farm holds.
+	"""
+	if not is_summer_flower(doc):
+		return
+	area, beds = farm_bed_geometry(doc.get("farm"))
+	if area:
+		doc.custom_sf_sqm_net_per_bed = area
+	if beds:
+		doc.custom_sf_beds_per_block = beds
+
+
+def number_flushes(doc):
+	"""Number the harvest rows by where they sit.
+
+	The rows are already in order; asking anyone to also type 1, 2, 3 beside them is
+	asking them to repeat what the table has just said, and to renumber by hand the
+	moment a row is inserted in the middle.
+	"""
+	for i, row in enumerate(doc.get("custom_sf_flush_schedule") or [], start=1):
+		row.flush_number = i
 
 
 def check_route(doc):
-	"""A route has to begin somewhere real and end in a plant."""
-	rows = [r for r in (doc.get("custom_sf_material_route") or []) if r.stage]
-	if not rows:
+	"""A route has to begin somewhere real, end in a plant, and keep its levels straight."""
+	all_rows = route_rows(doc)
+	if not all_rows:
 		return
+	if is_step(all_rows[0]):
+		frappe.throw(
+			_("A route opens with a stage. {0} is a step, and a step belongs to the "
+			  "stage above it.").format(frappe.bold(all_rows[0].get("step") or "")),
+			title=_("Route starts on a step"))
+	for row in all_rows:
+		if not is_step(row):
+			continue
+		# A step is the same material standing still. Anything that multiplies it or
+		# buys it is a stage by definition, and letting a step do either would put
+		# the same multiplication on two rows.
+		if flt(row.get("yields_per_unit") or 1) != 1:
+			frappe.throw(
+				_("{0} is a step, and a step cannot multiply material. A row that "
+				  "turns one unit into several is a stage.").format(
+					frappe.bold(row.get("step") or "")),
+				title=_("A step that multiplies"))
+		if cint(row.get("is_purchase")):
+			frappe.throw(
+				_("{0} is a step. Material is bought at a stage -- you buy a thing, "
+				  "not a part of the wait for it.").format(
+					frappe.bold(row.get("step") or "")),
+				title=_("A step that is bought"))
+	# A stage that carries steps lasts as long as they do, so it is not typed twice.
+	for stage, steps in route_blocks(doc):
+		if steps:
+			stage.weeks = block_weeks(stage, steps)
+
+	rows = [r for r, _steps in route_blocks(doc)]
 	if rows[0].stage not in ROUTE_ENTRY:
 		frappe.throw(
 			_("A route starts with the material that is bought or taken: {0}. "
@@ -214,6 +337,13 @@ def derive(doc):
 		):
 			continue
 		doc.set(target, probe.get(f.fieldname))
+	# The flush interval is typed as a seed for blank offsets, and read back off the
+	# rows once they carry their own. Without this it was derived on the snapshot and
+	# never returned, so a crop cutting every week showed a blank interval on the very
+	# form that had just worked it out.
+	if cint(probe.flush_interval_weeks) and not cint(doc.get("weeks_between_flushes")):
+		doc.weeks_between_flushes = cint(probe.flush_interval_weeks)
+
 	# The flush rows gain their derived columns too.
 	rows = {cint(r.flush_number): r for r in probe.flush_schedule}
 	for row in (doc.get("custom_sf_flush_schedule") or []):
@@ -221,63 +351,127 @@ def derive(doc):
 		if p:
 			row.weeks_from_planting = p.weeks_from_planting
 			row.harvest_week_of_year = p.harvest_week_of_year
+			# The share of the life this flush is, and everything gathered by the end
+			# of it. Worked out on the version from the stems; useless there if it
+			# does not come back to the protocol people actually read.
+			row.pct_of_life = p.pct_of_life
+			row.cumulative_pct = p.cumulative_pct
+			# And the stems themselves, when the flush was entered as a percentage
+			# and the version turned it into stems.
+			row.stems_per_plant = p.stems_per_plant
 
 
-GROWTH_STAGES = [
+# Before routes existed the propagation half of the timeline was this: six fixed
+# rows with their boundaries worked out from the establishment scalars. It only
+# ever described one route -- Matricaria is never stuck, Dahlia never sees a pot,
+# and a crop bought as plants has no propagation at all. It is kept for the few
+# protocols that carry no route yet, and for nothing else.
+LEGACY_PROP_STAGES = [
 	# label,                  from week expression,        to week expression
 	("Sticking to rooting", "0", "weeks_on_tray"),
 	("Rooted, on pot", "weeks_on_tray", "weeks_on_tray + weeks_on_pot"),
 	("Hardening", "weeks_on_tray + weeks_on_pot",
 	 "weeks_on_tray + weeks_on_pot + hardening_weeks"),
-	("Planted to pinch", "0", "weeks_to_pinch"),
-	("Pinch to first harvest", "weeks_to_pinch", "first_harvest"),
-	("Flushing", "first_harvest", "life"),
 ]
 
 
-def set_growth_stages(doc):
-	"""Fill Crop Protocol's own growth stage table from the protocol's timeline.
-
-	Derived, not typed in: every boundary is a figure already on the protocol, so
-	the stages cannot drift from the weeks that drive the planner. The propagation
-	stages are measured from sticking, the field stages from planting -- they are
-	two different clocks and labelling them as one would misread both.
-	"""
-	if not is_summer_flower(doc):
-		return
-	g = lambda f: cint(doc.get("custom_sf_" + f))
+def _legacy_prop_stages(doc):
 	env = {
-		"weeks_on_tray": g("weeks_on_tray"),
-		"weeks_on_pot": g("weeks_on_pot"),
-		"hardening_weeks": g("hardening_weeks"),
-		"weeks_to_pinch": cint(doc.get("weeks_to_pinch")),
-		"first_harvest": cint(doc.get("custom_sf_first_harvest_offset_weeks")),
-		"life": cint(doc.get("total_weeks_in_ground")),
+		"weeks_on_tray": cint(doc.get("custom_sf_weeks_on_tray")),
+		"weeks_on_pot": cint(doc.get("custom_sf_weeks_on_pot")),
+		"hardening_weeks": cint(doc.get("custom_sf_hardening_weeks")),
 	}
-	if not any(env.values()):
-		return
-	# Crop Protocol Growth Stage belongs to upande_agriculture, and its columns have
-	# changed there: the boundary pair days_from/days_to/weeks gave way to a single
-	# mandatory days_to_harvest. Writing whichever of the two a site actually has
-	# keeps this working across both, and writing neither set blind is how a
-	# mandatory field nobody here knew about stopped a protocol being approved.
-	stage_meta = frappe.get_meta("Crop Protocol Growth Stage")
-	has_span = stage_meta.has_field("days_from") and stage_meta.has_field("days_to")
-	has_to_harvest = stage_meta.has_field("days_to_harvest")
-
-	rows = []
-	for order, (label, frm, to) in enumerate(GROWTH_STAGES, start=1):
+	out = []
+	for label, frm, to in LEGACY_PROP_STAGES:
 		try:
 			a, b = int(eval(frm, {}, env)), int(eval(to, {}, env))
 		except Exception:
 			continue
-		if b <= a:
-			continue
+		if b > a:
+			out.append((label, a, b))
+	return out
+
+
+def _route_prop_stages(doc):
+	"""The propagation half, read straight off the route.
+
+	One row per leaf: a stage that carries steps is told by its steps, a stage
+	without them speaks for itself, and neither is counted twice. The walk stops
+	at Plants, because everything past that is the field clock below.
+	"""
+	out, at = [], 0
+	for stage, steps in route_blocks(doc):
+		if stage.stage == ROUTE_END:
+			break
+		for leaf in (steps or [stage]):
+			weeks = cint(leaf.get("weeks"))
+			if weeks <= 0:
+				continue
+			label = leaf.get("step") or leaf.get("stage") or ""
+			if steps and stage.stage:
+				label = "%s: %s" % (stage.stage, label)
+			out.append((label, at, at + weeks))
+			at += weeks
+	return out
+
+
+def _field_stages(doc):
+	"""The half that starts when the plant goes in the ground.
+
+	Named for what the crop actually does. A crop that is not pinched does not get
+	a pinch boundary, which the fixed list used to hand it anyway.
+	"""
+	pinch = cint(doc.get("weeks_to_pinch"))
+	first = cint(doc.get("custom_sf_first_harvest_offset_weeks"))
+	life = cint(doc.get("total_weeks_in_ground"))
+	out = []
+	if pinch and first > pinch:
+		out.append(("Planted to pinch", 0, pinch))
+		out.append(("Pinch to first harvest", pinch, first))
+	elif first:
+		out.append(("Planted to first harvest", 0, first))
+	if life > first:
+		out.append(("Harvesting", first, life))
+	return out
+
+
+def set_growth_stages(doc):
+	"""Fill the growth stage table from the route and the field timeline.
+
+	Derived, not typed in: every boundary is already written somewhere that drives
+	the planner, so the stages cannot drift from the weeks that do the work. The
+	two halves are on two different clocks -- the route is counted from the day
+	material is started, the field stages from the day it is planted -- and saying
+	so on each row is the only thing that stops them being read as one line.
+	"""
+	if not is_summer_flower(doc):
+		return
+	prop = _route_prop_stages(doc) or _legacy_prop_stages(doc)
+	field = _field_stages(doc)
+	if not prop and not field:
+		return
+
+	# Write whichever columns this site's child doctype actually has. The boundary
+	# pair days_from/days_to/weeks gave way to a single mandatory days_to_harvest
+	# in upande_agriculture, and writing neither set blind is how a mandatory field
+	# nobody here knew about stopped a protocol being approved.
+	child = doc.meta.get_field("growth_stages").options
+	stage_meta = frappe.get_meta(child)
+	has_span = stage_meta.has_field("days_from") and stage_meta.has_field("days_to")
+	has_to_harvest = stage_meta.has_field("days_to_harvest")
+
+	rows = []
+	for order, (label, a, b, clock) in enumerate(
+		[(l, a, b, "propagation") for l, a, b in prop]
+		+ [(l, a, b, "field") for l, a, b in field], start=1
+	):
 		row = {
 			"stage_name": label,
 			"stage_order": order,
 			"description": _("Weeks {0} to {1} {2}").format(
-				a, b, _("from sticking") if order <= 3 else _("from planting")),
+				a, b,
+				_("from the start of propagation") if clock == "propagation"
+				else _("from planting")),
 		}
 		if has_span:
 			row["days_from"] = a * 7
@@ -285,13 +479,9 @@ def set_growth_stages(doc):
 			if stage_meta.has_field("weeks"):
 				row["weeks"] = b - a
 		if has_to_harvest:
-			# The stage ends when it ends: the day the stage is through, counted on
-			# its own clock. Nothing else on the row carries that once days_to is
-			# gone, and it is mandatory, so it cannot be left out.
 			row["days_to_harvest"] = b * 7
 		rows.append(row)
-	if not rows:
-		return
+
 	doc.set("growth_stages", [])
 	for r in rows:
 		doc.append("growth_stages", r)
@@ -422,6 +612,7 @@ def validate(doc, method=None):
 	# that, so it is squared away before anything is derived.
 	if cint(doc.get("custom_sf_ramp_weeks")):
 		doc.custom_sf_weeks_to_max_pc = cint(doc.get("custom_sf_ramp_weeks"))
+	number_flushes(doc)
 	derive(doc)
 	check_route(doc)
 	fill_native_gaps(doc)

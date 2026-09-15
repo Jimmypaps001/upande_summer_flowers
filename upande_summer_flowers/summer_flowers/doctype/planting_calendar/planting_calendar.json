@@ -402,12 +402,133 @@
    "fieldtype": "Int",
    "label": "Plants Lost to Early Uprooting",
    "read_only": 1
+  },
+  {
+   "fieldname": "delivery_tab",
+   "fieldtype": "Tab Break",
+   "label": "Plant Delivery"
+  },
+  {
+   "fieldname": "received_section",
+   "fieldtype": "Section Break",
+   "label": "Received"
+  },
+  {
+   "fieldname": "plants_received",
+   "fieldtype": "Int",
+   "label": "Plants Received",
+   "read_only": 1,
+   "description": "Accepted quantity on submitted receipts and invoices for this planting."
+  },
+  {
+   "fieldname": "plants_rejected",
+   "fieldtype": "Int",
+   "label": "Plants Rejected",
+   "read_only": 1
+  },
+  {
+   "fieldname": "cb_recv",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "plants_variance",
+   "fieldtype": "Int",
+   "label": "Plants Variance",
+   "read_only": 1,
+   "description": "Received less planned. Negative is a short delivery."
+  },
+  {
+   "fieldname": "variance_pct",
+   "fieldtype": "Percent",
+   "label": "Variance %",
+   "read_only": 1
+  },
+  {
+   "fieldname": "cb_recv2",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "delivery_status",
+   "fieldtype": "Select",
+   "label": "Delivery Status",
+   "read_only": 1,
+   "in_list_view": 0,
+   "options": "\nNothing Received\nPartially Received\nFully Received\nShort Received\nOver Received"
+  },
+  {
+   "fieldname": "timing_section",
+   "fieldtype": "Section Break",
+   "label": "Timing"
+  },
+  {
+   "fieldname": "first_receipt_date",
+   "fieldtype": "Date",
+   "label": "First Receipt",
+   "read_only": 1
+  },
+  {
+   "fieldname": "last_receipt_date",
+   "fieldtype": "Date",
+   "label": "Last Receipt",
+   "read_only": 1
+  },
+  {
+   "fieldname": "cb_time",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "days_before_planting",
+   "fieldtype": "Int",
+   "label": "Days Before Planting",
+   "read_only": 1,
+   "description": "Last receipt against the planting date. Negative means the plants arrived after the planting was due."
+  },
+  {
+   "fieldname": "revision_section",
+   "fieldtype": "Section Break",
+   "label": "Plan Revision"
+  },
+  {
+   "fieldname": "beds_before_revision",
+   "fieldtype": "Int",
+   "label": "Beds Before Revision",
+   "read_only": 1,
+   "description": "The bed count this planting was approved with, kept when the plan is revised to what the supplier actually delivered."
+  },
+  {
+   "fieldname": "plants_before_revision",
+   "fieldtype": "Int",
+   "label": "Plants Before Revision",
+   "read_only": 1
+  },
+  {
+   "fieldname": "cb_rev",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "revision_reason",
+   "fieldtype": "Small Text",
+   "label": "Revision Reason",
+   "read_only": 1
+  },
+  {
+   "fieldname": "revised_on",
+   "fieldtype": "Datetime",
+   "label": "Revised On",
+   "read_only": 1
+  },
+  {
+   "fieldname": "revised_by",
+   "fieldtype": "Link",
+   "label": "Revised By",
+   "read_only": 1,
+   "options": "User"
   }
  ],
  "grid_page_length": 50,
  "index_web_pages_for_search": 1,
  "links": [],
- "modified": "2026-08-05 13:30:00.000000",
+ "modified": "2026-09-09 00:00:00.000000",
  "modified_by": "Administrator",
  "module": "Summer Flowers",
  "name": "Planting Calendar",

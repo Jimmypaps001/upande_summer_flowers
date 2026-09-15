@@ -87,3 +87,31 @@ def month_of(year, week):
 def validate_week(week, label=None):
 	if not week or int(week) < 1 or int(week) > 53:
 		frappe.throw(_("{0} must be an ISO week between 1 and 53.").format(label or _("Week")))
+
+
+def week_family_label(weeks, limit=140):
+	"""The weeks of the year a planting is cut in, written so a person can read it.
+
+	Listing every week was fine while every crop flushed eight times: "wk27, wk39,
+	wk51" and so on. A crop that cuts every week for thirty weeks produces a string
+	longer than the column it is stored in, and the plan fell over saving it.
+
+	Runs of consecutive weeks become ranges, which is both shorter and closer to how
+	anyone says it out loud -- "weeks 27 to 39" rather than thirteen week numbers.
+	"""
+	nums = sorted({int(w) for w in weeks if w})
+	if not nums:
+		return None
+	runs, start, prev = [], nums[0], nums[0]
+	for w in nums[1:]:
+		if w == prev + 1:
+			prev = w
+			continue
+		runs.append((start, prev))
+		start = prev = w
+	runs.append((start, prev))
+	label = ", ".join(f"wk{a}" if a == b else f"wk{a}-wk{b}" for a, b in runs)
+	if len(label) <= limit:
+		return label
+	# Still too long: say how many weeks rather than lose the meaning in a truncation.
+	return f"{len(nums)} weeks, wk{nums[0]}-wk{nums[-1]}"[:limit]

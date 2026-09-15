@@ -140,10 +140,13 @@ def _m_hwy(v):
 	return {
 		"label": _("Flushes per year"),
 		"value": v.harvest_weeks_per_year, "unit": _("weeks"),
-		"formula": _("52 ÷ flush interval"),
+		"formula": _("harvests falling within any 52 weeks"),
 		"steps": [
-			_step(_("Flush interval"), v.flush_interval_weeks, _("weeks between flushes")),
-			_step(_("52 ÷ {0}").format(v.flush_interval_weeks), v.harvest_weeks_per_year),
+			_step(_("Harvests on the schedule"), len(v.flush_schedule or []),
+			      _("rows on the flush schedule")),
+			_step(_("Flush interval"), v.flush_interval_weeks,
+			      _("weeks between them, read off the schedule")),
+			_step(_("Most that land in one year"), v.harvest_weeks_per_year),
 		],
 		"caveats": [
 			_("Because the interval divides the year, a planting returns to the same "
