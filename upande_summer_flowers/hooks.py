@@ -36,6 +36,18 @@ app_license = "mit"
 
 fixtures = [
 	{
+		# The walkthroughs behind the help icon. Shipped rather than typed on each
+		# site: they explain the order the fields are meant to be filled in, which is
+		# a property of the app, not of a site's data. They also carry the wording
+		# that used to sit under every field as a description -- read once, then in
+		# the way for good.
+		"dt": "Form Tour",
+		"filters": [["name", "in", [
+			"Crop Protocol Walkthrough",
+			"Market Demand Walkthrough",
+		]]],
+	},
+	{
 		# All three workflows this module owns, not just the plan's. The other two
 		# govern doctypes this app defines, and widening them for the manager roles
 		# would not have travelled to another site while only one was listed.
@@ -116,7 +128,15 @@ add_to_apps_screen = [
 # The child-table calendar renderer, shared by every form that has dated rows.
 # Frappe's own calendar view plots documents, and a child row is not a document, so
 # demand weeks, plan weeks, plantings and sticking weeks had no calendar at all.
-app_include_js = "/assets/upande_summer_flowers/js/sf_calendar.js"
+app_include_js = [
+	"/assets/upande_summer_flowers/js/sf_calendar.js",
+	# The walkthrough launcher. Included app-wide rather than per doctype because
+	# the doctype_js files below all call into it.
+	"/assets/upande_summer_flowers/js/sf_walkthrough.js",
+]
+
+# Crop Protocol belongs to another app, so this is where its form script lives.
+doctype_js = {"Crop Protocol": "public/js/crop_protocol_walkthrough.js"}
 
 # Checked before the migrate that would trip over it, so a malformed customization
 # file in ANY installed app is reported by path instead of killing the run with a
@@ -132,7 +152,13 @@ before_migrate = "upande_summer_flowers.summer_flowers.customization_check.befor
 #   and a site whose agriculture predates crop_type cannot be reconciled at all
 #   until agriculture is deployed. A patch would be recorded as run and never
 #   return; this comes back every migrate, and everything it does is idempotent.
-after_migrate = "upande_summer_flowers.summer_flowers.protocol_merge.after_migrate"
+after_migrate = [
+	"upande_summer_flowers.summer_flowers.protocol_merge.after_migrate",
+	# The plant inspection template and its parameters are records, not schema, so
+	# they cannot ship in a fixture without a fixture force-overwriting thresholds
+	# a farm has since corrected. This creates what is missing and leaves the rest.
+	"upande_summer_flowers.summer_flowers.setup.plant_quality.install",
+]
 
 # include js, css files in header of web template
 # web_include_css = "/assets/upande_summer_flowers/css/upande_summer_flowers.css"
@@ -298,6 +324,40 @@ doc_events = {
 	"Material Request": {
 		"validate": "upande_summer_flowers.summer_flowers.material_request"
 		            ".validate_input_request",
+	},
+	# Plant material is bought, so it arrives on a Purchase Receipt or a Purchase
+	# Invoice and ERPNext already handles the receipt, the rejection and the
+	# quality inspection. These handlers add only the planting context, the plan
+	# comparison, and the one thing ERPNext does not do: require an incoming
+	# inspection on an invoice that does not update stock, which is every
+	# submitted invoice on this site.
+	#
+	# Each returns immediately unless the document carries a plant line, which
+	# matters on a doctype with 8,380 invoice lines and 7,094 receipt lines
+	# belonging to everything else the farm buys.
+	"Purchase Order": {
+		"validate": "upande_summer_flowers.summer_flowers.plant_receipt"
+		            ".set_line_context",
+	},
+	"Purchase Receipt": {
+		"validate": "upande_summer_flowers.summer_flowers.plant_receipt"
+		            ".set_line_context",
+		"on_submit": "upande_summer_flowers.summer_flowers.plant_receipt"
+		             ".refresh_plantings",
+		"on_cancel": "upande_summer_flowers.summer_flowers.plant_receipt"
+		             ".refresh_plantings",
+	},
+	"Purchase Invoice": {
+		"validate": "upande_summer_flowers.summer_flowers.plant_receipt"
+		            ".set_line_context",
+		# before_submit, not on_submit: an inspection that is missing has to stop
+		# the submission, not be discovered after the ledger has moved.
+		"before_submit": "upande_summer_flowers.summer_flowers.plant_receipt"
+		                 ".require_inspection",
+		"on_submit": "upande_summer_flowers.summer_flowers.plant_receipt"
+		             ".refresh_plantings",
+		"on_cancel": "upande_summer_flowers.summer_flowers.plant_receipt"
+		             ".refresh_plantings",
 	},
 }
 
