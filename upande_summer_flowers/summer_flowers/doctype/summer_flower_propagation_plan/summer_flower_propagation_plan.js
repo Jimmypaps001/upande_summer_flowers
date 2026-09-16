@@ -1,12 +1,11 @@
 // Copyright (c) 2026, James Kiruga and contributors
 // For license information, please see license.txt
 
-// frappe.ui.form.on("Summer Flower Propagation Plan", {
-// 	refresh(frm) {
+frappe.ui.form.on("Summer Flower Propagation Plan", {
+	refresh(frm) {
 		draw_calendar(frm);
-
-// 	},
-// });
+	},
+});
 
 function draw_calendar(frm) {
 	const field = frm.get_field("calendar_html");

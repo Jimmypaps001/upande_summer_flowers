@@ -1,0 +1,190 @@
+{
+ "actions": [],
+ "creation": "2026-09-17 00:00:00.000000",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "istable": 1,
+ "field_order": [
+  "cohort",
+  "planting_week",
+  "planting_date",
+  "first_harvest_week",
+  "column_break_a",
+  "qty_at_field",
+  "beds",
+  "capped",
+  "section_order",
+  "method",
+  "entry_stage",
+  "supplier",
+  "column_break_b",
+  "qty_to_order",
+  "required_at_site_date",
+  "order_by_date",
+  "late",
+  "section_delivery",
+  "confirmed_delivery_week",
+  "actual_delivery_week",
+  "column_break_c",
+  "source_doctype",
+  "source_doc",
+  "notes"
+ ],
+ "fields": [
+  {
+   "fieldname": "cohort",
+   "fieldtype": "Data",
+   "label": "Cohort",
+   "in_list_view": 1,
+   "read_only": 1
+  },
+  {
+   "fieldname": "planting_week",
+   "fieldtype": "Data",
+   "label": "Plant",
+   "in_list_view": 1,
+   "read_only": 1
+  },
+  {
+   "fieldname": "planting_date",
+   "fieldtype": "Date",
+   "label": "Planting Date",
+   "read_only": 1
+  },
+  {
+   "fieldname": "first_harvest_week",
+   "fieldtype": "Data",
+   "label": "First Cut",
+   "read_only": 1
+  },
+  {
+   "fieldname": "column_break_a",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "qty_at_field",
+   "fieldtype": "Int",
+   "label": "Plants at Field",
+   "in_list_view": 1,
+   "read_only": 1
+  },
+  {
+   "fieldname": "beds",
+   "fieldtype": "Int",
+   "label": "Beds",
+   "read_only": 1
+  },
+  {
+   "default": "0",
+   "fieldname": "capped",
+   "fieldtype": "Check",
+   "label": "Trimmed to fit the ground",
+   "read_only": 1
+  },
+  {
+   "fieldname": "section_order",
+   "fieldtype": "Section Break",
+   "label": "Order"
+  },
+  {
+   "fieldname": "method",
+   "fieldtype": "Select",
+   "label": "Method",
+   "options": "\nPurchase\nPropagate",
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "entry_stage",
+   "fieldtype": "Data",
+   "label": "Bought As",
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "supplier",
+   "fieldtype": "Link",
+   "label": "Supplier",
+   "options": "Supplier"
+  },
+  {
+   "fieldname": "column_break_b",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "qty_to_order",
+   "fieldtype": "Int",
+   "label": "Units to Order",
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "required_at_site_date",
+   "fieldtype": "Date",
+   "label": "Needed at Site"
+  },
+  {
+   "fieldname": "order_by_date",
+   "fieldtype": "Date",
+   "label": "Order By",
+   "in_list_view": 1
+  },
+  {
+   "default": "0",
+   "fieldname": "late",
+   "fieldtype": "Check",
+   "label": "Order date has passed",
+   "read_only": 1
+  },
+  {
+   "fieldname": "section_delivery",
+   "fieldtype": "Section Break",
+   "label": "Delivery"
+  },
+  {
+   "allow_on_submit": 1,
+   "fieldname": "confirmed_delivery_week",
+   "fieldtype": "Data",
+   "label": "Confirmed Week"
+  },
+  {
+   "allow_on_submit": 1,
+   "fieldname": "actual_delivery_week",
+   "fieldtype": "Data",
+   "label": "Actual Week"
+  },
+  {
+   "fieldname": "column_break_c",
+   "fieldtype": "Column Break"
+  },
+  {
+   "allow_on_submit": 1,
+   "fieldname": "source_doctype",
+   "fieldtype": "Link",
+   "label": "Raised As (type)",
+   "options": "DocType",
+   "hidden": 1
+  },
+  {
+   "allow_on_submit": 1,
+   "fieldname": "source_doc",
+   "fieldtype": "Dynamic Link",
+   "label": "Raised As",
+   "options": "source_doctype"
+  },
+  {
+   "allow_on_submit": 1,
+   "fieldname": "notes",
+   "fieldtype": "Small Text",
+   "label": "Notes"
+  }
+ ],
+ "links": [],
+ "modified": "2026-09-17 00:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Summer Flowers",
+ "name": "Planting Material Requirement",
+ "owner": "Administrator",
+ "permissions": [],
+ "sort_field": "idx",
+ "sort_order": "ASC",
+ "states": []
+}

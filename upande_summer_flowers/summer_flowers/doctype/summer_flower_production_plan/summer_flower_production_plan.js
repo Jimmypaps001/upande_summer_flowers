@@ -50,6 +50,10 @@ frappe.ui.form.on("Summer Flower Production Plan", {
 		}
 
 		if (frm.doc.docstatus === 1) {
+			// Where the plants come from is not a detail of the plan -- it sets the
+			// lead time, and the lead time sets the order date. Asked once, here.
+			frm.add_custom_button(__("Source Plantlets"), () => source_plantlets(frm))
+				.addClass("btn-primary");
 			frm.add_custom_button(__("Create Plantings"), () =>
 				frm
 					.call({
@@ -340,5 +344,69 @@ function draw_calendar(frm) {
 			{ dot: "#8e44ad", label: __("TC order deadline") },
 			{ label: __("red weeks are short of demand, green weeks are over") }],
 		empty: __("No weeks yet. Regenerate the plan."),
+	});
+}
+
+
+// ---------------------------------------------------------------- sourcing
+// Pick how the material is got; everything else follows from it.
+function source_plantlets(frm) {
+	const M = "upande_summer_flowers.summer_flowers.doctype"
+		+ ".summer_flower_sourcing_plan.summer_flower_sourcing_plan.";
+	frappe.call({ method: M + "methods_for", args: { production_plan: frm.doc.name },
+		freeze: true }).then((r) => {
+		const s = r.message;
+		if (!s) return;
+		const stages = (s.options || []).map((o) => o.stage);
+		const describe = (stage) => {
+			const o = (s.options || []).find((x) => x.stage === stage);
+			if (!o) return "";
+			const notice = (o.weeks_to_ground || 0) + (o.lead_weeks || 0);
+			return __("{0} weeks from ordering to a plant in the ground ({1} raising it, {2} supplier lead). One unit becomes {3} plants.",
+				[notice, o.weeks_to_ground, o.lead_weeks, (o.plants_per_unit || 0).toFixed(2)]);
+		};
+		const space = s.beds_available
+			? __("{0} beds available — {1}", [s.beds_available, s.space_basis])
+			: __("No ground recorded at this farm, so the order cannot be trimmed to fit it.");
+
+		const d = new frappe.ui.Dialog({
+			title: __("How is the plant material got?"),
+			fields: [
+				{ fieldname: "method", label: __("Method"), fieldtype: "Select", reqd: 1,
+				  options: ["Purchase", "Propagate"], default: "Purchase" },
+				{ fieldname: "entry_stage", label: __("Bought as"), fieldtype: "Select",
+				  options: stages, default: stages[0],
+				  depends_on: "eval:doc.method=='Purchase'" },
+				{ fieldname: "stage_note", fieldtype: "HTML" },
+				{ fieldname: "supplier", label: __("Supplier"), fieldtype: "Link",
+				  options: "Supplier", depends_on: "eval:doc.method=='Purchase'" },
+				{ fieldname: "space_break", fieldtype: "Section Break", label: __("Ground") },
+				{ fieldname: "space_note", fieldtype: "HTML",
+				  options: `<p class="text-muted">${frappe.utils.escape_html(space)}</p>` },
+				{ fieldname: "fit_to_space", label: __("Only order what the ground can take"),
+				  fieldtype: "Check", default: s.beds_available ? 1 : 0,
+				  read_only: s.beds_available ? 0 : 1,
+				  description: __("The demand is not reduced by this. It says what can be planted, not what is wanted.") },
+			],
+			primary_action_label: __("Generate"),
+			primary_action(values) {
+				d.hide();
+				frappe.call({ method: M + "build", freeze: true,
+					freeze_message: __("Working out the orders..."),
+					args: { production_plan: frm.doc.name, method: values.method,
+						entry_stage: values.entry_stage, supplier: values.supplier,
+						fit_to_space: values.fit_to_space ? 1 : 0 } })
+					.then((res) => { if (res.message) frappe.set_route("Form", "Summer Flower Sourcing Plan", res.message); });
+			},
+		});
+		const note = () => d.fields_dict.stage_note.$wrapper.html(
+			`<p class="text-muted small">${frappe.utils.escape_html(describe(d.get_value("entry_stage")))}</p>`);
+		d.fields_dict.entry_stage.df.onchange = note;
+		d.show();
+		note();
+		if (!s.has_route) {
+			d.set_df_property("entry_stage", "description",
+				__("This crop's protocol has no material route, so nothing can be dated from it."));
+		}
 	});
 }
