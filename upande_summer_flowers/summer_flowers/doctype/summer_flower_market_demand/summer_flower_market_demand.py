@@ -18,7 +18,7 @@ from upande_summer_flowers.summer_flowers.planning import (
 
 class SummerFlowerMarketDemand(Document):
 	def validate(self):
-		self.check_one_per_variety()
+		self.check_one_per_variety_and_farm()
 		self.normalise_weeks()
 		self.set_horizon()
 		self.set_totals()
@@ -46,31 +46,34 @@ class SummerFlowerMarketDemand(Document):
 		for idx, row in enumerate(self.demand_weeks, start=1):
 			row.idx = idx
 
-	def check_one_per_variety(self):
-		"""One register per variety at a farm, and only one.
+	def check_one_per_variety_and_farm(self):
+		"""One register per variety per farm, and only one.
 
-		The register is the statement of what the market wants for this crop here.
-		A second one for the same crop makes every downstream question ambiguous --
-		which demand did this plan come from, which is the demand -- and nothing
-		reads more than one of them anyway. Extend the horizon or edit the weeks
-		instead of starting another.
+		The market sheet is stated by farm -- Carzan St wants 4,464,900 stems of
+		Double Date Pink, Kariki Juja wants its own of Teeny Tiny Pink -- so the
+		register is one farm's order book for one crop, and the pair is its name.
+		A second register for the same pair makes every downstream question
+		ambiguous: which demand did this plan come from, which one is the demand.
+		Extend the horizon or edit the weeks instead of starting another.
+
+		The same variety at a second farm is a different register, not a duplicate.
 		"""
-		if not self.variety:
+		if not self.variety or not self.farm:
 			return
 		# Not "name != self.name": autoname runs before validate, so a new document
 		# already carries the name it is about to collide with and would exclude the
 		# very record it duplicates -- leaving a raw "Duplicate entry" from MySQL
 		# instead of an explanation.
-		filters = {"variety": self.variety}
+		filters = {"variety": self.variety, "farm": self.farm}
 		if not self.is_new():
 			filters["name"] = ["!=", self.name]
 		dupe = frappe.db.get_value("Summer Flower Market Demand", filters, "name")
 		if dupe:
 			frappe.throw(_(
-				"{0} is already the demand register for {1}. Edit it or extend its "
-				"horizon rather than creating a second one -- a variety has one "
-				"demand, whichever farms grow it."
-			).format(dupe, self.variety), title=_("Register exists"))
+				"{0} is already the demand register for {1} at {2}. Edit it or "
+				"extend its horizon rather than creating a second one. To plan the "
+				"same variety at another farm, make a register for that farm."
+			).format(dupe, self.variety, self.farm), title=_("Register exists"))
 
 	def set_horizon(self):
 		rows = self.demand_weeks

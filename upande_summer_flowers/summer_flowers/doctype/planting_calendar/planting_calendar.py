@@ -10,6 +10,7 @@ Version in force on the planting date, and stay pinned to it afterwards.
 import datetime
 
 import frappe
+from upande_summer_flowers.summer_flowers.planning import week_family_label
 from frappe import _
 from frappe.model.document import Document
 from frappe.utils import add_days, cint, flt, getdate, now_datetime, nowdate
@@ -291,9 +292,7 @@ class PlantingCalendar(Document):
 			(r.expected_stems or 0) for r in rows if r.is_harvested
 		)
 		self.stems_variance = self.actual_stems_harvested - harvested_expected
-		self.harvest_week_family = (
-			", ".join(f"wk{w}" for w in sorted({r.week_no for r in rows})) or None
-		)
+		self.harvest_week_family = week_family_label({r.week_no for r in rows})
 
 	def check_seedling_source(self):
 		if self.seedling_source == "Purchased from Breeder" and not self.supplier:

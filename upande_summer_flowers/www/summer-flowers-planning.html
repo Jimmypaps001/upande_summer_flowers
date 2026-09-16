@@ -12,7 +12,16 @@
   </header>
 
   <div class="pl-filters" role="group" aria-label="{{ _('Scope') }}">
-    <label id="fl-variety">{{ _("Variety") }}<select id="f-variety"></select></label>
+    <!-- Typed, not picked. It narrows as you type and you can take one off the list,
+         but the list is a suggestion and not the limit: a variety this site has not
+         grown yet can still be named, which a select could never allow. -->
+    <label id="fl-variety">{{ _("Variety") }}
+      <span class="pl-combo">
+        <input id="f-variety" autocomplete="off" spellcheck="false" role="combobox"
+               aria-autocomplete="list" aria-expanded="false" aria-controls="f-variety-ac"
+               placeholder="{{ _('All varieties') }}">
+        <ul id="f-variety-ac" class="pl-ac" role="listbox" hidden></ul>
+      </span></label>
     <label id="fl-farm">{{ _("Farm") }}<select id="f-farm"></select></label>
     <label id="fl-plan">{{ _("Production plan") }}<select id="f-plan"></select></label>
     <label id="fl-season">{{ _("Financial year") }}<select id="f-season"></select></label>
@@ -141,6 +150,12 @@
         <h3>{{ _("Every planting, first to last") }}</h3>
         <div class="pl-row" id="pp-assign" style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:8px"></div>
         <div id="pp-table" class="pl-scroll pl-tall"></div>
+        <div class="pl-card-head">
+          <div><h3>{{ _("From the cut, backwards") }}</h3>
+               <p class="pl-note">{{ _("Stems are wanted in a week. That fixes when the crop is cut, which fixes when it is planted, which fixes when the material has to be ordered. Read a row right to left.") }}</p></div>
+        </div>
+        <div class="pl-row" id="pp-chain-head" style="margin-bottom:8px"></div>
+        <div id="pp-chain" class="pl-scroll pl-tall"></div>
         <div class="pl-card-head">
           <div><h3>{{ _("Month by month") }}</h3></div>
         </div>
@@ -466,7 +481,24 @@
         <div class="pl-card-head">
           <div><h2>{{ _("Flush harvest schedule") }}</h2></div>
         </div>
+        <!-- What this crop is raised FROM. Without it the page could show a seed
+             crop's whole schedule without once saying it was seed. -->
+        <div class="pl-card-head">
+          <div><h3>{{ _("Where the plant material comes from") }}</h3>
+               <p class="pl-note" id="pr-route-sub"></p></div>
+        </div>
+        <div id="pr-route" class="pl-scroll"></div>
         <div id="pr-flushes" class="pl-scroll"></div>
+        <!-- The same numbers as the table above, drawn. A crop cut once is a single
+             bar and a step to 100%; a crop that cuts every week is thirty small ones
+             climbing to the same place. Both are the same question: what has this
+             planting given me by week N, and when is it finished. -->
+        <div class="pl-card-head">
+          <div><h3>{{ _("Intended production over the plant's life") }}</h3>
+               <p class="pl-note">{{ _("What each harvest contributes, and how it adds up. The curve closes at 100%: the plant may carry on past it, but nothing is planned on what comes after.") }}</p></div>
+        </div>
+        <div id="pr-profile" class="pl-scroll"></div>
+        <div id="pr-cumulative" class="pl-scroll"></div>
       </div>
 
       <div class="pl-card">
@@ -596,6 +628,7 @@
         <label>{{ _("File") }}
           <input type="file" id="up-file" accept=".xlsx,.xlsm,.csv,.tsv,.txt"></label>
         <label>{{ _("Import as variety") }}<select id="up-variety"></select></label>
+        <label>{{ _("Farm") }}<select id="up-farm"></select></label>
         <label>{{ _("Existing weeks") }}
           <select id="up-mode">
             <option value="replace">{{ _("Replace the weeks this file covers") }}</option>
@@ -635,7 +668,8 @@
   margin-bottom:14px;background:var(--surface-2);border:1px solid var(--border);border-radius:8px}
 .pl-filters label,.pl-controls label,.pl-inline{display:flex;flex-direction:column;gap:4px;
   font-size:.7rem;text-transform:uppercase;letter-spacing:.6px;color:var(--text-muted);margin:0}
-.pl-filters select,.pl-controls input,.pl-controls select,.pl-inline select,.pl-inline input{
+.pl-filters select,.pl-filters input,.pl-controls input,.pl-controls select,
+.pl-inline select,.pl-inline input{
   padding:6px 8px;font-size:.88rem;border:1px solid var(--border);border-radius:6px;
   background:var(--surface-1);color:var(--text-primary);min-width:140px}
 .pl-asof{margin-left:auto;font-size:.78rem;color:var(--text-muted)}
@@ -924,6 +958,16 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
   background:var(--surface);color:var(--text)}
 .hc-legend{display:flex;flex-wrap:wrap;gap:14px;margin:10px 0 6px;
   font-size:.72rem;color:var(--text-muted)}
+.pl-combo{position:relative;display:block}
+.pl-ac{position:absolute;z-index:40;top:calc(100% + 2px);left:0;min-width:100%;
+  max-height:248px;overflow:auto;margin:0;padding:4px;list-style:none;
+  background:var(--surface-1);border:1px solid var(--border);border-radius:6px;
+  box-shadow:0 8px 20px rgba(0,0,0,.14)}
+.pl-ac li{padding:6px 8px;border-radius:4px;font-size:.86rem;text-transform:none;
+  letter-spacing:0;color:var(--text-primary);cursor:pointer;white-space:nowrap}
+.pl-ac li.is-on,.pl-ac li:hover{background:var(--surface-2)}
+.pl-ac li mark{background:transparent;color:inherit;font-weight:700}
+.pl-ac .pl-ac-none{color:var(--text-muted);cursor:default;font-style:italic}
 .pl-filters.is-empty::after{content:"This tab answers for the whole site.";
   font-size:.76rem;color:var(--text-muted);align-self:center}
 .pl-scopeline{margin:-4px 0 14px;font-size:.78rem;color:var(--text-muted);
@@ -1133,6 +1177,21 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
     setTimeout(() => fin(rej, new Error("Timed out: " + m)), 45000);
     try {
       frappe.call({ method: M + m, args: a || {},
+        callback: (r) => fin(res, r && r.message),
+        error: (r) => fin(rej, new Error(m + ": " + ((r && r.responseJSON &&
+          (r.responseJSON.exc_type || r.responseJSON.message)) || "failed"))) });
+    } catch (e) { fin(rej, e); }
+  });
+
+  // Where the material comes from and when it has to be ordered. Its own module
+  // because it answers a different question from the plan: not what to grow, but
+  // what to buy to be able to grow it.
+  const SRC = "upande_summer_flowers.summer_flowers.sourcing.";
+  const callSrc = (m, a) => new Promise((res, rej) => {
+    let done = false; const fin = (f, v) => { if (!done) { done = true; f(v); } };
+    setTimeout(() => fin(rej, new Error("Timed out: " + m)), 45000);
+    try {
+      frappe.call({ method: SRC + m, args: a || {},
         callback: (r) => fin(res, r && r.message),
         error: (r) => fin(rej, new Error(m + ": " + ((r && r.responseJSON &&
           (r.responseJSON.exc_type || r.responseJSON.message)) || "failed"))) });
@@ -1361,6 +1420,110 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
     g += "</svg>";
     el.innerHTML = g;
     bindTips(el);
+  }
+
+  // Green for what a harvest gives, blue for what has been gathered. Checked against
+  // the card surface in both themes: deutan dE 27.4, normal 29.7, contrast >= 3:1.
+  // They never share a panel, so position and title carry the identity as well as hue.
+  const C_SHARE = "#15803d", C_CUM = "#2563eb";
+
+  function renderRoute(d) {
+    const el = $("pr-route"), sub = $("pr-route-sub");
+    if (!el) return;
+    const rows = (d && d.route) || [];
+    if (!rows.length) {
+      el.innerHTML = '<p class="pl-empty">No material route on this protocol, so ' +
+        "nothing can be said about what it is raised from or when to order it.</p>";
+      if (sub) sub.textContent = ""; return;
+    }
+    const bought = d.bought_at || [];
+    if (sub) {
+      sub.textContent = (d.route_summary || "") +
+        (bought.length ? " · bought as " + bought.join(" or ") : " · nothing on this route is bought");
+    }
+    el.innerHTML = '<table class="pl-t"><thead><tr><th>Stage</th>' +
+      '<th class="n">Weeks</th><th class="n">Loss</th><th class="n">Yields</th>' +
+      '<th>Bought</th><th class="n">Lead</th></tr></thead><tbody>' +
+      rows.map((r) => {
+        const step = r.row_type === "Step";
+        const name = step
+          ? `<span class="pl-note">↳</span> ${esc(r.step || "")}`
+          : `<strong>${esc(r.stage || "")}</strong>`;
+        return `<tr><td style="${step ? "padding-left:22px" : ""}">${name}</td>` +
+          `<td class="n">${r.weeks || 0}</td>` +
+          `<td class="n">${r.loss_pct ? numx(r.loss_pct) + "%" : "—"}</td>` +
+          `<td class="n">${!step && r.yields_per_unit !== 1 ? "×" + numx(r.yields_per_unit) : "—"}</td>` +
+          `<td>${r.is_purchase ? "yes" : ""}</td>` +
+          `<td class="n">${r.is_purchase && r.lead_weeks ? r.lead_weeks + "w" : "—"}</td></tr>`;
+      }).join("") + "</tbody></table>";
+  }
+
+  function drawLifetimeProfile(d) {
+    const el = $("pr-profile"), cel = $("pr-cumulative");
+    if (!el || !cel) return;
+    const rows = (d && d.flushes) || [];
+    // Percentages only exist on a version snapshotted since they were added. An
+    // older one still has its stems, so the share is worked out here rather than
+    // leaving the chart blank on every protocol approved before this week.
+    const lifeStems = rows.reduce((a, r) => a + (r.stems_per_plant || 0), 0);
+    let cum = 0;
+    const pts = rows.map((r) => {
+      const pct = r.pct_of_life || (lifeStems ? (r.stems_per_plant || 0) / lifeStems * 100 : 0);
+      cum += pct;
+      return { wk: r.weeks_from_planting || 0, pct: pct,
+               cum: r.cumulative_pct || cum, stems: r.stems_per_plant || 0 };
+    });
+    if (!pts.length) {
+      el.innerHTML = '<p class="pl-empty">This protocol has no harvest schedule yet.</p>';
+      cel.innerHTML = ""; return;
+    }
+
+    // ---- what each harvest gives
+    const n = pts.length;
+    const padL = 58, padR = 14, padT = 12, padB = 34, h = 210, plotH = h - padT - padB;
+    // Bars divide the plot rather than the plot being sized to the bars: eight
+    // flushes used to sit in the leftmost third of a 620-wide canvas with the grid
+    // running on past them, which read as a broken chart rather than a sparse one.
+    const w = Math.max(620, padL + padR + n * 14);
+    const plotW = w - padL - padR;
+    const slot = plotW / n;
+    // Wide enough to see, never so wide that a single-flush crop is one huge slab.
+    const bw = Math.max(3, Math.min(slot - 2, 46));
+    const bx = (i) => padL + i * slot + (slot - bw) / 2;
+    const raw = Math.max(...pts.map((p) => p.pct), 1);
+    const ts = niceStep(raw / 4), top = Math.ceil(raw / ts) * ts;
+    const y = (v) => padT + plotH - (v / top) * plotH;
+    let g = `<svg viewBox="0 0 ${w} ${h}" width="${w}" height="${h}" role="img" ` +
+      `aria-label="Share of the plant's life given by each harvest"><g class="grid">`;
+    for (let v = 0; v <= top; v += ts) {
+      g += `<line x1="${padL}" x2="${w - padR}" y1="${y(v)}" y2="${y(v)}"/>` +
+        `<text x="${padL - 8}" y="${(y(v) + 3).toFixed(1)}" text-anchor="end">${numx(v)}%</text>`;
+    }
+    g += "</g>";
+    const every = n > 40 ? 5 : n > 16 ? 3 : 1;
+    pts.forEach((p, i) => {
+      const x = bx(i);
+      const bh = Math.max(0, plotH - (y(p.pct) - padT));
+      if (bh > 0) {
+        const r = Math.min(4, bh, bw / 2), y0 = y(p.pct);
+        g += `<path d="M${x},${padT + plotH} V${y0 + r} Q${x},${y0} ${x + r},${y0} ` +
+          `H${x + bw - r} Q${x + bw},${y0} ${x + bw},${y0 + r} V${padT + plotH} Z" ` +
+          `fill="${C_SHARE}" data-tip="${esc(`<b>week ${p.wk} from planting</b><br>` +
+            `${p.pct.toFixed(2)}% of the life<br>${numx(p.stems)} stems per plant<br>` +
+            `${p.cum.toFixed(1)}% gathered by here`)}"/>`;
+      }
+      if (i % every === 0 || i === n - 1) {
+        g += `<text x="${(x + bw / 2).toFixed(1)}" y="${h - padB + 14}" ` +
+          `text-anchor="middle">wk${p.wk}</text>`;
+      }
+    });
+    el.innerHTML = g + "</svg>";
+    bindTips(el);
+
+    // ---- and what it adds up to
+    drawAreaLines(cel, pts.map((p) => "wk" + p.wk),
+      [{ label: "Gathered so far (% of the life)", color: C_CUM,
+         values: pts.map((p) => p.cum) }], {});
   }
 
   function drawGrouped(el, rows, names) {
@@ -2116,9 +2279,56 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
     bindTips(el);
   }
 
+  function renderHarvestChain() {
+    const c = S.backChain;
+    const head = $("pp-chain-head"), body = $("pp-chain");
+    if (!head || !body) return;
+    if (!c) { body.innerHTML = '<p class="pl-empty">Working out the dates…</p>'; return; }
+    if (c.error) { body.innerHTML = '<p class="pl-empty">' + esc(c.error) + "</p>"; return; }
+    const p = c.protocol || {};
+    head.innerHTML =
+      `<span class="pl-note">${esc(c.cycle || "")} · ` +
+      `${p.weeks_to_first_cut || 0} wks planting → first cut · ` +
+      `${p.harvests || 0} harvest${p.harvests === 1 ? "" : "s"} · ` +
+      `${p.weeks_in_ground || 0} wks in the ground · ` +
+      `${p.turnaround_weeks || 0} wks turnaround` +
+      (c.stage ? ` · bought as ${esc(c.stage)}` : "") + "</span>";
+    const rows = c.rows || [];
+    if (!rows.length) { body.innerHTML = '<p class="pl-empty">No plantings to date.</p>'; return; }
+    const late = rows.filter((r) => r.order_late).length;
+    body.innerHTML =
+      (late ? `<p class="pl-note pl-bad">${late} of these had to be ordered before today.</p>` : "") +
+      '<table class="pl-t"><thead><tr>' +
+      ["Order by", "Units", "Start propagation", "Plant", "First cut", "Last cut",
+       "Bed free again", "Beds", "Stems"].map((h, i) => `<th${i === 1 || i > 6 ? ' class="n"' : ""}>${h}</th>`).join("") +
+      "</tr></thead><tbody>" +
+      rows.map((r) => "<tr>" +
+        `<td>${r.order_by ? fdate(r.order_by) : "—"}</td>` +
+        `<td class="n">${r.order_units ? num(r.order_units) : "—"}</td>` +
+        `<td>${fdate(r.start_prop)}</td>` +
+        `<td><strong>${fdate(r.plant)}</strong><span class="pl-note"> ${esc(r.plant_week)}</span></td>` +
+        `<td><strong>${fdate(r.first_cut)}</strong><span class="pl-note"> ${esc(r.first_cut_week)}</span></td>` +
+        `<td>${fdate(r.last_cut)}</td>` +
+        `<td>${fdate(r.bed_free)}</td>` +
+        `<td class="n">${num(r.beds)}</td>` +
+        `<td class="n">${num(r.stems)}</td></tr>`).join("") +
+      "</tbody></table>";
+  }
+
+  function loadHarvestChain(plan) {
+    if (S.backChain && S.backChain.plan === plan) { renderHarvestChain(); return; }
+    S.backChain = null; renderHarvestChain();
+    callSrc("harvest_chain", { plan: plan })
+      .then((r) => { S.backChain = r || { plan: plan, rows: [] }; renderHarvestChain(); })
+      // A plan whose protocol cannot yet be costed should not take the tab down
+      // with it: say so where the table would have been.
+      .catch((e) => { S.backChain = { plan: plan, error: String(e.message || e) }; renderHarvestChain(); });
+  }
+
   function renderPlanting() {
     const pp = S.pp;
     if (!pp || !pp.plan) { $("pp-tiles").innerHTML = '<p class="pl-empty">No plan.</p>'; return; }
+    loadHarvestChain(pp.plan);
     const t = pp.totals, short = t.blocks_needed - t.blocks_available;
     $("pp-sub").textContent =
       `${pp.plan} · ${t.proposed} plantings · ${t.weeks_in_ground} weeks in ground each`;
@@ -2844,6 +3054,63 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
   }
 
   // ══════════════════════════ HARVEST ══════════════════════════
+  // A typing box that narrows a list and lets you take one off it -- the behaviour a
+  // link field has everywhere else in this system. Written here rather than pulled
+  // from the desk bundle, which a portal page does not reliably have.
+  function attachCombo(input, list, items) {
+    let shown = [], idx = -1;
+    const close = () => { list.hidden = true; idx = -1;
+      input.setAttribute("aria-expanded", "false"); };
+    const mark = (text, q) => {
+      if (!q) return esc(text);
+      const at = text.toLowerCase().indexOf(q.toLowerCase());
+      return at < 0 ? esc(text)
+        : esc(text.slice(0, at)) + "<mark>" + esc(text.slice(at, at + q.length)) +
+          "</mark>" + esc(text.slice(at + q.length));
+    };
+    const paint = () => {
+      const q = input.value.trim();
+      list.innerHTML = shown.length
+        ? shown.map((x, i) => `<li role="option" data-i="${i}"` +
+            `${i === idx ? ' class="is-on" aria-selected="true"' : ""}>${mark(x, q)}</li>`).join("")
+        : `<li class="pl-ac-none">Nothing here matches — it will be used as typed.</li>`;
+      list.hidden = false;
+      input.setAttribute("aria-expanded", "true");
+    };
+    const filter = () => {
+      const q = input.value.trim().toLowerCase();
+      shown = (items() || []).filter((x) => !q || x.toLowerCase().includes(q));
+      idx = -1; paint();
+    };
+    const pick = (i) => {
+      if (i < 0 || i >= shown.length) return;
+      input.value = shown[i]; close();
+      input.dispatchEvent(new Event("change", { bubbles: true }));
+    };
+    input.addEventListener("focus", filter);
+    input.addEventListener("input", filter);
+    input.addEventListener("keydown", (e) => {
+      if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+        if (list.hidden) { filter(); return; }
+        e.preventDefault();
+        if (!shown.length) return;
+        idx = (idx + (e.key === "ArrowDown" ? 1 : -1) + shown.length) % shown.length;
+        paint();
+        const on = list.querySelector(".is-on");
+        if (on && on.scrollIntoView) on.scrollIntoView({ block: "nearest" });
+      } else if (e.key === "Enter") {
+        if (!list.hidden && idx >= 0) { e.preventDefault(); pick(idx); } else { close(); }
+      } else if (e.key === "Escape") { close(); }
+    });
+    // mousedown, not click: blur would have closed the list before a click landed.
+    list.addEventListener("mousedown", (e) => {
+      const li = e.target.closest("li[data-i]");
+      if (!li) return;
+      e.preventDefault(); pick(+li.dataset.i);
+    });
+    input.addEventListener("blur", () => setTimeout(close, 120));
+  }
+
   const toast = (msg, bad) => frappe.show_alert(
     { message: msg, indicator: bad ? "red" : "green" }, bad ? 8 : 5);
 
@@ -3175,15 +3442,15 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
   // The same check the desk form does before creating a plan: what it will cover, what
   // it will cost to buy, and what ground it needs.
   function createPlanFromChain() {
-    const demand = S.chain.demand.name;
+    const demand = S.backChain.demand.name;
     if (!S.farm) {
       toast("Choose a farm first. A plan is one farm's commitment: the demand is for " +
             "the variety, and which farm grows it decides the blocks and the protocol.",
             true);
       return;
     }
-    const season = S.season || (S.chain.demand.horizon_start
-      ? +String(S.chain.demand.horizon_start).slice(0, 4) : null);
+    const season = S.season || (S.backChain.demand.horizon_start
+      ? +String(S.backChain.demand.horizon_start).slice(0, 4) : null);
     run("plan_preview", { market_demand: demand, farm: S.farm,
                           season_start_year: season }, (p) => {
       const rows = [
@@ -4642,23 +4909,32 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
         { field: "min_planting_area_sqm", value: F.min_planting_area_sqm,
           step: "10" });
 
+    renderRoute(d);
+    drawLifetimeProfile(d);
     // flush schedule
     const fr = PR_FLUSH.rows || d.flushes;
     const maxSpp = Math.max(...fr.map((f) => f.stems_per_plant), 0.01);
     $("pr-flushes").innerHTML =
-      '<table class="pl-t"><thead><tr><th>Flush</th><th class="n">From pinch</th>' +
+      '<table class="pl-t"><thead><tr><th>Flush</th>' +
+      // Planting, not pinching: most of these crops are never pinched.
       '<th class="n">From planting</th><th class="n">Stems/plant</th>' +
+      // The share of the whole life this flush is, and the running total to 100%.
+      // This is how the planning sheet is read; the page could only show stems.
+      '<th class="n">% of life</th><th class="n">Cumulative %</th>' +
       '<th class="n">Stems/ha</th><th>Yield index</th></tr></thead><tbody>' +
       fr.map((f, i) => {
         const spp = prEditing
           ? `<input class="pin" type="number" step="0.1" data-fl="${i}" data-fk="stems_per_plant" value="${f.stems_per_plant}">`
           : `<b>${f.stems_per_plant}</b>`;
         const wfp = prEditing
-          ? `<input class="pin" type="number" data-fl="${i}" data-fk="weeks_from_pinch" value="${f.weeks_from_pinch}">`
-          : f.weeks_from_pinch + "w";
+          ? `<input class="pin" type="number" data-fl="${i}" data-fk="weeks_from_planting" value="${f.weeks_from_planting}">`
+          : f.weeks_from_planting + "w";
         return `<tr><td><span class="pill" style="background:${TSEG[(i + 2) % TSEG.length]};color:#fff;border:0">F${f.flush}</span></td>` +
-          `<td class="n">${wfp}</td><td class="n">wk ${f.weeks_from_planting}</td>` +
-          `<td class="n">${spp}</td><td class="n">${num(f.stems_per_ha)}</td>` +
+          `<td class="n">${wfp}</td>` +
+          `<td class="n">${spp}</td>` +
+          `<td class="n">${(f.pct_of_life || 0).toFixed(2)}%</td>` +
+          `<td class="n">${(f.cumulative_pct || 0).toFixed(2)}%</td>` +
+          `<td class="n">${num(f.stems_per_ha)}</td>` +
           `<td><div style="height:8px;border-radius:4px;background:${TSEG[(i + 2) % TSEG.length]};` +
           `width:${Math.round(f.stems_per_plant / maxSpp * 100)}%"></div></td></tr>`;
       }).join("") +
@@ -4956,9 +5232,14 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
     // instead of being refused outright.
     const vs = $("up-variety");
     vs.innerHTML = "";
-    [...$("f-variety").options].forEach((o) => {
-      if (o.value) vs.add(new Option(o.textContent, o.value));
-    });
+    (S.varieties || []).forEach((x) => vs.add(new Option(x, x)));
+    // A register is one farm's order book, so the file has to say which farm it is
+    // for. Left blank it would land on whichever register the database returned
+    // first, which for a variety grown at two farms is a coin toss.
+    const fm = $("up-farm");
+    fm.innerHTML = "";
+    fm.add(new Option("Choose a farm…", ""));
+    (S.farms || []).forEach((x) => fm.add(new Option(x, x)));
     if (!dlg.open) dlg.showModal();
   }
 
@@ -4977,13 +5258,28 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
     return readUpload(file)
       .then((b64) => {
         S.upFile = { name: file.name, content: b64 };
-        return callDI("preview", { filename: file.name, content: b64 });
+        return callDI("preview", { filename: file.name, content: b64,
+                                   farm: $("up-farm").value || null });
       })
       .then((r) => { S.upPreview = r; renderUpload(); })
       .catch((e) => {
         S.upPreview = null;
         $("up-body").innerHTML = `<p class="pl-empty">${esc(e.message)}</p>`;
         document.querySelector('[data-up="import"]').disabled = true;
+      });
+  }
+
+  // The file is already in hand; changing the farm only changes what the server
+  // says about it, so the bytes are not read from disk a second time.
+  function previewUpload_cached() {
+    const f = S.upFile;
+    if (!f) return;
+    callDI("preview", { filename: f.name, content: f.content,
+                        farm: $("up-farm").value || null })
+      .then((r) => { S.upPreview = r; renderUpload(); })
+      .catch((e) => {
+        S.upPreview = null;
+        $("up-body").innerHTML = `<p class="pl-empty">${esc(e.message)}</p>`;
       });
   }
 
@@ -5037,9 +5333,11 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
     const r = S.upPreview, f = S.upFile;
     if (!(r && f)) { toast("Choose a file first.", true); return; }
     const variety = $("up-variety").value, mode = $("up-mode").value;
+    const farm = $("up-farm").value;
     if (!variety) { toast("Pick the variety to import as.", true); return; }
+    if (!farm) { toast("Pick the farm this demand is for.", true); return; }
     const msg = [
-      `Import ${num(r.weeks)} weeks and ${num(r.total)} stems into ${variety}?`,
+      `Import ${num(r.weeks)} weeks and ${num(r.total)} stems into ${variety} at ${farm}?`,
       "",
       mode === "replace"
         ? "Weeks these years already carry will be replaced by the file's figures."
@@ -5051,7 +5349,7 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
 
     const was = btn.textContent; btn.disabled = true; btn.textContent = "Importing…";
     callDI("import_demand", { filename: f.name, content: f.content,
-                              variety: variety, mode: mode })
+                              variety: variety, farm: farm, mode: mode })
       .then((res) => {
         toast(`${res.created ? "Created" : "Updated"} ${res.market_demand}: ` +
               `${num(res.weeks_written)} weeks written` +
@@ -5695,17 +5993,30 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
 
     call("scope").then((sc) => {
       const vs = $("f-variety"), fs = $("f-farm"), vr = $("ls-version");
-      vs.add(new Option("All varieties", ""));
-      (sc.varieties || []).forEach((x) => vs.add(new Option(x, x)));
+      S.varieties = sc.varieties || [];
+      attachCombo(vs, $("f-variety-ac"), () => S.varieties);
       fs.add(new Option("All farms", ""));
-      (sc.farms || []).forEach((x) => fs.add(new Option(x, x)));
+      S.farms = sc.farms || [];
+      S.farms.forEach((x) => fs.add(new Option(x, x)));
       (sc.versions || []).forEach((v) =>
         vr.add(new Option(v.name + (v.is_current ? " (current)" : ""), v.name)));
 
       // Changing variety or farm changes which plans exist, so the list is
       // rebuilt and the default re-resolved before the panes reload.
       vs.addEventListener("change", () => {
-        S.variety = vs.value; S.plan = ""; loadPlans().then(loadScope);
+        const typed = vs.value.trim();
+        // Picking from the list fires change, and the browser fires it again on blur
+        // because the text moved. Same value, same scope: nothing to reload.
+        if (typed === (S.variety || "")) return;
+        // Say so rather than silently showing nothing: a name that matches no
+        // variety here is far more likely to be a typo than a new crop.
+        if (typed && !S.varieties.some((x) => x.toLowerCase() === typed.toLowerCase())) {
+          const near = S.varieties.filter(
+            (x) => x.toLowerCase().includes(typed.toLowerCase())).slice(0, 3);
+          toast("No variety called " + typed +
+                (near.length ? " — did you mean " + near.join(", ") + "?" : ""), true);
+        }
+        S.variety = typed; S.plan = ""; loadPlans().then(loadScope);
       });
       fs.addEventListener("change", () => {
         S.farm = fs.value; S.plan = ""; loadPlans().then(loadScope);
@@ -5819,6 +6130,9 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
         if (f) previewUpload(f);
       });
       $("up-variety").addEventListener("change", renderUpload);
+      $("up-farm").addEventListener("change", () => {
+        if (S.upFile) previewUpload_cached(); else renderUpload();
+      });
       $("dm-dlg").addEventListener("click", (e) => {
         const b = e.target.closest("[data-dd]");
         if (!b) return;

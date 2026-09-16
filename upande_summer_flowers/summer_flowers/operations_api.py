@@ -517,11 +517,12 @@ def chain_status(variety=None, farm=None, demand=None, plan=None, season=None):
 		f = {}
 		if variety:
 			f["variety"] = variety
-		# No farm filter. The register is per variety and carries no farm -- the
-		# doctype refuses a second one for the same variety "whichever farms grow
-		# it", and the farm belongs to the plan. Filtering by it found nothing on
-		# every register created since, which the dashboard shows as no demand at
-		# all: it always passes a farm.
+		# The register is one farm's order book, so the farm narrows it. Without
+		# this, a variety grown at two farms resolved to whichever register was
+		# edited last and the dashboard showed one farm's demand under another
+		# farm's plan.
+		if farm:
+			f["farm"] = farm
 		rows = frappe.get_all("Summer Flower Market Demand", filters=f,
 		                      pluck="name", order_by="modified desc", limit=1)
 		demand = rows[0] if rows else None
@@ -685,7 +686,9 @@ def process_overview(variety=None, farm=None, plan=None, season=None):
 	f = {}
 	if variety:
 		f["variety"] = variety
-	# No farm filter: the register is per variety.
+	# The register is per variety per farm, so the farm belongs in the filter.
+	if farm:
+		f["farm"] = farm
 	dem = frappe.get_all("Summer Flower Market Demand", filters=f,
 	                     fields=["name", "variety", "farm", "weeks_covered",
 	                             "total_demand_stems", "horizon_start", "horizon_end",

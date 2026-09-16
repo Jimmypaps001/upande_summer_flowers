@@ -23,7 +23,9 @@
   "cb_proc",
   "default_input_purpose",
   "bio_section",
-  "biological_asset_item"
+  "biological_asset_item",
+  "season_curve_build",
+  "season_curve_tail"
  ],
  "fields": [
   {
@@ -125,13 +127,72 @@
    "fieldtype": "Link",
    "label": "Biological Asset Item",
    "options": "Item"
+  },
+  {
+   "fieldname": "plants_section",
+   "fieldtype": "Section Break",
+   "label": "Plant Deliveries"
+  },
+  {
+   "default": "Summer Flowers",
+   "description": "Comma separated. Purchases of items in these groups are plant material: they get the incoming inspection and update the planting's received quantity.",
+   "fieldname": "plant_item_groups",
+   "fieldtype": "Small Text",
+   "label": "Plant Item Groups"
+  },
+  {
+   "default": "Plant Material Incoming",
+   "description": "Defaulted onto plant items, so an inspection is offered without anyone choosing a template.",
+   "fieldname": "plant_quality_inspection_template",
+   "fieldtype": "Link",
+   "label": "Plant Inspection Template",
+   "options": "Quality Inspection Template"
+  },
+  {
+   "fieldname": "cb_plants",
+   "fieldtype": "Column Break"
+  },
+  {
+   "default": "5",
+   "description": "A short or over delivery inside this band is treated as fully received and nobody is alerted.",
+   "fieldname": "plant_delivery_tolerance_pct",
+   "fieldtype": "Percent",
+   "label": "Delivery Tolerance %"
+  },
+  {
+   "default": "1",
+   "description": "ERPNext only enforces an incoming inspection on an invoice that updates stock. With this on, a plant line on any submitted Purchase Invoice needs one.",
+   "fieldname": "require_inspection_on_invoice",
+   "fieldtype": "Check",
+   "label": "Require Inspection on Invoice"
+  },
+  {
+   "default": "Farm Manager",
+   "fieldname": "plant_delivery_notify_role",
+   "fieldtype": "Link",
+   "label": "Notify Role",
+   "options": "Role"
+  },
+  {
+   "default": "40,55,70,85,95",
+   "description": "How a season starts, as relative weights per week -- the plant is not giving in its first producing week what it gives in its fifth. Normalised across the productive weeks, so the same shape fits a short season and a long one.",
+   "fieldname": "season_curve_build",
+   "fieldtype": "Data",
+   "label": "Season curve: build-up weights"
+  },
+  {
+   "default": "95,90,80,70,60,50,40,30,25,20",
+   "description": "How a season ends, as relative weights per week. Leave both empty and the season is flat.",
+   "fieldname": "season_curve_tail",
+   "fieldtype": "Data",
+   "label": "Season curve: tail-off weights"
   }
  ],
  "grid_page_length": 50,
  "index_web_pages_for_search": 1,
  "issingle": 1,
  "links": [],
- "modified": "2026-07-31 22:45:51.765224",
+ "modified": "2026-09-09 00:00:00.000000",
  "modified_by": "Administrator",
  "module": "Summer Flowers",
  "name": "Summer Flower Settings",

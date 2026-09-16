@@ -4,6 +4,9 @@
 frappe.ui.form.on("Summer Flower Market Demand", {
 	refresh(frm) {
 		frm.set_query("variety", () => ({ filters: { item_group: "Summer Flowers" } }));
+		// What the fields mean, behind the "i" icon, instead of a paragraph under
+		// each one.
+		upande_summer_flowers.walkthrough.attach(frm, "Market Demand Walkthrough");
 
 		if (frm.is_new()) return;
 
@@ -29,7 +32,20 @@ frappe.ui.form.on("Summer Flower Market Demand", {
 		}
 
 		if (frm.doc.weeks_covered) {
-			frm.add_custom_button(__("Create Production Plan"), () => create_plan(frm));
+			// The one thing this form exists to lead to, so it is the primary action
+			// rather than a line in the menu. Only styled as primary when there is no
+			// horizon gap -- Extend Horizon owns that emphasis while the register is
+			// still short, and two primary buttons tell the user nothing.
+			const plan_btn = frm.add_custom_button(__("Create Production Plan"), () =>
+				create_plan(frm)
+			);
+			plan_btn.removeClass("btn-default").addClass(
+				frm.doc.horizon_gap_weeks > 0 ? "btn-secondary" : "btn-primary"
+			);
+			plan_btn.attr(
+				"title",
+				__("Work back from these weeks to the weeks to plant, stick and order.")
+			);
 		}
 
 		draw_calendar(frm);
@@ -79,9 +95,8 @@ function extend_horizon(frm) {
 
 function create_plan(frm) {
 	const first = frm.doc.demand_weeks[0];
-	// A plan is one farm's commitment for one season. The register is per variety, so
-	// the farm is chosen here; the season decides the weekly grid, which is why the
-	// year and week are no longer asked for.
+	// A plan is one farm's commitment for one season, and the register already names
+	// that farm, so only the season is asked for.
 	const startYear = first.week_start_date
 		? (new Date(first.week_start_date).getMonth() + 1 >= 7
 			? new Date(first.week_start_date).getFullYear()
@@ -91,12 +106,15 @@ function create_plan(frm) {
 		title: __("Create Production Plan"),
 		fields: [
 			{
-				fieldname: "farm",
-				label: __("Farm"),
-				fieldtype: "Link",
-				options: "Farm",
-				reqd: 1,
-				description: __("Which farm grows this. It decides the blocks available and the protocol version that applies."),
+				fieldname: "farm_note",
+				fieldtype: "HTML",
+				// The register is one farm's order book, so the farm is not a choice
+				// made here. It was asked for twice and could be answered differently
+				// the second time, which planned a farm the demand never asked.
+				options: __("Planning <b>{0}</b> at <b>{1}</b>.", [
+					frappe.utils.escape_html(frm.doc.variety || ""),
+					frappe.utils.escape_html(frm.doc.farm || ""),
+				]),
 			},
 			{
 				fieldname: "season_start_year",

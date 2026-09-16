@@ -61,10 +61,17 @@
   "cb_time2",
   "harvest_weeks_per_year",
   "flushes_per_year",
+  "turnaround_weeks",
+  "weeks_planting_to_first_cut",
+  "productive_weeks",
+  "stems_per_plant_per_week",
+  "harvest_window_start_week",
+  "harvest_window_end_week",
   "flush_section",
   "flush_schedule",
   "flush_totals_section",
   "total_flushes",
+  "stated_stems_per_plant_life",
   "total_stems_per_plant_life",
   "cb_flush",
   "stems_per_ha_life",
@@ -182,6 +189,31 @@
    "label": "Crop Class",
    "options": "Summer Flower\nRose\nOther",
    "reqd": 1
+  },
+  {
+   "fieldname": "route_section",
+   "fieldtype": "Section Break",
+   "label": "Plant Material Route"
+  },
+  {
+   "fieldname": "growing_cycle",
+   "fieldtype": "Select",
+   "label": "Growing Cycle",
+   "options": "\nPerennial - distinct flushes\nPerennial - continuous\nSingle flush cycle",
+   "read_only": 1
+  },
+  {
+   "fieldname": "route_summary",
+   "fieldtype": "Data",
+   "label": "Route",
+   "read_only": 1
+  },
+  {
+   "description": "The route as approved. It is an input like the flush schedule -- a change to it is a change to the protocol and has to be approved like one.",
+   "fieldname": "material_route",
+   "fieldtype": "Table",
+   "label": "Material Route",
+   "options": "Crop Material Stage"
   },
   {
    "description": "Altitude, temperature, light \u2014 what makes this farm's curve differ from the same variety elsewhere.",
@@ -431,6 +463,52 @@
    "read_only": 1
   },
   {
+   "description": "Fallow, sterilisation and bed preparation between one crop coming out and the next going in. A single-flush crop is replanted on this rhythm, not the day it is cleared.",
+   "fieldname": "turnaround_weeks",
+   "fieldtype": "Int",
+   "label": "Turnaround weeks (clear \u2192 replant)",
+   "non_negative": 1
+  },
+  {
+   "depends_on": "eval:doc.growing_cycle==\"Perennial - continuous\"",
+   "description": "A crop that cuts every week has no flushes to be timed by, so it says this outright.",
+   "fieldname": "weeks_planting_to_first_cut",
+   "fieldtype": "Int",
+   "label": "Weeks planting \u2192 first cut",
+   "non_negative": 1
+  },
+  {
+   "depends_on": "eval:doc.growing_cycle==\"Perennial - continuous\"",
+   "description": "How many weeks the plant keeps cutting once it starts. With the week it starts, this is its whole life in the ground.",
+   "fieldname": "productive_weeks",
+   "fieldtype": "Int",
+   "label": "Productive weeks",
+   "non_negative": 1
+  },
+  {
+   "depends_on": "eval:doc.growing_cycle==\"Perennial - continuous\"",
+   "description": "What one plant gives in a producing week. Times the productive weeks, it is the life yield.",
+   "fieldname": "stems_per_plant_per_week",
+   "fieldtype": "Float",
+   "label": "Stems per plant per week",
+   "precision": "3"
+  },
+  {
+   "depends_on": "eval:doc.growing_cycle==\"Perennial - continuous\"",
+   "description": "Where a crop only produces part of the year, the weeks of the year it does. Leave both empty if it produces whenever it is old enough.",
+   "fieldname": "harvest_window_start_week",
+   "fieldtype": "Int",
+   "label": "Harvest window: first week of year",
+   "non_negative": 1
+  },
+  {
+   "depends_on": "eval:doc.growing_cycle==\"Perennial - continuous\"",
+   "fieldname": "harvest_window_end_week",
+   "fieldtype": "Int",
+   "label": "Harvest window: last week of year",
+   "non_negative": 1
+  },
+  {
    "fieldname": "flush_section",
    "fieldtype": "Section Break",
    "label": "Flush Schedule"
@@ -451,6 +529,14 @@
    "fieldtype": "Int",
    "label": "Total Flushes",
    "read_only": 1
+  },
+  {
+   "description": "What one plant is expected to give over its whole life. Only needed when the harvest is entered as percentages: they are shares of this. Leave it empty and the stems on each flush decide the total instead.",
+   "fieldname": "stated_stems_per_plant_life",
+   "fieldtype": "Float",
+   "label": "Stated stems per plant, life",
+   "non_negative": 1,
+   "precision": "3"
   },
   {
    "fieldname": "total_stems_per_plant_life",
@@ -512,13 +598,15 @@
    "default": "3",
    "fieldname": "weeks_on_tray",
    "fieldtype": "Int",
-   "label": "Weeks On Tray"
+   "label": "Weeks On Tray",
+   "read_only": 1
   },
   {
    "default": "8",
    "fieldname": "weeks_on_pot",
    "fieldtype": "Int",
-   "label": "Weeks on pot to first harvest"
+   "label": "Weeks on pot to first harvest",
+   "read_only": 1
   },
   {
    "fieldname": "cb_est",
@@ -534,14 +622,16 @@
    "default": "3",
    "fieldname": "hardening_weeks",
    "fieldtype": "Int",
-   "label": "Hardening Weeks"
+   "label": "Hardening Weeks",
+   "read_only": 1
   },
   {
    "default": "3",
    "description": "Weeks between a cutting going into the propagation house and the rooted plant going to the field.",
    "fieldname": "sticking_to_planting_weeks",
    "fieldtype": "Int",
-   "label": "Weeks sticking \u2192 planting"
+   "label": "Weeks sticking \u2192 planting",
+   "read_only": 1
   },
   {
    "fieldname": "est_derived_section",
@@ -598,7 +688,8 @@
    "default": "4",
    "fieldname": "max_multiplication_cycles",
    "fieldtype": "Int",
-   "label": "Max Multiplication Cycles"
+   "label": "Max Multiplication Cycles",
+   "read_only": 1
   },
   {
    "default": "1",
@@ -611,7 +702,8 @@
    "description": "Plantlets that do not survive the lab-to-bench transfer. The order is the requirement divided by (1 - this), which is the workbook's TC ORDER column: 4,000 needed is 4,444 ordered at 10%. Without it the order is the requirement exactly and arrives short.",
    "fieldname": "tc_order_loss_pct",
    "fieldtype": "Percent",
-   "label": "TC Order Loss Allowance"
+   "label": "TC Order Loss Allowance",
+   "read_only": 1
   },
   {
    "fieldname": "cb_mult",
@@ -683,13 +775,15 @@
    "default": "90",
    "fieldname": "rooting_success_pct",
    "fieldtype": "Percent",
-   "label": "Rooting success %"
+   "label": "Rooting success %",
+   "read_only": 1
   },
   {
    "default": "95",
    "fieldname": "field_establishment_pct",
    "fieldtype": "Percent",
-   "label": "Field establishment %"
+   "label": "Field establishment %",
+   "read_only": 1
   },
   {
    "fieldname": "cb_loss",
@@ -719,14 +813,16 @@
    "description": "Order to delivery at the TC lab. Distinct from on-farm establishment.",
    "fieldname": "supplier_lead_weeks",
    "fieldtype": "Int",
-   "label": "Supplier Lead (weeks)"
+   "label": "Supplier Lead (weeks)",
+   "read_only": 1
   },
   {
    "default": "4",
    "description": "Weeks a new motherstock takes to reach full cutting capacity.",
    "fieldname": "ramp_weeks",
    "fieldtype": "Int",
-   "label": "Build-up Weeks to Full Capacity"
+   "label": "Build-up Weeks to Full Capacity",
+   "read_only": 1
   },
   {
    "default": "25,50,75,100",
@@ -808,31 +904,6 @@
    "fieldname": "beds_per_block",
    "fieldtype": "Int",
    "label": "Beds per Block"
-  },
-  {
-   "fieldname": "route_section",
-   "fieldtype": "Section Break",
-   "label": "Plant Material Route"
-  },
-  {
-   "fieldname": "growing_cycle",
-   "fieldtype": "Select",
-   "label": "Growing Cycle",
-   "options": "\nPerennial - distinct flushes\nPerennial - continuous\nSingle flush cycle",
-   "read_only": 1
-  },
-  {
-   "fieldname": "route_summary",
-   "fieldtype": "Data",
-   "label": "Route",
-   "read_only": 1
-  },
-  {
-   "fieldname": "material_route",
-   "fieldtype": "Table",
-   "label": "Material Route",
-   "options": "Crop Material Stage",
-   "read_only": 1
   }
  ],
  "grid_page_length": 50,

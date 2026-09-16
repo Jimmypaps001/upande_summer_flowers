@@ -97,10 +97,15 @@ def plans(variety=None, farm=None):
 	# years there are plans for. A register carrying three years with one of them
 	# planned left the year picker holding a single option, and a picker with one
 	# option is disabled -- which is what "the financial year is not working" has
-	# meant every time it has been reported. The register is per variety and carries
-	# no farm, so the farm is deliberately not applied here.
-	reg = frappe.get_all("Summer Flower Market Demand",
-	                     filters={"variety": variety} if variety else {}, pluck="name")
+	# meant every time it has been reported. The register is per variety per farm,
+	# so both narrow it -- the seasons offered are the ones this farm's own order
+	# book covers, not another farm's.
+	regf = {}
+	if variety:
+		regf["variety"] = variety
+	if farm:
+		regf["farm"] = farm
+	reg = frappe.get_all("Summer Flower Market Demand", filters=regf, pluck="name")
 	seasons = set()
 	if reg:
 		for w in frappe.get_all(
@@ -1843,7 +1848,28 @@ def protocol_detail(version=None, variety=None, farm=None, plan=None):
 			"stems_per_plant": flt(r.stems_per_plant),
 			"stems_per_ha": int(round(flt(r.stems_per_plant) * plants_per_ha)),
 			"cumulative_stems_per_plant": round(cum, 2),
+			# The share of the plant's life this flush is, and everything gathered by
+			# the end of it. The planning sheet is read in percentages -- the last row
+			# is 100% -- and until now the page could only show stems.
+			"pct_of_life": flt(r.pct_of_life),
+			"cumulative_pct": flt(r.cumulative_pct),
 		})
+
+	# How the material gets to a plant, so the page can say what this crop is raised
+	# from. It was only ever on the protocol form in the desk; the planning dashboard
+	# could show you a seed crop's whole schedule without once saying it was seed.
+	route = []
+	for r in (v.material_route or []):
+		route.append({
+			"row_type": r.row_type or "Stage",
+			"stage": r.stage, "step": r.step,
+			"weeks": cint(r.weeks), "loss_pct": flt(r.loss_pct),
+			"yields_per_unit": flt(r.yields_per_unit or 1),
+			"is_purchase": cint(r.is_purchase),
+			"lead_weeks": cint(r.lead_weeks), "rate": flt(r.rate),
+			"item": r.item,
+		})
+	bought = [r["stage"] for r in route if r["is_purchase"] and r["stage"]]
 
 	# TC order through to the first harvest off those cuttings.
 	#
@@ -1963,6 +1989,10 @@ def protocol_detail(version=None, variety=None, farm=None, plan=None):
 			"order_to_first_harvest_weeks": journey[-1]["week"],
 		},
 		"flushes": flushes,
+		"route": route,
+		"route_summary": " → ".join(r["stage"] for r in route
+		                            if r["row_type"] != "Step" and r["stage"]),
+		"bought_at": bought,
 		"grades": [{"grade": g.grade, "pct": flt(g.allocation_pct),
 		            "price": flt(g.price_per_stem)} for g in v.grade_allocation],
 		"ramp": ramp,
@@ -2018,7 +2048,8 @@ def save_protocol(version, changes, flushes=None, grades=None, change_reason=Non
 		for i, f in enumerate(flushes, start=1):
 			v.append("flush_schedule", {
 				"flush_number": i,
-				"weeks_from_pinch": frappe.utils.cint(f.get("weeks_from_pinch")),
+				"weeks_from_planting": frappe.utils.cint(
+					f.get("weeks_from_planting") or f.get("weeks_from_pinch")),
 				"stems_per_plant": flt(f.get("stems_per_plant")),
 			})
 	if grades is not None:
