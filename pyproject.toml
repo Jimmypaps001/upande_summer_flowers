@@ -15,7 +15,8 @@ dependencies = [
 requires = ["flit_core >=3.4,<4"]
 build-backend = "flit_core.buildapi"
 
-# Every dependency declaration is commented out, on request.
+# The app dependencies are commented out, on request. The Frappe version line
+# below is not: bench refuses to install the app without it.
 #
 # requires-python above and the empty `dependencies` list are the only constraints
 # left, and neither names another app: required_apps in hooks.py is commented out
@@ -31,11 +32,11 @@ build-backend = "flit_core.buildapi"
 # with missing doctypes rather than a readable message.
 #
 # The Frappe major line this app is built against. bench and Frappe Cloud read this
-# to decide whether the app can be installed on a given bench; with it commented
-# out they may instead report "Could not find compatible Frappe version in
-# pyproject.toml file", so if a deploy fails on that, this is the block to restore.
-# [tool.bench.frappe-dependencies]
-# frappe = ">=16.0.0,<17.0.0"
+# to decide whether the app can be installed on a given bench; without it they
+# report "Could not find compatible Frappe version in pyproject.toml file" and the
+# deploy stops there.
+[tool.bench.frappe-dependencies]
+frappe = ">=16.0.0,<=17.0.0"
 
 # These dependencies are only installed when developer mode is enabled
 # [tool.bench.dev-dependencies]
