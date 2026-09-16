@@ -14,6 +14,7 @@
       <a href="#example">{{ _("Worked example") }}</a>
       <a href="#doctypes">{{ _("Doctypes") }}</a>
       <a href="#test">{{ _("What to test") }}</a>
+      <a href="#effects">{{ _("Change one thing") }}</a>
       <a href="#gaps">{{ _("Not built yet") }}</a>
     </nav>
   </header>
@@ -384,6 +385,123 @@ sticking = planting − sticking weeks</code></pre>
     </div>
   </section>
 
+
+  <!-- ─────────────────────────────── change one thing, see what moves ── -->
+  <section id="effects" class="fl-sec">
+    <h2>{{ _("Change one thing, and check what moves") }}</h2>
+    <p class="fl-lede">{{ _("The protocol governs the plan, so the sharpest test is to change one number and see exactly what follows. Some of these do not move what you would expect, which is the point of testing them.") }}</p>
+
+    <div class="fl-callout">
+      <h3>{{ _("Nothing changes until all four steps happen") }}</h3>
+      <ol class="fl-ol">
+        <li>{{ _("Edit the Crop Protocol") }}</li>
+        <li>{{ _("Approve it — this writes a new Crop Protocol Version") }}</li>
+        <li>{{ _("Open the Production Plan and point it at the new Version") }}</li>
+        <li>{{ _("Regenerate") }}</li>
+      </ol>
+      <p>{{ _("An approved plan keeps the Version it was built on. That is deliberate — a plan is a commitment, not a live query — but it means \"I changed the protocol and nothing happened\" is usually step 3 or 4 missing, not a bug. Test that too: change the protocol and confirm an existing plan does NOT move until you regenerate it.") }}</p>
+    </div>
+
+    <h3>{{ _("Geometry: bed area, spacing, and yield") }}</h3>
+    <p>{{ _("Three inputs, and they do different jobs. Plants per bed is not typed in — it is derived, because three numbers where two will do is three numbers that can disagree.") }}</p>
+    <pre class="fl-calc"><code>plants per bed = bed area (m² net) × density (plants per m²)
+plants needed  = stems wanted ÷ stems per plant at that flush
+beds           = ceil(plants needed ÷ plants per bed)
+plants         = beds × plants per bed
+ground         = beds × bed area</code></pre>
+
+    <p>{{ _("Here is every one of them changed, against the same week: 72,600 stems at 2.6 stems a plant. Baseline is a 50 m² bed at 20 plants per m².") }}</p>
+    <div class="fl-scroll">
+      <table class="fl-table">
+        <thead>
+          <tr><th>{{ _("Change") }}</th><th class="fl-num">{{ _("Plants/bed") }}</th><th class="fl-num">{{ _("Beds") }}</th><th class="fl-num">{{ _("Plants") }}</th><th class="fl-num">{{ _("Ground") }}</th></tr>
+        </thead>
+        <tbody>
+          <tr><td class="fl-base">{{ _("baseline — 50 m², 20/m²") }}</td><td class="fl-num">1,000</td><td class="fl-num">28</td><td class="fl-num">28,000</td><td class="fl-num">1,400 m²</td></tr>
+          <tr><td>{{ _("bed 50 → 100 m²") }}</td><td class="fl-num fl-up">2,000</td><td class="fl-num fl-dn">14</td><td class="fl-num">28,000</td><td class="fl-num">1,400 m²</td></tr>
+          <tr><td>{{ _("bed 50 → 25 m²") }}</td><td class="fl-num fl-dn">500</td><td class="fl-num fl-up">56</td><td class="fl-num">28,000</td><td class="fl-num">1,400 m²</td></tr>
+          <tr><td>{{ _("density 20 → 40 /m² (tighter spacing)") }}</td><td class="fl-num fl-up">2,000</td><td class="fl-num fl-dn">14</td><td class="fl-num">28,000</td><td class="fl-num fl-dn">700 m²</td></tr>
+          <tr><td>{{ _("density 20 → 10 /m² (wider spacing)") }}</td><td class="fl-num fl-dn">500</td><td class="fl-num fl-up">56</td><td class="fl-num">28,000</td><td class="fl-num fl-up">2,800 m²</td></tr>
+          <tr><td>{{ _("stems per plant 2.6 → 1.3") }}</td><td class="fl-num">1,000</td><td class="fl-num fl-up">56</td><td class="fl-num fl-up">56,000</td><td class="fl-num fl-up">2,800 m²</td></tr>
+          <tr><td>{{ _("stems per plant 2.6 → 5.2") }}</td><td class="fl-num">1,000</td><td class="fl-num fl-dn">14</td><td class="fl-num fl-dn">14,000</td><td class="fl-num fl-dn">700 m²</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="fl-callout fl-warnbox">
+      <h3>{{ _("Read that table before reporting a bug") }}</h3>
+      <ul class="fl-list">
+        <li><b>{{ _("Bigger beds do add plants per bed") }}</b> — {{ _("50 m² × 20 = 1,000; 100 m² × 20 = 2,000. That part works as you would expect.") }}</li>
+        <li><b>{{ _("But the plan's total plants does not change") }}</b>, {{ _("because the plan sizes to stems, not to area. Bigger beds mean fewer of them for the same crop.") }}</li>
+        <li><b>{{ _("Spacing moves the ground, not the plant count.") }}</b> {{ _("Planting twice as tight grows the same plants in half the space.") }}</li>
+        <li><b>{{ _("Stems per plant is the only one that moves the plant count.") }}</b> {{ _("Halve the yield and you need twice the plants — that is the number to change if a plan looks the wrong size.") }}</li>
+      </ul>
+    </div>
+
+    <h3>{{ _("Minimum planting area") }}</h3>
+    <p>{{ _("Entered as area, never as plants. It rounds up to whole beds and acts as a floor: a week needing three beds' worth gets the minimum instead if the minimum is larger.") }}</p>
+    <p class="fl-do">{{ _("Set the minimum to something large, regenerate, and check the small weeks grew to it — and that coverage went over 100% as a result.") }}</p>
+
+    <h3>{{ _("Timing: the dates all hang off the protocol") }}</h3>
+    <div class="fl-scroll">
+      <table class="fl-table">
+        <thead><tr><th>{{ _("Change this") }}</th><th>{{ _("And this moves") }}</th></tr></thead>
+        <tbody>
+          <tr><td>{{ _("Weeks planting → first cut") }}</td><td>{{ _("the planting date, and the sticking date with it. Add a week and everything shifts a week earlier.") }}</td></tr>
+          <tr><td>{{ _("Weeks sticking → planting") }}</td><td>{{ _("the sticking week only. The planting date stays where the market put it.") }}</td></tr>
+          <tr><td>{{ _("Flush schedule") }}</td><td>{{ _("which weeks a planting covers — so how many plantings the season needs at all.") }}</td></tr>
+          <tr><td>{{ _("Weeks in ground") }}</td><td>{{ _("when the block frees up, and whether a second planting can follow in the season.") }}</td></tr>
+          <tr><td>{{ _("Turnaround weeks") }}</td><td>{{ _("the fallow gap after uprooting. On a crop replanted several times a year this is the difference between a workable rotation and a double-booked bed.") }}</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h3>{{ _("Acquisition method: when you have to order") }}</h3>
+    <p>{{ _("The planting date does not move when you change how material is acquired — the market decides that. What moves is how far ahead you must commit, how many units you buy, and who you buy from.") }}</p>
+    <pre class="fl-calc"><code>order by = planting date − (weeks to get it into the ground + supplier lead time)</code></pre>
+    <div class="fl-scroll">
+      <table class="fl-table">
+        <caption>{{ _("Real routes on this site") }}</caption>
+        <thead><tr><th>{{ _("Buy at") }}</th><th class="fl-num">{{ _("Weeks to ground") }}</th><th class="fl-num">{{ _("Lead") }}</th><th class="fl-num">{{ _("Notice needed") }}</th><th>{{ _("Units") }}</th></tr></thead>
+        <tbody>
+          <tr><td>{{ _("Dahlia — tubers") }}</td><td class="fl-num">8</td><td class="fl-num">8</td><td class="fl-num"><b>16 {{ _("weeks") }}</b></td><td>{{ _("1 tuber → 4.53 plants") }}</td></tr>
+          <tr><td>{{ _("Bupleurum — seed") }}</td><td class="fl-num">7</td><td class="fl-num">6</td><td class="fl-num"><b>13 {{ _("weeks") }}</b></td><td>{{ _("1.58 seeds per plant") }}</td></tr>
+          <tr><td>{{ _("Ready plants") }}</td><td class="fl-num">0</td><td class="fl-num">{{ _("lead only") }}</td><td class="fl-num"><b>{{ _("lead only") }}</b></td><td>{{ _("1 plant → 1 plant") }}</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="fl-do">{{ _("Take one planting. Change which stage of the route is marked as bought, and watch the order-by date move while the planting date stays put. Buying ready plants is ordered latest and costs most; buying tissue culture is ordered earliest and means you carry the propagation yourself.") }}</p>
+    <p class="fl-note">{{ _("Known gap: the plan's own order box is still sized as tissue culture whatever the route says. The route-aware figure is correct in sourcing and on the dashboard — check it there, and do not report the plan's TC box as a new bug.") }}</p>
+
+    <h3>{{ _("What a propagation plan should contain") }}</h3>
+    <p>{{ _("It answers one question: to plant those beds on those dates, what has to be stuck, when, and off how many mother plants. From a real one on this site:") }}</p>
+    <div class="fl-scroll">
+      <table class="fl-table">
+        <tbody>
+          <tr><th>{{ _("Weeks of sticking") }}</th><td>38 {{ _("rows — each with the week it is stuck and the week it will be planted") }}</td></tr>
+          <tr><th>{{ _("Plants to stick") }}</th><td>550,000 {{ _("over the season") }}</td></tr>
+          <tr><th>{{ _("Cuttings required") }}</th><td>550,000 <span class="fl-dim">({{ _("plants to stick × cuttings per plant") }})</span></td></tr>
+          <tr><th>{{ _("Peak week") }}</th><td>37,000 {{ _("cuttings in 2028-W12") }}</td></tr>
+          <tr><th>{{ _("Mother plants required") }}</th><td>37,000 <span class="fl-dim">({{ _("sized on the peak week, not the season total") }})</span></td></tr>
+          <tr><th>{{ _("Bench space at peak") }}</th><td>298.4 m²</td></tr>
+          <tr><th>{{ _("Ramp") }}</th><td>4 {{ _("weeks before a new mother plant yields fully") }}</td></tr>
+          <tr><th>{{ _("Sources") }}</th><td>{{ _("Existing motherstock 34,223 + new motherstock from TC 37,000") }}</td></tr>
+          <tr><th>{{ _("TC to order") }}</th><td>10,278 {{ _("by") }} 30 Nov 2026 <span class="fl-dim">({{ _("first sticking 24 Jan 2028") }})</span></td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="fl-callout">
+      <h3>{{ _("Test it like this") }}</h3>
+      <ul class="fl-list">
+        <li>{{ _("Every sticking week equals its planting week minus the protocol's sticking weeks. Check one row by hand.") }}</li>
+        <li><b>{{ _("Mother plants follow the peak week, never the total.") }}</b> {{ _("Cuttings cannot be banked — a mother plant yields what it yields that week. Flatten the demand curve and the mother plant count should fall even though the season total has not changed. That is the single best test of this document.") }}</li>
+        <li>{{ _("Raise cuttings per plant and the mother plants required should fall in proportion.") }}</li>
+        <li>{{ _("Add existing motherstock and the TC order should shrink by what it covers — not the plants to stick, which the market decides.") }}</li>
+        <li>{{ _("The ramp is why the TC order date is more than a year before the first sticking. Shorten the ramp and that date should move later.") }}</li>
+      </ul>
+    </div>
+  </section>
+
   <!-- ───────────────────────────────────────────── not built yet ── -->
   <section id="gaps" class="fl-sec fl-gaps">
     <h2>{{ _("Not built yet") }}</h2>
@@ -567,6 +685,11 @@ sticking = planting − sticking weeks</code></pre>
   @media (max-width: 34rem) {
     .fl-do::before, .fl-exp::before, .fl-why::before { display: block; min-width: 0; }
   }
+
+
+  .fl-base { color: var(--fl-dim); }
+  .fl-up { color: var(--fl-violet); font-weight: 600; }
+  .fl-dn { color: var(--fl-accent); font-weight: 600; }
 
   .fl-gaps { border-top: 1px solid var(--fl-line); }
   .fl-list { margin: 0; padding-left: 1.1rem; }
