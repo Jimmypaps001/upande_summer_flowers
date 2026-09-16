@@ -67,6 +67,8 @@
   "stems_per_plant_per_week",
   "harvest_window_start_week",
   "harvest_window_end_week",
+  "season_curve_build",
+  "season_curve_tail",
   "flush_section",
   "flush_schedule",
   "flush_totals_section",
@@ -507,6 +509,18 @@
    "fieldtype": "Int",
    "label": "Harvest window: last week of year",
    "non_negative": 1
+  },
+  {
+   "fieldname": "season_curve_build",
+   "fieldtype": "Data",
+   "label": "Season curve: build-up weights",
+   "read_only": 1
+  },
+  {
+   "fieldname": "season_curve_tail",
+   "fieldtype": "Data",
+   "label": "Season curve: tail-off weights",
+   "read_only": 1
   },
   {
    "fieldname": "flush_section",

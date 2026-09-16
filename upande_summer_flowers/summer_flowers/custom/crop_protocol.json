@@ -457,8 +457,8 @@
    "name": "Crop Protocol-custom_sf_cb_timeline_b"
   },
   {
-   "depends_on": "eval:(doc.crop_type==\"Summer Flowers\") && !doc.__islocal",
-   "description": "What moved and why. Required before approval.",
+   "depends_on": "eval:(doc.crop_type==\"Summer Flowers\") && !doc.__islocal && doc.custom_sf_current_version",
+   "description": "",
    "doctype": "Custom Field",
    "dt": "Crop Protocol",
    "fieldname": "custom_sf_change_reason",
@@ -3532,16 +3532,6 @@
    "property": "description",
    "property_type": "Text",
    "value": "From this farm's blocks; typed only if it has none."
-  },
-  {
-   "doc_type": "Crop Protocol",
-   "doctype": "Property Setter",
-   "doctype_or_field": "DocField",
-   "field_name": "custom_sf_change_reason",
-   "name": "Crop Protocol-custom_sf_change_reason-description",
-   "property": "description",
-   "property_type": "Text",
-   "value": "What moved and why. Required before approval."
   },
   {
    "doc_type": "Crop Protocol",

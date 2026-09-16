@@ -753,14 +753,19 @@ def approve(protocol):
 	if changed == []:
 		frappe.throw(_("Nothing has changed since {0} was approved.").format(
 			doc.get("custom_sf_current_version")))
-	if not doc.get("custom_sf_change_reason"):
-		frappe.throw(_("A reason is required: it is what the history records."))
 
 	prior = frappe.db.get_value("Crop Protocol Version",
 	                            {"variety": doc.variety, "farm": doc.farm,
 	                             "version_status": "Active"},
 	                            ["name", "effective_from"], as_dict=True)
 	prior_name = prior.name if prior else None
+
+	# A reason records what moved, so there has to be something it moved from. The
+	# first approval of a protocol supersedes nothing and has no history to explain;
+	# asking for one there is asking someone to justify writing a variety down.
+	if prior_name and not doc.get("custom_sf_change_reason"):
+		frappe.throw(_("A reason is required: it is what the history records. "
+		               "{0} is in force, so say what this changes.").format(prior_name))
 	last = frappe.db.sql("""select ifnull(max(version), 0) from `tabCrop Protocol Version`
 		where variety = %s and farm = %s""", (doc.variety, doc.farm))[0][0]
 
