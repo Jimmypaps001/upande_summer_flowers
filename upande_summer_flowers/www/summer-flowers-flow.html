@@ -13,6 +13,7 @@
       <a href="#guide">{{ _("Step by step") }}</a>
       <a href="#example">{{ _("Worked example") }}</a>
       <a href="#doctypes">{{ _("Doctypes") }}</a>
+      <a href="#test">{{ _("What to test") }}</a>
       <a href="#gaps">{{ _("Not built yet") }}</a>
     </nav>
   </header>
@@ -232,6 +233,157 @@ uproot   = planting + 103 weeks</code></pre>
     </div>
   </section>
 
+
+  <!-- ──────────────────────────────────────────── what to test ── -->
+  <section id="test" class="fl-sec">
+    <h2>{{ _("What to test") }}</h2>
+    <p class="fl-lede">{{ _("Work down the list. Each case says what to do, what should happen, and what it would mean if it did not — so a failure can be reported as more than \"it did not work\".") }}</p>
+
+    <div class="fl-callout">
+      <h3>{{ _("Before you start") }}</h3>
+      <p>{{ _("A test needs four things to exist, in this order. If one is missing, cases below it will fail for that reason and not for a real one.") }}</p>
+      <ol class="fl-ol">
+        <li><b>{{ _("A Farm") }}</b> — {{ _("and, for anything to be placed, a Block with Beds on it. Most farms have none yet; Karen does.") }}</li>
+        <li><b>{{ _("An Item") }}</b> {{ _("for the variety, in item group Summer Flowers.") }}</li>
+        <li><b>{{ _("A Crop Protocol") }}</b> {{ _("for that variety at that farm, with plants per bed, weeks to first cut, weeks in ground and a flush schedule filled in.") }}</li>
+        <li><b>{{ _("An Active Crop Protocol Version") }}</b> — {{ _("the frozen snapshot. Without one the plan refuses, and says so.") }}</li>
+      </ol>
+    </div>
+
+    <table class="fl-cases">
+      <tbody>
+        <tr>
+          <th scope="row">1</th>
+          <td>
+            <h4>{{ _("A register is one variety at one farm") }}</h4>
+            <p class="fl-do">{{ _("Create a Summer Flower Market Demand. Fill variety and farm, add a few weeks.") }}</p>
+            <p class="fl-exp">{{ _("It saves, and is named") }} <code>variety-farm</code>. {{ _("Farm is mandatory and editable.") }}</p>
+            <p class="fl-why">{{ _("Proves the register is keyed the way the market sheet states it.") }}</p>
+          </td>
+        </tr>
+        <tr>
+          <th scope="row">2</th>
+          <td>
+            <h4>{{ _("Duplicates are refused, second farms are not") }}</h4>
+            <p class="fl-do">{{ _("Try a second register for the same variety at the same farm. Then try the same variety at a different farm.") }}</p>
+            <p class="fl-exp">{{ _("The first is refused by name. The second saves.") }}</p>
+            <p class="fl-why">{{ _("A variety grown at two farms is two order books. This is the check that used to block that.") }}</p>
+          </td>
+        </tr>
+        <tr>
+          <th scope="row">3</th>
+          <td>
+            <h4>{{ _("The walkthrough opens") }}</h4>
+            <p class="fl-do">{{ _("Click the ⓘ icon on the Market Demand form, and again on a Crop Protocol.") }}</p>
+            <p class="fl-exp">{{ _("A step-by-step tour highlights each field in turn.") }}</p>
+            <p class="fl-why">{{ _("The field descriptions were removed from the forms; the tour is where that wording went. If the icon is missing, the app's assets did not deploy.") }}</p>
+          </td>
+        </tr>
+        <tr>
+          <th scope="row">4</th>
+          <td>
+            <h4>{{ _("The plan previews before it writes") }}</h4>
+            <p class="fl-do">{{ _("On the register click Create Production Plan, pick a season, click Check first.") }}</p>
+            <p class="fl-exp">{{ _("A summary appears. It does not ask which farm. Anything blocking is listed before anything is created.") }}</p>
+            <p class="fl-why">{{ _("The farm comes from the register. Being asked for it again is the bug this replaced.") }}</p>
+          </td>
+        </tr>
+        <tr>
+          <th scope="row">5</th>
+          <td>
+            <h4>{{ _("Check the arithmetic by hand") }}</h4>
+            <p class="fl-do">{{ _("Take the first week the register asks for, and the first planting the plan proposed. Work it out yourself:") }}</p>
+            <pre class="fl-calc fl-calc-sm"><code>beds     = ceil(stems wanted ÷ (stems per plant at first flush × plants per bed))
+plants   = beds × plants per bed
+planting = the harvest week's Monday − weeks to first cut
+sticking = planting − sticking weeks</code></pre>
+            <p class="fl-exp">{{ _("Your numbers and the plan's match exactly.") }}</p>
+            <p class="fl-why">{{ _("This is the whole planner in four lines. If it disagrees, the protocol is being read wrongly — check which Version the plan names.") }}</p>
+          </td>
+        </tr>
+        <tr>
+          <th scope="row">6</th>
+          <td>
+            <h4>{{ _("Later flushes are not planted for twice") }}</h4>
+            <p class="fl-do">{{ _("Find a week that falls on a later flush of an earlier planting — for a 12-week flush interval, 12 weeks after a first cut.") }}</p>
+            <p class="fl-exp">{{ _("That week has a smaller planting than the first one, or none at all.") }}</p>
+            <p class="fl-why">{{ _("A planting keeps producing. If every week gets a full planting, the credit-forward step is broken and the plan is several times too big.") }}</p>
+          </td>
+        </tr>
+        <tr>
+          <th scope="row">7</th>
+          <td>
+            <h4>{{ _("The same demand gives the same plan") }}</h4>
+            <p class="fl-do">{{ _("Click Regenerate on a draft plan. Compare plantings, beds and plants.") }}</p>
+            <p class="fl-exp">{{ _("Identical, every time.") }}</p>
+            <p class="fl-why">{{ _("If it changes, something outside the register is being read — usually a different protocol Version.") }}</p>
+          </td>
+        </tr>
+        <tr>
+          <th scope="row">8</th>
+          <td>
+            <h4>{{ _("No ground does not stop a plan") }}</h4>
+            <p class="fl-do">{{ _("Plan a farm that has no blocks — Carzan St, for instance.") }}</p>
+            <p class="fl-exp">{{ _("The plan still builds, every planting is sized, and it reports how many are waiting on a block.") }}</p>
+            <p class="fl-why">{{ _("Demand states what the market needs. Trimming it to fit the ground answers a smaller question than the one asked.") }}</p>
+          </td>
+        </tr>
+        <tr>
+          <th scope="row">9</th>
+          <td>
+            <h4>{{ _("Approval produces the budget") }}</h4>
+            <p class="fl-do">{{ _("Submit for Approval, then Approve as an Agriculture Manager.") }}</p>
+            <p class="fl-exp">{{ _("The propagation plan is rebuilt and a budget appears, valued at the register's price per stem.") }}</p>
+            <p class="fl-why">{{ _("Approving is what commits the plan. Nothing downstream should exist before it.") }}</p>
+          </td>
+        </tr>
+        <tr>
+          <th scope="row">10</th>
+          <td>
+            <h4>{{ _("The sheet importer will not guess a farm") }}</h4>
+            <p class="fl-do">{{ _("On the planning dashboard, upload a demand file for a variety that has registers at two farms, without picking a farm.") }}</p>
+            <p class="fl-exp">{{ _("It refuses and names the farms.") }}</p>
+            <p class="fl-why">{{ _("Guessing writes one farm's sheet into another farm's register, and nothing would say so.") }}</p>
+          </td>
+        </tr>
+        <tr>
+          <th scope="row">11</th>
+          <td>
+            <h4>{{ _("Run the automated check") }}</h4>
+            <p class="fl-do">{{ _("From the bench:") }}</p>
+            <pre class="fl-calc fl-calc-sm"><code>bench --site &lt;site&gt; execute \
+  upande_summer_flowers.summer_flowers.console.e2e_planning_check.main</code></pre>
+            <p class="fl-exp">{{ _("It runs three crops — continuous, distinct flushes, single flush — from register to order schedule, and prints a pass/fail tally. It builds everything inside a savepoint and rolls back, so it is safe on live data.") }}</p>
+            <p class="fl-why">{{ _("Two failures are expected and known; see below. Anything else is new.") }}</p>
+          </td>
+        </tr>
+      </tbody>
+    </table>
+
+    <div class="fl-callout fl-warnbox">
+      <h3>{{ _("Do not raise these as bugs") }}</h3>
+      <p>{{ _("They are known, and already written down. Raising them again costs someone an afternoon.") }}</p>
+      <ul class="fl-list">
+        <li><b>{{ _("Crop Protocol has no approval workflow.") }}</b>
+            {{ _("The workflow named \"Crop Protocol Approval\" is attached to Summer Flower Protocol — a retired doctype holding 88 old records — not to Crop Protocol, where the 181 live protocols are. So Submit for Approval and Revise do not appear there. 180 of 181 protocols still read Draft.") }}</li>
+        <li><b>{{ _("The order is sized as tissue culture whatever the route says.") }}</b>
+            {{ _("A crop bought as plants, or raised from seed, is still told to order TC plantlets.") }}</li>
+        <li><b>{{ _("Most farms have no blocks or beds") }}</b>, {{ _("so their plantings cannot be placed.") }}</li>
+        <li><b>{{ _("Harvest actuals are not scored against the plan.") }}</b></li>
+      </ul>
+    </div>
+
+    <div class="fl-callout">
+      <h3>{{ _("When something fails") }}</h3>
+      <ol class="fl-ol">
+        <li>{{ _("Read the preview's blocking list first — most refusals are stated there in words.") }}</li>
+        <li>{{ _("Check which Crop Protocol Version the plan names, and that it is the Active one. A plan built on an old version is the commonest surprise.") }}</li>
+        <li>{{ _("Look in Error Log for the minute it happened.") }}</li>
+        <li>{{ _("Report it as: what you did, what you expected, what happened, and the names of the register, plan and version. Without those three names nobody can reproduce it.") }}</li>
+      </ol>
+    </div>
+  </section>
+
   <!-- ───────────────────────────────────────────── not built yet ── -->
   <section id="gaps" class="fl-sec fl-gaps">
     <h2>{{ _("Not built yet") }}</h2>
@@ -378,6 +530,43 @@ uproot   = planting + 103 weeks</code></pre>
   .fl-kv dt { font-size: .75rem; color: var(--fl-dim); text-transform: uppercase;
     letter-spacing: .03em; }
   .fl-kv dd { margin: .15rem 0 0; font-size: 1.05rem; font-variant-numeric: tabular-nums; }
+
+
+  /* test cases ------------------------------------------------- */
+  .fl-callout {
+    border: 1px solid var(--fl-line); border-left: 3px solid var(--fl-rule);
+    border-radius: 8px; padding: .9rem 1rem; margin: 1.25rem 0;
+    background: var(--fl-card);
+  }
+  .fl-callout h3 { margin: 0 0 .4rem; font-size: .95rem; }
+  .fl-callout p { color: var(--fl-ink-2); margin: 0 0 .5rem; max-width: 46rem; }
+  .fl-warnbox { border-left-color: var(--fl-warn); }
+  .fl-ol { margin: 0; padding-left: 1.2rem; }
+  .fl-ol li { color: var(--fl-ink-2); margin-bottom: .35rem; }
+  .fl-ol b, .fl-list b { color: var(--fl-ink); }
+
+  .fl-cases { width: 100%; border-collapse: collapse; }
+  .fl-cases th[scope="row"] {
+    width: 2.2rem; text-align: left; vertical-align: top; padding: 1rem .5rem 1rem 0;
+    color: var(--fl-dim); font-variant-numeric: tabular-nums; font-size: .85rem;
+    border-top: 1px solid var(--fl-line);
+  }
+  .fl-cases td { padding: 1rem 0; border-top: 1px solid var(--fl-line); }
+  .fl-cases h4 { margin: 0 0 .35rem; font-size: .95rem; }
+  .fl-cases p { margin: 0 0 .3rem; color: var(--fl-ink-2); max-width: 46rem; }
+  .fl-do::before    { content: "Do "; }
+  .fl-exp::before   { content: "Expect "; }
+  .fl-why::before   { content: "Why "; }
+  .fl-do::before, .fl-exp::before, .fl-why::before {
+    display: inline-block; min-width: 3.6rem; font-size: .7rem; font-weight: 600;
+    text-transform: uppercase; letter-spacing: .04em; color: var(--fl-dim);
+  }
+  .fl-exp { color: var(--fl-ink) !important; }
+  .fl-why { font-size: .88rem; }
+  .fl-calc-sm { font-size: .78rem; margin: .4rem 0 .5rem; }
+  @media (max-width: 34rem) {
+    .fl-do::before, .fl-exp::before, .fl-why::before { display: block; min-width: 0; }
+  }
 
   .fl-gaps { border-top: 1px solid var(--fl-line); }
   .fl-list { margin: 0; padding-left: 1.1rem; }
