@@ -38,6 +38,16 @@ DEMAND_DESCRIPTIONS = ["product_group", "grade_allocation"]
 # Gross area was dropped when the protocol stopped carrying bed and block
 # geometry: a protocol states the variety's characteristics, and how much path
 # a farm leaves between beds is the Block's business, not the crop's.
+PROTOCOL_SETTERS = [
+	# life_expectancy_years is now shipped as a custom field carrying its own label,
+	# and being derived rather than mandatory. These setters said the same thing from
+	# the outside, and the pair would drift.
+	("Crop Protocol", "life_expectancy_years", "label"),
+	("Crop Protocol", "life_expectancy_years", "read_only"),
+	("Crop Protocol", "life_expectancy_years", "reqd"),
+	("Crop Protocol", "life_expectancy_years", "description"),
+]
+
 PROTOCOL_FIELDS = [
 	"custom_sf_sqm_gross_per_bed",
 	"custom_sf_path_allowance_pct",
@@ -84,6 +94,9 @@ def execute():
 		):
 			frappe.db.set_value("Custom Field", name, "description", "")
 			cleared.append(fieldname)
+
+	for doctype, fieldname, prop in PROTOCOL_SETTERS:
+		setters += _drop_setter(doctype, fieldname, prop)
 
 	for fieldname in PROTOCOL_FIELDS:
 		if _drop_field("Crop Protocol", fieldname):
