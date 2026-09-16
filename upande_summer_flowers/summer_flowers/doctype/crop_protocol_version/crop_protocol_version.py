@@ -131,17 +131,23 @@ class CropProtocolVersion(Document):
 		# has not been recorded yet should not stop anyone writing down what a variety
 		# does. Without it the bed-based figures simply cannot be worked out, and say so
 		# by staying empty rather than by refusing the protocol.
-		self.plants_per_bed = int(round(
-			flt(self.sqm_net_per_bed) * flt(self.plants_per_sqm_net))) \
-			if self.sqm_net_per_bed else 0
+		# A farm that has not recorded its bed size still states the smallest planting
+		# it will make, and that is an area too. Falling back to it keeps every
+		# bed-based figure in the right order of magnitude instead of collapsing to
+		# one plant per bed -- which is what a zero here used to mean, and it made a
+		# 20-bed crop read as 10,000 beds on 0 hectares.
+		bed_sqm = flt(self.sqm_net_per_bed) or flt(self.min_planting_area_sqm)
+		self.bed_area_assumed = 1 if (not self.sqm_net_per_bed and bed_sqm) else 0
+
+		self.plants_per_bed = int(round(bed_sqm * flt(self.plants_per_sqm_net))) \
+			if bed_sqm else 0
 
 		# The minimum planting is an area. Beds are whole, so it rounds up to one.
 		beds = 0
-		if self.min_planting_area_sqm and self.sqm_net_per_bed:
-			beds = int(math.ceil(flt(self.min_planting_area_sqm)
-			                     / flt(self.sqm_net_per_bed)))
+		if self.min_planting_area_sqm and bed_sqm:
+			beds = int(math.ceil(flt(self.min_planting_area_sqm) / bed_sqm))
 		self.min_planting_beds_derived = (max(beds, 1)
-		                                  if (self.min_planting_area_sqm and self.sqm_net_per_bed)
+		                                  if (self.min_planting_area_sqm and bed_sqm)
 		                                  else 0)
 		self.min_planting_plants = (self.min_planting_beds_derived or 0) \
 			* (self.plants_per_bed or 0)

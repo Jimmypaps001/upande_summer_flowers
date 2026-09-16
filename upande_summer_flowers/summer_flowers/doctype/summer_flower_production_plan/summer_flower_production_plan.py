@@ -396,7 +396,7 @@ class SummerFlowerProductionPlan(Document):
 			return
 
 		v = getattr(self, "_version", None)
-		sqm_per_bed = flt(getattr(v, "sqm_net_per_bed", 0)) if v else 0
+		sqm_per_bed = bed_sqm(v) if v else 0
 		self.space_required_ha = (self.beds_required_peak * sqm_per_bed) / 10_000
 
 		blocks = frappe.get_all(
@@ -975,6 +975,17 @@ def autoassign_blocks(plan):
 	        "placeable_coverage_pct": flt(p.placeable_coverage_pct)}
 
 
+def bed_sqm(v):
+	"""How big a bed is, for a version that may not have been told.
+
+	A farm that has not recorded its bed size has still stated the smallest planting
+	it will make, and that is an area too. Without the fallback every bed-based
+	figure divides by zero's worth of ground: the hectares came out as 0.0 for a
+	crop that plainly needs some.
+	"""
+	return flt(getattr(v, "sqm_net_per_bed", 0)) or flt(getattr(v, "min_planting_area_sqm", 0))
+
+
 @frappe.whitelist()
 def plan_preview(market_demand, farm=None, season_start_year=None):
 	"""What creating this plan would mean, before anything is written.
@@ -1091,6 +1102,35 @@ def plan_preview(market_demand, farm=None, season_start_year=None):
 		peak_stems = cint(peak_row.demand_stems)
 		offsets = v.flush_offsets()
 		first_flush = offsets[0][1] if offsets else 0
+
+		# Several of these are not mandatory on the protocol, so they are easy to
+		# leave empty, and every figure below then quietly falls back to a 1. A 1 is
+		# not a measurement: one plant to a bed turned a twenty-bed crop into ten
+		# thousand beds on no land at all. Say which number is missing instead.
+		assumed = []
+		if not cint(v.plants_per_bed):
+			assumed.append(_("plants per bed — needs a bed area and a planting density"))
+		if not cint(v.min_planting_beds_derived):
+			assumed.append(_("minimum planting, in beds — needs a minimum planting area"))
+		if not flt(v.cuttings_per_plant_per_week):
+			assumed.append(_("cuttings per mother plant per week"))
+		if not cint(v.total_weeks_in_ground):
+			assumed.append(_("weeks in the ground"))
+		if not flt(v.total_stems_per_plant_life):
+			assumed.append(_("stems per plant over its life"))
+		if v.get("bed_area_assumed"):
+			notes.append(_(
+				"{0} has no bed area recorded, so the smallest planting it will make "
+				"({1} m²) is being read as one bed: {2} plants to a bed at {3} per m²."
+			).format(farm, flt(v.min_planting_area_sqm), cint(v.plants_per_bed),
+			         flt(v.plants_per_sqm_net)))
+		if assumed:
+			notes.append(_(
+				"These are not filled in on {0}, and every figure below assumes 1 "
+				"where they should stand: {1}. A 1 is not a measurement — check the "
+				"numbers against the protocol before committing to them."
+			).format(version, "; ".join(assumed)))
+
 		ppb = cint(v.plants_per_bed) or 1
 		min_beds = cint(v.min_planting_beds_derived) or 1
 		if first_flush:
@@ -1116,14 +1156,21 @@ def plan_preview(market_demand, farm=None, season_start_year=None):
 				"order_by": lead["order_by"] if lead else None,
 				"late": bool(lead and lead["late"]),
 			}
-			# Ground: what has to be STANDING to deliver one season's demand, so the
-			# yield has to be per year, not per life. A plant gives 18.8 stems over
-			# 2.13 years, not 18.8 in the season -- dividing by the lifetime figure
-			# said Aster needed 1.09 ha where it needs 2.33, less than half the land.
-			years = flt(v.life_expectancy_years) or 1
-			per_year = flt(v.total_stems_per_plant_life) / years
-			if per_year:
-				total_plants = int(math.ceil(stems / per_year))
+			# Ground: what has to be STANDING to deliver the demand, which is a rate
+			# question, not a total one. A plant yields over its whole life at a steady
+			# rate -- five stems across fifty weeks is one every ten -- so the standing
+			# population is the busiest week's demand divided by that weekly rate.
+			#
+			# It used to divide the season's TOTAL by a per-YEAR yield, which silently
+			# assumed the season was a year. On a 42-week season that understated the
+			# ground by a fifth: 42,000 stems over 42 weeks came out as 8,064 plants
+			# where the same 1,000 a week needs 10,000 standing, ten cohorts of a
+			# thousand a week apart on a ten-week flush cycle.
+			weeks_in_ground = cint(v.total_weeks_in_ground)
+			per_week = (flt(v.total_stems_per_plant_life) / weeks_in_ground
+			            if weeks_in_ground else 0)
+			if per_week:
+				total_plants = int(math.ceil(peak_stems / per_week))
 				smooth_beds = int(math.ceil(total_plants / ppb))
 				# That figure assumes the ground can be divided as finely as the demand.
 				# It cannot: the planner rounds every planting up to the protocol's
@@ -1149,15 +1196,15 @@ def plan_preview(market_demand, farm=None, season_start_year=None):
 							weeks=off - offsets[0][0])
 						covered[iso_year_week(hd)] += int(round(spp * b * ppb))
 				total_beds = max(smooth_beds, proposed_beds)
-				need_ha = total_beds * flt(v.sqm_net_per_bed) / 10_000
+				need_ha = total_beds * bed_sqm(v) / 10_000
 				have = frappe.db.sql("""
 					select ifnull(sum(custom_net_area_ha), 0) ha,
 					       ifnull(sum(custom_total_beds), 0) beds
 					from tabBlock where farm = %s and custom_is_summer_flower_block = 1
 				""", farm, as_dict=True)[0] if farm else {"ha": 0, "beds": 0}
 				space = {
-					"basis": "plants standing to deliver one season at %.1f stems "
-					         "per plant per year" % per_year,
+					"basis": "plants standing to deliver the busiest week (%s stems) "
+					         "at %.3f stems per plant per week" % (peak_stems, per_week),
 					# Both, so the cost of the minimum is visible rather than folded in.
 					"beds_if_divisible": smooth_beds,
 					"beds_with_minimum": proposed_beds,

@@ -47,6 +47,7 @@
   "min_planting_area_sqm",
   "derived_geo_section",
   "sqm_net_per_bed",
+  "bed_area_assumed",
   "min_planting_beds_derived",
   "min_planting_plants",
   "cb_geo2",
@@ -382,6 +383,14 @@
    "fieldtype": "Float",
    "label": "m\u00b2 net per bed",
    "precision": "2"
+  },
+  {
+   "fieldname": "bed_area_assumed",
+   "fieldtype": "Check",
+   "label": "Bed area assumed from the minimum planting",
+   "read_only": 1,
+   "default": "0",
+   "description": "The farm has not recorded a bed size, so the smallest planting it will make is being used as one."
   },
   {
    "description": "The minimum area above, rounded up to whole beds.",
