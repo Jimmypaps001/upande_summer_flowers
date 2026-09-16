@@ -557,9 +557,10 @@
    "description": "What one plant is expected to give over its whole life. Only needed when the harvest is entered as percentages: they are shares of this. Leave it empty and the stems on each flush decide the total instead.",
    "fieldname": "stated_stems_per_plant_life",
    "fieldtype": "Float",
-   "label": "Stated stems per plant, life",
+   "label": "Stems per Plant, Lifetime",
    "non_negative": 1,
-   "precision": "3"
+   "precision": "3",
+   "read_only": 1
   },
   {
    "fieldname": "total_stems_per_plant_life",

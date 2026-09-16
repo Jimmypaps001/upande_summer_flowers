@@ -172,6 +172,11 @@ class CropProtocolVersion(Document):
 		stems_given = sum(flt(r.stems_per_plant) for r in rows)
 		pct_given = sum(flt(r.pct_of_life) for r in rows)
 		stated = flt(self.stated_stems_per_plant_life)
+		# What a plant gives over its life is the sum of its flushes -- there is
+		# nowhere else for the number to come from, so it is read off the rows rather
+		# than typed beside them and left to disagree.
+		if stems_given:
+			self.stated_stems_per_plant_life = stems_given
 		if not stems_given and pct_given and stated:
 			# Shares of a stated life. Each flush's stems are its share of it.
 			for r in rows:

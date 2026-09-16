@@ -811,7 +811,8 @@
    "label": "Flush Schedule",
    "module": "Summer Flowers",
    "name": "Crop Protocol-custom_sf_flush_schedule",
-   "options": "Summer Flower Protocol Flush"
+   "options": "Summer Flower Protocol Flush",
+   "mandatory_depends_on": "eval:doc.crop_type==\"Summer Flowers\""
   },
   {
    "depends_on": "eval:doc.crop_type==\"Summer Flowers\"",
@@ -845,7 +846,8 @@
    "insert_after": "custom_sf_flush_schedule",
    "label": "Flush Totals",
    "module": "Summer Flowers",
-   "name": "Crop Protocol-custom_sf_flush_totals_section"
+   "name": "Crop Protocol-custom_sf_flush_totals_section",
+   "hidden": 1
   },
   {
    "depends_on": "eval:(doc.crop_type==\"Summer Flowers\") && !doc.__islocal",
@@ -1465,17 +1467,18 @@
   },
   {
    "depends_on": "eval:doc.crop_type==\"Summer Flowers\"",
-   "description": "Only needed when the harvest is entered as percentages.",
+   "description": "",
    "doctype": "Custom Field",
    "dt": "Crop Protocol",
    "fieldname": "custom_sf_stated_stems_per_plant_life",
    "fieldtype": "Float",
    "insert_after": "custom_sf_flush_schedule",
-   "label": "Stem/Plantlife (stated)",
+   "label": "Stems per Plant, Lifetime",
    "module": "Summer Flowers",
    "name": "Crop Protocol-custom_sf_stated_stems_per_plant_life",
    "non_negative": 1,
-   "precision": "3"
+   "precision": "3",
+   "read_only": 1
   },
   {
    "depends_on": "eval:(doc.crop_type==\"Summer Flowers\") && !doc.__islocal",
@@ -3872,6 +3875,26 @@
    "property": "hidden",
    "property_type": "Check",
    "value": "1"
+  },
+  {
+   "doctype": "Property Setter",
+   "doctype_or_field": "DocField",
+   "doc_type": "Crop Protocol",
+   "field_name": "total_flushes",
+   "property": "hidden",
+   "property_type": "Check",
+   "value": "1",
+   "name": "Crop Protocol-total_flushes-hidden"
+  },
+  {
+   "doctype": "Property Setter",
+   "doctype_or_field": "DocField",
+   "doc_type": "Crop Protocol",
+   "field_name": "total_stems_per_plant_life",
+   "property": "hidden",
+   "property_type": "Check",
+   "value": "1",
+   "name": "Crop Protocol-total_stems_per_plant_life-hidden"
   }
  ],
  "sync_on_migrate": 1
