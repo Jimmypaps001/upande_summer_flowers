@@ -986,7 +986,7 @@ def bed_sqm(v):
 	return flt(getattr(v, "sqm_net_per_bed", 0)) or flt(getattr(v, "min_planting_area_sqm", 0))
 
 
-def plants_per_bed(v):
+def plants_per_bed_for(v):
 	"""How many plants a bed holds, worked out if it was not stored.
 
 	A version frozen before the geometry was derived carries zero here, and a zero
@@ -1140,7 +1140,7 @@ def plan_preview(market_demand, farm=None, season_start_year=None):
 		# not a measurement: one plant to a bed turned a twenty-bed crop into ten
 		# thousand beds on no land at all. Say which number is missing instead.
 		assumed = []
-		if not plants_per_bed(v):
+		if not plants_per_bed_for(v):
 			assumed.append(_("plants per bed — needs a bed area and a planting "
 			                 "density, and without it no bed or hectare figure can "
 			                 "be given at all"))
@@ -1168,7 +1168,7 @@ def plan_preview(market_demand, farm=None, season_start_year=None):
 		# Worked out from density and bed area when the version never stored it. If it
 		# still cannot be, every bed and hectare figure below is withheld: a blank
 		# beside a warning is safer than a confident number five hundred times out.
-		ppb = plants_per_bed(v)
+		ppb = plants_per_bed_for(v)
 		min_beds = cint(v.min_planting_beds_derived) or (1 if ppb else 0)
 		if first_flush:
 			# The busiest week decides the pool, because cuttings cannot be banked.
@@ -1388,7 +1388,7 @@ def _populate(plan):
 				production[(y, w)] += stems
 				placeable[(y, w)] += stems
 				mine[(y, w)] += stems
-				contributors[(y, w)].append(f"{planting.block} ({planting.beds}b)")
+				contributors[(y, w)].append(f"{planting.block} ({planting.beds} beds)")
 				hit = True
 		footprints.append((
 			getdate(planting.planting_date), planting.end_date(),
@@ -1435,7 +1435,11 @@ def _populate(plan):
 
 	stems_f1 = offsets[0][1]
 	first_offset = protocol.first_harvest_offset_weeks or offsets[0][0]
-	plants_per_bed = protocol.plants_per_bed or 1
+	# The same derivation the preview uses. `or 1` here meant a bed held one plant,
+	# so ten thousand plants asked for ten thousand beds against a farm that has
+	# 1,872 -- and the verdict then said the land was there, which was true only
+	# because the real figure is twenty.
+	plants_per_bed = plants_per_bed_for(protocol)
 	life_weeks = protocol.total_weeks_in_ground or 0
 	stick_weeks = protocol.sticking_to_planting_weeks or 0
 	turnaround = cint(protocol.turnaround_weeks)
@@ -1505,7 +1509,7 @@ def _populate(plan):
 				if block:
 					placeable[(hy, hw)] += stems
 				contributors[(hy, hw)].append(
-					f"new {p_year}-W{p_week:02d} ({beds}b)"
+					f"new {p_year}-W{p_week:02d} ({beds} beds)"
 					+ ("" if block else " — no block yet"))
 
 		net_ha = (beds * (protocol.sqm_net_per_bed or 0)) / 10_000
@@ -1558,9 +1562,13 @@ def _populate(plan):
 	# hosts two successive plantings contributes its beds twice, so comparing that
 	# sum with the beds the farm has is meaningless. What the farm has to find room
 	# for is the most beds standing at any one moment.
+	# Every new planting counts, whether or not a block has been found for it. This
+	# is the number that says whether the farm fits the plan at all, so leaving the
+	# unplaced ones out reported zero in exactly the case where the answer matters:
+	# a farm with no blocks drawn yet, where nothing is placed and the peak read 0.
 	occupied = []
 	for row in plan.plan_blocks:
-		if not row.get("is_new_planting") or row.get("not_placed"):
+		if not row.get("is_new_planting"):
 			continue
 		if not row.get("planting_date"):
 			continue

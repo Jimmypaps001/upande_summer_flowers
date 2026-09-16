@@ -196,12 +196,13 @@ else:
             })
             i = i + 1
 
-        doc.set("grade_allocation", [])
-        for g in grades:
-            doc.append("grade_allocation", {
-                "grade": g[0],
-                "allocation_pct": round(100.0 * g[1] / fig[0], 4),
-            })
+        # The sheet's grade columns are read and reported, not stored here. How a
+        # plant's stems divide by length belongs to the crop, so the split lives on
+        # the Crop Protocol and every reader already goes there for it.
+        if grades:
+            say("  grades in the sheet (set these on the protocol): "
+                + ", ".join(g[0] + " " + str(round(100.0 * g[1] / fig[0], 1)) + "%"
+                            for g in grades))
 
         if exists:
             doc.save(ignore_permissions=True)
