@@ -248,7 +248,7 @@
   "include_name_field": 0,
   "is_standard": 0,
   "list_name": "List",
-  "modified": "2026-09-16 00:50:14.999854",
+  "modified": "2026-09-16 22:48:04.966271",
   "module": "Summer Flowers",
   "name": "Market Demand Walkthrough",
   "new_document_form": 0,
@@ -308,30 +308,6 @@
    },
    {
     "child_doctype": null,
-    "description": "How the sheet groups products above variety, e.g. Aster. Carried so a register can be read back against the sheet it came from.",
-    "element_selector": null,
-    "fieldname": "product_group",
-    "fieldtype": "Data",
-    "has_next_condition": 0,
-    "hide_buttons": 0,
-    "is_table_field": 0,
-    "label": "Product Group",
-    "modal_trigger": 0,
-    "next_form_tour": null,
-    "next_on_click": 0,
-    "next_step_condition": null,
-    "offset_x": 0,
-    "offset_y": 0,
-    "ondemand_description": null,
-    "parent_element_selector": null,
-    "parent_fieldname": null,
-    "popover_element": 0,
-    "position": "Bottom",
-    "title": "3. Product group",
-    "ui_tour": 0
-   },
-   {
-    "child_doctype": null,
     "description": "Used to value the budget produced once the plan is approved. Leave it empty and the plan still builds; only the money is missing.",
     "element_selector": null,
     "fieldname": "price_per_stem",
@@ -351,7 +327,7 @@
     "parent_fieldname": null,
     "popover_element": 0,
     "position": "Bottom",
-    "title": "4. Price per stem",
+    "title": "3. Price per stem",
     "ui_tour": 0
    },
    {
@@ -375,7 +351,7 @@
     "parent_fieldname": null,
     "popover_element": 0,
     "position": "Bottom",
-    "title": "5. How far ahead to plan",
+    "title": "4. How far ahead to plan",
     "ui_tour": 0
    },
    {
@@ -399,7 +375,7 @@
     "parent_fieldname": null,
     "popover_element": 0,
     "position": "Bottom",
-    "title": "6. The weekly demand",
+    "title": "5. The weekly demand",
     "ui_tour": 0
    },
    {
@@ -423,7 +399,7 @@
     "parent_fieldname": null,
     "popover_element": 0,
     "position": "Bottom",
-    "title": "7. Grade split",
+    "title": "6. Grade split",
     "ui_tour": 0
    },
    {
@@ -447,7 +423,7 @@
     "parent_fieldname": null,
     "popover_element": 0,
     "position": "Bottom",
-    "title": "8. Reading it back",
+    "title": "7. Reading it back",
     "ui_tour": 0
    }
   ],

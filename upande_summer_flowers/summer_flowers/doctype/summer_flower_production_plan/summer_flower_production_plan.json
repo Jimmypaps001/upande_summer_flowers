@@ -253,10 +253,11 @@
   },
   {
    "fieldname": "season_start_year",
-   "fieldtype": "Int",
+   "fieldtype": "Link",
    "label": "Season (starting year)",
    "reqd": 1,
-   "description": "The growing season this plan covers, by the year it starts in: 2026 means 1 July 2026 to 30 June 2027. This is the farm's season, not an ERPNext Fiscal Year -- those stay on the calendar year the accounts use, and the budget still posts against whichever of them each month falls in."
+   "description": "The year the season starts. A season runs 1 July of this year to 30 June of the next, which is not the same span as the accounting year of the same name.",
+   "options": "Fiscal Year"
   },
   {
    "fieldname": "season",

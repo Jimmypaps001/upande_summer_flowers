@@ -16,10 +16,11 @@
    "columns": 3,
    "description": "Stem length grade, e.g. 60cm",
    "fieldname": "grade",
-   "fieldtype": "Data",
+   "fieldtype": "Link",
    "in_list_view": 1,
    "label": "Grade",
-   "reqd": 1
+   "reqd": 1,
+   "options": "Summer Flower Grade"
   },
   {
    "columns": 3,

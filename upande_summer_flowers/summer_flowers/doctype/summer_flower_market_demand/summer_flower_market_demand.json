@@ -105,13 +105,15 @@
    "fieldname": "horizon_start",
    "fieldtype": "Data",
    "label": "Horizon Start",
-   "read_only": 1
+   "read_only": 1,
+   "depends_on": "eval:!doc.__islocal"
   },
   {
    "fieldname": "horizon_end",
    "fieldtype": "Data",
    "label": "Horizon End",
-   "read_only": 1
+   "read_only": 1,
+   "depends_on": "eval:!doc.__islocal"
   },
   {
    "fieldname": "cb_horizon",
@@ -121,25 +123,29 @@
    "fieldname": "weeks_covered",
    "fieldtype": "Int",
    "label": "Weeks Covered",
-   "read_only": 1
+   "read_only": 1,
+   "depends_on": "eval:!doc.__islocal"
   },
   {
    "fieldname": "weeks_ahead_of_today",
    "fieldtype": "Int",
    "label": "Weeks Ahead Of Today",
-   "read_only": 1
+   "read_only": 1,
+   "depends_on": "eval:!doc.__islocal"
   },
   {
    "fieldname": "horizon_gap_weeks",
    "fieldtype": "Int",
    "label": "Horizon Shortfall (weeks)",
-   "read_only": 1
+   "read_only": 1,
+   "depends_on": "eval:!doc.__islocal"
   },
   {
    "fieldname": "horizon_status",
    "fieldtype": "Data",
    "label": "Status",
-   "read_only": 1
+   "read_only": 1,
+   "depends_on": "eval:!doc.__islocal"
   },
   {
    "fieldname": "totals_section",
@@ -150,13 +156,15 @@
    "fieldname": "total_demand_stems",
    "fieldtype": "Int",
    "label": "Total Demand (stems)",
-   "read_only": 1
+   "read_only": 1,
+   "depends_on": "eval:!doc.__islocal"
   },
   {
    "fieldname": "firm_demand_stems",
    "fieldtype": "Int",
    "label": "Firm Demand (stems)",
-   "read_only": 1
+   "read_only": 1,
+   "depends_on": "eval:!doc.__islocal"
   },
   {
    "fieldname": "cb_totals",
@@ -166,14 +174,16 @@
    "fieldname": "peak_weekly_demand",
    "fieldtype": "Int",
    "label": "Peak Weekly Demand",
-   "read_only": 1
+   "read_only": 1,
+   "depends_on": "eval:!doc.__islocal"
   },
   {
    "fieldname": "average_weekly_demand",
    "fieldtype": "Float",
    "label": "Average Weekly Demand",
    "precision": "0",
-   "read_only": 1
+   "read_only": 1,
+   "depends_on": "eval:!doc.__islocal"
   },
   {
    "fieldname": "weeks_tab",

@@ -119,8 +119,11 @@ function create_plan(frm) {
 			{
 				fieldname: "season_start_year",
 				label: __("Season (starting year)"),
-				fieldtype: "Int",
-				default: startYear,
+				// Picked, not typed. A free Int here is how five plans on this site
+				// ended up with season 0, three of them submitted.
+				fieldtype: "Link",
+				options: "Fiscal Year",
+				default: String(startYear),
 				reqd: 1,
 				description: __("{0} means 1 July {0} to 30 June {1}.", [startYear, startYear + 1]),
 			},
