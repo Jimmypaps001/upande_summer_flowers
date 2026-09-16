@@ -986,6 +986,25 @@ def bed_sqm(v):
 	return flt(getattr(v, "sqm_net_per_bed", 0)) or flt(getattr(v, "min_planting_area_sqm", 0))
 
 
+def plants_per_bed(v):
+	"""How many plants a bed holds, worked out if it was not stored.
+
+	A version frozen before the geometry was derived carries zero here, and a zero
+	used to become a one: a bed holding a single plant. Applying the bed's AREA while
+	that one stood for its CONTENTS is worse than either error alone -- ten thousand
+	beds of a hundred square metres came out as a hundred hectares for a crop that
+	needs a fifth of one, five hundred times too much, stated confidently.
+
+	Density and bed area are both on the version, so the number can simply be worked
+	out. Zero means it genuinely cannot be, and the caller must say nothing rather
+	than guess.
+	"""
+	stored = cint(getattr(v, "plants_per_bed", 0))
+	if stored:
+		return stored
+	return int(round(bed_sqm(v) * flt(getattr(v, "plants_per_sqm_net", 0))))
+
+
 @frappe.whitelist()
 def plan_preview(market_demand, farm=None, season_start_year=None):
 	"""What creating this plan would mean, before anything is written.
@@ -1080,11 +1099,24 @@ def plan_preview(market_demand, farm=None, season_start_year=None):
 		lead = {"first_demand_week": str(first), "weeks_back": weeks_back,
 		        "order_by": str(order_by), "late": order_by < getdate(nowdate())}
 		if lead["late"]:
+			# "The early weeks will be short" is true and useless. Which weeks, and
+			# how many stems, is the number someone decides on: ordering today, the
+			# first cut lands a whole chain's length away, and everything demanded
+			# before then cannot be met at all.
+			earliest_cut = getdate(nowdate()) + datetime.timedelta(weeks=weeks_back)
+			missed = [r for r in weeks if getdate(r.week_start_date) < earliest_cut]
+			missed_stems = sum(cint(r.demand_stems) for r in missed)
+			lead["earliest_first_cut"] = str(earliest_cut)
+			lead["weeks_unmeetable"] = len(missed)
+			lead["stems_unmeetable"] = missed_stems
 			notes.append(_(
 				"To harvest in the first demanded week ({0}) the TC order would have "
 				"had to be placed by {1} -- {2} weeks earlier, and that date has "
-				"passed. The early weeks will be short unless you buy rooted cuttings."
-			).format(first, order_by, weeks_back))
+				"passed. Ordering today the first cut is {3}, so {4} weeks and {5} of "
+				"the {6} stems demanded this season cannot be met at all. The rest "
+				"needs rooted cuttings or a later season."
+			).format(first, order_by, weeks_back, earliest_cut, len(missed),
+			         "{:,}".format(missed_stems), "{:,}".format(stems)))
 
 	# What it would cost to say yes: the plantlets to buy and the ground to find. Both
 	# are knowable from the demand and the protocol before a plan exists, and both are
@@ -1108,10 +1140,12 @@ def plan_preview(market_demand, farm=None, season_start_year=None):
 		# not a measurement: one plant to a bed turned a twenty-bed crop into ten
 		# thousand beds on no land at all. Say which number is missing instead.
 		assumed = []
-		if not cint(v.plants_per_bed):
-			assumed.append(_("plants per bed — needs a bed area and a planting density"))
-		if not cint(v.min_planting_beds_derived):
-			assumed.append(_("minimum planting, in beds — needs a minimum planting area"))
+		if not plants_per_bed(v):
+			assumed.append(_("plants per bed — needs a bed area and a planting "
+			                 "density, and without it no bed or hectare figure can "
+			                 "be given at all"))
+		if not cint(v.min_planting_beds_derived) and not flt(v.min_planting_area_sqm):
+			assumed.append(_("minimum planting area"))
 		if not flt(v.cuttings_per_plant_per_week):
 			assumed.append(_("cuttings per mother plant per week"))
 		if not cint(v.total_weeks_in_ground):
@@ -1131,12 +1165,22 @@ def plan_preview(market_demand, farm=None, season_start_year=None):
 				"numbers against the protocol before committing to them."
 			).format(version, "; ".join(assumed)))
 
-		ppb = cint(v.plants_per_bed) or 1
-		min_beds = cint(v.min_planting_beds_derived) or 1
+		# Worked out from density and bed area when the version never stored it. If it
+		# still cannot be, every bed and hectare figure below is withheld: a blank
+		# beside a warning is safer than a confident number five hundred times out.
+		ppb = plants_per_bed(v)
+		min_beds = cint(v.min_planting_beds_derived) or (1 if ppb else 0)
 		if first_flush:
 			# The busiest week decides the pool, because cuttings cannot be banked.
-			beds = max(min_beds, int(math.ceil(peak_stems / (first_flush * ppb))))
-			plants = beds * ppb
+			# Plants first: how many must flush that week is a fact about the crop,
+			# and it holds whether or not anyone has said how big a bed is. Beds are
+			# then that rounded up to whole ones -- when there is a bed to round to.
+			plants = int(math.ceil(peak_stems / first_flush))
+			if ppb:
+				beds = max(min_beds, int(math.ceil(plants / ppb)))
+				plants = beds * ppb
+			else:
+				beds = 0
 			cuttings = cint(v.cuttings_for_plants(plants))
 			per_week = flt(v.cuttings_per_plant_per_week) or 1.0
 			mothers = int(math.ceil(cuttings / per_week))
@@ -1171,6 +1215,7 @@ def plan_preview(market_demand, farm=None, season_start_year=None):
 			            if weeks_in_ground else 0)
 			if per_week:
 				total_plants = int(math.ceil(peak_stems / per_week))
+			if per_week and ppb:
 				smooth_beds = int(math.ceil(total_plants / ppb))
 				# That figure assumes the ground can be divided as finely as the demand.
 				# It cannot: the planner rounds every planting up to the protocol's
