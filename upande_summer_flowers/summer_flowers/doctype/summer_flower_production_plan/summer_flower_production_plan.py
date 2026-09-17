@@ -1064,15 +1064,20 @@ def plan_preview(market_demand, farm=None, season_start_year=None):
 	                                   "custom_is_summer_flower_block": 1}) if farm else 0
 	if farm and not blocks:
 		unblocked = frappe.db.sql("""
-			select count(*) n from tabBed b join tabWarehouse w on w.name = b.greenhouse
+			select count(*) n, count(distinct b.greenhouse) gh
+			from tabBed b join tabWarehouse w on w.name = b.greenhouse
 			where w.custom_farm = %s and ifnull(b.custom_block, '') = ''
-		""", farm)[0][0]
-		notes.append(_(
-			"{0} has no summer flower blocks, so nothing can be placed there and the "
-			"plan will show no production. It does have {1} beds in its greenhouses "
-			"belonging to no block."
-		).format(farm, unblocked) if unblocked else _(
-			"{0} has no summer flower blocks and no beds, so there is nowhere to plant."
+		""", farm, as_dict=True)[0]
+		# Not a note. A farm with no blocks has nowhere to plant, and a plan it
+		# cannot plant is not a plan -- it was being built anyway, reporting full
+		# coverage against ground that does not exist.
+		blocking.append(_(
+			"{0} has no summer flower blocks, so there is nowhere to plant. It has "
+			"{1} beds across {2} greenhouses belonging to no block: draw blocks over "
+			"them first."
+		).format(farm, cint(unblocked.n), cint(unblocked.gh)) if cint(unblocked.n) else _(
+			"{0} has no summer flower blocks and no beds. There is no land to plant "
+			"on, so there is nothing to plan."
 		).format(farm))
 
 	prop = frappe.db.get_value("Summer Flower Propagation Plan", {

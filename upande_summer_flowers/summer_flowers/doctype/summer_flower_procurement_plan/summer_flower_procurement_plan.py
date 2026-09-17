@@ -208,20 +208,20 @@ def space_at(farm):
 		select ifnull(sum(custom_total_beds), 0) beds
 		from tabBlock where farm = %s and custom_is_summer_flower_block = 1
 	""", farm, as_dict=True)[0]
-	loose = frappe.db.sql("""
-		select count(*) n from tabBed b join tabWarehouse w on w.name = b.greenhouse
-		where w.custom_farm = %s and ifnull(b.custom_block, '') = ''
-	""", farm)[0][0]
-	beds = cint(blocks.beds) + cint(loose)
+	beds = cint(blocks.beds)
 	if not beds:
-		return None, _("{0} has no summer flower blocks and no beds, so there is "
-		               "nothing to measure the order against.").format(farm)
-	parts = []
-	if cint(blocks.beds):
-		parts.append(_("{0} beds in summer flower blocks").format(cint(blocks.beds)))
-	if cint(loose):
-		parts.append(_("{0} beds in greenhouses belonging to no block").format(cint(loose)))
-	return beds, " + ".join(parts)
+		# Beds in a greenhouse that belongs to no block are not plantable ground
+		# yet. Counting them would let an order be placed against land nobody has
+		# laid out, and the plants would arrive with nowhere to go.
+		loose = frappe.db.sql("""
+			select count(*) n from tabBed b join tabWarehouse w on w.name = b.greenhouse
+			where w.custom_farm = %s and ifnull(b.custom_block, '') = ''
+		""", farm)[0][0]
+		return None, (_("{0} has {1} beds belonging to no block. Draw blocks over "
+		                "them before ordering against them.").format(farm, cint(loose))
+		              if cint(loose) else
+		              _("{0} has no summer flower blocks and no beds.").format(farm))
+	return beds, _("{0} beds in summer flower blocks").format(beds)
 
 
 @frappe.whitelist()
@@ -304,7 +304,11 @@ def build(production_plan, method, entry_stage=None, supplier=None, fit_to_space
 	doc.plants_per_unit = per_unit
 
 	beds_available, basis = space_at(p.farm)
-	doc.beds_available = beds_available or 0
+	if not beds_available:
+		frappe.throw(_("{0} has no summer flower blocks, so there is nowhere to put "
+		               "what you buy. Draw blocks over its beds first.").format(p.farm),
+		             title=_("No land to plant"))
+	doc.beds_available = beds_available
 	doc.space_basis = basis
 
 	ppb = plants_per_bed_for(v) or 0
@@ -354,13 +358,17 @@ def build(production_plan, method, entry_stage=None, supplier=None, fit_to_space
 			"expected_delivery_date": required,
 		})
 
-	if beds_left is None and fit_to_space:
-		doc.space_note = basis
-	elif trimmed:
+	wanted_beds = sum(cint(b.beds) for b in rows)
+	if trimmed:
+		short = wanted_beds - beds_available
 		doc.space_note = _(
-			"{0} of {1} plantings were trimmed to fit {2} beds. The demand is not "
-			"reduced by this -- it still asks for {3} beds; this says what can be "
-			"planted, not what is wanted."
-		).format(trimmed, len(rows), beds_available, sum(cint(b.beds) for b in rows))
+			"Not enough ground. The plan needs {0} beds and {1} has {2}, so it is "
+			"{3} beds short and {4} of {5} plantings were trimmed. The demand is not "
+			"reduced by this -- it still asks for {0} beds. Either find more land, "
+			"or accept that this much of the season cannot be grown here."
+		).format(wanted_beds, p.farm, beds_available, short, trimmed, len(rows))
 	doc.insert(ignore_permissions=True)
+	if doc.space_note:
+		frappe.msgprint(doc.space_note, indicator="orange",
+		                title=_("Not enough ground"))
 	return doc.name
