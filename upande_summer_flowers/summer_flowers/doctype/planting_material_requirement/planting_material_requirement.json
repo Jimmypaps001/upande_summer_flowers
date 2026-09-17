@@ -24,6 +24,7 @@
   "order_by_date",
   "late",
   "section_delivery",
+  "expected_delivery_date",
   "confirmed_delivery_week",
   "actual_delivery_week",
   "column_break_c",
@@ -138,6 +139,13 @@
    "fieldname": "section_delivery",
    "fieldtype": "Section Break",
    "label": "Delivery"
+  },
+  {
+   "fieldname": "expected_delivery_date",
+   "fieldtype": "Date",
+   "label": "Delivery Date",
+   "in_list_view": 1,
+   "description": "When the material is expected on the farm. Ordering on the order-by date lands it here."
   },
   {
    "allow_on_submit": 1,

@@ -1,0 +1,322 @@
+{
+ "actions": [],
+ "allow_rename": 0,
+ "autoname": "naming_series:",
+ "creation": "2026-09-17 00:00:00.000000",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "is_submittable": 1,
+ "field_order": [
+  "naming_series",
+  "production_plan",
+  "variety",
+  "farm",
+  "column_break_head",
+  "season",
+  "protocol",
+  "company",
+  "status",
+  "section_method",
+  "method",
+  "entry_stage",
+  "supplier",
+  "column_break_method",
+  "route_summary",
+  "weeks_to_ground",
+  "lead_weeks",
+  "plants_per_unit",
+  "section_space",
+  "beds_available",
+  "space_basis",
+  "column_break_space",
+  "beds_required",
+  "capped_by_space",
+  "space_note",
+  "section_totals",
+  "total_plants_at_field",
+  "total_units_to_order",
+  "column_break_totals",
+  "first_order_by",
+  "last_order_by",
+  "orders_late",
+  "section_lines",
+  "requirements",
+  "amended_from"
+ ],
+ "fields": [
+  {
+   "fieldname": "naming_series",
+   "fieldtype": "Select",
+   "label": "Series",
+   "options": "SFPROC-.YYYY.-",
+   "default": "SFPROC-.YYYY.-",
+   "reqd": 1
+  },
+  {
+   "fieldname": "production_plan",
+   "fieldtype": "Link",
+   "label": "Production Plan",
+   "options": "Summer Flower Production Plan",
+   "reqd": 1,
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "variety",
+   "fieldtype": "Link",
+   "label": "Variety",
+   "options": "Item",
+   "read_only": 1,
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "farm",
+   "fieldtype": "Link",
+   "label": "Farm",
+   "options": "Farm",
+   "read_only": 1,
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "column_break_head",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "season",
+   "fieldtype": "Data",
+   "label": "Season",
+   "read_only": 1
+  },
+  {
+   "fieldname": "protocol",
+   "fieldtype": "Link",
+   "label": "Protocol Version",
+   "options": "Crop Protocol Version",
+   "read_only": 1
+  },
+  {
+   "fieldname": "company",
+   "fieldtype": "Link",
+   "label": "Company",
+   "options": "Company",
+   "read_only": 1
+  },
+  {
+   "fieldname": "status",
+   "fieldtype": "Select",
+   "label": "Status",
+   "options": "Draft\nApproved\nCancelled",
+   "default": "Draft",
+   "read_only": 1,
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "section_method",
+   "fieldtype": "Section Break",
+   "label": "How the material is got"
+  },
+  {
+   "fieldname": "method",
+   "fieldtype": "Select",
+   "label": "Method",
+   "options": "Purchase\nPropagate",
+   "reqd": 1
+  },
+  {
+   "fieldname": "entry_stage",
+   "fieldtype": "Data",
+   "label": "Bought As",
+   "depends_on": "eval:doc.method=='Purchase'"
+  },
+  {
+   "fieldname": "supplier",
+   "fieldtype": "Link",
+   "label": "Supplier",
+   "options": "Supplier",
+   "depends_on": "eval:doc.method=='Purchase'"
+  },
+  {
+   "fieldname": "column_break_method",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "route_summary",
+   "fieldtype": "Small Text",
+   "label": "Route",
+   "read_only": 1
+  },
+  {
+   "fieldname": "weeks_to_ground",
+   "fieldtype": "Int",
+   "label": "Weeks to Ground",
+   "read_only": 1
+  },
+  {
+   "fieldname": "lead_weeks",
+   "fieldtype": "Int",
+   "label": "Supplier Lead (weeks)",
+   "read_only": 1
+  },
+  {
+   "fieldname": "plants_per_unit",
+   "fieldtype": "Float",
+   "label": "Plants per Unit",
+   "read_only": 1,
+   "precision": "3"
+  },
+  {
+   "fieldname": "section_space",
+   "fieldtype": "Section Break",
+   "label": "Ground available"
+  },
+  {
+   "fieldname": "beds_available",
+   "fieldtype": "Int",
+   "label": "Beds Available",
+   "read_only": 1
+  },
+  {
+   "fieldname": "space_basis",
+   "fieldtype": "Small Text",
+   "label": "Counted From",
+   "read_only": 1
+  },
+  {
+   "fieldname": "column_break_space",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "beds_required",
+   "fieldtype": "Int",
+   "label": "Beds the Plan Needs",
+   "read_only": 1
+  },
+  {
+   "default": "0",
+   "fieldname": "capped_by_space",
+   "fieldtype": "Check",
+   "label": "Order trimmed to fit",
+   "read_only": 1
+  },
+  {
+   "fieldname": "space_note",
+   "fieldtype": "Small Text",
+   "label": "Note",
+   "read_only": 1
+  },
+  {
+   "fieldname": "section_totals",
+   "fieldtype": "Section Break",
+   "label": "Totals"
+  },
+  {
+   "fieldname": "total_plants_at_field",
+   "fieldtype": "Int",
+   "label": "Plants to Stand",
+   "read_only": 1
+  },
+  {
+   "fieldname": "total_units_to_order",
+   "fieldtype": "Int",
+   "label": "Units to Order",
+   "read_only": 1,
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "column_break_totals",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "first_order_by",
+   "fieldtype": "Date",
+   "label": "First Order By",
+   "read_only": 1
+  },
+  {
+   "fieldname": "last_order_by",
+   "fieldtype": "Date",
+   "label": "Last Order By",
+   "read_only": 1
+  },
+  {
+   "fieldname": "orders_late",
+   "fieldtype": "Int",
+   "label": "Orders Already Late",
+   "read_only": 1
+  },
+  {
+   "fieldname": "section_lines",
+   "fieldtype": "Section Break",
+   "label": "Requirements"
+  },
+  {
+   "fieldname": "requirements",
+   "fieldtype": "Table",
+   "label": "Requirements",
+   "options": "Planting Material Requirement"
+  },
+  {
+   "fieldname": "amended_from",
+   "fieldtype": "Link",
+   "label": "Amended From",
+   "options": "Summer Flower Procurement Plan",
+   "no_copy": 1,
+   "print_hide": 1,
+   "read_only": 1
+  }
+ ],
+ "links": [],
+ "modified": "2026-09-17 00:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Summer Flowers",
+ "name": "Summer Flower Procurement Plan",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1,
+   "submit": 1,
+   "cancel": 1,
+   "amend": 1
+  },
+  {
+   "create": 1,
+   "delete": 0,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Agriculture Manager",
+   "share": 1,
+   "write": 1,
+   "submit": 1,
+   "cancel": 1,
+   "amend": 1
+  },
+  {
+   "create": 1,
+   "delete": 0,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Agriculture User",
+   "share": 1,
+   "write": 1
+  }
+ ],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": [],
+ "track_changes": 1
+}

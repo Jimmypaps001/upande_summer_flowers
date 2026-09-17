@@ -23,7 +23,7 @@ from frappe.model.document import Document
 from frappe.utils import cint, flt, getdate, nowdate
 
 
-class SummerFlowerSourcingPlan(Document):
+class SummerFlowerProcurementPlan(Document):
 	def validate(self):
 		self.set_totals()
 
@@ -31,6 +31,125 @@ class SummerFlowerSourcingPlan(Document):
 		self.db_set("status", "Approved")
 		if self.method == "Propagate":
 			self.build_propagation_plan()
+		else:
+			self.raise_material_requests()
+		# Either way the farm needs to know what to plant and when. The plantings
+		# are the point of all of it; how the material was got only changes what
+		# the calendar records as its source.
+		self.build_planting_plan()
+
+	def raise_material_requests(self):
+		"""One Material Request per supplier per week the material is needed.
+
+		Not one per cohort: ten cohorts a week apart from one supplier are ten
+		deliveries, not ten requests. They are left as drafts -- submitting one is
+		a person committing money, and approving a plan is not that.
+		"""
+		from collections import defaultdict
+
+		item = frappe.db.get_value("Item", self.variety, "name")
+		if not item:
+			frappe.msgprint(_("No Item called {0}, so nothing can be requested for it.")
+			                .format(self.variety), indicator="orange")
+			return
+
+		groups = defaultdict(list)
+		for r in self.requirements:
+			if not cint(r.qty_to_order) or r.source_doc:
+				continue
+			when = getdate(r.required_at_site_date) if r.required_at_site_date else None
+			groups[(r.supplier, when)].append(r)
+
+		made = []
+		for (supplier, when), rows in sorted(
+			groups.items(), key=lambda kv: (kv[0][1] or getdate(nowdate()))
+		):
+			mr = frappe.new_doc("Material Request")
+			mr.material_request_type = "Purchase"
+			mr.company = self.company
+			mr.transaction_date = getdate(nowdate())
+			mr.schedule_date = when or getdate(nowdate())
+			if mr.meta.get_field("custom_farm"):
+				mr.custom_farm = self.farm
+			for r in rows:
+				mr.append("items", {
+					"item_code": item,
+					"qty": cint(r.qty_to_order),
+					"schedule_date": mr.schedule_date,
+					"warehouse": frappe.db.get_value("Warehouse",
+					                                 {"company": self.company,
+					                                  "is_group": 0}, "name"),
+					"description": _("{0} as {1} for planting {2}").format(
+						self.variety, self.entry_stage or _("plants"),
+						r.planting_week or ""),
+				})
+			if supplier and mr.meta.get_field("supplier"):
+				mr.supplier = supplier
+			mr.flags.ignore_permissions = True
+			mr.insert()
+			for r in rows:
+				r.db_set("source_doctype", "Material Request", update_modified=False)
+				r.db_set("source_doc", mr.name, update_modified=False)
+			made.append(mr.name)
+
+		if made:
+			frappe.msgprint(_("{0} raised as drafts: {1}").format(
+				len(made), ", ".join(made)), indicator="green",
+				title=_("Material Requests"))
+		else:
+			frappe.msgprint(_("Nothing to order: every line is already raised, or "
+			                  "has no quantity."), indicator="orange")
+
+	def build_planting_plan(self):
+		"""Turn the cohorts into Planting Calendar entries, whichever way they came.
+
+		The calendar is what the farm works from, and it is the same document
+		whether the plants were bought or raised here -- only seedling_source,
+		and the supplier or batch beside it, differ.
+		"""
+		plan = frappe.get_doc("Summer Flower Production Plan", self.production_plan)
+		source = ("Purchased from Breeder" if self.method == "Purchase"
+		          else "In-house Propagation")
+		made, skipped = [], 0
+		for r in self.requirements:
+			if not cint(r.qty_at_field):
+				continue
+			row = next((b for b in plan.plan_blocks if b.name == r.cohort), None)
+			if not row or not row.block:
+				# No block yet. The calendar is a place as well as a date, so it
+				# cannot be written until allocation has happened.
+				skipped += 1
+				continue
+			if row.existing_planting and frappe.db.exists("Planting Calendar",
+			                                              row.existing_planting):
+				continue
+			cal = frappe.get_doc({
+				"doctype": "Planting Calendar",
+				"block": row.block,
+				"farm": self.farm,
+				"variety": self.variety,
+				"crop_protocol_version": self.protocol,
+				"company": self.company,
+				"beds": cint(row.beds),
+				"plants": cint(r.qty_at_field),
+				"planting_date": r.expected_delivery_date or row.planting_date,
+				"sticking_date": row.sticking_date if row.get("sticking_date") else None,
+				"seedling_source": source,
+				"supplier": self.supplier if self.method == "Purchase" else None,
+			})
+			cal.flags.ignore_permissions = True
+			cal.insert()
+			row.db_set("existing_planting", cal.name, update_modified=False)
+			made.append(cal.name)
+
+		if made:
+			frappe.msgprint(_("{0} planting calendar entries created.").format(len(made)),
+			                indicator="green", title=_("Planting plan"))
+		if skipped:
+			frappe.msgprint(_("{0} cohorts have no block allocated, so no planting "
+			                  "calendar entry could be written for them. Allocate "
+			                  "blocks and approve again.").format(skipped),
+			                indicator="orange", title=_("Planting plan"))
 
 	def build_propagation_plan(self):
 		"""Raise the propagation plan, now that propagating is what was chosen.
@@ -51,7 +170,7 @@ class SummerFlowerSourcingPlan(Document):
 		except Exception:
 			frappe.log_error(frappe.get_traceback(),
 			                 "Propagation plan for %s" % self.name)
-			frappe.msgprint(_("The sourcing plan is approved, but its propagation "
+			frappe.msgprint(_("The procurement plan is approved, but its propagation "
 			                  "plan could not be built. The error is in the log."),
 			                indicator="orange", title=_("Propagation"))
 			return
@@ -160,7 +279,7 @@ def build(production_plan, method, entry_stage=None, supplier=None, fit_to_space
 			plants_per_bed_for,
 		)
 
-	existing = frappe.db.get_value("Summer Flower Sourcing Plan",
+	existing = frappe.db.get_value("Summer Flower Procurement Plan",
 	                               {"production_plan": p.name, "docstatus": ["<", 2]},
 	                               "name")
 	if existing:
@@ -173,7 +292,7 @@ def build(production_plan, method, entry_stage=None, supplier=None, fit_to_space
 	weeks_to_ground = cint(journey["weeks_to_ground"]) if journey else 0
 	lead = cint(journey["lead_weeks"]) if journey else 0
 
-	doc = frappe.new_doc("Summer Flower Sourcing Plan")
+	doc = frappe.new_doc("Summer Flower Procurement Plan")
 	doc.production_plan = p.name
 	doc.variety, doc.farm, doc.company = p.variety, p.farm, p.company
 	doc.season, doc.protocol = p.get("season"), v.name
@@ -229,6 +348,10 @@ def build(production_plan, method, entry_stage=None, supplier=None, fit_to_space
 			"qty_to_order": units,
 			"required_at_site_date": required,
 			"order_by_date": order_by,
+			# What the plan is asking for. A supplier may come back with something
+			# else, and that goes in confirmed_delivery_week -- the two are not the
+			# same fact and the calendar keys on the second.
+			"expected_delivery_date": required,
 		})
 
 	if beds_left is None and fit_to_space:

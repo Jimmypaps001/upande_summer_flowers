@@ -52,7 +52,7 @@ frappe.ui.form.on("Summer Flower Production Plan", {
 		if (frm.doc.docstatus === 1) {
 			// Where the plants come from is not a detail of the plan -- it sets the
 			// lead time, and the lead time sets the order date. Asked once, here.
-			frm.add_custom_button(__("Source Plantlets"), () => source_plantlets(frm))
+			frm.add_custom_button(__("Plan Procurement"), () => source_plantlets(frm))
 				.addClass("btn-primary");
 			frm.add_custom_button(__("Create Plantings"), () =>
 				frm
@@ -352,7 +352,7 @@ function draw_calendar(frm) {
 // Pick how the material is got; everything else follows from it.
 function source_plantlets(frm) {
 	const M = "upande_summer_flowers.summer_flowers.doctype"
-		+ ".summer_flower_sourcing_plan.summer_flower_sourcing_plan.";
+		+ ".summer_flower_procurement_plan.summer_flower_procurement_plan.";
 	frappe.call({ method: M + "methods_for", args: { production_plan: frm.doc.name },
 		freeze: true }).then((r) => {
 		const s = r.message;
@@ -396,7 +396,7 @@ function source_plantlets(frm) {
 					args: { production_plan: frm.doc.name, method: values.method,
 						entry_stage: values.entry_stage, supplier: values.supplier,
 						fit_to_space: values.fit_to_space ? 1 : 0 } })
-					.then((res) => { if (res.message) frappe.set_route("Form", "Summer Flower Sourcing Plan", res.message); });
+					.then((res) => { if (res.message) frappe.set_route("Form", "Summer Flower Procurement Plan", res.message); });
 			},
 		});
 		const note = () => d.fields_dict.stage_note.$wrapper.html(
