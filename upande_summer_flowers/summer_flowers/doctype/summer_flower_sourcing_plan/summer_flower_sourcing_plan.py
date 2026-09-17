@@ -29,6 +29,35 @@ class SummerFlowerSourcingPlan(Document):
 
 	def on_submit(self):
 		self.db_set("status", "Approved")
+		if self.method == "Propagate":
+			self.build_propagation_plan()
+
+	def build_propagation_plan(self):
+		"""Raise the propagation plan, now that propagating is what was chosen.
+
+		This used to happen when the production plan was created, which answered the
+		sourcing question before anyone had been asked it: every plan got a
+		propagation plan whether or not the farm intended to propagate, and because
+		there is one per variety per season, a second plan for the same crop quietly
+		repointed the first one at itself.
+		"""
+		from upande_summer_flowers.summer_flowers.doctype \
+			.summer_flower_propagation_plan.summer_flower_propagation_plan import (
+				build_from_plan,
+			)
+
+		try:
+			outcome = build_from_plan(self.production_plan, as_dict=True)
+		except Exception:
+			frappe.log_error(frappe.get_traceback(),
+			                 "Propagation plan for %s" % self.name)
+			frappe.msgprint(_("The sourcing plan is approved, but its propagation "
+			                  "plan could not be built. The error is in the log."),
+			                indicator="orange", title=_("Propagation"))
+			return
+		frappe.msgprint(_("{0} {1}.").format(
+			outcome["name"], _("created") if outcome.get("created") else _("updated")),
+			indicator="green", title=_("Propagation plan"))
 
 	def on_cancel(self):
 		self.db_set("status", "Cancelled")

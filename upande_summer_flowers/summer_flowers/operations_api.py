@@ -1040,7 +1040,9 @@ def create_production_plan(demand, farm=None, season_start_year=None, force_new=
 			       "new_beds_required": cint(doc.new_beds_required),
 			       "weeks_in_deficit": cint(doc.weeks_in_deficit),
 			       "reused": 1}
-			out["propagation"] = _propagation_for(doc)
+			# No propagation plan here. How the plants are got is decided in the
+			# sourcing step, and building one on creation answers that question
+			# before anyone has been asked it -- it assumes the farm will propagate.
 			return out
 
 	d = frappe.get_doc("Summer Flower Market Demand", demand)
@@ -1050,8 +1052,6 @@ def create_production_plan(demand, farm=None, season_start_year=None, force_new=
 	                        ["name", "weeks_covered", "coverage_pct",
 	                         "new_beds_required", "weeks_in_deficit"], as_dict=True)
 	p["reused"] = 0
-	p["propagation"] = _propagation_for(
-		frappe.get_doc("Summer Flower Production Plan", name))
 	return p
 
 
