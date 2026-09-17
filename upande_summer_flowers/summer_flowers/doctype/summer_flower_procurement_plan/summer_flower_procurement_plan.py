@@ -258,12 +258,30 @@ def methods_for(production_plan):
 			"marked_buyable": 0,
 		})
 	space, basis = space_at(p.farm)
+	# A plan is pinned to the version it was built on, deliberately. But that means
+	# a route added to the protocol since does not reach it, and the screen then
+	# says the crop has no route when the protocol plainly does -- which reads as
+	# the edit having been lost.
+	current = frappe.db.get_value("Crop Protocol Version",
+	                              {"variety": p.variety, "farm": p.farm,
+	                               "is_current": 1}, "name")
+	stale = None
+	if current and current != v.name:
+		newer_has_route = bool(frappe.db.count("Crop Material Stage",
+		                                       {"parent": current,
+		                                        "parenttype": "Crop Protocol Version"}))
+		stale = {
+			"current_version": current,
+			"plan_version": v.name,
+			"newer_has_route": newer_has_route,
+		}
 	return {
 		"plan": p.name, "variety": p.variety, "farm": p.farm,
 		"protocol": v.name, "route": v.get("route_summary"),
 		"options": options,
 		"beds_available": space, "space_basis": basis,
 		"has_route": bool(v.material_route),
+		"stale_version": stale,
 	}
 
 

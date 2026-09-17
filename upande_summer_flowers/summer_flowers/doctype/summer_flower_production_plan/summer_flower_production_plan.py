@@ -1006,6 +1006,104 @@ def plants_per_bed_for(v):
 
 
 @frappe.whitelist()
+def allocation_options(plan):
+	"""Each unplaced planting, with the blocks that could take it.
+
+	Allocation is a decision. The planner knows which blocks have room; it does
+	not know which house suits a crop, which is due a rest, or which is nearest
+	the packhouse. So it ranks and the grower picks.
+	"""
+	p = frappe.get_doc("Summer Flower Production Plan", plan)
+	v = frappe.get_cached_doc("Crop Protocol Version", p.protocol)
+	life = cint(v.total_weeks_in_ground)
+	turn = cint(v.turnaround_weeks)
+	cal = BlockCalendar(p.farm, p.variety)
+
+	rows = []
+	for b in p.plan_blocks:
+		if not b.is_new_planting or not b.planting_date:
+			continue
+		start = getdate(b.planting_date)
+		end = start + datetime.timedelta(weeks=life + turn)
+		cands = cal.candidates(cint(b.beds), start, end)
+		# The block this row would take if nobody intervenes. Reserved straight
+		# away, so the row below it sees ground that is already spoken for --
+		# without this every row is offered the same block and ten two-bed
+		# plantings all "fit" a block with nine beds free.
+		suggested = b.block or next((c["block"] for c in cands if c["fits"]), None)
+		rows.append({
+			"row": b.name,
+			"planting_week": "%s-W%02d" % (cint(b.planting_year), cint(b.planting_week)),
+			"planting_date": str(start),
+			"free_from": str(end),
+			"beds": cint(b.beds),
+			"plants": cint(b.plants),
+			"block": b.block,
+			"suggested": suggested,
+			"candidates": cands,
+		})
+		if suggested:
+			cal.reserve(suggested, start, end, cint(b.beds))
+	return {"plan": p.name, "farm": p.farm, "variety": p.variety, "rows": rows}
+
+
+@frappe.whitelist()
+def allocate(plan, assignments):
+	"""Write the chosen blocks onto the plan's plantings."""
+	if isinstance(assignments, str):
+		assignments = frappe.parse_json(assignments)
+	p = frappe.get_doc("Summer Flower Production Plan", plan)
+	v = frappe.get_cached_doc("Crop Protocol Version", p.protocol)
+	life = cint(v.total_weeks_in_ground) + cint(v.turnaround_weeks)
+	by_name = {b.name: b for b in p.plan_blocks}
+
+	# Check the whole set before writing any of it. A picker that lets ten two-bed
+	# plantings into a block with nine beds free has not allocated anything -- it
+	# has recorded a wish, and the first anyone would know is when the plants
+	# arrive. Rows are tested in planting order, each against what the ones before
+	# it took.
+	cal = BlockCalendar(p.farm, p.variety)
+	ordered = sorted(
+		[(r, b) for r, b in ((r, by_name.get(r)) for r in (assignments or {})) if b],
+		key=lambda rb: getdate(rb[1].planting_date or nowdate()))
+	refused = []
+	for row, b in ordered:
+		block = (assignments or {}).get(row)
+		if not block:
+			continue
+		start = getdate(b.planting_date)
+		end = start + datetime.timedelta(weeks=life)
+		free = cal.free_beds(cal._get(block), start, end) if cal._get(block) else 0
+		if free < cint(b.beds):
+			refused.append(_("{0} needs {1} beds in {2}, which has {3} free from "
+			                 "{4} to {5}").format(
+				"%s-W%02d" % (cint(b.planting_year), cint(b.planting_week)),
+				cint(b.beds), block, free, start, end))
+			continue
+		cal.reserve(block, start, end, cint(b.beds))
+	if refused:
+		frappe.throw(_("These do not fit:<br><br>{0}<br><br>Nothing was allocated. "
+		               "Pick different blocks, or plant less.")
+		             .format("<br>".join(refused)), title=_("Will not fit"))
+
+	done = 0
+	for row, block in (assignments or {}).items():
+		b = by_name.get(row)
+		if not b:
+			continue
+		b.db_set("block", block or None, update_modified=False)
+		b.db_set("not_placed", 0 if block else 1, update_modified=False)
+		done += 1
+	p.reload()
+	p.db_set("plantings_not_placed",
+	         sum(1 for b in p.plan_blocks if b.is_new_planting and not b.block),
+	         update_modified=False)
+	frappe.db.commit()
+	return {"assigned": done,
+	        "still_unplaced": cint(p.plantings_not_placed)}
+
+
+@frappe.whitelist()
 def plan_preview(market_demand, farm=None, season_start_year=None):
 	"""What creating this plan would mean, before anything is written.
 
@@ -1491,10 +1589,18 @@ def _populate(plan):
 		# gap is the difference between a workable rotation and a double-booked bed.
 		released = uproot + datetime.timedelta(weeks=turnaround)
 
-		# A block if one is free, and the planting either way. Which block a planting
-		# goes in is decided when blocks are assigned; the plan does not wait for it.
-		block = calendar.place(beds, planting_date, released)
-		if not block:
+		# Which block a planting goes in is a decision, not an arithmetic result: a
+		# grower knows which house suits a crop, which is due for a rest, which is
+		# nearest the packhouse. The plan proposes the planting and leaves the block
+		# empty; Allocate Blocks is where it is chosen.
+		#
+		# What the plan still does is ask whether the ground exists at all, so a
+		# plan that cannot be placed says so before anyone allocates it by hand.
+		# Reserve, so that each cohort is tested against the ground the ones before
+		# it took -- but do not record which block: that is the grower's call. The
+		# reservation is the feasibility question, not the allocation.
+		block = None
+		if not calendar.place(beds, planting_date, released, reserve=True):
 			not_placed += 1
 			unmet += deficit
 
@@ -1730,6 +1836,14 @@ class BlockCalendar:
 			                     "holder": None, "status": "Proposed",
 			                     "in_ground": False})
 		return best["name"]
+
+	def reserve(self, block, start, end, beds):
+		"""Hold beds in a named block, for a choice already made."""
+		b = self._get(block)
+		if b:
+			b["busy"].append({"start": start, "end": end, "beds": beds,
+			                  "holder": None, "status": "Proposed",
+			                  "in_ground": False})
 
 	def candidates(self, beds, start, end, limit=6):
 		"""Every block, ranked: the ones that fit, then the ones that nearly do.

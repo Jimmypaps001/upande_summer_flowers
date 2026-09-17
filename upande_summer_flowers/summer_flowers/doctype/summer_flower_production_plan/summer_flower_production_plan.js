@@ -17,20 +17,24 @@ frappe.ui.form.on("Summer Flower Production Plan", {
 
 		render_sheet(frm);
 		draw_calendar(frm);
+		// Seven buttons across a toolbar is a list nobody reads. One dropdown,
+		// in the order the work happens: plan, allocate, procure, plant.
+		const ACTIONS = __("Actions");
+
 		frm.add_custom_button(__("Download Planning Sheet"), () => {
 			open_url_post(
 				"/api/method/upande_summer_flowers.summer_flowers.plan_sheet.sheet_csv",
 				{ plan: frm.doc.name },
 				true
 			);
-		});
+		}, ACTIONS);
 		frm.add_custom_button(__("Edit Crop Protocol"), () => {
 			// The assumptions at the foot of the sheet are this protocol. Editing it
 			// puts it back to Draft for re-approval, which then writes a new version
 			// and this plan can be regenerated against it.
 			frappe.set_route("Form", "Crop Protocol",
 				`${frm.doc.variety}-${frm.doc.farm}`);
-		});
+		}, ACTIONS);
 
 		if (frm.doc.docstatus === 0) {
 			frm.add_custom_button(__("Regenerate"), () => {
@@ -46,14 +50,16 @@ frappe.ui.form.on("Summer Flower Production Plan", {
 							})
 							.then(() => frm.reload_doc())
 				);
-			});
+			}, ACTIONS);
 		}
 
 		if (frm.doc.docstatus === 1) {
 			// Where the plants come from is not a detail of the plan -- it sets the
 			// lead time, and the lead time sets the order date. Asked once, here.
-			frm.add_custom_button(__("Plan Procurement"), () => source_plantlets(frm))
-				.addClass("btn-primary");
+			frm.add_custom_button(__("Allocate Blocks"), () => allocate_blocks(frm),
+				ACTIONS);
+			frm.add_custom_button(__("Plan Procurement"), () => source_plantlets(frm),
+				ACTIONS);
 			frm.add_custom_button(__("Create Plantings"), () =>
 				frm
 					.call({
@@ -77,13 +83,15 @@ frappe.ui.form.on("Summer Flower Production Plan", {
 									: ""),
 						});
 						frm.reload_doc();
-					})
+					}),
+				ACTIONS
 			);
 		}
 
 		if (frm.doc.budget) {
 			frm.add_custom_button(__("View Budget"), () =>
-				frappe.set_route("Form", "Summer Flower Budget", frm.doc.budget)
+				frappe.set_route("Form", "Summer Flower Budget", frm.doc.budget),
+				ACTIONS
 			);
 		}
 
@@ -405,8 +413,71 @@ function source_plantlets(frm) {
 		d.show();
 		note();
 		if (!s.has_route) {
+			// Say WHICH protocol has no route. "This crop's protocol" reads as the
+			// one you just edited, and if a newer version has the route you added,
+			// the answer is to regenerate rather than to edit it again.
+			const st = s.stale_version;
 			d.set_df_property("entry_stage", "description",
-				__("This crop's protocol has no material route, so nothing can be dated from it."));
+				st && st.newer_has_route
+					? __("{0} has no material route. {1} is the current version and does have one — point this plan at it and Regenerate.",
+						[st.plan_version, st.current_version])
+					: __("{0} has no material route, so nothing can be dated from it. Add one on the Crop Protocol and approve it.",
+						[s.protocol]));
+		} else if (s.stale_version) {
+			d.set_df_property("entry_stage", "description",
+				__("Dated from {0}. {1} is now the current version; regenerate the plan to use it.",
+					[s.stale_version.plan_version, s.stale_version.current_version]));
 		}
+	});
+}
+
+
+// ------------------------------------------------------------- allocation
+// Which block a planting goes in is a decision. The planner ranks what fits and
+// what nearly fits; the grower knows which house suits the crop.
+function allocate_blocks(frm) {
+	const M = "upande_summer_flowers.summer_flowers.doctype"
+		+ ".summer_flower_production_plan.summer_flower_production_plan.";
+	frappe.call({ method: M + "allocation_options", args: { plan: frm.doc.name },
+		freeze: true }).then((r) => {
+		const s = r.message;
+		if (!s || !s.rows.length) {
+			frappe.msgprint(__("This plan has no new plantings to allocate."));
+			return;
+		}
+		const fields = [];
+		s.rows.forEach((row, i) => {
+			const opts = [""].concat(row.candidates.map((c) => c.block));
+			const fits = row.candidates.filter((c) => c.fits).length;
+			fields.push({
+				fieldname: "row_" + i, fieldtype: "Select", options: opts,
+				default: row.suggested || "",
+				label: __("{0} — {1} beds, {2} plants", [row.planting_week,
+					row.beds, frappe.format(row.plants, { fieldtype: "Int" })]),
+				description: fits
+					? __("{0} blocks have room from {1} until {2}", [fits,
+						row.planting_date, row.free_from])
+					: __("No block has {0} beds free for that whole period.", [row.beds]),
+			});
+		});
+		const d = new frappe.ui.Dialog({
+			title: __("Allocate blocks"), size: "large", fields: fields,
+			primary_action_label: __("Assign"),
+			primary_action(values) {
+				const assignments = {};
+				s.rows.forEach((row, i) => { assignments[row.row] = values["row_" + i] || null; });
+				d.hide();
+				frappe.call({ method: M + "allocate", freeze: true,
+					args: { plan: frm.doc.name, assignments: JSON.stringify(assignments) } })
+					.then((res) => {
+						const m = res.message || {};
+						frappe.show_alert({ indicator: "green",
+							message: __("{0} allocated, {1} still without a block",
+								[m.assigned, m.still_unplaced]) });
+						frm.reload_doc();
+					});
+			},
+		});
+		d.show();
 	});
 }

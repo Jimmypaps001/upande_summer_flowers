@@ -31,11 +31,72 @@ def validate_block(doc, method=None):
 	"""Only summer flower blocks are touched; every other block is left alone."""
 	if not doc.get("custom_is_summer_flower_block"):
 		return
+	set_dimensions(doc)
 	check_area_history(doc)
 	apply_current_area(doc)
 	check_planted_within_area(doc)
 	measure_beds(doc)
 	apply_current_coverage(doc)
+
+
+def set_dimensions(doc):
+	"""Work the block's area out from its dimensions, and say what it can hold.
+
+	A block without dimensions cannot say how many plants it takes, and that is
+	the question every plan asks of it. Length by width is the gross ground; the
+	beds inside it are what a crop is actually planted on, and the difference is
+	paths and headlands, which grow nothing.
+	"""
+	gross = flt(doc.get("block_length")) * flt(doc.get("block_width"))
+	if not gross:
+		gross = flt(doc.get("block_area"))
+	doc.custom_sf_gross_area_sqm = gross
+	if gross and not flt(doc.get("block_area")):
+		doc.block_area = gross
+
+	# The beds are measured where they can be; where they cannot, the block's own
+	# net area stands in, because a bed with no dimensions is not no bed.
+	bed_sqm = sum(flt(r.get("measured_area_sqm")) for r in (doc.get("custom_beds") or []))
+	if not bed_sqm:
+		bed_sqm = flt(doc.get("custom_net_area_ha")) * 10_000
+	doc.custom_sf_plantable_sqm = bed_sqm
+
+	# How many plants it holds is not a property of the block: it depends on how
+	# densely the crop is planted, which the protocol states. So the note gives the
+	# ground and works an example at the density of whatever is standing there.
+	if bed_sqm:
+		density = 0
+		variety = doc.get("variety")
+		if variety:
+			density = flt(frappe.db.get_value(
+				"Crop Protocol Version",
+				{"variety": variety, "farm": doc.get("farm"), "is_current": 1},
+				"plants_per_sqm_net"))
+		if density:
+			doc.custom_sf_capacity_note = _(
+				"{0} m² of beds inside {1} m² of ground. At {2} plants per m², the "
+				"density {3} is planted at, that is about {4} plants."
+			).format(int(bed_sqm), int(gross) or _("unmeasured"), density, variety,
+			         int(bed_sqm * density))
+		else:
+			doc.custom_sf_capacity_note = _(
+				"{0} m² of beds inside {1} m² of ground. How many plants that holds "
+				"depends on the crop's planting density, which its protocol states."
+			).format(int(bed_sqm), int(gross) or _("unmeasured"))
+	else:
+		doc.custom_sf_capacity_note = _(
+			"No bed area recorded, so this block cannot say how many plants it holds.")
+
+	# Capacity is what the dimensions are FOR, so that is what is insisted on. A
+	# block measured by length and width has it; so does one whose beds are
+	# measured. A block with neither cannot answer the only question a plan asks
+	# of it, and saying "give me a width" would be asking for the wrong thing.
+	if not flt(doc.get("custom_sf_plantable_sqm")):
+		frappe.throw(_(
+			"{0} has no plantable area. Give it a length and width, or a net area, "
+			"or measure its beds -- without one of those it cannot say how many "
+			"plants it holds, and no plan can be placed on it."
+		).format(doc.name or _("This block")), title=_("Block needs measuring"))
 
 
 def check_area_history(doc):
