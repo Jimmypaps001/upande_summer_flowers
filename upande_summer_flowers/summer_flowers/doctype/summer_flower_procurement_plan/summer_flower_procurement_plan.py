@@ -185,9 +185,13 @@ class SummerFlowerProcurementPlan(Document):
 
 	def set_totals(self):
 		rows = self.requirements or []
-		self.total_plants_at_field = sum(cint(r.qty_at_field) for r in rows)
+		# The establishment line is the motherstock, not a planting: its qty_at_field
+		# is mother plants standing on a bench, and adding it to the plants going in
+		# the ground would overstate the crop by the size of the pool.
+		field = [r for r in rows if (r.line_type or "Planting") != "Establishment"]
+		self.total_plants_at_field = sum(cint(r.qty_at_field) for r in field)
 		self.total_units_to_order = sum(cint(r.qty_to_order) for r in rows)
-		self.beds_required = sum(cint(r.beds) for r in rows)
+		self.beds_required = sum(cint(r.beds) for r in field)
 		dates = [getdate(r.order_by_date) for r in rows if r.order_by_date]
 		self.first_order_by = min(dates) if dates else None
 		self.last_order_by = max(dates) if dates else None
