@@ -20,6 +20,7 @@ either way. That choice is what this module exists to price and to date.
 """
 
 import datetime
+import math
 
 import frappe
 from frappe import _
@@ -65,7 +66,14 @@ def journey(version, from_stage):
 
 	weeks = 0
 	plants_per_unit = 1.0
+	standing = None
 	for stage, steps in blocks[start:]:
+		if cint(stage.get("is_standing")):
+			# A pool is not a step on a conveyor. Carrying its multiplication into
+			# plants_per_unit would say one plantlet becomes four plants, when what it
+			# becomes is four mothers that give cuttings every week for a year. The
+			# number is right in requirement(); here it would only mislead.
+			standing = stage.stage
 		plants_per_unit *= _survival([stage])
 		# A stage's yield is what it hands on when material LEAVES it, so it applies
 		# to the stage bought as well: buying mother plants still gives you that
@@ -77,10 +85,90 @@ def journey(version, from_stage):
 	return {
 		"stage": from_stage,
 		"weeks_to_ground": weeks,
+		"standing": standing,
+		# Only meaningful on a route that has no pool in it. Where there is one, the
+		# order is sized from the busiest week -- see requirement().
 		"plants_per_unit": plants_per_unit,
 		"lead_weeks": cint(blocks[start][0].lead_weeks),
 		"rate": flt(blocks[start][0].rate),
 	}
+
+
+def standing_stage(version, from_stage=None):
+	"""The stage on this route that is established once and cut from, if any.
+
+	A motherstock is not consumed by a planting. One of them supplies every cohort
+	in a plan, week after week, so what it costs is decided by the busiest week --
+	not by adding up the season. Sizing it per cohort is how a plan came to ask for
+	136,851 plantlets where 3,024 was the answer.
+	"""
+	blocks = _blocks(version)
+	names = [s.stage for s, _st in blocks]
+	start = names.index(from_stage) if from_stage in names else 0
+	for stage, _steps in blocks[start:]:
+		if cint(stage.get("is_standing")):
+			return stage
+	return None
+
+
+def requirement(version, from_stage, plants, weekly_plants=None):
+	"""What to buy at `from_stage`, and in what shape, to grow `plants` plants.
+
+	Two routes, two shapes of answer, and the shape is the whole point:
+
+	  flow-through -- seed, tubers, rooted cuttings, plants bought ready. Every
+	    plant costs a unit, so the order is the season's plants divided by what
+	    survives the walk to the ground. One order per planting.
+
+	  standing -- the route passes a motherstock. The purchase builds a pool and
+	    the pool is cut every week, so the order is sized from the busiest week's
+	    draw and placed once. Buying it per planting buys the same motherstock as
+	    many times as there are plantings.
+
+	`plants` is the whole plan; `weekly_plants` is the most that must be stuck in
+	any one week. A standing route needs the second and ignores the first.
+	"""
+	j = journey(version, from_stage)
+	if not j:
+		return None
+	stage = standing_stage(version, from_stage)
+	if not stage:
+		per_unit = flt(j["plants_per_unit"])
+		return dict(j, kind="per_cohort", standing_stage=None, multiplies=False,
+		            units=(int(math.ceil(plants / per_unit)) if (plants and per_unit)
+		                   else 0),
+		            basis=_("{0} plants at {1:.3f} plants per unit bought")
+		                  .format(plants, per_unit))
+
+	# The pool's own arithmetic, which is the protocol's and not a second opinion
+	# about it: cuttings to stick for the week, mothers to cut them from, plantlets
+	# to raise those mothers. Every step of it is a named protocol field.
+	weekly = cint(weekly_plants or 0)
+	per_week = flt(stage.get("yields_per_week"))
+	cycles = cint(version.max_multiplication_cycles)
+	cuttings = cint(version.cuttings_for_plants(weekly)) if weekly else 0
+	mothers = int(math.ceil(cuttings / per_week)) if (cuttings and per_week) else 0
+	units = int(math.ceil(version.tc_plants_for(mothers, cycles))) if mothers else 0
+	blocked = None
+	if weekly and not per_week:
+		# Yields nothing per week and the route still says it multiplies: the answer
+		# would be an order sized as though every cutting had to be bought. Refusing
+		# is the point -- this is the shape of the 45x error.
+		blocked = _(
+			"{0} stands and is cut from, but the protocol does not say how many "
+			"cuttings one {1} gives in a week. Without that the order cannot be "
+			"sized, and sizing it as if each planting needed its own {0} would "
+			"over-buy many times over."
+		).format(stage.stage, stage.stage.lower())
+	return dict(j, kind="standing", standing_stage=stage.stage, multiplies=True,
+	            units=units, pool=mothers, weekly_draw=cuttings,
+	            weekly_plants=weekly, yields_per_week=per_week, cycles=cycles,
+	            blocked=blocked,
+	            basis=_("{0} plants stuck in the busiest week needs {1} cuttings, "
+	                    "off {2} mother plants, raised from {3} plantlets at {4} "
+	                    "multiplication cycles")
+	                  .format(f"{weekly:,}", f"{cuttings:,}", f"{mothers:,}",
+	                          f"{units:,}", cycles))
 
 
 @frappe.whitelist()

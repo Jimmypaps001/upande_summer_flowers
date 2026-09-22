@@ -529,14 +529,28 @@ class SummerFlowerProductionPlan(Document):
 			self.tc_status = _("No plantings proposed, so nothing to order.")
 			return
 
-		cuttings = cint(v.cuttings_for_plants(peak))
-		per_week = flt(v.cuttings_per_plant_per_week) or 1.0
-		mothers = int(math.ceil(cuttings / per_week)) if cuttings else 0
+		# Through the one function that sizes a purchase, so this figure and the one
+		# the Procurement Plan raises orders against are the same walk. They were two
+		# walks: this one multiplied through the motherstock and the route-based one
+		# did not, and for the same Aster plan they said 3,024 plantlets and 136,851.
+		from upande_summer_flowers.summer_flowers import sourcing
+
 		cycles = cint(self.tc_cycles_committed) if self.tc_choice_committed \
 			else cint(v.max_multiplication_cycles)
+		req = sourcing.requirement(v, "TC", cint(self.new_plants_required), peak)
+		if not req:
+			self.tc_status = _("This crop's route does not start at TC, so there is no "
+			                   "TC order to size. What it does buy is on its Procurement "
+			                   "Plan.")
+			return
+		if req.get("blocked"):
+			self.tc_status = req["blocked"]
+			return
+		cuttings = cint(req.get("weekly_draw"))
+		mothers = cint(req.get("pool"))
 		self.tc_cuttings_at_peak = cuttings
 		self.tc_mother_plants = mothers
-		calculated = int(math.ceil(v.tc_plants_for(mothers, cycles))) if mothers else 0
+		calculated = cint(req.get("units"))
 
 		# A confirmed choice is the order; the calculation becomes advice about it.
 		# Recomputing over the top would make the dashboard's Confirm button a no-op
@@ -1005,6 +1019,41 @@ def plants_per_bed_for(v):
 	return int(round(bed_sqm(v) * flt(getattr(v, "plants_per_sqm_net", 0))))
 
 
+
+def size_planting(v, plants_required, min_beds=1):
+	"""Turn a flush-true plant requirement into a plantable size.
+
+	Returns (beds held, plants planted, net m2 planted).
+
+	The unit a planting comes in is the protocol's MINIMUM PLANTING AREA, not the
+	bed. Rounding to whole beds quantised every cohort to a bed's worth of plants:
+	a week needing 7,408 plants was planted with 8,000 because a bed holds a
+	thousand, eight per cent over the whole order, and the flush's own answer was
+	computed and thrown away. Where the minimum is smaller than a bed -- and on most
+	crops it is -- the area rounds far closer and the plant count follows the flush
+	again.
+
+	Beds are still whole, because a bed is what the block calendar holds; a planting
+	of 380 m2 occupies eight 50 m2 beds even though it plants only seven and a half
+	of them.
+	"""
+	per_sqm = flt(getattr(v, "plants_per_sqm_net", 0))
+	unit = flt(getattr(v, "min_planting_area_sqm", 0))
+	bed = flt(getattr(v, "sqm_net_per_bed", 0))
+	ppb = plants_per_bed_for(v)
+	if not per_sqm or not unit:
+		# No density or no stated minimum: the area arithmetic has nothing to stand
+		# on, so fall back to whole beds and say so by returning no area.
+		beds = max(cint(min_beds), int(math.ceil(plants_required / ppb))) if ppb \
+			else cint(min_beds)
+		return beds, (beds * ppb if ppb else 0), (beds * bed)
+	units = max(1, int(math.ceil((plants_required / per_sqm) / unit)))
+	area = units * unit
+	plants = int(round(area * per_sqm))
+	beds = max(cint(min_beds), int(math.ceil(area / bed))) if bed else cint(min_beds)
+	return beds, plants, area
+
+
 @frappe.whitelist()
 def allocation_options(plan):
 	"""Each unplaced planting, with the blocks that could take it.
@@ -1278,28 +1327,43 @@ def plan_preview(market_demand, farm=None, season_start_year=None):
 			# Plants first: how many must flush that week is a fact about the crop,
 			# and it holds whether or not anyone has said how big a bed is. Beds are
 			# then that rounded up to whole ones -- when there is a bed to round to.
-			plants = int(math.ceil(peak_stems / first_flush))
+			plants_required = int(math.ceil(peak_stems / first_flush))
+			plants = plants_required
 			if ppb:
-				beds = max(min_beds, int(math.ceil(plants / ppb)))
-				plants = beds * ppb
+				# Rounded to a whole minimum planting area, not to a whole bed: see
+				# size_planting(). A bed's worth is the coarsest the rounding can be,
+				# and on a crop whose minimum is a fraction of a bed it was throwing
+				# the flush's own answer away.
+				beds, plants, _a = size_planting(v, plants_required, min_beds)
 			else:
 				beds = 0
-			cuttings = cint(v.cuttings_for_plants(plants))
+			from upande_summer_flowers.summer_flowers import sourcing
+
+			# None means this crop is not raised from tissue culture at all -- seed,
+			# tubers, budwood, plants bought ready. Advising a TC order for it was how
+			# a seed-raised Bupleurum came to be told to buy 2,488 plantlets.
+			req = sourcing.requirement(v, "TC", plants, plants)
+			cuttings = cint(req.get("weekly_draw")) if req else 0
 			per_week = flt(v.cuttings_per_plant_per_week) or 1.0
-			mothers = int(math.ceil(cuttings / per_week))
-			tc = {
+			mothers = cint(req.get("pool")) if req else 0
+			tc = req and {
 				# Which week, not just how big. "The peak week" means nothing without
 				# it, and it is the week every date downstream is counted back from.
 				"peak_week": "%s-W%02d" % (cint(peak_row.year), cint(peak_row.week_no)),
 				"peak_week_stems": peak_stems,
 				"plants_in_peak_week": plants,
+				# What the flush asks for, beside what the bed grid delivers. When the
+				# two differ, the difference is the rounding and not a mistake.
+				"plants_the_flush_asks_for": plants_required,
 				"cuttings": cuttings,
 				"mother_plants": mothers,
 				# Carried so the reader can see why mothers and cuttings are often the
 				# same number: at one cutting per plant per week they are equal, and
 				# printing both without the rate looks like a mistake.
 				"cuttings_per_plant_per_week": per_week,
-				"plantlets": int(math.ceil(v.tc_plants_for(mothers))),
+				"plantlets": cint(req.get("units")),
+				"blocked": req.get("blocked"),
+				"kind": req.get("kind"),
 				"order_by": lead["order_by"] if lead else None,
 				"late": bool(lead and lead["late"]),
 			}
@@ -1371,6 +1435,15 @@ def plan_preview(market_demand, farm=None, season_start_year=None):
 						"{3} ha. It will not all fit, so expect plantings with no block."
 					).format(space["ha_needed"], space["beds_needed"], farm,
 					         space["ha_at_farm"]))
+		# Nothing about tissue culture where the crop is not raised from it, and no
+		# figure where the pool cannot be sized. "About 0 plantlets to buy" reads as
+		# an answer; it is the absence of one.
+		if tc and tc["blocked"]:
+			notes.append(tc["blocked"])
+		elif tc:
+			when = (_(" The order was due {0}.").format(tc["order_by"]) if tc["late"]
+			        else (_(" Order by {0}.").format(tc["order_by"])
+			              if tc["order_by"] else ""))
 			notes.append(_(
 				"About {0} plantlets to buy. They multiply into {1} mother plants, "
 				"which is what it takes to cut {2} cuttings in {3} -- the busiest "
@@ -1378,11 +1451,7 @@ def plan_preview(market_demand, farm=None, season_start_year=None):
 				"cuttings cannot be banked.{4}"
 			).format("{:,}".format(tc["plantlets"]),
 			         "{:,}".format(tc["mother_plants"]),
-			         "{:,}".format(tc["cuttings"]), tc["peak_week"],
-			         _(" The order was due {0}.").format(tc["order_by"])
-			         if tc["late"] else
-			         (_(" Order by {0}.").format(tc["order_by"])
-			          if tc["order_by"] else "")))
+			         "{:,}".format(tc["cuttings"]), tc["peak_week"], when))
 
 	return {
 		"variety": d.variety, "farm": farm, "season": "%s-%s" % (year, str(year + 1)[-2:]),
@@ -1567,18 +1636,21 @@ def _populate(plan):
 		if not stems_f1 or not plants_per_bed:
 			break
 
-		wanted = math.ceil(deficit / (stems_f1 * plants_per_bed))
+		# What the flush actually asks for, before any rounding: the week's shortfall
+		# divided by what one plant gives in its first flush. This is the number the
+		# demand implies, and it is kept so the rounding that follows can be seen
+		# rather than having to be inferred from a coverage percentage.
+		plants_required = int(math.ceil(deficit / stems_f1))
 		# A planting smaller than the protocol's minimum is not a planting anyone
 		# would make. Rounding up over-supplies this week, but the surplus lands in
 		# this planting's own flush weeks and the greedy loop then proposes fewer
 		# plantings overall, which is the point.
-		beds = max(wanted, min_beds)
+		beds, plants, _area = size_planting(protocol, plants_required, min_beds)
 		# What the market needs is not trimmed to fit the ground. A planting larger
 		# than any single block is a real requirement that will be split across
 		# blocks when it is allocated; capping it here made the plan quietly answer
 		# a smaller question than the one it was asked.
 		oversize = bool(block_capacity and beds > block_capacity)
-		plants = beds * plants_per_bed
 		planting_date = monday - datetime.timedelta(weeks=first_offset)
 		p_year, p_week = iso_year_week(planting_date)
 		sticking_date = planting_date - datetime.timedelta(weeks=stick_weeks)
@@ -1634,6 +1706,7 @@ def _populate(plan):
 			"block": block or None,
 			"beds": beds,
 			"plants": plants,
+			"plants_required": plants_required,
 			"sticking_year": s_year,
 			"sticking_week": s_week,
 			"planting_year": p_year,

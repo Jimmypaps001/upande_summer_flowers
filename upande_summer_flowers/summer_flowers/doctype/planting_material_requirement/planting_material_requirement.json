@@ -6,6 +6,7 @@
  "engine": "InnoDB",
  "istable": 1,
  "field_order": [
+  "line_type",
   "cohort",
   "planting_week",
   "planting_date",
@@ -19,6 +20,7 @@
   "entry_stage",
   "supplier",
   "column_break_b",
+  "drawn_from_pool",
   "qty_to_order",
   "required_at_site_date",
   "order_by_date",
@@ -33,6 +35,16 @@
   "notes"
  ],
  "fields": [
+  {
+   "fieldname": "line_type",
+   "fieldtype": "Select",
+   "label": "Line",
+   "options": "Planting\nEstablishment",
+   "default": "Planting",
+   "read_only": 1,
+   "in_list_view": 1,
+   "description": "A Planting line is a cohort going in the ground. An Establishment line is the one purchase that builds a motherstock -- bought once for the whole plan, because a pool is cut from every week rather than consumed by a planting."
+  },
   {
    "fieldname": "cohort",
    "fieldtype": "Data",
@@ -110,6 +122,13 @@
   {
    "fieldname": "column_break_b",
    "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "drawn_from_pool",
+   "fieldtype": "Check",
+   "label": "Cut from the motherstock",
+   "read_only": 1,
+   "description": "This cohort is stuck with cuttings off the standing motherstock, so there is nothing to buy for it. What it costs was bought on the Establishment line."
   },
   {
    "fieldname": "qty_to_order",

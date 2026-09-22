@@ -22,6 +22,8 @@ from frappe import _
 from frappe.model.document import Document
 from frappe.utils import cint, flt, getdate, nowdate
 
+from upande_summer_flowers.summer_flowers.planning import iso_monday
+
 
 class SummerFlowerProcurementPlan(Document):
 	def validate(self):
@@ -309,6 +311,21 @@ def build(production_plan, method, entry_stage=None, supplier=None, fit_to_space
 	per_unit = flt(journey["plants_per_unit"]) if journey else 1.0
 	weeks_to_ground = cint(journey["weeks_to_ground"]) if journey else 0
 	lead = cint(journey["lead_weeks"]) if journey else 0
+	# A route that passes a motherstock is bought once, not once a cohort. The pool
+	# is established and then cut from every week, so its size is set by the busiest
+	# week's sticking and not by the season's total -- summing the cohorts bought
+	# the same motherstock twenty-six times over.
+	need = (sourcing.requirement(v, entry_stage, cint(p.new_plants_required),
+	                             cint(p.peak_weekly_sticking_planned))
+	        if entry_stage else None)
+	standing = bool(need and need.get("kind") == "standing")
+	if standing and need.get("blocked"):
+		frappe.throw(need["blocked"], title=_("The order cannot be sized"))
+	if need and not standing and not per_unit:
+		frappe.throw(
+			_("Nothing survives the route from {0} as the protocol has it, so no order "
+			  "can be sized from it.").format(entry_stage),
+			title=_("The order cannot be sized"))
 
 	doc = frappe.new_doc("Summer Flower Procurement Plan")
 	doc.production_plan = p.name
@@ -349,11 +366,17 @@ def build(production_plan, method, entry_stage=None, supplier=None, fit_to_space
 			beds_left -= beds
 		if capped:
 			trimmed += 1
-		units = int(math.ceil(plants / per_unit)) if (plants and per_unit) else 0
+		# On a standing route the cohort buys nothing: it is stuck with cuttings off
+		# the pool, and the pool was bought once on the establishment line below.
+		units = 0 if standing else (
+			int(math.ceil(plants / per_unit)) if (plants and per_unit) else 0)
 		required = getdate(b.planting_date) if b.planting_date else None
-		order_by = (required - datetime.timedelta(weeks=weeks_to_ground + lead)
-		            if required else None)
+		order_by = None if standing else (
+			required - datetime.timedelta(weeks=weeks_to_ground + lead)
+			if required else None)
 		doc.append("requirements", {
+			"line_type": "Planting",
+			"drawn_from_pool": 1 if standing else 0,
 			"cohort": b.name,
 			"planting_week": ("%s-W%02d" % (cint(b.planting_year), cint(b.planting_week))
 			                  if b.planting_year else None),
@@ -375,6 +398,39 @@ def build(production_plan, method, entry_stage=None, supplier=None, fit_to_space
 			# same fact and the calendar keys on the second.
 			"expected_delivery_date": required,
 		})
+
+	if standing:
+		# One line for the one purchase, dated back through the function that knows
+		# how long a pool takes to build. The plan's own TC block works the same date
+		# out the same way, because it is the same function.
+		from upande_summer_flowers.summer_flowers.doctype \
+			.summer_flower_motherstock_batch.summer_flower_motherstock_batch import (
+				tc_order_by_date,
+			)
+
+		stick = [(cint(b.sticking_year), cint(b.sticking_week)) for b in rows
+		         if cint(b.sticking_year)]
+		first = min(stick) if stick else None
+		first_stick = iso_monday(first[0], first[1]) if first else None
+		doc.append("requirements", {
+			"line_type": "Establishment",
+			"planting_week": ("%s-W%02d" % first if first else None),
+			"planting_date": first_stick,
+			"qty_at_field": cint(need.get("pool")),
+			"beds": 0,
+			"method": method,
+			"entry_stage": doc.entry_stage,
+			"supplier": doc.supplier,
+			"qty_to_order": cint(need.get("units")),
+			"required_at_site_date": first_stick,
+			"order_by_date": tc_order_by_date(v, first_stick,
+			                                  cycles=cint(need.get("cycles"))),
+			"expected_delivery_date": first_stick,
+			"notes": need.get("basis"),
+		})
+		doc.pool_plants = cint(need.get("pool"))
+		doc.weekly_draw = cint(need.get("weekly_draw"))
+		doc.sizing_basis = need.get("basis")
 
 	wanted_beds = sum(cint(b.beds) for b in rows)
 	if trimmed:

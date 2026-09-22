@@ -16,6 +16,8 @@
   "lead_weeks",
   "rate",
   "yields_per_unit",
+  "is_standing",
+  "yields_per_week",
   "max_cycles",
   "item",
   "returns_per_plant",
@@ -60,11 +62,12 @@
    "non_negative": 1
   },
   {
-   "description": "Material lost at this stage. Applied in sequence, so 10% here and 10% next is 81% surviving, not 80%.",
+   "description": "Material lost at this stage. Worked out from the protocol's own loss fields -- the TC order allowance, the cutting reject rate, rooting and field establishment. Change it on the protocol.",
    "fieldname": "loss_pct",
    "fieldtype": "Percent",
    "in_list_view": 1,
-   "label": "Loss %"
+   "label": "Loss %",
+   "read_only": 1
   },
   {
    "fieldname": "column_break_main",
@@ -96,11 +99,28 @@
   {
    "default": "1",
    "depends_on": "eval:doc.row_type!='Step'",
-   "description": "Units out per unit in. 1 for a stage that carries material through; a stage that multiplies -- motherstock, a sprouted tuber -- is what one unit yields. A step never multiplies: if it did, it would be a stage.",
+   "description": "Units out per unit in. Worked out from the protocol's multiplication settings -- a motherstock at four cycles yields four mother plants per plantlet. Change it on the protocol, not here, so one number cannot become two.",
    "fieldname": "yields_per_unit",
    "fieldtype": "Float",
    "label": "Yields per unit",
-   "precision": "3"
+   "precision": "3",
+   "read_only": 1
+  },
+  {
+   "fieldname": "is_standing",
+   "fieldtype": "Check",
+   "label": "Stands and is cut from",
+   "description": "Material here is established once and cut from week after week -- a motherstock. It is not consumed by one planting, so it is bought once and sized from the busiest week, not from the season's total.",
+   "depends_on": "eval:(doc.row_type||'Stage')=='Stage'"
+  },
+  {
+   "fieldname": "yields_per_week",
+   "fieldtype": "Float",
+   "label": "Yields per unit per week",
+   "precision": "3",
+   "description": "What one standing unit hands on each week -- cuttings off one mother plant. Derived from the protocol's Cuttings Per Plant Per Week.",
+   "depends_on": "is_standing",
+   "read_only": 1
   },
   {
    "depends_on": "eval:doc.row_type!='Step'",

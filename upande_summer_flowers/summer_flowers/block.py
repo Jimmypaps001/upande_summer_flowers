@@ -31,11 +31,16 @@ def validate_block(doc, method=None):
 	"""Only summer flower blocks are touched; every other block is left alone."""
 	if not doc.get("custom_is_summer_flower_block"):
 		return
-	set_dimensions(doc)
 	check_area_history(doc)
 	apply_current_area(doc)
 	check_planted_within_area(doc)
+	# Before the dimensions, not after: measure_beds is what fills the bed table
+	# from the Bed records, and the plantable area is read off that table. Running
+	# the check first refused a block whose beds are measured but whose table had
+	# not been built yet -- which is every block on a site that has not saved one
+	# since the beds were loaded.
 	measure_beds(doc)
+	set_dimensions(doc)
 	apply_current_coverage(doc)
 
 

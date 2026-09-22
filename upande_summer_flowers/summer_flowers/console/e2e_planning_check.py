@@ -12,6 +12,7 @@ claims at each step. Everything is built inside a savepoint and rolled back, so 
 can be run against live data without leaving a plan behind. Nothing is written.
 """
 
+import sys
 import traceback
 
 import frappe

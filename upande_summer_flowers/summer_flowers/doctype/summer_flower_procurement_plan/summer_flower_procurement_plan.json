@@ -36,6 +36,9 @@
   "section_totals",
   "total_plants_at_field",
   "total_units_to_order",
+  "pool_plants",
+  "weekly_draw",
+  "sizing_basis",
   "column_break_totals",
   "first_order_by",
   "last_order_by",
@@ -221,6 +224,30 @@
    "label": "Units to Order",
    "read_only": 1,
    "in_list_view": 1
+  },
+  {
+   "fieldname": "pool_plants",
+   "fieldtype": "Int",
+   "label": "Mother plants standing",
+   "read_only": 1,
+   "description": "The motherstock this plan buys: how many mother plants must be standing to cut the busiest week's requirement. Bought once, cut from every week.",
+   "depends_on": "eval:doc.pool_plants"
+  },
+  {
+   "fieldname": "weekly_draw",
+   "fieldtype": "Int",
+   "label": "Cuttings a week at the peak",
+   "read_only": 1,
+   "description": "Cuttings taken off the pool in the busiest week, allowing for rooting, field establishment and the cutting reject rate.",
+   "depends_on": "eval:doc.pool_plants"
+  },
+  {
+   "fieldname": "sizing_basis",
+   "fieldtype": "Small Text",
+   "label": "How the order was sized",
+   "read_only": 1,
+   "description": "The arithmetic, spelt out, so the number can be checked without reading code.",
+   "depends_on": "eval:doc.pool_plants"
   },
   {
    "fieldname": "column_break_totals",

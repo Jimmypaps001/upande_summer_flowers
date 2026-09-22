@@ -12,6 +12,7 @@
   "existing_planting",
   "beds",
   "plants",
+  "plants_required",
   "sticking_year",
   "sticking_week",
   "planting_year",
@@ -66,6 +67,13 @@
    "in_list_view": 1,
    "label": "Plants",
    "read_only": 1
+  },
+  {
+   "fieldname": "plants_required",
+   "fieldtype": "Int",
+   "label": "Plants the flush asks for",
+   "read_only": 1,
+   "description": "The week's shortfall divided by what one plant gives in its first flush -- what the demand implies before anything is rounded. Plants is this rounded up to a whole minimum planting area, so the gap between the two is what the bed grid costs."
   },
   {
    "columns": 1,

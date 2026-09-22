@@ -286,6 +286,100 @@ def check_route(doc):
 			title=_("Route buys plants and then grows them"))
 
 
+# ---------------------------------------------------------------------------
+# What the route costs in material, worked out from the protocol
+# ---------------------------------------------------------------------------
+
+# A stage that is established once and cut from week after week. It is not
+# consumed by a planting, so one of them supplies every cohort in a plan and is
+# sized from the busiest week rather than from the season's total. Getting this
+# wrong is not a rounding error: ordering a motherstock per cohort over-buys by
+# as many times as there are cohorts.
+STANDING_STAGES = ("Motherstock",)
+
+# Where each stage's numbers live on the protocol. The route used to hold its own
+# copy and the two disagreed by a factor of forty-five -- the plan's TC block said
+# 3,024 plantlets and the procurement plan said 136,851 for the same crop, because
+# one multiplied through the motherstock and the other did not. The protocol owns
+# these facts; the route shows them.
+def _n(doc, field, default=0.0, native=False):
+	name = field if native else source_field(field)
+	return flt(doc.get(name) or default)
+
+
+
+def _native_blocks(rows):
+	"""route_blocks() for a Crop Protocol Version, whose route is not custom_sf_."""
+	blocks, current = [], None
+	for row in (rows or []):
+		if (row.get("row_type") or "Stage") == "Step":
+			if current:
+				current[1].append(row)
+		else:
+			current = (row, [])
+			blocks.append(current)
+	return blocks
+
+
+def set_route_quantities(doc, native=False):
+	"""Write the protocol's own arithmetic onto the route's quantity columns.
+
+	Nothing here is typed on the route. A stage that multiplies says so because the
+	protocol says how many cycles it runs; a stage that loses material loses what
+	the protocol's loss fields say it loses. The columns stay visible, because a
+	route that showed only stage names could not be checked by eye -- but they are
+	read-only, and they cannot drift from the fields they came from.
+	"""
+	# A Crop Protocol holds these under custom_sf_*; the Version that snapshots it
+	# holds them natively. Same arithmetic either way, so a version approved before
+	# this existed can be brought up to date without a second copy of it.
+	cycles = cint(_n(doc, "max_multiplication_cycles", native=native))
+	per_cycle = _n(doc, "multiplication_factor_per_cycle", native=native)
+	factor = (cycles * (per_cycle if per_cycle > 0 else 1.0)) if cycles else 1.0
+	rooting = _n(doc, "rooting_success_pct", 100, native=native) / 100.0
+	establishment = _n(doc, "field_establishment_pct", 100, native=native) / 100.0
+	rows = (doc.get("material_route") or []) if native else None
+
+	for stage, steps in (_native_blocks(rows) if native else route_blocks(doc)):
+		name = stage.stage
+		standing = 1 if name in STANDING_STAGES else 0
+		stage.is_standing = standing
+		stage.yields_per_week = (_n(doc, "cuttings_per_plant_per_week", native=native)
+		                         if standing else 0)
+		if name == ROUTE_END:
+			# The end of the road multiplies nothing and loses nothing: what arrives
+			# here IS the plant. Establishment loss belongs to the stage that hands it
+			# over, not to the ground it lands in.
+			stage.yields_per_unit, stage.loss_pct = 1, 0
+			continue
+		if standing:
+			# One plantlet becomes `factor` mother plants over its cycles, and each
+			# mother then hands on yields_per_week cuttings for as long as it stands.
+			# The two are different facts and the second is not a multiplier on a
+			# single pass through the route -- see sourcing.requirement().
+			stage.yields_per_unit = factor
+			stage.loss_pct = _n(doc, "cutting_reject_pct", native=native)
+		elif name in ("Propagation", "Sprouting", "Cooling", "Roots"):
+			# Raising bought or cut material to something plantable. What is lost is
+			# what fails to root and what fails to establish.
+			stage.yields_per_unit = 1
+			stage.loss_pct = round((1 - rooting * establishment) * 100, 4)
+		elif cint(stage.is_purchase):
+			# The allowance on the order itself: order the requirement exactly and it
+			# arrives short by the supplier's own loss rate.
+			stage.yields_per_unit = 1
+			stage.loss_pct = (_n(doc, "tc_order_loss_pct", native=native)
+			                  if name == "TC" else flt(stage.loss_pct))
+		else:
+			stage.yields_per_unit = 1
+		for step in steps:
+			# A step is the same material standing still; check_route already refuses
+			# one that multiplies.
+			step.yields_per_unit = 1
+			step.is_standing = 0
+			step.yields_per_week = 0
+
+
 def to_version(doc, version=None):
 	"""Load a Crop Protocol's values onto an (unsaved) Crop Protocol Version."""
 	v = version or frappe.new_doc("Crop Protocol Version")
@@ -615,6 +709,7 @@ def validate(doc, method=None):
 	number_flushes(doc)
 	derive(doc)
 	check_route(doc)
+	set_route_quantities(doc)
 	fill_native_gaps(doc)
 	set_status(doc)
 	set_growth_stages(doc)
