@@ -49,6 +49,8 @@ def resolve_plan(variety=None, farm=None, plan=None):
 	if plan:
 		return plan
 	f = {"docstatus": ["<", 2]}
+	# Kept out of the return so every existing caller is untouched: what this
+	# picked, and whether anybody asked for it, is read back with scope_of().
 	if variety:
 		f["variety"] = variety
 	if farm:
@@ -143,6 +145,44 @@ def scope():
 		"versions": rows,
 		"varieties": sorted({r.variety for r in rows if r.variety}),
 		"farms": sorted({r.farm for r in rows if r.farm}),
+	}
+
+
+@frappe.whitelist()
+def scope_of(variety=None, farm=None, plan=None):
+	"""What the dashboard is actually showing, and whether anyone chose it.
+
+	With no variety and no farm, resolve_plan picks the newest approved plan and
+	the whole page then reports that one plan -- one variety, one farm -- under a
+	filter bar reading "All varieties". Every figure on it is real; none of them is
+	what the bar says. So the page has to be able to say which plan it landed on
+	and that nobody asked for it.
+	"""
+	_guard()
+	chosen = resolve_plan(variety, farm, plan)
+	f = {"docstatus": ["<", 2]}
+	if variety:
+		f["variety"] = variety
+	if farm:
+		f["farm"] = farm
+	total = frappe.db.count("Summer Flower Production Plan", f)
+	p = frappe.db.get_value("Summer Flower Production Plan", chosen,
+	                        ["name", "variety", "farm", "season", "docstatus",
+	                         "workflow_state"], as_dict=True) if chosen else None
+	return {
+		"plan": chosen,
+		"variety": p.variety if p else None,
+		"farm": p.farm if p else None,
+		"season": p.season if p else None,
+		"state": (p.workflow_state if p else None),
+		# Judged on variety and farm, not on the plan. The page resolves a plan for
+		# itself and holds it in its own state, so keying on that reported "you
+		# asked for this" for a plan nobody had chosen. What matters to the reader
+		# is that the scope bar says every variety while the figures are one.
+		"implicit": bool(chosen and not (variety or farm)),
+		"plans_in_scope": total,
+		"asked": {"variety": variety or None, "farm": farm or None,
+		          "plan": plan or None},
 	}
 
 

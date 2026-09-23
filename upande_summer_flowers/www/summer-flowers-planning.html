@@ -1324,8 +1324,12 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
       if (wantD) series.push({ label: "Demand", color: "var(--series-2)",
                                values: rows.map((r) => r.demand || 0),
                                fill: !wantP });
+      // This chart is deliberately wider than the rest of the page -- its job is
+      // to show the varieties the scope bar is not narrowed to. Saying so stops
+      // it reading as a contradiction of the tiles above it, which are one plan.
       note = multi
-        ? `All varieties · ${S.mv.series.length} plans summed`
+        ? `All varieties · ${S.mv.series.length} plans summed` +
+          (S.dv ? ` — the figures above are ${S.dv.plan} only` : "")
         : (S.dv ? `${S.dv.variety} at ${S.dv.farm}` : "");
     }
 
@@ -2937,7 +2941,16 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
     const pr = S.pp || {};
     if (!d.plan && !S.plan) { el.innerHTML = ""; return; }
     const stale = pr.protocol_stale || (S.pg && S.pg.protocol_stale);
-    el.innerHTML =
+    // A filter bar reading "All varieties" above figures that are one plan for one
+    // variety at one farm is the page telling the reader something untrue. It
+    // picked that plan because nothing was chosen; it says so.
+    const sc = S.sc || {};
+    const implicit = sc.implicit
+      ? `<span class="pill"><i class="dot2" style="background:var(--warning)"></i>` +
+        `no variety or farm chosen — this is 1 of ${sc.plans_in_scope} plans, and ` +
+        `every figure below is this one</span> `
+      : "";
+    el.innerHTML = implicit +
       `Showing <b>${esc(S.plan || d.plan || "—")}</b>` +
       (d.variety || S.variety ? ` · ${esc(d.variety || S.variety)}` : "") +
       (d.farm || S.farm ? ` at ${esc(d.farm || S.farm)}` : "") +
@@ -5627,7 +5640,10 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
       // not currently narrowed to.
       call("demand_vs_production_by_variety",
            { farm: S.farm, season: S.season || null }),
-    ]).then(([dv, deriv, pp, bf, cal, pr, lt, pg, mv]) => {
+      // What the page actually landed on, and whether anybody asked for it.
+      call("scope_of", a),
+    ]).then(([dv, deriv, pp, bf, cal, pr, lt, pg, mv, sc]) => {
+      S.sc = sc;
       S.lt = lt;
       S.pg = pg && pg.propagation_plan ? pg : null;
       S.mv = mv;

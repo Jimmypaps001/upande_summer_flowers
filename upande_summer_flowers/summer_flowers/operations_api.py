@@ -803,7 +803,65 @@ def process_overview(variety=None, farm=None, plan=None, season=None):
 		      blocked=(_("The plan is not approved, so no budget exists.")
 		               if p and p.docstatus != 1 else None))
 
-	# ── 4. propagation
+	# ── 4. procurement
+	#
+	# How the material is got, which until this step is an open question. The chain
+	# jumped from the budget straight to propagation, so a crop bought as plants
+	# ready to go still showed a propagation step -- and a crop raised here showed
+	# one before anybody had said the farm was raising it.
+	proc = None
+	if p:
+		pq = frappe.get_all(
+			"Summer Flower Procurement Plan",
+			filters={"production_plan": p.name, "docstatus": ["<", 2]},
+			fields=["name", "status", "docstatus", "method", "entry_stage",
+			        "propagates_here", "in_house_stages", "total_units_to_order",
+			        "pool_plants", "first_order_by", "orders_late", "route_verdict"],
+			order_by="creation desc", limit=1)
+		proc = pq[0] if pq else None
+	if not proc:
+		no_route = bool(p and not frappe.db.count(
+			"Crop Material Stage", {"parent": p.protocol,
+			                        "parenttype": "Crop Protocol Version"}))
+		stage("procurement", "Procurement plan",
+		      blocked=(_("{0} has no material route, so the procurement plan cannot "
+		                 "be built and nothing downstream of it exists.").format(
+			      p.protocol) if no_route else
+		               (_("Not planned, so nothing says how the material is got -- "
+		                  "and nothing downstream of it exists.") if p else None)))
+	else:
+		# A plan raised before the route was read, on a protocol that still has no
+		# route, knows neither what is bought nor whether anything is propagated.
+		# Saying "nothing bought; taken off the farm's own crop" in that case is an
+		# answer invented from an empty field, and it sat one step above a
+		# propagation plan asking for 370,000 cuttings.
+		unread = not (proc.route_verdict or proc.entry_stage
+		              or cint(proc.propagates_here))
+		if unread:
+			bought = _("cannot be read")
+			detail = _("{0} has no material route, so nothing says where this "
+			           "crop's material comes from.").format(p.protocol if p else "")
+		elif proc.method == "Purchase" and proc.entry_stage:
+			bought = _("{0} bought as {1}").format(
+				"{:,}".format(cint(proc.total_units_to_order)), proc.entry_stage)
+			detail = (_("raised here through {0}").format(proc.in_house_stages)
+			          if cint(proc.propagates_here) else _("planted as it arrives"))
+		else:
+			bought = _("nothing bought; taken off the farm's own crop")
+			detail = (_("raised here through {0}").format(proc.in_house_stages)
+			          if cint(proc.propagates_here) else _("planted as it arrives"))
+		stage("procurement", "Procurement plan", proc.name,
+		      proc.status or (_("approved") if proc.docstatus == 1 else _("draft")),
+		      bought,
+		      # Where the detail IS the problem, it is said once, as the problem.
+		      None if unread else detail,
+		      done=proc.docstatus == 1 and not unread,
+		      blocked=(detail if unread else
+		               (_("{0} order(s) are already past their date.").format(
+			               cint(proc.orders_late)) if cint(proc.orders_late)
+			            else None)))
+
+	# ── 5. propagation
 	#
 	# Found by variety and season, which is how it is keyed: propagation is one pool of
 	# motherstock and one TC order for a crop in a year, whichever production plan it
@@ -827,8 +885,20 @@ def process_overview(variety=None, farm=None, plan=None, season=None):
 		                      order_by="creation desc", limit=1)
 		pr = rows[0] if rows else None
 	if not pr:
-		stage("propagation", "Propagation plan",
-		      blocked=_("Not created, so nothing knows where the cuttings come from."))
+		# Only a crop this farm raises has a propagation plan, and the procurement
+		# plan is what raises it. Calling its absence a blocker on a crop bought as
+		# plants ready to go reported a problem that does not exist.
+		if proc and not cint(proc.propagates_here):
+			stage("propagation", "Propagation plan", state=_("not propagated here"),
+			      detail=_("{0} is bought as {1} and planted as it arrives.").format(
+				      p.variety if p else _("this crop"), proc.entry_stage or _("plants")),
+			      done=True)
+		else:
+			stage("propagation", "Propagation plan",
+			      blocked=(_("Raised when the procurement plan is approved.")
+			               if proc else
+			               _("Comes from the procurement plan, which is not planned "
+			                 "yet. Nothing knows where the cuttings come from.")))
 	else:
 		stage("propagation", "Propagation plan", pr.name, pr.status,
 		      "{:,}".format(cint(pr.total_cuttings_required)) + _(" cuttings"),
