@@ -58,23 +58,27 @@ class SummerFlowerProductionPlan(Document):
 	def on_submit(self):
 		"""Approval is the workflow transition that submits the plan.
 
-		Approving a plan is the moment it becomes a commitment, so everything that
-		follows from that commitment is created here: the budget, and the propagation
-		plan that says where the cuttings come from. The propagation plan had to be
-		asked for separately, which is why an approved plan could sit beside "Not
-		created, so nothing knows where the cuttings come from" -- the one thing with
-		a two year lead time, waiting on somebody to press a second button.
+		Approving a plan is the moment it becomes a commitment, so what follows
+		from that commitment is created here: the budget.
+
+		Not the propagation plan. Approving a production plan says what to grow, not
+		how the material for it is got, and building the propagation plan here
+		answered the second question before anyone had been asked it -- every plan
+		got one whether the farm intended to propagate or to buy plants ready. The
+		Procurement Plan is where the route is read and the method settled, so it
+		is what raises the propagation plan, and only for a crop that is actually
+		raised here.
 		"""
 		self.db_set("status", "Approved")
 		self.create_budget()
-		self.ensure_propagation()
 
 	def ensure_propagation(self):
-		"""Create or rebuild the propagation plan for this crop and season.
+		"""Rebuild the propagation plan this crop and season already has.
 
-		Never fatal. A plan that cannot source its cuttings is still an approved plan
-		and the budget is already posted; the chain says so plainly on the propagation
-		step, which is more use than an exception that leaves the approval half done.
+		Only ever called where one exists: Regenerate keeps it in step with numbers
+		that have just moved. It does not create one -- the Procurement Plan decides
+		whether this crop is propagated here at all, and raising one before that is
+		answered gave a plan its cuttings before anyone had said they were cut here.
 		"""
 		from upande_summer_flowers.summer_flowers.doctype \
 			.summer_flower_propagation_plan.summer_flower_propagation_plan import (
@@ -87,9 +91,9 @@ class SummerFlowerProductionPlan(Document):
 			frappe.log_error(frappe.get_traceback(),
 			                 "Propagation plan for %s" % self.name)
 			frappe.msgprint(
-				_("The plan is approved and the budget is posted, but its propagation "
-				  "plan could not be built. Open the Propagation step to see why."),
-				indicator="orange", title=_("Propagation not built"))
+				_("The propagation plan could not be rebuilt. Open the Propagation "
+				  "step to see why."),
+				indicator="orange", title=_("Propagation not rebuilt"))
 			return
 		frappe.msgprint(
 			_("Propagation plan {0} {1}.").format(

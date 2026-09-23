@@ -2484,8 +2484,41 @@ def confirm_tc_choice(plan, tc_qty=None, order_date=None, cycles=None, reason=No
 		changed.append(_("propagation plan {0} is submitted and was left alone")
 		               .format(prop[0].name))
 	else:
-		changed.append(_("no propagation plan is raised for this plan yet, so there "
-		                 "was nothing to carry it to"))
+		changed.append(_("no propagation plan yet -- the procurement plan raises one "
+		                 "when it is approved, and this choice goes with it"))
+
+	# ---- the procurement plan, which is what actually places the order
+	# The TC figure and its date are the establishment line on that document. Left
+	# out, the dashboard confirmed one quantity and the farm ordered another, and
+	# nothing downstream of the procurement plan -- the planting calendar, the
+	# propagation plan it raises -- ever heard about the change.
+	for q in frappe.get_all("Summer Flower Procurement Plan",
+	                        filters={"production_plan": plan, "docstatus": ["<", 2]},
+	                        fields=["name", "docstatus"], order_by="creation desc"):
+		if cint(q.docstatus) == 1:
+			changed.append(_("procurement plan {0} is approved and was left alone; "
+			                 "amend it to re-order").format(q.name))
+			continue
+		qd = frappe.get_doc("Summer Flower Procurement Plan", q.name)
+		est = [r for r in qd.requirements if (r.line_type or "") == "Establishment"]
+		if not est:
+			changed.append(_("procurement plan {0} has no establishment line to "
+			                 "carry it to").format(q.name))
+			continue
+		row = est[0]
+		row.qty_to_order = tc_qty
+		if order_date:
+			row.order_by_date = order_date
+		row.qty_at_field = int(round(v.mother_plants_for(tc_qty, cycles)))
+		qd.pool_plants = row.qty_at_field
+		qd.sizing_basis = _(
+			"Confirmed on the dashboard: {0} plantlets at {1} multiplication cycles, "
+			"ordering {2}. This is a decision, not the calculation -- what the "
+			"protocol works out is on the production plan."
+		).format(f"{tc_qty:,}", cycles, order_date or _("(no date)"))
+		qd.flags.ignore_permissions = True
+		qd.save()
+		changed.append(_("procurement plan {0}").format(q.name))
 
 	# ---- the motherstock batches raised for this plan
 	for b in frappe.get_all("Summer Flower Motherstock Batch",

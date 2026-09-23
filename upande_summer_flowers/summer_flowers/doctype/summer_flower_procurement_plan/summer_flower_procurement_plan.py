@@ -192,7 +192,7 @@ class SummerFlowerProcurementPlan(Document):
 		# supplier delivered a plantlet, not a plant.
 		source = ("In-house Propagation" if cint(self.propagates_here)
 		          else "Purchased from Breeder")
-		made, skipped, at_risk = [], 0, []
+		made, skipped, at_risk, refused = [], 0, [], []
 		for r in self.requirements:
 			if not cint(r.qty_at_field):
 				continue
@@ -240,13 +240,31 @@ class SummerFlowerProcurementPlan(Document):
 					if cal.meta.has_field("notes") else cal.get("notes")
 				at_risk.append(row.planting_date)
 			cal.flags.ignore_permissions = True
-			cal.insert()
+			# One cohort the calendar refuses -- a protocol version that takes effect
+			# after the planting date, a block rule this module knows nothing about --
+			# must not cost the farm the other twenty-five and the propagation plan
+			# built moments ago. Record which, and carry on.
+			try:
+				cal.insert()
+			except Exception as e:
+				frappe.log_error(frappe.get_traceback(),
+				                 "Planting calendar for %s" % self.name)
+				refused.append("%s: %s" % (row.planting_date,
+				                           str(e).split("\n")[0][:160]))
+				continue
 			row.db_set("existing_planting", cal.name, update_modified=False)
 			made.append(cal.name)
 
 		if made:
 			frappe.msgprint(_("{0} planting calendar entries created.").format(len(made)),
 			                indicator="green", title=_("Planting plan"))
+		if refused:
+			frappe.msgprint(_(
+				"{0} planting(s) were refused by the calendar and have no entry: {1}. "
+				"Everything else is written, and the propagation plan is built. Fix "
+				"what was objected to and approve an amendment for those cohorts."
+			).format(len(refused), "; ".join(refused[:3])), indicator="red",
+				title=_("Plantings not written"))
 		if at_risk:
 			frappe.msgprint(_(
 				"{0} of these plantings fall in weeks the propagation plan cannot "
@@ -284,9 +302,36 @@ class SummerFlowerProcurementPlan(Document):
 			                  "plan could not be built. The error is in the log."),
 			                indicator="orange", title=_("Propagation"))
 			return
-		frappe.msgprint(_("{0} {1}.").format(
-			outcome["name"], _("created") if outcome.get("created") else _("updated")),
+		# A TC quantity or date confirmed on the dashboard is a decision, and this
+		# document is built after it. Letting the new propagation plan recompute over
+		# the top would quietly discard the choice at the one moment it starts to
+		# matter -- the plan is raised, and it asks for a different order than the one
+		# that was confirmed.
+		carried = self._carry_tc_choice(outcome["name"])
+		frappe.msgprint(_("{0} {1}.{2}").format(
+			outcome["name"], _("created") if outcome.get("created") else _("updated"),
+			" " + carried if carried else ""),
 			indicator="green", title=_("Propagation plan"))
+
+	def _carry_tc_choice(self, propagation_plan):
+		"""Put the confirmed TC order onto the propagation plan just built."""
+		p = frappe.db.get_value(
+			"Summer Flower Production Plan", self.production_plan,
+			["tc_choice_committed", "tc_plants_committed", "tc_order_date_committed"],
+			as_dict=True)
+		if not (p and cint(p.tc_choice_committed) and cint(p.tc_plants_committed)):
+			return None
+		d = frappe.get_doc("Summer Flower Propagation Plan", propagation_plan)
+		if d.docstatus:
+			return None
+		d.tc_plants_required = cint(p.tc_plants_committed)
+		if p.tc_order_date_committed:
+			d.tc_order_date = getdate(p.tc_order_date_committed)
+		d.flags.ignore_permissions = True
+		d.save()
+		return _("It carries the {0} plantlets confirmed on the dashboard, ordered "
+		         "{1}.").format(f"{cint(p.tc_plants_committed):,}",
+		                        p.tc_order_date_committed or _("(no date)"))
 
 	def on_cancel(self):
 		self.db_set("status", "Cancelled")
