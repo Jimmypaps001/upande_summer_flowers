@@ -52,6 +52,8 @@
   "tc_order_date",
   "override_tc_order_date",
   "tc_order_date_calculated",
+  "line_start_date",
+  "productive_weeks",
   "expiry_date",
   "renewal_tc_order_date",
   "schedule_note_section",
@@ -347,6 +349,20 @@
    "label": "Calculated Order Date",
    "read_only": 1,
    "description": "One full lead time, lab included, before the first sticking week."
+  },
+  {
+   "fieldname": "line_start_date",
+   "fieldtype": "Date",
+   "label": "Motherstock One First Cut",
+   "read_only": 1,
+   "description": "When the generation raised straight from the tissue culture became cuttable. The line's life is counted from here, not from whichever generation is standing now: cuttings taken to build 1.2 do not reset the clock, so 1.2 comes out when 1 does."
+  },
+  {
+   "fieldname": "productive_weeks",
+   "fieldtype": "Int",
+   "label": "Cutting Weeks Left In The Line",
+   "read_only": 1,
+   "description": "Weeks between this pool reaching full size and the line expiring. Each multiplication cycle is an establishment spent out of this window, so multiplying more leaves less to cut."
   },
   {
    "fieldname": "expiry_date",

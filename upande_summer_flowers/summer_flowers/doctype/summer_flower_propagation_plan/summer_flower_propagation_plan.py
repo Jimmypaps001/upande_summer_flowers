@@ -294,6 +294,19 @@ class SummerFlowerPropagationPlan(Document):
 
 		peak = max(cint(r.shortfall) for r in short)
 		first_needed = min(getdate(r.week_start_date) for r in short)
+		# The line expires on motherstock one's clock, not on this generation's. A
+		# pool reached through four cycles is full three establishments into a life
+		# it did not start, so it has that much less left to cut -- and crediting it
+		# to the end of the horizon, as available_to=None did, promised cuttings off
+		# a pool that would have been pulled out.
+		est = v.weeks_tc_to_first_cut()
+		cycles = max(1, cint(v.max_multiplication_cycles))
+		line_start = add_days(first_needed, -7 * est * (cycles - 1))
+		expires = add_days(line_start, 7 * cint(v.motherstock_life_weeks)) \
+			if cint(v.motherstock_life_weeks) else None
+		self.new_pool_expiry = expires
+		self.new_pool_cutting_weeks = max(0, int(round(
+			(getdate(expires) - first_needed).days / 7.0))) if expires else 0
 		per_week = flt(v.cuttings_per_plant_per_week) or 1.0
 		mothers = int(round(peak / per_week)) if per_week else 0
 		self.mother_plants_required = mothers
@@ -313,6 +326,9 @@ class SummerFlowerPropagationPlan(Document):
 				continue
 			weeks_in = (monday - first_needed).days // 7
 			pct = ramp_ratio(weeks_in, ramp)
+			if expires and monday > getdate(expires):
+				# Past the line's renewal. Nothing is cut off it.
+				continue
 			cap = int(round(mothers * per_week * pct))
 			r.capacity_available = cint(r.capacity_available) + cap
 			key = (r.year, r.week_no)
@@ -341,11 +357,14 @@ class SummerFlowerPropagationPlan(Document):
 			"mother_plants": mothers,
 			"weekly_capacity": peak,
 			"available_from": first_needed,
-			"available_to": None,
+			"available_to": expires,
 			"notes": _("Sized on the worst uncovered week, {0} cuttings. First cut "
-			           "{1} at {2}% of that; full capacity {3}.").format(
+			           "{1} at {2}% of that; full capacity {3}. The line expires {4} "
+			           "-- {5} weeks after motherstock one first cut, not after this "
+			           "generation did -- leaving {6} cutting weeks.").format(
 				peak, first_needed, int(round(ramp[0] * 100)),
-				self.full_capacity_date),
+				self.full_capacity_date, expires or _("never, no life recorded"),
+				cint(v.motherstock_life_weeks), self.new_pool_cutting_weeks),
 		})
 		self._peak_shortfall = peak
 		self._first_needed = first_needed

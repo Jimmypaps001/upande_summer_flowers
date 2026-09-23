@@ -161,7 +161,22 @@ class SummerFlowerMotherstockBatch(Document):
 			getdate(self.sticking_week_required), -7 * (self.total_lead_time_weeks or 0))
 		if not (self.override_tc_order_date and self.tc_order_date):
 			self.tc_order_date = self.tc_order_date_calculated
-		self.expiry_date = add_days(stick, 7 * (p.motherstock_life_weeks or 0))
+		# The life clock starts at motherstock ONE, not at the generation cut from
+		# it. Cuttings taken off the first pool to build a second do not reset
+		# anything: the line is renewed from tissue culture, and 1.2 comes out when
+		# 1 comes out. Dating expiry from the multiplied generation's first cut gave
+		# every extra cycle a full life of its own, so four cycles read as four
+		# times the plants at no cost in time -- when what it actually costs is
+		# three establishments out of the same window.
+		est = p.weeks_tc_to_first_cut()
+		cycles = max(1, cint(self.build_up_cycles))
+		self.line_start_date = add_days(getdate(self.tc_on_farm_date), 7 * est)
+		self.expiry_date = add_days(self.line_start_date,
+		                            7 * (p.motherstock_life_weeks or 0))
+		# What is left to cut from the full pool. Multiplying buys plants out of
+		# this, not beside it.
+		self.productive_weeks = max(0, cint(round(
+			(getdate(self.expiry_date) - stick).days / 7.0)))
 		# Renewal must be productive the week this one expires, so the next order
 		# goes in one full lead time before that.
 		self.renewal_tc_order_date = add_days(
@@ -198,6 +213,23 @@ class SummerFlowerMotherstockBatch(Document):
 					self.effective_peak_cuttings, len(ramp),
 				)
 			)
+		if not self.productive_weeks:
+			warnings.append(_(
+				"{0} multiplication cycles take {1} weeks, and the line only lives "
+				"{2} weeks from motherstock one's first cut. The pool is full the "
+				"week it expires, so there is nothing to cut from it. Multiply "
+				"fewer times and buy more plantlets."
+			).format(cycles, cint(self.lead_time_weeks),
+			         cint(p.motherstock_life_weeks)))
+		elif cycles > 1 and self.productive_weeks < (p.motherstock_life_weeks or 0):
+			warnings.append(_(
+				"Multiplying {0} times leaves {1} cutting weeks of the {2} the line "
+				"lives: 1.2 and everything after it come out when motherstock one "
+				"does, so each cycle is {3} weeks spent out of the same window. "
+				"Buying more plantlets and multiplying less is the other way to the "
+				"same pool."
+			).format(cycles, self.productive_weeks,
+			         cint(p.motherstock_life_weeks), est))
 		if (self.lead_time_weeks or 0) > (p.motherstock_life_weeks or 0):
 			warnings.append(
 				_("Build-up takes {0} weeks but the motherstock only lives {1} weeks, so "
@@ -276,11 +308,15 @@ class SummerFlowerMotherstockBatch(Document):
 		     _("{0}-week ramp to full capacity: {1}% of the full rate in week one.")
 		     .format(self.ramp_weeks or 0, int(round((p.ramp_ratios() or [1])[0] * 100))))
 		step(_("Full cutting capacity"), self.max_pc_date, self.mother_plants,
-		     _("{0} cuttings per week for {1} weeks.").format(
-			     self.effective_peak_cuttings, p.motherstock_life_weeks))
+		     _("{0} cuttings per week for {1} weeks -- what is left of the line's "
+		       "{2} after {3} cycle(s) of multiplication.").format(
+			     self.effective_peak_cuttings, self.productive_weeks,
+			     p.motherstock_life_weeks, cycles))
 		step(_("Order renewal TC"), self.renewal_tc_order_date, tc_plants,
 		     _("Next generation must be productive the week this one expires."))
-		step(_("Motherstock expires"), self.expiry_date, 0)
+		step(_("Motherstock expires"), self.expiry_date, 0,
+		     _("{0} weeks after motherstock one first cut, whichever generation is "
+		       "standing by then.").format(p.motherstock_life_weeks))
 
 
 # ---------------------------------------------------------------------------

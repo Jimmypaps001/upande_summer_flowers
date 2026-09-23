@@ -38,6 +38,8 @@
   "cb3",
   "existing_cover_pct",
   "mother_plants_required",
+  "new_pool_expiry",
+  "new_pool_cutting_weeks",
   "peak_bench_sqm",
   "ramp_weeks",
   "full_capacity_date",
@@ -270,6 +272,20 @@
    "fieldtype": "Int",
    "label": "New Mother Plants",
    "read_only": 1
+  },
+  {
+   "fieldname": "new_pool_expiry",
+   "fieldtype": "Date",
+   "label": "New Pool Expires",
+   "read_only": 1,
+   "description": "The line is renewed from tissue culture on motherstock one's clock. A pool reached through several multiplication cycles is full part-way into that life, not at the start of a fresh one."
+  },
+  {
+   "fieldname": "new_pool_cutting_weeks",
+   "fieldtype": "Int",
+   "label": "Cutting Weeks In The New Pool",
+   "read_only": 1,
+   "description": "Weeks between the new pool's first cut and the line expiring."
   },
   {
    "fieldname": "peak_bench_sqm",
