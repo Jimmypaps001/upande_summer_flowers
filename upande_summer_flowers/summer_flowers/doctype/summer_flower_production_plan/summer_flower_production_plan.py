@@ -371,9 +371,50 @@ class SummerFlowerProductionPlan(Document):
 			self.peak_weekly_sticking_planned = 0
 			self.peak_sticking_week_planned = None
 		self.set_tc_order(planned_sticking)
+		self.set_slippage()
 		self.set_space()
 
 	# --------------------------------------------------------------------- space
+	def set_slippage(self):
+		"""What has moved on the ground, without moving the plan.
+
+		The plan's figures stay as they were approved: what it committed to is what
+		it committed to, and rewriting them under an approval would lose the one
+		thing worth seeing -- the gap between what was planned and what happened.
+		So this counts the gap and names it, and changes nothing else.
+		"""
+		self.plantings_slipped = 0
+		self.worst_slip_days = 0
+		self.slippage_note = None
+		links = [b.existing_planting for b in self.plan_blocks if b.existing_planting]
+		if not links:
+			return
+		rows = frappe.get_all(
+			"Planting Calendar", filters={"name": ["in", links]},
+			fields=["name", "planting_date", "actual_planting_date",
+			        "planting_slip_days", "block"])
+		slipped = [r for r in rows if r.actual_planting_date
+		           and cint(r.planting_slip_days)]
+		if not slipped:
+			return
+		self.plantings_slipped = len(slipped)
+		worst = max(slipped, key=lambda r: abs(cint(r.planting_slip_days)))
+		self.worst_slip_days = cint(worst.planting_slip_days)
+		late = sum(1 for r in slipped if cint(r.planting_slip_days) > 0)
+		early = len(slipped) - late
+		parts = []
+		if late:
+			parts.append(_("{0} went in late").format(late))
+		if early:
+			parts.append(_("{0} went in early").format(early))
+		self.slippage_note = _(
+			"{0} of {1} plantings were not planted on the day this plan asked for: "
+			"{2}. The worst is {3} by {4} days, so its harvest weeks move by the "
+			"same. These figures are the plan as approved and are not changed by "
+			"it -- the calendars and their crop cycles carry the real dates."
+		).format(len(slipped), len(links), ", ".join(parts), worst.block or worst.name,
+		         abs(self.worst_slip_days))
+
 	def set_space(self):
 		"""What this plan needs against what the farm has, in beds and hectares.
 

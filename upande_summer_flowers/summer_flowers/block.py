@@ -10,7 +10,7 @@ than a single mutable number, and the current value is derived from that history
 
 import frappe
 from frappe import _
-from frappe.utils import flt, getdate, now_datetime, nowdate
+from frappe.utils import cint, flt, getdate, now_datetime, nowdate
 
 APPROVER_ROLES = ("Farm Manager", "Agriculture Manager", "System Manager")
 
@@ -335,3 +335,149 @@ def apply_current_coverage(doc):
 
 	for field, value in coverage_of(doc.name, doc.get("custom_total_beds")).items():
 		doc.set(field, value)
+
+
+# ---------------------------------------------------------------------------
+# Building a block out of beds
+# ---------------------------------------------------------------------------
+#
+# A block is a stretch of a greenhouse: so many beds, end to end, under one roof.
+# Nothing in the app made one -- the seventy-one blocks at Kariki were loaded by a
+# console script nobody else can run, and a block drawn by hand carries no beds, so
+# it reports no area and no capacity and the planner refuses to place anything on
+# it. This is that script with the guardrails it always needed.
+
+
+def farm_of_greenhouse(greenhouse):
+	"""Which farm a house is on, asked of everything that might know.
+
+	Most Bed records do not carry a farm -- twenty thousand of the twenty-five
+	thousand on this bench -- so reading it off them alone refused to build a block
+	over beds that are perfectly well placed. The Greenhouse record knows, and where
+	there is none, a block already drawn in the same house does.
+	"""
+	for dt, key in (("Greenhouse", "greenhouse"), ("Block", "greenhouse")):
+		if not frappe.db.exists("DocType", dt):
+			continue
+		farm = frappe.db.get_value(dt, {key: greenhouse, "farm": ["!=", ""]}, "farm")
+		if farm:
+			return farm
+	return None
+
+
+@frappe.whitelist()
+def beds_for_range(greenhouse, first=None, last=None):
+	"""The beds in a greenhouse between two numbers, and who already holds them.
+
+	Read-only, so the dialog can show what it is about to take before it takes it:
+	how many beds, how much measured ground, and which of them are spoken for.
+	"""
+	fields = ["name", "bed", "bed_length", "bed_width", "bed_area", "custom_block",
+	          "farm", "greenhouse"]
+	filters = {"greenhouse": greenhouse}
+	if cint(first):
+		filters["bed"] = [">=", cint(first)]
+	rows = frappe.get_all("Bed", filters=filters, fields=fields, order_by="bed asc")
+	if cint(last):
+		rows = [r for r in rows if cint(r.bed) <= cint(last)]
+
+	free = [r for r in rows if not r.custom_block]
+	taken = [r for r in rows if r.custom_block]
+	measured = sum(measured_sqm(r) for r in free)
+	# What a bed measures is not always what it claims; the block will say so on
+	# save, but a range that is mostly unmeasured is worth knowing before creating.
+	unmeasured = sum(1 for r in free if not is_credible(measured_sqm(r)))
+	return {
+		"greenhouse": greenhouse,
+		"farm": next((r.farm for r in rows if r.farm), None)
+		        or farm_of_greenhouse(greenhouse),
+		"beds": len(rows),
+		"free": len(free),
+		"free_numbers": [cint(r.bed) for r in free],
+		"measured_sqm": round(measured, 1),
+		"measured_ha": round(measured / 10_000, 4),
+		"unmeasured": unmeasured,
+		"taken": [{"bed": cint(r.bed), "block": r.custom_block} for r in taken],
+		"first_free": min([cint(r.bed) for r in free], default=None),
+		"last_free": max([cint(r.bed) for r in free], default=None),
+	}
+
+
+@frappe.whitelist()
+def create_from_beds(greenhouse, block, first=None, last=None, farm=None,
+                     summer_flowers=1):
+	"""Draw a block over a run of beds in one greenhouse.
+
+	The beds are what make it a block: they carry its area, its capacity and, once
+	something is planted, its coverage. So they are claimed here -- `custom_block`
+	on each Bed -- rather than left for somebody to link one at a time.
+
+	A bed already in another block is refused by name. Silently re-pointing it
+	would take ground away from a block that may have a crop standing on it, and
+	the two blocks would then both report the same beds as theirs.
+	"""
+	found = beds_for_range(greenhouse, first, last)
+	if not found["beds"]:
+		frappe.throw(
+			_("No beds in {0}{1}. A block is drawn over beds that already exist, so "
+			  "load the beds first.").format(
+				greenhouse,
+				_(" numbered {0} to {1}").format(first, last) if cint(first) else ""),
+			title=_("No beds to draw over"))
+	if found["taken"]:
+		held = ", ".join("%s (%s)" % (t["bed"], t["block"]) for t in found["taken"][:6])
+		frappe.throw(
+			_("{0} of these beds already belong to another block: {1}{2}. A bed "
+			  "belongs to one block, or two blocks report the same ground as theirs."
+			  ).format(len(found["taken"]), held,
+			           "…" if len(found["taken"]) > 6 else ""),
+			title=_("Beds already spoken for"))
+
+	if not found["measured_sqm"]:
+		frappe.throw(
+			_("None of these {0} beds has a length and width, so the block would have "
+			  "no plantable area and nothing could be planned on it. Measure the beds "
+			  "first -- the block takes its area from them.").format(found["free"]),
+			title=_("Beds are not measured"))
+
+	farm = farm or found["farm"]
+	if not farm:
+		frappe.throw(
+			_("Nothing says which farm {0} is on -- not its beds, not a Greenhouse "
+			  "record for it, and not another block in the same house. Name the farm, "
+			  "or record it on the house.").format(greenhouse),
+			title=_("No farm"))
+
+	doc = frappe.new_doc("Block")
+	doc.greenhouse = greenhouse
+	doc.block = block
+	doc.farm = farm
+	doc.flags.ignore_permissions = True
+	# Inserted before the beds are claimed, because a bed points at a block by name
+	# and the name does not exist until it is saved. And inserted WITHOUT the summer
+	# flower flag, because that is what turns on the area check -- which a block
+	# would fail on its first save every time, having no beds yet to measure. The
+	# chicken and the egg, resolved in the only order that works.
+	doc.insert()
+
+	for n in found["free_numbers"]:
+		bed = frappe.db.get_value("Bed", {"greenhouse": greenhouse, "bed": n}, "name")
+		if bed:
+			frappe.db.set_value("Bed", bed, "custom_block", doc.name,
+			                    update_modified=False)
+
+	# Now it holds ground, so it can be measured against it: measure_beds fills the
+	# bed table and the area, set_dimensions works out the capacity, and the flag is
+	# safe to set because there is finally something to check.
+	doc.reload()
+	if doc.meta.has_field("custom_is_summer_flower_block"):
+		doc.custom_is_summer_flower_block = 1 if cint(summer_flowers) else 0
+	doc.flags.ignore_permissions = True
+	doc.save()
+	return {
+		"block": doc.name,
+		"beds": found["free"],
+		"measured_ha": found["measured_ha"],
+		"unmeasured": found["unmeasured"],
+		"note": doc.get("custom_sf_capacity_note"),
+	}

@@ -116,13 +116,36 @@ class PlantingCalendar(Document):
 		self.net_area_sqm = (self.beds or 0) * (v.sqm_net_per_bed or 0)
 		self.net_area_ha = ((self.beds or 0) * (v.sqm_net_per_bed or 0)) / 10_000
 
+	def effective_planting_date(self):
+		"""The date everything downstream is counted from.
+
+		A flush lands so many weeks after the plants went in the ground, not so many
+		weeks after somebody planned that they would. So once the actual date is
+		recorded it is the one that governs -- pinch, uprooting and every harvest
+		week move with it. Before then the planned date stands in, because a plan
+		with no dates is no use either.
+		"""
+		return getdate(self.actual_planting_date or self.planting_date)
+
 	def set_dates(self):
 		v = self.version
-		planted = getdate(self.planting_date)
-		self.planting_year, self.planting_week = iso_year_week(planted)
+		planted = self.effective_planting_date()
+		# The planting WEEK stays the planned one. It is what the production plan
+		# committed to and what the weekly grid is keyed on; moving it would make a
+		# late planting look like it was always meant for that week, and the slip --
+		# the thing worth seeing -- would disappear.
+		self.planting_year, self.planting_week = iso_year_week(getdate(self.planting_date))
+		self.harvest_dates_from = ("Actual planting" if self.actual_planting_date
+		                           else "Planned planting")
+		self.planting_slip_days = (
+			(getdate(self.actual_planting_date) - getdate(self.planting_date)).days
+			if (self.actual_planting_date and self.planting_date) else 0)
 		self.sticking_date = add_days(planted, -7 * (v.sticking_to_planting_weeks or 0))
 		self.pinch_date = add_days(planted, 7 * (v.weeks_to_pinch or 0))
 		self.planned_uproot_date = add_days(planted, 7 * (v.total_weeks_in_ground or 0))
+		# Planted is a fact about the ground, not a step someone remembers to take.
+		if self.actual_planting_date and self.calendar_status == "Approved":
+			self.calendar_status = "Planted"
 
 	def end_date(self):
 		return getdate(self.actual_uproot_date or self.planned_uproot_date)
@@ -157,7 +180,10 @@ class PlantingCalendar(Document):
 		if self.calendar_status == "Cancelled":
 			return
 
-		mine_start, mine_end = getdate(self.planting_date), self.end_date()
+		# Occupancy is a fact about the ground, so it runs from when the plants
+		# actually went in -- a planting three weeks late leaves the block free for
+		# those three weeks and holds it three weeks longer at the other end.
+		mine_start, mine_end = self.effective_planting_date(), self.end_date()
 		others = frappe.get_all(
 			"Planting Calendar",
 			filters={
@@ -165,17 +191,18 @@ class PlantingCalendar(Document):
 				"name": ["!=", self.name or "__new__"],
 				"calendar_status": ["in", RESERVING_STATES],
 			},
-			fields=["name", "variety", "planting_date", "planned_uproot_date",
-			        "actual_uproot_date"],
+			fields=["name", "variety", "planting_date", "actual_planting_date",
+			        "planned_uproot_date", "actual_uproot_date"],
 		)
 		for o in others:
 			other_end = getdate(o.actual_uproot_date or o.planned_uproot_date)
-			if mine_start <= other_end and getdate(o.planting_date) <= mine_end:
+			other_start = getdate(o.actual_planting_date or o.planting_date)
+			if mine_start <= other_end and other_start <= mine_end:
 				frappe.throw(
 					_("Block {0} is already occupied by {1} ({2}) from {3} to {4}. "
 					  "A block holds one planting at a time.").format(
 						self.block, o.name, o.variety,
-						frappe.format(o.planting_date, {"fieldtype": "Date"}),
+						frappe.format(other_start, {"fieldtype": "Date"}),
 						frappe.format(other_end, {"fieldtype": "Date"}),
 					),
 					title=_("Block already occupied"),
@@ -254,7 +281,7 @@ class PlantingCalendar(Document):
 			r.flush_number: (r.is_harvested, r.actual_stems) for r in self.flush_projection
 		}
 		v = self.version
-		planted = getdate(self.planting_date)
+		planted = self.effective_planting_date()
 		end = self.end_date()
 
 		offsets = [
@@ -385,7 +412,9 @@ class PlantingCalendar(Document):
 		cycle.custom_supplier = self.supplier
 		cycle.custom_propagation_batch = self.propagation_batch
 		cycle.custom_sf_cycle_status = "Active"
-		cycle.custom_planting_date = self.planting_date
+		# The date the crop actually went in. A cycle dated from the plan would put
+		# its age, its flushes and its uprooting on a day that did not happen.
+		cycle.custom_planting_date = self.effective_planting_date()
 		cycle.custom_live_plant_count = self.plants
 		cycle.custom_beds_planted = self.beds
 		cycle.custom_area_planted_sqm = flt(self.net_area_sqm)
@@ -420,13 +449,13 @@ def coverage_of(block, total_beds=None):
 		"Planting Calendar",
 		filters={"block": block, "calendar_status": ["in", STANDING_STATES]},
 		fields=["name", "variety", "beds", "plants", "planting_date",
-		        "planned_uproot_date", "actual_uproot_date"],
+		        "actual_planting_date", "planned_uproot_date", "actual_uproot_date"],
 	)
 	beds = plants = 0
 	holders = []
 	for r in rows:
 		end = getdate(r.actual_uproot_date or r.planned_uproot_date)
-		if end < today or getdate(r.planting_date) > today:
+		if end < today or getdate(r.actual_planting_date or r.planting_date) > today:
 			continue
 		beds += r.beds or 0
 		plants += r.plants or 0

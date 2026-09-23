@@ -108,6 +108,9 @@
   "amend_section",
   "amended_from",
   "plantings_not_placed",
+  "plantings_slipped",
+  "worst_slip_days",
+  "slippage_note",
   "unmet_stems",
   "blocks_used",
   "peak_concurrent_beds",
@@ -750,6 +753,27 @@
    "fieldtype": "Int",
    "label": "Plantings Awaiting a Block",
    "read_only": 1
+  },
+  {
+   "fieldname": "plantings_slipped",
+   "fieldtype": "Int",
+   "label": "Plantings Not Planted On Plan",
+   "read_only": 1,
+   "description": "Cohorts whose actual planting date differs from the one this plan committed to."
+  },
+  {
+   "fieldname": "worst_slip_days",
+   "fieldtype": "Int",
+   "label": "Worst Slip (days)",
+   "read_only": 1,
+   "description": "The largest gap between a planned and an actual planting date. Negative is early."
+  },
+  {
+   "fieldname": "slippage_note",
+   "fieldtype": "Small Text",
+   "label": "What Has Moved On The Ground",
+   "read_only": 1,
+   "description": "The plan's own figures are left as they were approved -- what it committed to is what it committed to. This says which harvest weeks have moved because planting did not happen when it was meant to."
   },
   {
    "description": "Stems from plantings with no block assigned yet. They are in the plan and in the TC order; they need a block before they can be planted.",

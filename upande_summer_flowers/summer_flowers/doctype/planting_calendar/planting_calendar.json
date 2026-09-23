@@ -29,6 +29,9 @@
   "net_area_sqm",
   "dates_section",
   "planting_date",
+  "actual_planting_date",
+  "planting_slip_days",
+  "harvest_dates_from",
   "planting_year",
   "planting_week",
   "cb_dates",
@@ -206,6 +209,29 @@
    "in_list_view": 1,
    "label": "Planting Date",
    "reqd": 1
+  },
+  {
+   "fieldname": "actual_planting_date",
+   "fieldtype": "Date",
+   "label": "Actual Planting Date",
+   "description": "The day the beds were really planted. Every date downstream -- pinch, uprooting and every harvest week -- is counted from this once it is filled in, because a flush lands so many weeks after the plants went in, not so many weeks after somebody planned that they would.",
+   "allow_on_submit": 1
+  },
+  {
+   "fieldname": "planting_slip_days",
+   "fieldtype": "Int",
+   "label": "Days Later Than Planned",
+   "description": "Actual planting minus planned. Negative is early. The production plan is not rewritten by this -- what it committed to is what it committed to -- but the harvest weeks move, and this is by how much.",
+   "read_only": 1
+  },
+  {
+   "fieldname": "harvest_dates_from",
+   "fieldtype": "Select",
+   "label": "Harvest Dates Counted From",
+   "description": "Which date the flush projection is built on.",
+   "options": "Planned planting\nActual planting",
+   "read_only": 1,
+   "default": "Planned planting"
   },
   {
    "fieldname": "planting_year",

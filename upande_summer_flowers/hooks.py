@@ -138,6 +138,11 @@ app_include_js = [
 # Crop Protocol belongs to another app, so this is where its form script lives.
 doctype_js = {"Crop Protocol": "public/js/crop_protocol_walkthrough.js"}
 
+# Block belongs to upande_propagation, so its list view is customised from here.
+# Drawing a block over a run of beds is the only way to make one that carries its
+# own area and capacity, and nothing in any app offered it.
+doctype_list_js = {"Block": "public/js/block_list.js"}
+
 # Checked before the migrate that would trip over it, so a malformed customization
 # file in ANY installed app is reported by path instead of killing the run with a
 # KeyError that names nothing. See summer_flowers/customization_check.py.
