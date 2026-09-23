@@ -7,7 +7,6 @@
 
   <header class="sf-head">
     <h1><img class="sf-logo" src="/assets/upande_summer_flowers/images/summer_flowers.svg" alt="" width="34" height="34">{{ _("Summer Flowers") }}</h1>
-    <p class="sf-sub">{{ _("Demand horizon, production plan, blocks on the ground and motherstock scheduling.") }}</p>
   </header>
 
   <!-- filters: one row above the charts -->
@@ -48,7 +47,6 @@
         <div id="chart" class="sf-chart"></div>
         <div id="chart-table" hidden></div>
       </div>
-      <p class="sf-note">{{ _("Monthly is the reliable view. Weekly variance swings hard because a whole block flushes in a single week.") }}</p>
     </section>
 
     <div class="sf-two">
@@ -73,12 +71,7 @@
 
     <!-- protocols -->
     <section class="sf-card">
-      <div class="sf-card-head">
-        <div>
-          <h2>{{ _("Protocols by farm") }}</h2>
-          <p class="sf-note">{{ _("The same variety carries different parameters per farm, because climate changes the flush curve.") }}</p>
-        </div>
-      </div>
+      <div class="sf-card-head"><h2>{{ _("Protocols by farm") }}</h2></div>
       <div id="protocols" class="sf-scroll"></div>
     </section>
 
@@ -152,7 +145,6 @@
 .sf-head h1 { font-size: 1.7rem; margin: 0 0 4px; letter-spacing: -0.4px;
               display: flex; align-items: center; gap: 11px; }
 .sf-logo { flex: none; display: block; }
-.sf-sub { color: var(--text-secondary); margin: 0 0 20px; font-size: 0.9rem; }
 
 .sf-filters { display: flex; flex-wrap: wrap; gap: 14px; align-items: flex-end;
               padding: 12px 14px; margin-bottom: 18px; background: var(--surface-2);
@@ -318,7 +310,7 @@ table.sf-t td.n { text-align: right; font-variant-numeric: tabular-nums;
   // ------------------------------------------------------------------ chart
   function drawBars(el, months) {
     if (!months.length) {
-      el.innerHTML = '<p class="sf-empty">No monthly rows yet.</p>';
+      el.innerHTML = '<p class="sf-empty">No monthly rows.</p>';
       return;
     }
 
@@ -386,7 +378,7 @@ table.sf-t td.n { text-align: right; font-variant-numeric: tabular-nums;
   }
 
   function monthTable(months) {
-    if (!months.length) return '<p class="sf-empty">No monthly rows yet.</p>';
+    if (!months.length) return '<p class="sf-empty">No monthly rows.</p>';
     return (
       '<table class="sf-t"><thead><tr><th>Month</th><th class="n">Production</th>' +
       '<th class="n">Demand</th><th class="n">Variance</th></tr></thead><tbody>' +
@@ -410,8 +402,8 @@ table.sf-t td.n { text-align: right; font-variant-numeric: tabular-nums;
         k: "Demand horizon",
         v: d.horizon_end || "—",
         m: short
-          ? `Short by ${d.horizon_gap_weeks} wks of ${d.target_years_ahead}-yr target`
-          : `${d.weeks_ahead_of_today} weeks ahead`,
+          ? `${d.horizon_gap_weeks} wks short of ${d.target_years_ahead} yr`
+          : `${d.weeks_ahead_of_today} wks ahead`,
         c: short ? "--warning" : "--good",
       });
     }
@@ -419,19 +411,19 @@ table.sf-t td.n { text-align: right; font-variant-numeric: tabular-nums;
       t.push({
         k: "Demand coverage",
         v: (p.coverage_pct || 0).toFixed(1) + "%",
-        m: `${num(p.total_production_stems)} vs ${num(p.total_demand_stems)} stems`,
+        m: `${num(p.total_production_stems)} / ${num(p.total_demand_stems)}`,
         c: (p.coverage_pct || 0) >= 100 ? "--good" : "--serious",
       });
       t.push({
         k: "Weeks in deficit",
         v: num(p.weeks_in_deficit),
-        m: p.worst_weekly_deficit ? `Worst ${num(p.worst_weekly_deficit)} stems` : "None",
+        m: p.worst_weekly_deficit ? `${num(p.worst_weekly_deficit)} worst` : "—",
         c: p.weeks_in_deficit ? "--serious" : "--good",
       });
       t.push({
         k: "Peak sticking week",
         v: num(p.peak_weekly_sticking),
-        m: (p.peak_sticking_week || "—") + " — sizes the motherstock",
+        m: p.peak_sticking_week || "—",
       });
     }
     const ms = ov.motherstock.filter((b) => b.renewal_overdue).length;
@@ -439,7 +431,7 @@ table.sf-t td.n { text-align: right; font-variant-numeric: tabular-nums;
       t.push({
         k: "Motherstock batches",
         v: num(ov.motherstock.length),
-        m: ms ? `${ms} renewal order(s) overdue` : "Renewals on schedule",
+        m: ms ? `${ms} overdue` : "on schedule",
         c: ms ? "--critical" : "--good",
       });
     }
@@ -450,18 +442,18 @@ table.sf-t td.n { text-align: right; font-variant-numeric: tabular-nums;
           `<div class="v"${x.c ? ` style="color:var(${x.c})"` : ""}>${esc(x.v)}</div>` +
           `<div class="m">${esc(x.m)}</div></div>`
         ).join("")
-      : '<p class="sf-empty">No demand or plans yet for this selection.</p>';
+      : '<p class="sf-empty">No demand or plans.</p>';
   }
 
   // --------------------------------------------------------------- sections
   function renderCoverage(res) {
     const { blocks, totals } = res;
     if (!blocks.length) {
-      $("coverage").innerHTML = '<p class="sf-empty">No blocks registered.</p>';
+      $("coverage").innerHTML = '<p class="sf-empty">No blocks.</p>';
       return;
     }
     $("coverage").innerHTML =
-      `<p class="sf-note" style="margin-bottom:10px">${num(totals.occupied)} of ${num(totals.beds)} beds planted · ` +
+      `<p class="sf-note" style="margin-bottom:10px">${num(totals.occupied)}/${num(totals.beds)} beds · ` +
       `${totals.coverage_pct.toFixed(1)}% · ${num(totals.plants)} plants · ${totals.area_ha.toFixed(3)} ha</p>` +
       blocks.map((b) => {
         const pct = Math.min(100, b.coverage_pct || 0);
@@ -473,7 +465,7 @@ table.sf-t td.n { text-align: right; font-variant-numeric: tabular-nums;
 
   function renderMotherstock(rows) {
     if (!rows.length) {
-      $("motherstock").innerHTML = '<p class="sf-empty">No motherstock batches.</p>';
+      $("motherstock").innerHTML = '<p class="sf-empty">No motherstock.</p>';
       return;
     }
     $("motherstock").innerHTML =
@@ -488,13 +480,13 @@ table.sf-t td.n { text-align: right; font-variant-numeric: tabular-nums;
           `<td class="n">${(b.peak_bench_sqm || 0).toFixed(1)}</td>` +
           `<td class="n">${num(b.tc_plants_required)}</td>` +
           `<td${late ? ' style="color:var(--critical)"' : ""}>${esc(b.renewal_tc_order_date || "—")}` +
-          `${late ? " ⚠ overdue" : b.days_to_renewal != null ? `<br><span class="sf-note">in ${b.days_to_renewal} days</span>` : ""}</td></tr>`;
+          `${late ? " ⚠" : b.days_to_renewal != null ? `<br><span class="sf-note">${b.days_to_renewal}d</span>` : ""}</td></tr>`;
       }).join("") + "</tbody></table></div>";
   }
 
   function renderOnGround(rows) {
     if (!rows.length) {
-      $("onground").innerHTML = '<p class="sf-empty">Nothing recorded on the ground.</p>';
+      $("onground").innerHTML = '<p class="sf-empty">Nothing planted.</p>';
       return;
     }
     $("onground").innerHTML =
@@ -516,7 +508,7 @@ table.sf-t td.n { text-align: right; font-variant-numeric: tabular-nums;
 
   function renderProtocols(rows) {
     if (!rows.length) {
-      $("protocols").innerHTML = '<p class="sf-empty">No protocols defined.</p>';
+      $("protocols").innerHTML = '<p class="sf-empty">No protocols.</p>';
       return;
     }
     $("protocols").innerHTML =
@@ -541,7 +533,7 @@ table.sf-t td.n { text-align: right; font-variant-numeric: tabular-nums;
 
   function renderPlans(rows) {
     if (!rows.length) {
-      $("plans").innerHTML = '<p class="sf-empty">No production plans yet.</p>';
+      $("plans").innerHTML = '<p class="sf-empty">No plans.</p>';
       return;
     }
     $("plans").innerHTML =
@@ -581,7 +573,7 @@ table.sf-t td.n { text-align: right; font-variant-numeric: tabular-nums;
       months = ms.months || [];
       $("chart-sub").textContent = ms.plan
         ? `${ms.plan} · ${ms.variety} at ${ms.farm} · ${ms.status}`
-        : "No plan for this selection.";
+        : "No plan.";
       drawBars($("chart"), months);
       $("chart-table").innerHTML = monthTable(months);
       renderCoverage(cov);
