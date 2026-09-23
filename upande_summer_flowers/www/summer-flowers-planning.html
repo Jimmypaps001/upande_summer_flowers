@@ -241,8 +241,10 @@
     <!-- The middle of the chain, and until now the only step with no home of its
          own: demand went straight to propagation in the tab order even though the
          production plan is what sits between them, is what the motherstock is
-         checked against, and is what has to be agreed before a budget or a
-         propagation plan exists. -->
+         checked against, and is what has to be agreed before a budget exists.
+         The propagation plan comes later still, off the procurement plan, because
+         until the route has been read nobody knows whether this crop is
+         propagated here at all. -->
     <section class="pl-pane" data-pane="plan">
       <div class="pl-card">
         <div class="pl-card-head">
@@ -756,6 +758,7 @@ table.pl-t td.n{text-align:right;font-variant-numeric:tabular-nums;white-space:n
    different column once the table is wide, so it follows its own data. */
 table.pl-t th.n{text-align:right}
 table.pl-t tr.zero td{color:var(--text-muted)}
+table.pl-t tr.pl-chosen td{background:var(--surface-2);font-weight:600}
 /* Fixed layout so the week columns stay put and the trailing free-text
    column cannot pull the figures away from their headers. */
 table.pl-t-cols{table-layout:fixed}
@@ -2707,12 +2710,14 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
     const r = S.pg;
     if (!r || r.error || !r.propagation_plan) {
       $("pg-tiles").innerHTML = ""; $("pg-warn").innerHTML = "";
-      $("pg-actions").innerHTML = r && r.plan
-        ? `<button type="button" class="pl-btn primary" data-pg="create">Create propagation plan</button>`
-        : "";
+      // Raised by approving the procurement plan, not from here: whether this crop
+      // is propagated at all is the route's answer, and it was being skipped.
+      $("pg-actions").innerHTML = "";
       $("pg-body").innerHTML = `<p class="pl-empty">${esc(
         (r && r.error) || (r && r.reason === "not created yet"
-          ? "No propagation plan for this production plan yet."
+          ? "No propagation plan yet. Approving the procurement plan raises one, "
+            + "and only for a crop this farm actually propagates \u2014 the route "
+            + "on the protocol says which."
           : "No production plan in scope."))}</p>`;
       return;
     }
@@ -3611,10 +3616,13 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
         (c && c.error) || "No demand register in scope.")}</p>`;
       $("ch-space").innerHTML = ""; $("ch-space-note").innerHTML = ""; return;
     }
+    // No "create propagation plan" here any more. Approving the procurement plan
+    // raises it, and only for a crop this farm propagates -- the route on the
+    // protocol says which. Offering the button skipped the question.
     const NEXT = {
       create_plan: ["Create production plan", "ch-plan"],
-      create_propagation: ["Create propagation plan", "ch-prop"],
       approve_plan: ["Approve plan to create the budget", null],
+      plan_procurement: ["Open the plan and use Actions \u2192 Plan Procurement", null],
     };
     $("ch-steps").innerHTML = '<div class="ch-flow">' + c.steps.map((st, i) => {
       const btn = st.next && NEXT[st.next]
@@ -3626,6 +3634,7 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
         `<div class="ch-k">${i + 1}. ${esc(st.label)}</div>` +
         `<div class="ch-v">${st.name ? esc(st.name) : "—"}</div>` +
         `<div class="ch-m">${esc(st.state || (st.done ? "done" : "not yet"))}</div>` +
+        (st.note ? `<div class="ch-m">${esc(st.note)}</div>` : "") +
         (btn ? `<div style="margin-top:7px">${btn}</div>` : "") + `</div>`;
     }).join("") + "</div>";
 
@@ -3738,8 +3747,9 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
         `the early plantings slip or the cuttings are bought in already rooted.`);
     }
     if (!tc.tc_plants) {
-      notes.push("No TC order has been sized yet. Create the propagation plan to " +
-        "size it against standing motherstock.");
+      notes.push("No TC order has been sized yet. It is sized from the busiest " +
+        "sticking week and netted against the motherstock already standing, so " +
+        "it needs a plan with plantings in it.");
     }
     $("pn-ms-note").innerHTML = notes.length
       ? notes.map((n) => `<div class="pl-callout">${n}</div>`).join("") : "";
@@ -4058,8 +4068,13 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
       t.built_dropped ? `${num(t.built_dropped)} plantings do not happen for want of ` +
         `cuttings.` : "",
       "",
-      "This writes the choice to the plan, the propagation plan and any draft " +
-      "motherstock batch, and the plan's expected stems will follow it.",
+      t.cutting_weeks == null ? "" :
+        `This keeps ${t.cutting_weeks} of the line's ${t.line_life_weeks} cutting ` +
+        `weeks.`,
+      "",
+      "This writes the choice to the plan, to the draft procurement plan that " +
+      "places the order, to any propagation plan and draft motherstock batch, " +
+      "and the plan's expected stems will follow it.",
     ].filter(Boolean);
     if (!confirm(lines.join("\n"))) return;
 
@@ -4128,6 +4143,19 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
       { k: "Pool it builds", v: num(t.chosen_pool),
         m: `×${t.multiplication_factor} over ${t.build_up_cycles} build-up cycles · ` +
            `covers ${t.chosen_cover_pct.toFixed(0)}% of the peak week` },
+      // What the multiplication costs. The tile above shows what it buys; this is
+      // the price, and it was invisible while expiry was dated from the multiplied
+      // generation's first cut instead of from motherstock one's.
+      { k: "Cutting weeks left", v: t.cutting_weeks == null ? "—" : t.cutting_weeks,
+        m: t.cutting_weeks == null
+          ? "the protocol does not say how long the line lives"
+          : (t.build_up_cycles > 1
+              ? `of the line's ${t.line_life_weeks} — ${t.build_up_cycles - 1} × ` +
+                `${t.cycle_cost_weeks} weeks spent multiplying`
+              : `the line's full ${t.line_life_weeks}, nothing spent multiplying`),
+        c: t.cutting_weeks == null ? ""
+           : !t.cutting_weeks ? "--critical"
+           : t.cutting_weeks < t.line_life_weeks / 2 ? "--serious" : "--good" },
       { k: "MS starts cutting", v: t.first_cut_date ? fdate(t.first_cut_date) : "—",
         m: t.full_capacity_date
           ? `full rate ${fdate(t.full_capacity_date)} after ${t.ramp_weeks} weeks`
@@ -4150,6 +4178,36 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
     }
     if (t.binding_constraint) {
       notes.push(esc(t.binding_constraint));
+    }
+    // Multiplying is a trade, not a saving, and the table is the only place the
+    // two halves of it sit side by side.
+    if (t.cutting_weeks === null) {
+      notes.push(`<b>What multiplying costs cannot be worked out.</b> ` +
+        `${esc(t.version)} does not record how long the line lives` +
+        (t.cycle_cost_weeks ? "" : " or how long an establishment takes") +
+        `, and every extra cycle is an establishment spent out of that window. ` +
+        `Fill it in on the protocol before choosing more than one cycle.`);
+    } else if (!t.cutting_weeks) {
+      notes.push(`<b>${t.build_up_cycles} cycles leaves nothing to cut.</b> ` +
+        `The line lives ${t.line_life_weeks} weeks from motherstock one's first ` +
+        `cut — 1.2 and everything after it come out when 1 does — and ` +
+        `${t.build_up_cycles - 1} × ${t.cycle_cost_weeks} weeks of that go on ` +
+        `multiplying. The pool is full the week it is pulled out. Buy more ` +
+        `plantlets and multiply fewer times.`);
+    }
+    if (t.cutting_weeks !== null && t.cutting_weeks_by_cycles
+        && t.cutting_weeks_by_cycles.length) {
+      notes.push(`<b>What multiplying costs.</b> Fewer plantlets, fewer cutting ` +
+        `weeks — the line expires on motherstock one's clock whichever generation ` +
+        `is standing.<table class="pl-t"><tr><th>Cycles</th><th class="n">Pool</th>` +
+        `<th class="n">Plantlets</th><th class="n">Cutting weeks</th></tr>` +
+        t.cutting_weeks_by_cycles.map((r) =>
+          `<tr${r.cycles === t.build_up_cycles ? ' class="pl-chosen"' : ""}>` +
+          `<td>${r.cycles}${r.cycles === t.build_up_cycles ? " ←" : ""}</td>` +
+          `<td class="n">×${r.factor}</td><td class="n">${num(r.tc)}</td>` +
+          `<td class="n">${r.weeks == null ? "?" : (r.weeks || "<b>none</b>")}</td>` +
+          `</tr>`).join("") +
+        `</table>`);
     }
     // The plan and its sourcing answer different questions, and the plan's answer
     // is the optimistic one: it sizes plantings from demand and reports what they
@@ -4963,8 +5021,22 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
 
     // MS lifecycle
     $("pr-ms").innerHTML =
-      prow("Productive life", F.motherstock_life_weeks + " weeks", "then renew",
+      prow("Line life", F.motherstock_life_weeks + " weeks",
+        "from motherstock one's first cut, then renew from TC",
         { field: "motherstock_life_weeks", value: F.motherstock_life_weeks }) +
+      // The clock does not restart on a generation cut from the one before it.
+      // 1.2 comes out when 1 comes out, so multiplying spends this window rather
+      // than extending it -- which is the trade the TC card now prices.
+      prow("Cutting weeks at " + F.max_multiplication_cycles + " cycles",
+        F.motherstock_life_weeks
+          ? "<b>" + Math.max(0, F.motherstock_life_weeks
+              - D.ms_establishment_weeks
+                * Math.max(0, F.max_multiplication_cycles - 1)) + " weeks</b>"
+          : "—",
+        !F.motherstock_life_weeks ? "no line life recorded"
+          : F.max_multiplication_cycles > 1
+            ? `${F.max_multiplication_cycles - 1} × ${D.ms_establishment_weeks}w spent multiplying`
+            : "nothing spent multiplying") +
       prow("Supplier lead", F.supplier_lead_weeks + " weeks", "order → delivery",
         { field: "supplier_lead_weeks", value: F.supplier_lead_weeks }) +
       prow("Establishment lead", D.ms_establishment_weeks + " weeks", "tray + pot + build-up") +
@@ -4982,7 +5054,10 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
     $("pr-deadline").innerHTML =
       `<b>Order deadline</b><br>Motherstock expiry − <b>${D.total_renewal_lead_weeks} weeks</b> ` +
       `= the date the next TC order must be placed. ` +
-      `${F.supplier_lead_weeks}w supplier + ${D.ms_establishment_weeks}w establishment.`;
+      `${F.supplier_lead_weeks}w supplier + ${D.ms_establishment_weeks}w establishment.` +
+      `<br><br>Expiry is counted from the first cut off the generation raised ` +
+      `straight from tissue culture, not from whichever generation is standing. ` +
+      `Cuttings taken to build 1.2 do not restart it.`;
 
     // grades
     const gtot = d.grades.reduce((a, g) => a + g.pct, 0) || 1;
@@ -5183,8 +5258,9 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
       moved.length ? "This differs from the calculation: " + moved.join("; ") + "."
                    : "This is what the calculation asks for.",
       "",
-      "It writes to the plan, the propagation plan and any draft motherstock " +
-      "batch, and the plan's expected stems follow it.",
+      "It writes to the plan, to the draft procurement plan that places the " +
+      "order, to any propagation plan and draft motherstock batch, and the " +
+      "plan's expected stems follow it.",
     ].filter(Boolean);
     if (!confirm(msg.join("\n"))) return;
 
@@ -5773,21 +5849,8 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
       const pg = ev.target.closest("[data-pg]");
       if (pg && S.pg) {
         const k = pg.dataset.pg, nm = S.pg.propagation_plan;
-        // Created or brought up to date -- and if updated, what moved. There is one
-        // propagation plan per variety per season, so this button rebuilds the
-        // existing one rather than making a second, and saying so matters.
-        const propMsg = (r) => r.created
-          ? `Propagation plan ${r.name} created for ${r.season}: ${
-              num(r.total_cuttings_required)} cuttings, ${
-              num(r.mother_plants_required)} mother plants, ${
-              num(r.tc_plants_required)} TC plantlets.`
-          : (r.changes && r.changes.length
-              ? `${r.name} (${r.season}) updated — ${r.changes.join("; ")}.`
-              : `${r.name} (${r.season}) rebuilt; nothing changed.`);
         const after = (msg) => (r) => { toast(msg(r)); loadPropagation(); loadChain(); };
-        if (k === "create") {
-          run("create_propagation_plan", { plan: S.pg.plan }, after(propMsg));
-        } else if (k === "reject") {
+        if (k === "reject") {
           formModal({ title: "Reject " + nm,
             fields: [{ name: "r", label: "Reason", type: "text", required: true }],
             submitLabel: "Reject",
@@ -5830,17 +5893,6 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
           // nothing. The farm comes from the scope bar, and the season from the demand
           // if none is picked, and the reader sees what it will cost before agreeing.
           createPlanFromChain();
-        } else if (ch.dataset.ch === "ch-prop") {
-          run("create_propagation_plan", { plan: S.chain.plan.name }, (r) => {
-            toast(r.created
-              ? `Propagation plan ${r.name} created for ${r.season}: ${
-                  num(r.total_cuttings_required)} cuttings, ${
-                  num(r.mother_plants_required)} mother plants, ${r.peak_bench_sqm} m² bench.`
-              : (r.changes && r.changes.length
-                  ? `${r.name} (${r.season}) updated — ${r.changes.join("; ")}.`
-                  : `${r.name} (${r.season}) rebuilt; nothing changed.`));
-            refreshAfterWrite();
-          });
         }
         return;
       }

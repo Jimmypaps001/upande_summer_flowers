@@ -59,9 +59,9 @@
         <div class="fl-node fl-branch" data-step="4a">
           <span class="fl-badge">4a</span>
           <div class="fl-body">
-            <h3>{{ _("Get the plant material") }}</h3>
-            <p>{{ _("The route says where material is bought and how long it takes to become a plant in the ground. Bought material goes through the buying documents; own-raised material goes through propagation.") }}</p>
-            <p class="fl-dt"><code>Material Request</code> → <code>Purchase Order</code> → <code>Purchase Receipt</code></p>
+            <h3>{{ _("Plan the procurement") }}</h3>
+            <p>{{ _("The route says where material is bought and how long it takes to become a plant in the ground. Buying and propagating are not alternatives: Aster is bought as tissue culture AND raised here, so approving the procurement plan raises the orders and the propagation plan together. Only a crop taken off the farm's own stock buys nothing.") }}</p>
+            <p class="fl-dt"><code>Summer Flower Procurement Plan</code> → <code>Material Request</code> → <code>Purchase Order</code> → <code>Purchase Receipt</code></p>
             <p class="fl-dt"><code>Summer Flower Propagation Plan</code> · <code>Summer Flower Motherstock Batch</code></p>
           </div>
         </div>
@@ -132,7 +132,13 @@
 
     <div class="fl-step">
       <h3>{{ _("5. Approve") }}</h3>
-      <p><b>{{ _("You do:") }}</b> {{ _("Submit for Approval → Approve. Approving rebuilds the propagation plan and produces the budget. Sourcing is deliberately not committed before approval.") }}</p>
+      <p><b>{{ _("You do:") }}</b> {{ _("Submit for Approval → Approve. Approving produces the budget, and nothing else: how the material is got is the procurement plan's question, and answering it here gave every plan a propagation plan whether or not the farm propagates.") }}</p>
+    </div>
+
+    <div class="fl-step">
+      <h3>{{ _("6. Plan the procurement") }}</h3>
+      <p><b>{{ _("You do:") }}</b> {{ _("Actions → Plan Procurement on the production plan. The protocol's route supplies the method and the stage bought; the only thing left to pick is which buyable stage, and only where the protocol marks more than one.") }}</p>
+      <p><b>{{ _("Approving it:") }}</b> {{ _("raises the material requests, builds the propagation plan for a crop raised here, and writes the planting calendar. A motherstock is bought once and sized from the busiest sticking week, netted against what is already standing — not once per cohort.") }}</p>
     </div>
   </section>
 
@@ -334,8 +340,8 @@ sticking = planting − sticking weeks</code></pre>
           <td>
             <h4>{{ _("Approval produces the budget") }}</h4>
             <p class="fl-do">{{ _("Submit for Approval, then Approve as an Agriculture Manager.") }}</p>
-            <p class="fl-exp">{{ _("The propagation plan is rebuilt and a budget appears, valued at the register's price per stem.") }}</p>
-            <p class="fl-why">{{ _("Approving is what commits the plan. Nothing downstream should exist before it.") }}</p>
+            <p class="fl-exp">{{ _("A budget appears, valued at the register's price per stem. No propagation plan yet — that waits on the procurement plan, which is where the route is read.") }}</p>
+            <p class="fl-why">{{ _("Approving is what commits the plan. Nothing downstream should exist before it, and nothing that depends on how the material is got should exist before that has been settled.") }}</p>
           </td>
         </tr>
         <tr>
@@ -498,6 +504,8 @@ ground         = beds × bed area</code></pre>
         <li>{{ _("Raise cuttings per plant and the mother plants required should fall in proportion.") }}</li>
         <li>{{ _("Add existing motherstock and the TC order should shrink by what it covers — not the plants to stick, which the market decides.") }}</li>
         <li>{{ _("The ramp is why the TC order date is more than a year before the first sticking. Shorten the ramp and that date should move later.") }}</li>
+        <li><b>{{ _("Multiplying is a trade, not a saving.") }}</b> {{ _("The line is renewed from tissue culture on motherstock one's clock — 1.2 comes out when 1 comes out — so every cycle past the first is an establishment spent out of the same window. Raise the cycles and the plantlets should fall while the cutting weeks fall with them. On a 52-week line with a 15-week establishment, four cycles is a quarter of the plantlets and seven cutting weeks; six is a pool that is full the week it is pulled out. If the cutting weeks do not move when the cycles do, this is broken.") }}</li>
+        <li>{{ _("The procurement plan is what raises this document, and only for a crop the farm actually propagates. Approve one for a crop bought as plants ready to go and no propagation plan should appear at all.") }}</li>
       </ul>
     </div>
   </section>

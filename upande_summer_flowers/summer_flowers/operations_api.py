@@ -619,6 +619,23 @@ def chain_status(variety=None, farm=None, demand=None, plan=None, season=None):
 	if plan:
 		space = _space_for(plan, d.get("farm"))
 
+	# Procurement sits between the plan and everything that follows from it. The
+	# chain went straight from plan to propagation and offered a button to create
+	# one, which answered the sourcing question before it was asked: a crop bought
+	# as plants ready to go got a propagation plan too, and a crop raised here got
+	# its cuttings sized before anyone had said where the material came from.
+	proc = None
+	if plan:
+		pq = frappe.get_all(
+			"Summer Flower Procurement Plan",
+			filters={"production_plan": plan["name"], "docstatus": ["<", 2]},
+			fields=["name", "status", "docstatus", "method", "entry_stage",
+			        "propagates_here", "in_house_stages", "route_verdict",
+			        "total_units_to_order", "pool_plants", "first_order_by",
+			        "orders_late"],
+			order_by="creation desc", limit=1)
+		proc = pq[0] if pq else None
+
 	steps = [
 		{"key": "demand", "label": _("Market demand"), "done": True,
 		 "name": d["name"], "next": None},
@@ -626,18 +643,31 @@ def chain_status(variety=None, farm=None, demand=None, plan=None, season=None):
 		 "name": plan["name"] if plan else None,
 		 "state": plan["workflow_state"] if plan else None,
 		 "next": None if plan else "create_plan"},
-		{"key": "propagation", "label": _("Propagation plan"),
-		 "done": bool(prop), "name": prop["name"] if prop else None,
-		 "state": prop["status"] if prop else None,
-		 "next": ("create_propagation" if plan and not prop else None)},
 		{"key": "budget", "label": _("Budget"), "done": bool(budget),
 		 "name": budget["name"] if budget else None,
 		 "state": budget["budget_status"] if budget else None,
 		 "next": ("approve_plan" if plan and not budget
 		          and plan["docstatus"] == 0 else None)},
+		{"key": "procurement", "label": _("Procurement plan"),
+		 "done": bool(proc), "name": proc["name"] if proc else None,
+		 "state": proc["status"] if proc else None,
+		 "note": (proc.get("route_verdict") if proc else
+		          (_("How the material is got. The protocol's route decides it; this "
+		             "is where it is read and the order placed.") if plan else None)),
+		 "next": ("plan_procurement" if plan and not proc else None)},
+		{"key": "propagation", "label": _("Propagation plan"),
+		 "done": bool(prop), "name": prop["name"] if prop else None,
+		 "state": prop["status"] if prop else None,
+		 # No button. A propagation plan is raised by approving the procurement
+		 # plan, and only for a crop this farm actually propagates.
+		 "note": (None if prop else
+		          (_("Raised when the procurement plan is approved.") if proc else
+		           _("Comes from the procurement plan, and only for a crop raised "
+		             "here. Plan the procurement first."))),
+		 "next": None},
 	]
 	return {"demand": d, "plan": plan, "propagation": prop, "budget": budget,
-	        "space": space, "steps": steps}
+	        "procurement": proc, "space": space, "steps": steps}
 
 
 @frappe.whitelist()

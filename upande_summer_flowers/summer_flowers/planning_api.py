@@ -794,6 +794,22 @@ def _solve_tc_for_demand(plan_doc, version, order_date, target_pct=100.0,
 	return best
 
 
+def _cutting_weeks(version, cycles):
+	"""Weeks left to cut from a pool reached in `cycles`, or None if unknowable.
+
+	The line is renewed from tissue culture on motherstock one's clock, so every
+	cycle past the first is an establishment spent out of the same window. Where
+	the protocol has not recorded the life or the establishment, the answer is not
+	zero -- it is that nobody has said, and a zero printed here reads as a verdict
+	that the pool has nothing left to give.
+	"""
+	life = cint(version.motherstock_life_weeks)
+	est = cint(version.weeks_tc_to_first_cut())
+	if not life or (cint(cycles) > 1 and not est):
+		return None
+	return max(0, life - est * max(0, cint(cycles) - 1))
+
+
 @frappe.whitelist()
 def tc_purchase(plan=None, variety=None, farm=None, tc_qty=None, tolerance_pct=10,
                 order_date=None, cycles=None):
@@ -919,6 +935,24 @@ def tc_purchase(plan=None, variety=None, farm=None, tc_qty=None, tolerance_pct=1
 		"peak_cuttings": cuttings,
 		"mothers_for_peak": mothers,
 		"build_up_cycles": cycles,
+		# What multiplying costs. The line is renewed from tissue culture on
+		# motherstock one's clock -- 1.2 comes out when 1 comes out -- so every extra
+		# cycle is an establishment spent out of the same window, not added to it.
+		# The panel showed the benefit (×factor, fewer plantlets) with no sign of the
+		# price, and six cycles is a pool that is full the week it is pulled out.
+		"line_life_weeks": cint(v.motherstock_life_weeks),
+		"cycle_cost_weeks": cint(v.weeks_tc_to_first_cut()),
+		# None, not zero, where the protocol has not said how long the line lives or
+		# how long an establishment takes. Zero would read as "nothing left to cut",
+		# which is a verdict; what is true is that nobody has said.
+		"cutting_weeks": _cutting_weeks(v, cycles),
+		"cutting_weeks_by_cycles": [
+			{"cycles": c,
+			 "factor": round(v.multiplication_factor(c), 2),
+			 "tc": int(math.ceil(v.tc_plants_for(mothers, c))) if mothers else 0,
+			 "weeks": _cutting_weeks(v, c)}
+			for c in range(1, max(5, cycles + 2))
+		],
 		# What the plan is actually committed to, so the dashboard can show a tried
 		# figure as tried rather than as decided.
 		# What the sourcing says, as against what the ground would grow. The plan
