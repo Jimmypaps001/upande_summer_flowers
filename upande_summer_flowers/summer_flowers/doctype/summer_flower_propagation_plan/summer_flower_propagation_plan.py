@@ -700,7 +700,6 @@ def build_from_plan(production_plan, as_dict=False):
 				production_plan, was_plan))
 		d.db_set("last_change_summary", "\n".join(changes) or None,
 		         update_modified=False)
-		frappe.db.commit()
 		result = {"name": d.name, "created": False, "changes": changes,
 		          "variety": d.variety, "season": d.season}
 		return result if as_dict else d.name
@@ -708,8 +707,12 @@ def build_from_plan(production_plan, as_dict=False):
 	d = frappe.new_doc("Summer Flower Propagation Plan")
 	d.production_plan = production_plan
 	d.flags.ignore_permissions = True
+	# No commit here. This runs inside the Procurement Plan's on_submit, and a
+	# commit mid-submit means a step that fails afterwards rolls the submit back
+	# while leaving the propagation plan -- and everything else already pending --
+	# written. Frappe commits the request when it succeeds; that is the guarantee
+	# that should hold.
 	d.insert()
-	frappe.db.commit()
 	result = {"name": d.name, "created": True, "changes": [],
 	          "variety": d.variety, "season": d.season}
 	return result if as_dict else d.name

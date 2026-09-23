@@ -377,14 +377,39 @@ function source_plantlets(frm) {
 			? __("{0} beds available — {1}", [s.beds_available, s.space_basis])
 			: __("No ground recorded at this farm, so the order cannot be trimmed to fit it.");
 
+		// The protocol already answers this. Buying and propagating are not two
+		// options to pick between: the purchase is where the route starts and
+		// propagation is every stage between there and the ground, so a crop can
+		// want both. Defaulting to Purchase at whichever stage came first was
+		// wrong in both fields at once on every crop the farm propagates.
+		const dec = s.decided || {};
+		const buyable = (dec.buyable || []).length ? dec.buyable : stages;
+		const verdict = dec.reason
+			? `<p class="text-muted small">${frappe.utils.escape_html(dec.reason)}</p>`
+			: "";
+
 		const d = new frappe.ui.Dialog({
 			title: __("How is the plant material got?"),
 			fields: [
+				{ fieldname: "verdict", fieldtype: "HTML", options: verdict },
 				{ fieldname: "method", label: __("Method"), fieldtype: "Select", reqd: 1,
-				  options: ["Purchase", "Propagate"], default: "Purchase" },
+				  options: ["Purchase", "Propagate"], default: dec.method || "Purchase",
+				  read_only: dec.method ? 1 : 0,
+				  description: dec.method
+					? __("Read off the material route on {0}. Change it there, not here.", [s.protocol])
+					: __("The route does not say. Mark the stage it is bought at on the protocol.") },
+				{ fieldname: "propagation_note", fieldtype: "HTML",
+				  options: dec.propagates
+					? `<p class="text-muted small">${frappe.utils.escape_html(
+						__("A propagation plan will be raised as well: {0} is raised here through {1}.",
+							[s.variety, (dec.in_house || []).join(", ")]))}</p>`
+					: "" },
 				{ fieldname: "entry_stage", label: __("Bought as"), fieldtype: "Select",
-				  options: stages, default: stages[0],
-				  depends_on: "eval:doc.method=='Purchase'" },
+				  options: buyable, default: dec.entry_stage || buyable[0],
+				  depends_on: "eval:doc.method=='Purchase'",
+				  description: buyable.length > 1
+					? __("The protocol marks more than one stage as bought, so this is the one thing left to choose.")
+					: "" },
 				{ fieldname: "stage_note", fieldtype: "HTML" },
 				{ fieldname: "supplier", label: __("Supplier"), fieldtype: "Link",
 				  options: "Supplier", depends_on: "eval:doc.method=='Purchase'" },

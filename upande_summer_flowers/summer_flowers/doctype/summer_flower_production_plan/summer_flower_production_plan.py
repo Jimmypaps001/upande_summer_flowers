@@ -537,7 +537,12 @@ class SummerFlowerProductionPlan(Document):
 
 		cycles = cint(self.tc_cycles_committed) if self.tc_choice_committed \
 			else cint(v.max_multiplication_cycles)
-		req = sourcing.requirement(v, "TC", cint(self.new_plants_required), peak)
+		peak_monday = None
+		if self.peak_sticking_week_planned:
+			py, pw = self.peak_sticking_week_planned.split("-W")
+			peak_monday = iso_monday(cint(py), cint(pw))
+		req = sourcing.requirement(v, "TC", cint(self.new_plants_required), peak,
+		                           peak_date=peak_monday)
 		if not req:
 			self.tc_status = _("This crop's route does not start at TC, so there is no "
 			                   "TC order to size. What it does buy is on its Procurement "

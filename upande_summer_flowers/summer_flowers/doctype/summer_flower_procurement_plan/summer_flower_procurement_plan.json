@@ -19,6 +19,9 @@
   "status",
   "section_method",
   "method",
+  "propagates_here",
+  "in_house_stages",
+  "route_verdict",
   "entry_stage",
   "supplier",
   "column_break_method",
@@ -124,6 +127,28 @@
    "label": "Method",
    "options": "Purchase\nPropagate",
    "reqd": 1
+  },
+  {
+   "fieldname": "propagates_here",
+   "fieldtype": "Check",
+   "label": "Propagated on the farm",
+   "read_only": 1,
+   "description": "The route has stages between where the material is bought and the ground, so what arrives is raised here before it is planted. Buying and propagating are not alternatives: Aster is bought as tissue culture and propagated."
+  },
+  {
+   "fieldname": "in_house_stages",
+   "fieldtype": "Data",
+   "label": "Raised here through",
+   "read_only": 1,
+   "description": "The stages the material passes through on the farm after it arrives.",
+   "depends_on": "propagates_here"
+  },
+  {
+   "fieldname": "route_verdict",
+   "fieldtype": "Small Text",
+   "label": "What the protocol says",
+   "read_only": 1,
+   "description": "Read off the material route, not chosen here. Change it on the Crop Protocol."
   },
   {
    "fieldname": "entry_stage",

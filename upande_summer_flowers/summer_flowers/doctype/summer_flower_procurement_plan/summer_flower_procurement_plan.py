@@ -31,13 +31,19 @@ class SummerFlowerProcurementPlan(Document):
 
 	def on_submit(self):
 		self.db_set("status", "Approved")
-		if self.method == "Propagate":
-			self.build_propagation_plan()
-		else:
+		# Not either/or. Aster is bought as tissue culture AND propagated here, and
+		# the two used to exclude each other: choosing Purchase raised the orders and
+		# never built the propagation plan, so the farm had plantlets coming and
+		# nothing saying what to stick or when. The purchase is where the route
+		# starts; propagation is every stage between there and the ground. A route
+		# can want both, and this one does.
+		if self.method == "Purchase":
 			self.raise_material_requests()
-		# Either way the farm needs to know what to plant and when. The plantings
-		# are the point of all of it; how the material was got only changes what
-		# the calendar records as its source.
+		if cint(self.propagates_here):
+			self.build_propagation_plan()
+		# Whichever way the material was got, the farm needs to know what to plant
+		# and when. How it was got only changes what the calendar records as its
+		# source -- and which date it plants on.
 		self.build_planting_plan()
 
 	def raise_material_requests(self):
@@ -62,15 +68,25 @@ class SummerFlowerProcurementPlan(Document):
 			when = getdate(r.required_at_site_date) if r.required_at_site_date else None
 			groups[(r.supplier, when)].append(r)
 
-		made = []
+		made, overdue, failed = [], [], []
+		today = getdate(nowdate())
 		for (supplier, when), rows in sorted(
 			groups.items(), key=lambda kv: (kv[0][1] or getdate(nowdate()))
 		):
 			mr = frappe.new_doc("Material Request")
 			mr.material_request_type = "Purchase"
 			mr.company = self.company
-			mr.transaction_date = getdate(nowdate())
-			mr.schedule_date = when or getdate(nowdate())
+			mr.transaction_date = today
+			# A Material Request refuses a required-by date before its transaction
+			# date, and the whole approval used to die on it -- so a plan whose first
+			# order date had passed could not be approved at all, which is exactly the
+			# plan someone most needs to approve and chase. The date it wanted is kept
+			# on the requirement line; what goes on the request is the soonest it can
+			# honestly be asked for, and the plan says which rows were already late.
+			wanted = when or today
+			if wanted < today:
+				overdue.append((wanted, rows))
+			mr.schedule_date = max(wanted, today)
 			if mr.meta.get_field("custom_farm"):
 				mr.custom_farm = self.farm
 			for r in rows:
@@ -88,7 +104,18 @@ class SummerFlowerProcurementPlan(Document):
 			if supplier and mr.meta.get_field("supplier"):
 				mr.supplier = supplier
 			mr.flags.ignore_permissions = True
-			mr.insert()
+			# A site can make its own fields mandatory on a Material Request, and an
+			# approval that dies on one of them takes the propagation plan and the
+			# planting calendar down with it -- three things the farm needs, lost to
+			# a field this module has never heard of. Approve, report, and let the
+			# request be raised by hand.
+			try:
+				mr.insert()
+			except Exception as e:
+				frappe.log_error(frappe.get_traceback(),
+				                 "Material Request for %s" % self.name)
+				failed.append(str(e).split("\n")[0][:200])
+				continue
 			for r in rows:
 				r.db_set("source_doctype", "Material Request", update_modified=False)
 				r.db_set("source_doc", mr.name, update_modified=False)
@@ -98,9 +125,54 @@ class SummerFlowerProcurementPlan(Document):
 			frappe.msgprint(_("{0} raised as drafts: {1}").format(
 				len(made), ", ".join(made)), indicator="green",
 				title=_("Material Requests"))
+		if failed:
+			frappe.msgprint(_(
+				"{0} material request(s) could not be raised: {1}. The plan is still "
+				"approved and its propagation plan and planting calendar are built; "
+				"raise the order by hand, or fix what it objected to and approve an "
+				"amendment."
+			).format(len(failed), "; ".join(failed[:3])), indicator="red",
+				title=_("Orders not raised"))
+		if overdue:
+			first = min(w for w, _r in overdue)
+			frappe.msgprint(_(
+				"{0} of these were needed on site before today -- the earliest was "
+				"{1}. They are raised dated today, because a request cannot be "
+				"wanted before it is made, but the material will arrive late and the "
+				"plantings that depend on it will slip. The dates the plan asked for "
+				"are still on the requirement lines."
+			).format(len(overdue), first), indicator="orange",
+				title=_("Ordered late"))
 		else:
 			frappe.msgprint(_("Nothing to order: every line is already raised, or "
 			                  "has no quantity."), indicator="orange")
+
+	def _propagation_coverage(self):
+		"""{(year, week): (cuttings short, cuttings asked for)} for this season.
+
+		Read off the propagation plan built moments ago in on_submit, which is the
+		document that knows what the bench can cut. Empty when nothing is propagated
+		here -- bought plants arrive or they do not, and that is the supplier's
+		delivery date, not a cutting shortfall.
+		"""
+		if not cint(self.propagates_here):
+			return {}
+		name = frappe.db.get_value("Summer Flower Propagation Plan",
+		                           {"production_plan": self.production_plan,
+		                            "docstatus": ["<", 2]}, "name")
+		if not name:
+			return {}
+		out = {}
+		for w in frappe.get_all("Summer Flower Propagation Week",
+		                        filters={"parent": name,
+		                                 "parenttype": "Summer Flower Propagation Plan"},
+		                        fields=["year", "week_no", "shortfall",
+		                                "cuttings_required"]):
+			if cint(w.shortfall) > 0:
+				out[(cint(w.year), cint(w.week_no))] = (cint(w.shortfall),
+				                                        cint(w.cuttings_required))
+		return out
+
 
 	def build_planting_plan(self):
 		"""Turn the cohorts into Planting Calendar entries, whichever way they came.
@@ -110,9 +182,17 @@ class SummerFlowerProcurementPlan(Document):
 		and the supplier or batch beside it, differ.
 		"""
 		plan = frappe.get_doc("Summer Flower Production Plan", self.production_plan)
-		source = ("Purchased from Breeder" if self.method == "Purchase"
-		          else "In-house Propagation")
-		made, skipped = [], 0
+		# What the bench can actually deliver, week by week. The production plan says
+		# what the market wants stuck; the propagation plan says what there are
+		# cuttings for. Writing the first into the calendar as though it were the
+		# second is how a farm comes to expect plants that were never raised.
+		covered = self._propagation_coverage()
+		# What the farm plants is what came off its own bench whenever anything is
+		# raised here, even though the tissue culture behind it was bought. The
+		# supplier delivered a plantlet, not a plant.
+		source = ("In-house Propagation" if cint(self.propagates_here)
+		          else "Purchased from Breeder")
+		made, skipped, at_risk = [], 0, []
 		for r in self.requirements:
 			if not cint(r.qty_at_field):
 				continue
@@ -125,6 +205,16 @@ class SummerFlowerProcurementPlan(Document):
 			if row.existing_planting and frappe.db.exists("Planting Calendar",
 			                                              row.existing_planting):
 				continue
+			short, asked = covered.get((cint(row.sticking_year), cint(row.sticking_week)),
+			                           (0, 0))
+			shortfall_note = None
+			if short and asked:
+				shortfall_note = _(
+					"The propagation plan is {0} cuttings short of the {1} this week "
+					"needs, so this planting may go in smaller than {2} plants or "
+					"later than {3}."
+				).format(f"{short:,}", f"{asked:,}", f"{cint(r.qty_at_field):,}",
+				         row.planting_date)
 			cal = frappe.get_doc({
 				"doctype": "Planting Calendar",
 				"block": row.block,
@@ -134,11 +224,21 @@ class SummerFlowerProcurementPlan(Document):
 				"company": self.company,
 				"beds": cint(row.beds),
 				"plants": cint(r.qty_at_field),
-				"planting_date": r.expected_delivery_date or row.planting_date,
+				# The delivery date is the planting date only where what arrives IS
+				# the plant. Where the farm propagates, the delivery is tissue
+				# culture months earlier, and planting on it put the crop in the
+				# ground before it existed.
+				"planting_date": (row.planting_date if cint(self.propagates_here)
+				                  else (r.expected_delivery_date or row.planting_date)),
 				"sticking_date": row.sticking_date if row.get("sticking_date") else None,
 				"seedling_source": source,
-				"supplier": self.supplier if self.method == "Purchase" else None,
+				"supplier": (self.supplier if self.method == "Purchase"
+				             and not cint(self.propagates_here) else None),
 			})
+			if shortfall_note:
+				cal.notes = ((cal.get("notes") or "") + "\n" + shortfall_note).strip() \
+					if cal.meta.has_field("notes") else cal.get("notes")
+				at_risk.append(row.planting_date)
 			cal.flags.ignore_permissions = True
 			cal.insert()
 			row.db_set("existing_planting", cal.name, update_modified=False)
@@ -147,6 +247,14 @@ class SummerFlowerProcurementPlan(Document):
 		if made:
 			frappe.msgprint(_("{0} planting calendar entries created.").format(len(made)),
 			                indicator="green", title=_("Planting plan"))
+		if at_risk:
+			frappe.msgprint(_(
+				"{0} of these plantings fall in weeks the propagation plan cannot "
+				"fully supply, the first on {1}. They are written to the calendar "
+				"because that is the plan; what is short is on each entry and on "
+				"the propagation plan's own weeks."
+			).format(len(at_risk), min(at_risk)), indicator="orange",
+				title=_("Not all of it can be stuck"))
 		if skipped:
 			frappe.msgprint(_("{0} cohorts have no block allocated, so no planting "
 			                  "calendar entry could be written for them. Allocate "
@@ -281,9 +389,15 @@ def methods_for(production_plan):
 			"plan_version": v.name,
 			"newer_has_route": newer_has_route,
 		}
+	# What the protocol already says. The dialog used to default to Purchase at
+	# whichever stage happened to come first, which is not a default at all -- it is
+	# a guess that looks like one, and on a crop the farm propagates it was wrong
+	# in both fields at once.
+	decided = sourcing.route_plan(v)
 	return {
 		"plan": p.name, "variety": p.variety, "farm": p.farm,
 		"protocol": v.name, "route": v.get("route_summary"),
+		"decided": decided,
 		"options": options,
 		"beds_available": space, "space_basis": basis,
 		"has_route": bool(v.material_route),
@@ -292,7 +406,7 @@ def methods_for(production_plan):
 
 
 @frappe.whitelist()
-def build(production_plan, method, entry_stage=None, supplier=None, fit_to_space=1):
+def build(production_plan, method=None, entry_stage=None, supplier=None, fit_to_space=1):
 	"""Turn a plan's plantings into one requirement line each, and price the order."""
 	fit_to_space = cint(fit_to_space)
 	p = frappe.get_doc("Summer Flower Production Plan", production_plan)
@@ -311,6 +425,32 @@ def build(production_plan, method, entry_stage=None, supplier=None, fit_to_space
 		               "raising a second set of orders for one plan.")
 		             .format(existing, p.name))
 
+	# The route decides how the material is got; a person only picks WHICH buyable
+	# stage, and only when the protocol offers more than one. A choice that
+	# contradicts the route is refused rather than silently obeyed -- a plan that
+	# says Purchase on a crop taken off the farm's own stock orders from nobody.
+	decided = sourcing.route_plan(v)
+	if not decided["has_route"]:
+		frappe.throw(decided["reason"], title=_("No route to buy along"))
+	if decided.get("unmarked"):
+		frappe.throw(decided["reason"], title=_("Nothing on the route is marked bought"))
+	method = method or decided["method"]
+	if method == "Purchase" and decided["method"] == "Propagate":
+		frappe.throw(
+			_("{0} takes its material off the farm's own crop, so there is nothing "
+			  "to buy. {1}").format(v.name, decided["reason"]),
+			title=_("Nothing to purchase"))
+	if method == "Purchase":
+		entry_stage = entry_stage or decided["entry_stage"]
+		if entry_stage not in decided["buyable"]:
+			frappe.throw(
+				_("{0} is not a stage {1} is bought at. The protocol marks {2}.")
+				.format(entry_stage, v.name,
+				        ", ".join(decided["buyable"]) or _("none")),
+				title=_("Not a buying stage"))
+	else:
+		entry_stage = None
+
 	journey = sourcing.journey(v, entry_stage) if entry_stage else None
 	per_unit = flt(journey["plants_per_unit"]) if journey else 1.0
 	weeks_to_ground = cint(journey["weeks_to_ground"]) if journey else 0
@@ -319,8 +459,13 @@ def build(production_plan, method, entry_stage=None, supplier=None, fit_to_space
 	# is established and then cut from every week, so its size is set by the busiest
 	# week's sticking and not by the season's total -- summing the cohorts bought
 	# the same motherstock twenty-six times over.
+	peak_monday = None
+	if p.peak_sticking_week_planned:
+		_y, _w = p.peak_sticking_week_planned.split("-W")
+		peak_monday = iso_monday(cint(_y), cint(_w))
 	need = (sourcing.requirement(v, entry_stage, cint(p.new_plants_required),
-	                             cint(p.peak_weekly_sticking_planned))
+	                             cint(p.peak_weekly_sticking_planned),
+	                             peak_date=peak_monday)
 	        if entry_stage else None)
 	standing = bool(need and need.get("kind") == "standing")
 	if standing and need.get("blocked"):
@@ -338,6 +483,9 @@ def build(production_plan, method, entry_stage=None, supplier=None, fit_to_space
 	doc.method = method
 	doc.entry_stage = entry_stage if method == "Purchase" else None
 	doc.supplier = supplier if method == "Purchase" else None
+	doc.propagates_here = 1 if decided.get("propagates") else 0
+	doc.in_house_stages = ", ".join(decided.get("in_house") or []) or None
+	doc.route_verdict = decided.get("reason")
 	doc.route_summary = v.get("route_summary")
 	doc.weeks_to_ground, doc.lead_weeks = weeks_to_ground, lead
 	doc.plants_per_unit = per_unit

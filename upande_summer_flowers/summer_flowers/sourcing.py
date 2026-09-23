@@ -94,6 +94,75 @@ def journey(version, from_stage):
 	}
 
 
+# Entry stages the farm takes off its own crop rather than buying. Nothing is
+# ordered for these, so a route starting at one has no purchase in it at all.
+OWN_STAGES = ("Cuttings (Own)", "Roots (Own)", "Tubers (Own)")
+
+
+@frappe.whitelist()
+def route_plan(version):
+	"""What the protocol already says about how this crop's material is got.
+
+	Buying and propagating are not alternatives, and treating them as a choice
+	between two is what made a procurement plan for Aster do one or the other. The
+	farm buys tissue culture AND propagates it: the purchase is where the route
+	STARTS, and propagation is every stage between there and the ground. A route
+	can have both, either, or -- for a crop cut off its own stock and planted
+	straight out -- neither.
+
+	So there is only one thing left to ask a person, and only when the protocol
+	leaves it open: which of several buyable stages to enter at. Everything else
+	here is read off the route.
+	"""
+	v = (version if hasattr(version, "material_route")
+	     else frappe.get_cached_doc("Crop Protocol Version", version))
+	blocks = _blocks(v)
+	if not blocks:
+		return {"has_route": False, "method": None, "entry_stage": None,
+		        "buyable": [], "propagates": False, "in_house": [],
+		        "reason": _("This protocol has no material route, so nothing about "
+		                    "how the material is got can be read off it.")}
+
+	names = [st.stage for st, _s in blocks]
+	buyable = [st.stage for st, _s in blocks if cint(st.is_purchase)]
+	# A route that marks nothing bought still starts somewhere. If that somewhere is
+	# the farm's own stock the answer is genuinely "nothing is bought"; if it is TC
+	# or seed, the protocol is unfinished and saying so beats defaulting silently.
+	entry = buyable[0] if buyable else None
+	first = names[0]
+	unmarked = not buyable and first not in OWN_STAGES
+
+	start = names.index(entry) if entry else 0
+	in_house = [n for n in names[start + 1:] if n != ROUTE_END]
+	propagates = bool(in_house)
+
+	if entry:
+		method = "Purchase"
+		if propagates:
+			reason = _("{0} says the material is bought as {1} and then raised here "
+			           "through {2}. Both happen: the {1} is ordered, and what it "
+			           "becomes is propagated on the farm.").format(
+				v.name, entry, ", ".join(in_house))
+		else:
+			reason = _("{0} says the material is bought as {1} and planted as it "
+			           "arrives. Nothing is propagated here.").format(v.name, entry)
+	elif unmarked:
+		method = None
+		reason = _("{0} starts at {1}, which is bought -- but no stage on the route "
+		           "is ticked as the one it is bought at. Tick it on the protocol, "
+		           "or the order has no stage, no lead time and no price."
+		           ).format(v.name, first)
+	else:
+		method = "Propagate"
+		reason = _("{0} starts at {1}, which the farm takes off its own crop. "
+		           "Nothing is bought; it is all raised here through {2}."
+		           ).format(v.name, first, ", ".join(in_house) or _("to planting"))
+
+	return {"has_route": True, "method": method, "entry_stage": entry,
+	        "buyable": buyable, "propagates": propagates, "in_house": in_house,
+	        "first_stage": first, "unmarked": unmarked, "reason": reason}
+
+
 def standing_stage(version, from_stage=None):
 	"""The stage on this route that is established once and cut from, if any.
 
@@ -111,7 +180,45 @@ def standing_stage(version, from_stage=None):
 	return None
 
 
-def requirement(version, from_stage, plants, weekly_plants=None):
+def standing_pool_capacity(version, on_date):
+	"""Cuttings the motherstock already standing can give in the week of `on_date`.
+
+	The same batches, the same build-up curve and the same window the propagation
+	plan uses, because an order sized as though nothing were standing buys a pool
+	the farm already owns. A batch counts only between its first sticking date and
+	its expiry: one that has not established yet, or is past renewal, cannot cut
+	for the week being planned.
+	"""
+	if not on_date:
+		return 0, []
+	from upande_summer_flowers.summer_flowers.lifecycle_sim import ramp_ratio
+
+	per_week = flt(version.cuttings_per_plant_per_week) or 1.0
+	ramp = version.ramp_ratios() or [1.0]
+	monday = getdate(on_date)
+	total, used = 0, []
+	for b in frappe.get_all("Summer Flower Motherstock Batch",
+	                        filters={"variety": version.variety, "farm": version.farm,
+	                                 "docstatus": ["<", 2]},
+	                        fields=["name", "mother_plants", "first_sticking_date",
+	                                "expiry_date"]):
+		if not (b.mother_plants and b.first_sticking_date):
+			continue
+		start = getdate(b.first_sticking_date)
+		if monday < start:
+			continue
+		if b.expiry_date and monday > getdate(b.expiry_date):
+			continue
+		cap = int(round(cint(b.mother_plants) * per_week
+		                * ramp_ratio((monday - start).days // 7, ramp)))
+		if cap:
+			total += cap
+			used.append({"batch": b.name, "mother_plants": cint(b.mother_plants),
+			             "cuttings_this_week": cap})
+	return total, used
+
+
+def requirement(version, from_stage, plants, weekly_plants=None, peak_date=None):
 	"""What to buy at `from_stage`, and in what shape, to grow `plants` plants.
 
 	Two routes, two shapes of answer, and the shape is the whole point:
@@ -147,7 +254,12 @@ def requirement(version, from_stage, plants, weekly_plants=None):
 	per_week = flt(stage.get("yields_per_week"))
 	cycles = cint(version.max_multiplication_cycles)
 	cuttings = cint(version.cuttings_for_plants(weekly)) if weekly else 0
-	mothers = int(math.ceil(cuttings / per_week)) if (cuttings and per_week) else 0
+	# Net off the pool the farm already stands. Sizing the order against the gross
+	# requirement buys a motherstock that is partly already there, which on a crop
+	# in its second season is most of it.
+	standing, from_batches = standing_pool_capacity(version, peak_date)
+	short = max(0, cuttings - standing)
+	mothers = int(math.ceil(short / per_week)) if (short and per_week) else 0
 	units = int(math.ceil(version.tc_plants_for(mothers, cycles))) if mothers else 0
 	blocked = None
 	if weekly and not per_week:
@@ -160,14 +272,19 @@ def requirement(version, from_stage, plants, weekly_plants=None):
 			"sized, and sizing it as if each planting needed its own {0} would "
 			"over-buy many times over."
 		).format(stage.stage, stage.stage.lower())
+	netting = (_(" {0} of those already come off {1} motherstock batch(es) standing, "
+	             "so only {2} has to be raised.")
+	           .format(f"{standing:,}", len(from_batches), f"{short:,}")
+	           if standing else "")
 	return dict(j, kind="standing", standing_stage=stage.stage, multiplies=True,
 	            units=units, pool=mothers, weekly_draw=cuttings,
 	            weekly_plants=weekly, yields_per_week=per_week, cycles=cycles,
-	            blocked=blocked,
-	            basis=_("{0} plants stuck in the busiest week needs {1} cuttings, "
-	                    "off {2} mother plants, raised from {3} plantlets at {4} "
-	                    "multiplication cycles")
-	                  .format(f"{weekly:,}", f"{cuttings:,}", f"{mothers:,}",
+	            blocked=blocked, standing_capacity=standing,
+	            net_cuttings=short, from_batches=from_batches,
+	            basis=_("{0} plants stuck in the busiest week needs {1} cuttings.{2} "
+	                    "That is {3} mother plants, raised from {4} plantlets at {5} "
+	                    "multiplication cycles.")
+	                  .format(f"{weekly:,}", f"{cuttings:,}", netting, f"{mothers:,}",
 	                          f"{units:,}", cycles))
 
 
