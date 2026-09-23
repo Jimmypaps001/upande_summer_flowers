@@ -315,12 +315,42 @@ def demand_vs_production_by_variety(farm=None, season=None):
 		if not d.get("plan"):
 			continue
 		t = d["totals"]
+		# When this variety goes in the ground, and what has been settled about
+		# getting the material for it. Read off the plan's own rows and the
+		# documents that hang off it -- an overview with no variety chosen was
+		# showing one plan's numbers and nothing at all about the other thirty-six.
+		blocks = frappe.get_all(
+			"Summer Flower Plan Block",
+			filters={"parent": r.name, "parenttype": "Summer Flower Production Plan",
+			         "is_new_planting": 1},
+			fields=["planting_date", "beds", "plants", "block"])
+		dates = sorted(b.planting_date for b in blocks if b.planting_date)
+		prop = frappe.db.get_value(
+			"Summer Flower Propagation Plan",
+			{"production_plan": r.name, "docstatus": ["<", 2]},
+			["name", "status", "first_sticking_date", "total_cuttings_required",
+			 "cuttings_uncovered", "tc_plants_required", "tc_order_date"],
+			as_dict=True)
+		proc = frappe.db.get_value(
+			"Summer Flower Procurement Plan",
+			{"production_plan": r.name, "docstatus": ["<", 2]},
+			["name", "status", "method", "entry_stage", "propagates_here",
+			 "total_units_to_order", "first_order_by", "orders_late"],
+			as_dict=True)
 		series.append({
 			"variety": variety, "plan": d["plan"], "farm": d["farm"],
 			"status": d["status"],
 			"demand_stems": cint(t["demand_stems"]),
 			"production_stems": cint(t["production_stems"]),
 			"coverage_pct": flt(t["coverage_pct"]),
+			"plantings": len(blocks),
+			"beds": sum(cint(b.beds) for b in blocks),
+			"plants": sum(cint(b.plants) for b in blocks),
+			"placed": sum(1 for b in blocks if b.block),
+			"first_planting": str(dates[0]) if dates else None,
+			"last_planting": str(dates[-1]) if dates else None,
+			"propagation": (dict(prop, name=prop.name) if prop else None),
+			"procurement": (dict(proc, name=proc.name) if proc else None),
 			"weeks": d["weeks"], "months": d["months"],
 		})
 		for grain, bag in (("weeks", weeks), ("months", months)):

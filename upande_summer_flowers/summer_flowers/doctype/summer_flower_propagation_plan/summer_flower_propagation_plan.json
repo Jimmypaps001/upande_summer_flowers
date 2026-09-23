@@ -38,6 +38,7 @@
   "cb3",
   "existing_cover_pct",
   "mother_plants_required",
+  "motherstock_ignored_note",
   "new_pool_expiry",
   "new_pool_cutting_weeks",
   "peak_bench_sqm",
@@ -272,6 +273,13 @@
    "fieldtype": "Int",
    "label": "New Mother Plants",
    "read_only": 1
+  },
+  {
+   "fieldname": "motherstock_ignored_note",
+   "fieldtype": "Small Text",
+   "label": "Motherstock Not Counted",
+   "read_only": 1,
+   "description": "Batches that exist as drafts but are not treated as standing motherstock. A draft is a working document, not a pool the farm can cut from."
   },
   {
    "fieldname": "new_pool_expiry",

@@ -1809,6 +1809,31 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
 
     const secs = [];
 
+    // Nothing chosen means the reader is asking about the whole farm, not about
+    // whichever plan the page resolved for itself. Every variety, summed, off the
+    // same endpoint that draws the chart -- so the total below and the chart above
+    // are the same fifteen plans.
+    const all = (S.sc && S.sc.implicit && S.mv && S.mv.series) ? S.mv.series : null;
+    if (all && all.length) {
+      const tD = all.reduce((a, x) => a + (x.demand_stems || 0), 0);
+      const tP = all.reduce((a, x) => a + (x.production_stems || 0), 0);
+      const tPl = all.reduce((a, x) => a + (x.plantings || 0), 0);
+      const tPlants = all.reduce((a, x) => a + (x.plants || 0), 0);
+      const unplaced = all.reduce((a, x) => a + ((x.plantings || 0) - (x.placed || 0)), 0);
+      secs.push(sec("All varieties", `${all.length} plans`, [
+        row("Demand", num(tD), "stems asked for, every variety"),
+        row("Planned production", num(tP), `${pct(tP, tD)} of it`,
+            tP >= tD ? "--good" : "--serious"),
+        row("Plantings", num(tPl), `${num(tPlants)} plants` +
+            (unplaced ? ` · ${num(unplaced)} with no block` : " · all placed"),
+            unplaced ? "--serious" : "--good"),
+      ]));
+    }
+
+    // Protocol is a property of one variety at one farm. With nothing chosen the
+    // page had resolved a plan for itself and was showing that crop's protocol as
+    // though it described the lot.
+    if (!(S.sc && S.sc.implicit))
     secs.push(sec("Protocol", S.pr ? S.pr.version || "" : "none in scope", [
       row("Growing protocol",
           D.total_weeks_in_ground ? D.total_weeks_in_ground + " wks" : "—",
@@ -1869,7 +1894,51 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
           pending ? "--serious" : "--good"),
     ]));
 
-    el.innerHTML = secs.join("");
+    // One row a variety: when it goes in the ground, and what has been settled
+    // about getting the material. Read off each plan's own rows and the documents
+    // hanging off it -- with no variety chosen the overview said nothing at all
+    // about the other fourteen crops.
+    let table = "";
+    if (all && all.length) {
+      const d8 = (x) => (x ? frappe.datetime.str_to_user(x) : "—");
+      table =
+        `<div class="pl-card"><div class="pl-card-head"><div>` +
+        `<h2>Every variety</h2><p class="pl-note">Planting window, propagation ` +
+        `and procurement for each plan in scope.</p></div></div>` +
+        `<div class="pl-scroll"><table class="pl-t"><thead><tr>` +
+        `<th>Variety</th><th>Farm</th><th class="n">Demand</th>` +
+        `<th class="n">Planned</th><th class="n">Cover</th>` +
+        `<th>Planting from</th><th>to</th><th class="n">Plantings</th>` +
+        `<th>Propagation</th><th>Procurement</th></tr></thead><tbody>` +
+        all.map((x) => {
+          const pr = x.propagation, pc = x.procurement;
+          const cov = x.coverage_pct || 0;
+          return `<tr><td>${esc(x.variety)}</td><td>${esc(x.farm || "—")}</td>` +
+            `<td class="n">${num(x.demand_stems)}</td>` +
+            `<td class="n">${num(x.production_stems)}</td>` +
+            `<td class="n" style="color:var(${cov >= 100 ? "--good" : "--serious"})">` +
+              `${cov.toFixed(0)}%</td>` +
+            `<td>${d8(x.first_planting)}</td><td>${d8(x.last_planting)}</td>` +
+            `<td class="n">${num(x.plantings)}` +
+              (x.plantings && x.placed < x.plantings
+                ? ` <span class="pl-note">(${num(x.plantings - x.placed)} unplaced)</span>`
+                : "") + `</td>` +
+            `<td>${pr ? `<a href="/app/summer-flower-propagation-plan/${
+                 encodeURIComponent(pr.name)}" target="_blank">${esc(pr.name)}</a>` +
+                 `<br><span class="pl-note">${esc(pr.status || "")}` +
+                 (pr.cuttings_uncovered
+                   ? ` · ${num(pr.cuttings_uncovered)} uncovered` : "") +
+                 `</span>` : `<span class="pl-note">none</span>`}</td>` +
+            `<td>${pc ? `<a href="/app/summer-flower-procurement-plan/${
+                 encodeURIComponent(pc.name)}" target="_blank">${esc(pc.name)}</a>` +
+                 `<br><span class="pl-note">${esc(pc.method || "")}` +
+                 (pc.entry_stage ? ` at ${esc(pc.entry_stage)}` : "") +
+                 (pc.propagates_here ? " · propagated here" : "") +
+                 `</span>` : `<span class="pl-note">none</span>`}</td></tr>`;
+        }).join("") + `</tbody></table></div></div>`;
+    }
+
+    el.innerHTML = secs.join("") + table;
   }
 
   // Demand against production, week by week. The register's own chart plots one

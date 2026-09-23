@@ -216,12 +216,32 @@ class SummerFlowerPropagationPlan(Document):
 		v = self._version
 		ramp = self._ramp
 		per_week = flt(v.cuttings_per_plant_per_week) or 1.0
+		# Only a batch the farm has actually committed to. A draft is a working
+		# document and "Planned" is an intention -- counting one as standing
+		# motherstock credited this plan with 34,223 mother plants and 876,000
+		# cuttings off a pool nobody had built, and reported 236% cover against a
+		# requirement it could not meet at all.
 		batches = frappe.get_all(
 			"Summer Flower Motherstock Batch",
 			filters={"variety": self.variety, "farm": self.farm,
-			         "docstatus": ["<", 2]},
+			         "docstatus": 1,
+			         "batch_status": ["!=", "Expired"]},
 			fields=["name", "mother_plants", "first_sticking_date", "expiry_date",
 			        "batch_status"])
+		# What was left out, and why, so a cover figure that just fell does not look
+		# like the arithmetic breaking.
+		ignored = frappe.get_all(
+			"Summer Flower Motherstock Batch",
+			filters={"variety": self.variety, "farm": self.farm,
+			         "docstatus": 0},
+			fields=["name", "mother_plants", "batch_status"])
+		self.motherstock_ignored_note = (_(
+			"{0} batch(es) are not counted as standing: {1}. A draft is a working "
+			"document, not a pool the farm can cut from. Submit it and it counts."
+		).format(len(ignored), ", ".join(
+			"%s (%s, %s mother plants)" % (b.name, b.batch_status,
+			                               "{:,}".format(cint(b.mother_plants)))
+			for b in ignored[:4])) if ignored else None)
 		self.set("sources", [])
 		# Full capacity per sticking week, accumulated across every pool. ramp_pct is
 		# only meaningful against this, and a plan with no standing motherstock has

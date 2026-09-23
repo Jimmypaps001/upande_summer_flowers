@@ -197,9 +197,13 @@ def standing_pool_capacity(version, on_date):
 	ramp = version.ramp_ratios() or [1.0]
 	monday = getdate(on_date)
 	total, used = 0, []
+	# Submitted only, and not expired -- the same rule the propagation plan uses.
+	# Netting an order against a pool that exists on a draft is how a farm comes to
+	# buy nothing and have nothing.
 	for b in frappe.get_all("Summer Flower Motherstock Batch",
 	                        filters={"variety": version.variety, "farm": version.farm,
-	                                 "docstatus": ["<", 2]},
+	                                 "docstatus": 1,
+	                                 "batch_status": ["!=", "Expired"]},
 	                        fields=["name", "mother_plants", "first_sticking_date",
 	                                "expiry_date"]):
 		if not (b.mother_plants and b.first_sticking_date):
