@@ -470,39 +470,159 @@ function allocate_blocks(frm) {
 			frappe.msgprint(__("This plan has no new plantings to allocate."));
 			return;
 		}
-		const fields = [];
-		s.rows.forEach((row, i) => {
-			const opts = [""].concat(row.candidates.map((c) => c.block));
-			const fits = row.candidates.filter((c) => c.fits).length;
-			fields.push({
-				fieldname: "row_" + i, fieldtype: "Select", options: opts,
-				default: row.suggested || "",
-				label: __("{0} — {1} beds, {2} plants", [row.planting_week,
-					row.beds, frappe.format(row.plants, { fieldtype: "Int" })]),
-				description: fits
-					? __("{0} blocks have room from {1} until {2}", [fits,
-						row.planting_date, row.free_from])
-					: __("No block has {0} beds free for that whole period.", [row.beds]),
-			});
-		});
-		const d = new frappe.ui.Dialog({
-			title: __("Allocate blocks"), size: "large", fields: fields,
-			primary_action_label: __("Assign"),
-			primary_action(values) {
-				const assignments = {};
-				s.rows.forEach((row, i) => { assignments[row.row] = values["row_" + i] || null; });
-				d.hide();
-				frappe.call({ method: M + "allocate", freeze: true,
-					args: { plan: frm.doc.name, assignments: JSON.stringify(assignments) } })
-					.then((res) => {
-						const m = res.message || {};
-						frappe.show_alert({ indicator: "green",
-							message: __("{0} allocated, {1} still without a block",
-								[m.assigned, m.still_unplaced]) });
-						frm.reload_doc();
-					});
-			},
-		});
-		d.show();
+		sf_block_picker(frm, s, M);
 	});
 }
+
+// Which block a planting goes in is a decision, and the planner has already
+// worked out everything needed to make it: how many beds each block has free for
+// that whole period, which ones only nearly fit, when they free up and what is
+// holding them. A dropdown of block names threw all of that away and made the
+// reader open another screen to find it. So the blocks are shown, not listed.
+function sf_block_picker(frm, s, M) {
+	const chosen = {};
+	s.rows.forEach((row) => { chosen[row.row] = row.block || row.suggested || ""; });
+
+	const esc = frappe.utils.escape_html;
+	// Not frappe.format(.., {fieldtype: "Int"}) -- that returns a right-aligned
+	// <div>. Escaped into a chip it printed the markup as text and broke "40/40"
+	// across three lines. A number here is a number.
+	const int = (n) => format_number(n || 0, null, 0);
+	const shortDate = (d) => frappe.datetime.str_to_user(d);
+
+	// "Torongo GH18 - KR - Block 11B" is one block code and a lot of repetition.
+	// The house is the same for every chip in the dialog and the word "Block" is
+	// on all of them, so neither tells the reader anything; the code does.
+	const code = (name) => (name || "").split(" - ").pop().replace(/^Block\s+/i, "");
+
+	const chipFor = (row, c) => {
+		const on = chosen[row.row] === c.block;
+		const cls = ["sfa-chip", c.fits ? "fits" : (c.free_from ? "late" : "no"),
+			on ? "on" : ""].join(" ");
+		// A block is its beds. Free-of-total says at a glance whether it is tight,
+		// and a block that only nearly fits says when and who is in the way --
+		// moving a planting a fortnight is usually cheaper than finding land.
+		const bits = [`<b>${esc(code(c.block))}</b>`,
+			`<span class="sfa-beds">${int(c.free_beds)}/${int(c.total_beds)}</span>`];
+		let sub;
+		if (c.fits) {
+			sub = __("{0} spare", [int(c.free_beds - row.beds)]);
+		} else if (c.free_from) {
+			sub = __("free {0} · {1}w late", [shortDate(c.free_from), c.weeks_late]);
+		} else {
+			sub = __("no room");
+		}
+		const held = (c.blockers || []).map((b) =>
+			__("{0} holds {1} beds to {2}", [b.planting, int(b.beds),
+				shortDate(b.frees_on)])).join("\n");
+		return `<button type="button" class="${cls}" data-row="${esc(row.row)}" ` +
+			`data-block="${esc(c.block)}" title="${esc(held || c.block)}">` +
+			`<span class="sfa-top">${bits.join(" ")}</span>` +
+			`<span class="sfa-sub">${esc(sub)}</span></button>`;
+	};
+
+	const rowHtml = (row) => {
+		const fits = row.candidates.filter((c) => c.fits).length;
+		const state = chosen[row.row]
+			? `<span class="sfa-ok">${esc(code(chosen[row.row]))}</span>`
+			: `<span class="sfa-none">${__("no block")}</span>`;
+		return `<div class="sfa-row${chosen[row.row] ? "" : " unset"}" data-rowid="${esc(row.row)}">` +
+			`<div class="sfa-head">` +
+				`<span class="sfa-wk">${esc(row.planting_week)}</span>` +
+				`<span class="sfa-meta">${shortDate(row.planting_date)} · ` +
+					`${int(row.beds)} ${__("beds")} · ${int(row.plants)} ${__("plants")}</span>` +
+				state +
+			`</div>` +
+			`<div class="sfa-chips">` +
+				(row.candidates.length
+					? row.candidates.map((c) => chipFor(row, c)).join("") +
+					  `<button type="button" class="sfa-chip clear" data-row="${esc(row.row)}" ` +
+					  `data-block="">${__("none")}</button>`
+					: `<span class="sfa-empty">${__("No block at {0} has {1} beds free for that whole period.",
+						[esc(s.farm), int(row.beds)])}</span>`) +
+			`</div></div>`;
+	};
+
+	const summary = () => {
+		const set = s.rows.filter((r) => chosen[r.row]).length;
+		const none = s.rows.length - set;
+		return `<div class="sfa-sum">${int(set)} ${__("of")} ${int(s.rows.length)} ` +
+			`${__("placed")}` +
+			(none ? ` · <span class="sfa-none">${int(none)} ${__("without a block")}</span>` : "") +
+			`</div>`;
+	};
+
+	const d = new frappe.ui.Dialog({
+		title: __("Allocate blocks — {0} at {1}", [s.variety, s.farm]),
+		size: "extra-large",
+		fields: [{ fieldname: "picker", fieldtype: "HTML" }],
+		primary_action_label: __("Assign"),
+		primary_action() {
+			d.hide();
+			frappe.call({ method: M + "allocate", freeze: true,
+				freeze_message: __("Assigning blocks…"),
+				args: { plan: frm.doc.name, assignments: JSON.stringify(chosen) } })
+				.then((res) => {
+					const m = res.message || {};
+					frappe.show_alert({ indicator: m.still_unplaced ? "orange" : "green",
+						message: __("{0} allocated, {1} still without a block",
+							[m.assigned, m.still_unplaced]) });
+					frm.reload_doc();
+				});
+		},
+		secondary_action_label: __("Use every suggestion"),
+		secondary_action() {
+			s.rows.forEach((row) => {
+				chosen[row.row] = row.block || row.suggested || "";
+			});
+			paint();
+		},
+	});
+
+	const paint = () => {
+		d.fields_dict.picker.$wrapper.html(
+			SF_ALLOC_CSS + summary() +
+			`<div class="sfa-list">${s.rows.map(rowHtml).join("")}</div>`);
+	};
+
+	d.fields_dict.picker.$wrapper.on("click", ".sfa-chip", function () {
+		const rowid = this.dataset.row;
+		// Clicking the block already chosen clears it, so a row can be emptied
+		// without hunting for a "none" at the end of a long list of blocks.
+		chosen[rowid] = (chosen[rowid] === this.dataset.block) ? "" : this.dataset.block;
+		paint();
+	});
+
+	paint();
+	d.show();
+}
+
+const SF_ALLOC_CSS = `<style>
+.sfa-sum{font-size:.82rem;color:var(--text-muted);margin:0 0 10px}
+.sfa-list{display:flex;flex-direction:column;gap:8px;max-height:60vh;overflow:auto}
+.sfa-row{border:1px solid var(--border-color);border-radius:8px;padding:9px 11px;
+  background:var(--card-bg)}
+.sfa-row.unset{border-color:var(--orange-300, #f0b37e)}
+.sfa-head{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;margin-bottom:7px}
+.sfa-wk{font-weight:600;font-variant-numeric:tabular-nums}
+.sfa-meta{font-size:.78rem;color:var(--text-muted);flex:1}
+.sfa-ok{font-size:.78rem;font-weight:600;color:var(--green-600, #22863a)}
+.sfa-none{font-size:.78rem;color:var(--orange-600, #b35309)}
+.sfa-chips{display:flex;flex-wrap:wrap;gap:6px}
+.sfa-chip{display:flex;flex-direction:column;align-items:flex-start;gap:1px;
+  border:1px solid var(--border-color);background:var(--bg-color);
+  border-radius:7px;padding:4px 9px;cursor:pointer;line-height:1.25;
+  font-size:.78rem;text-align:left;min-width:76px}
+.sfa-chip:hover{border-color:var(--gray-500, #8d99a6)}
+.sfa-chip .sfa-beds{font-variant-numeric:tabular-nums;color:var(--text-muted);
+  margin-left:5px}
+.sfa-chip .sfa-sub{font-size:.7rem;color:var(--text-muted)}
+.sfa-chip.fits{border-left:3px solid var(--green-500, #2e7d32)}
+.sfa-chip.late{border-left:3px solid var(--orange-500, #d9822b)}
+.sfa-chip.no{border-left:3px solid var(--gray-400, #b8c2cc);opacity:.65}
+.sfa-chip.on{background:var(--control-bg, #ecf1f5);border-color:var(--gray-700, #4c5a67);
+  box-shadow:inset 0 0 0 1px var(--gray-700, #4c5a67)}
+.sfa-chip.on .sfa-sub,.sfa-chip.on .sfa-beds{color:var(--text-color)}
+.sfa-chip.clear{min-width:0;border-left:3px solid transparent;color:var(--text-muted)}
+.sfa-empty{font-size:.78rem;color:var(--orange-600, #b35309)}
+</style>`;
