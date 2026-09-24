@@ -333,6 +333,12 @@ class SummerFlowerProcurementPlan(Document):
 		         "{1}.").format(f"{cint(p.tc_plants_committed):,}",
 		                        p.tc_order_date_committed or _("(no date)"))
 
+	@frappe.whitelist()
+	def overview_for_form(self):
+		"""The dashboard the form draws, as a document method so the form can call
+		it without repeating the name."""
+		return overview(self.name)
+
 	def on_cancel(self):
 		self.db_set("status", "Cancelled")
 
@@ -458,6 +464,127 @@ def methods_for(production_plan):
 		"beds_available": space, "space_basis": basis,
 		"has_route": bool(v.material_route),
 		"stale_version": stale,
+	}
+
+
+@frappe.whitelist()
+def overview(name):
+	"""What an approved procurement plan has committed the farm to.
+
+	A plan that has been approved stops being a decision and becomes a set of
+	dates: material ordered by, material arriving, plants going in, stems coming
+	off. Until now the document said what to buy and nothing about what buying it
+	gets you, so the one question anybody asks of an approved plan -- when does
+	this turn into flowers, and does it meet the demand -- had to be answered by
+	opening three other documents.
+	"""
+	q = frappe.get_doc("Summer Flower Procurement Plan", name)
+	p = frappe.get_doc("Summer Flower Production Plan", q.production_plan)
+	v = frappe.get_cached_doc("Crop Protocol Version", q.protocol)
+
+	rows = [r for r in q.requirements if (r.line_type or "Planting") == "Planting"]
+	est = next((r for r in q.requirements
+	            if (r.line_type or "") == "Establishment"), None)
+
+	# When each cohort lands and what it first cuts. first_harvest_week is written
+	# when the plan is built, so this is the plan's own answer, not a second one.
+	arrivals = []
+	for r in sorted(rows, key=lambda x: getdate(x.planting_date or nowdate())):
+		arrivals.append({
+			"cohort": r.cohort,
+			"order_by": str(r.order_by_date or ""),
+			"arrives": str(r.expected_delivery_date or r.required_at_site_date or ""),
+			"planting_week": r.planting_week,
+			"planting_date": str(r.planting_date or ""),
+			"first_harvest_week": r.first_harvest_week,
+			"plants": cint(r.qty_at_field),
+			"beds": cint(r.beds),
+			"units": cint(r.qty_to_order),
+			"from_pool": cint(r.drawn_from_pool),
+			"late": cint(r.late),
+		})
+
+	firsts = [a["first_harvest_week"] for a in arrivals if a["first_harvest_week"]]
+	plantings = [a["planting_date"] for a in arrivals if a["planting_date"]]
+
+	prop = frappe.db.get_value(
+		"Summer Flower Propagation Plan",
+		{"production_plan": q.production_plan, "docstatus": ["<", 2]},
+		["name", "status", "total_cuttings_required", "cuttings_uncovered",
+		 "plants_short", "stems_at_risk", "first_sticking_date"], as_dict=True)
+
+	# What the plan grows against what the register asked for. The procurement plan
+	# does not recompute either: it reports the plan's own figures, so it cannot
+	# disagree with the document it was built from.
+	stems = cint(p.total_production_stems)
+	# A plan approved before the cycle count was recorded carries a zero, and a
+	# zero here reads as "no multiplication" rather than "not written down".
+	cycles = cint(q.multiplication_cycles) or cint(v.max_multiplication_cycles)
+	# The propagation plan is keyed on variety and season, so it can have been
+	# built from a bigger plan than this one and report more stems at risk than
+	# this plan grows. Reported as more than everything, it turned coverage
+	# negative -- minus fifty-four per cent of a demand that is being over-met.
+	raw_risk = cint(prop.stems_at_risk) if prop else 0
+	at_risk = min(raw_risk, stems)
+	risk_exceeds_plan = raw_risk > stems
+	return {
+		"plan": q.name,
+		"status": q.status,
+		"submitted": q.docstatus == 1,
+		"variety": q.variety, "farm": q.farm,
+		"production_plan": p.name, "season": p.get("season"),
+		"buying": {
+			"method": q.method,
+			"entry_stage": q.entry_stage,
+			"units": cint(q.total_units_to_order),
+			"calculated": cint(q.calculated_units),
+			"overridden": cint(q.units_overridden),
+			"supplier": q.supplier,
+			"cycles": cycles,
+			"pool": cint(q.pool_plants),
+			"weekly_draw": cint(q.weekly_draw),
+			"order_by": str(est.order_by_date or "") if est else str(q.first_order_by or ""),
+			"order_late": bool(cint(q.orders_late)),
+			"propagates_here": cint(q.propagates_here),
+			"in_house": q.in_house_stages,
+			"basis": q.sizing_basis,
+			"cutting_weeks": (max(0, cint(v.motherstock_life_weeks)
+			                      - cint(v.weeks_tc_to_first_cut())
+			                      * max(0, cycles - 1))
+			                  if cint(v.motherstock_life_weeks) else None),
+		},
+		"demand": {
+			"asked": cint(p.total_demand_stems),
+			"planned": stems,
+			"coverage_pct": flt(p.coverage_pct),
+			"weeks_in_deficit": cint(p.weeks_in_deficit),
+			"at_risk": at_risk,
+			"risk_exceeds_plan": risk_exceeds_plan,
+			"risk_note": (_("{0} covers the whole of {1} for this season, and it is "
+			                "sized on more than this plan grows. What is short here "
+			                "is at most everything this plan was going to cut."
+			                ).format(prop.name, q.variety)
+			              if risk_exceeds_plan and prop else None),
+			"after_risk_pct": (round(max(0, stems - at_risk)
+			                         / cint(p.total_demand_stems) * 100, 1)
+			                   if cint(p.total_demand_stems) else None),
+		},
+		"ground": {
+			"plants": cint(q.total_plants_at_field),
+			"beds": cint(q.beds_required),
+			"beds_available": cint(q.beds_available),
+			"capped": cint(q.capped_by_space),
+			"plantings": len(rows),
+		},
+		"when": {
+			"first_sticking": str(prop.first_sticking_date or "") if prop else "",
+			"first_planting": min(plantings) if plantings else "",
+			"last_planting": max(plantings) if plantings else "",
+			"first_harvest_week": min(firsts) if firsts else None,
+			"last_harvest_week": max(firsts) if firsts else None,
+		},
+		"propagation": (dict(prop) if prop else None),
+		"arrivals": arrivals,
 	}
 
 

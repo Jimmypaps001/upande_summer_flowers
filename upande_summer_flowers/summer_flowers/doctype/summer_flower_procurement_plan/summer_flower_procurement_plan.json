@@ -8,6 +8,9 @@
  "engine": "InnoDB",
  "is_submittable": 1,
  "field_order": [
+  "overview_section",
+  "overview_html",
+  "overview_end",
   "naming_series",
   "production_plan",
   "variety",
@@ -54,6 +57,21 @@
   "amended_from"
  ],
  "fields": [
+  {
+   "fieldname": "overview_section",
+   "fieldtype": "Section Break",
+   "label": "What this plan buys, and what it becomes",
+   "depends_on": "eval:doc.docstatus==1"
+  },
+  {
+   "fieldname": "overview_html",
+   "fieldtype": "HTML",
+   "depends_on": "eval:doc.docstatus==1"
+  },
+  {
+   "fieldname": "overview_end",
+   "fieldtype": "Section Break"
+  },
   {
    "fieldname": "naming_series",
    "fieldtype": "Select",

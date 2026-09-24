@@ -524,7 +524,12 @@ function source_plantlets(frm) {
 			],
 			primary_action_label: __("Generate"),
 			primary_action(values) {
-				d.hide();
+				// The dialog used to hide itself before the call. A server refusal --
+				// "SFPROC-… already sources this plan" is the common one -- then had
+				// no dialog to appear over and went nowhere at all: the button did
+				// nothing, said nothing, and the reader pressed it again. It stays up
+				// until there is something to show for it.
+				d.get_primary_btn().prop("disabled", true);
 				frappe.call({ method: M + "build", freeze: true,
 					freeze_message: __("Working out the orders..."),
 					args: { production_plan: frm.doc.name, method: values.method,
@@ -532,7 +537,38 @@ function source_plantlets(frm) {
 						fit_to_space: values.fit_to_space ? 1 : 0,
 						cycles: values.tc_cycles || null,
 						tc_qty: values.tc_qty || null } })
-					.then((res) => { if (res.message) frappe.set_route("Form", "Summer Flower Procurement Plan", res.message); });
+					.then((res) => {
+						if (!res || !res.message) return;
+						d.hide();
+						frappe.set_route("Form", "Summer Flower Procurement Plan",
+							res.message);
+					})
+					.catch(() => {
+						// Frappe has already shown the server's own message. All this
+						// adds is the way out of the one refusal that has one.
+						frappe.call({ method: "frappe.client.get_value",
+							args: { doctype: "Summer Flower Procurement Plan",
+								filters: { production_plan: frm.doc.name,
+									docstatus: ["<", 2] },
+								fieldname: "name" } })
+							.then((r) => {
+								const has = r && r.message && r.message.name;
+								if (!has) return;
+								d.set_df_property("verdict", "options",
+									`<p style="color:var(--red-600,#c0392b)">` +
+									frappe.utils.escape_html(__(
+										"{0} already sources this plan. Cancel or amend it "
+										+ "rather than raising a second set of orders.",
+										[has])) + `</p>`);
+								d.set_secondary_action_label(__("Open {0}", [has]));
+								d.set_secondary_action(() => {
+									d.hide();
+									frappe.set_route("Form",
+										"Summer Flower Procurement Plan", has);
+								});
+							});
+					})
+					.always(() => d.get_primary_btn().prop("disabled", false));
 			},
 		});
 		const note = () => d.fields_dict.stage_note.$wrapper.html(
