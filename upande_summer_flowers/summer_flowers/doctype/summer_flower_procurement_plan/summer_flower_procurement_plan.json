@@ -269,14 +269,15 @@
    "fieldtype": "Int",
    "label": "Units to Order",
    "read_only": 1,
-   "in_list_view": 1
+   "in_list_view": 1,
+   "description": "Everything bought by this plan. On a crop raised through a motherstock that is one purchase -- the plantlets on the Establishment line -- not one per planting."
   },
   {
    "fieldname": "pool_plants",
    "fieldtype": "Int",
-   "label": "Mother plants standing",
+   "label": "Mother Plants To Stand",
    "read_only": 1,
-   "description": "The motherstock this plan buys: how many mother plants must be standing to cut the busiest week's requirement. Bought once, cut from every week.",
+   "description": "The motherstock this plan builds: how many mother plants must be standing to cut the busiest week's cuttings. Tissue culture is bought once to raise them, and every planting in the season is then stuck with cuttings off this pool until the line expires.",
    "depends_on": "eval:doc.pool_plants"
   },
   {

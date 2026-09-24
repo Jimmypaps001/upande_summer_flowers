@@ -78,7 +78,7 @@
   {
    "fieldname": "qty_at_field",
    "fieldtype": "Int",
-   "label": "Plants at Field",
+   "label": "Plants At Field",
    "in_list_view": 1,
    "read_only": 1
   },
@@ -128,13 +128,15 @@
    "fieldtype": "Check",
    "label": "Cut from the motherstock",
    "read_only": 1,
-   "description": "This cohort is stuck with cuttings off the standing motherstock, so there is nothing to buy for it. What it costs was bought on the Establishment line."
+   "description": "This cohort is stuck with cuttings off the standing motherstock, so there is nothing to buy for it. What it costs was bought on the Establishment line.",
+   "in_list_view": 1
   },
   {
    "fieldname": "qty_to_order",
    "fieldtype": "Int",
-   "label": "Units to Order",
-   "in_list_view": 1
+   "label": "To Buy",
+   "in_list_view": 1,
+   "description": "What is bought for this line. Zero on a planting that is stuck with cuttings off the motherstock -- tissue culture is bought once, on the Establishment line, and every planting after that takes cuttings from the pool it built. Nothing is bought again."
   },
   {
    "fieldname": "required_at_site_date",

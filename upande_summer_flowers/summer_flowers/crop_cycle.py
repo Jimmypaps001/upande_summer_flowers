@@ -112,6 +112,7 @@ class SummerFlowerCropCycle(CropCycle):
 		now hidden and derived: crop_cycle_api filters on it directly, so it has
 		to hold a value even though nobody types one any more.
 		"""
+		self.settle_scope()
 		if self.get("variety") and not self.get("custom_sf_variety"):
 			self.custom_sf_variety = self.get("variety")
 		elif self.get("custom_sf_variety") and not self.get("variety"):
@@ -141,6 +142,8 @@ class SummerFlowerCropCycle(CropCycle):
 
 	# ------------------------------------------------------------- validate
 	def validate(self):
+		self.settle_scope()
+		self.check_scope()
 		super().validate()
 
 		# Scope is what the cycle occupies; the summer flower flag is which planning
@@ -173,6 +176,77 @@ class SummerFlowerCropCycle(CropCycle):
 		self.sync_cycle_status()
 		self.compute_royalty()
 		self.sync_biological_asset()
+
+	# ------------------------------------------------------------------ scope
+	# A crop cycle occupies one of two things and they are not interchangeable. A
+	# rose occupies a greenhouse and is described by a bed range on the Greenhouse
+	# ledger; a summer flower occupies a block and is described by the beds that
+	# block holds. The selector existed but nothing filled it in and nothing
+	# enforced it, so a cycle could carry a greenhouse AND a block, or neither, and
+	# which engine ran was decided by whichever field happened to be set.
+	def settle_scope(self):
+		"""Work the scope out from the crop, then hold the record to it."""
+		if not self.get("custom_cycle_scope"):
+			self.custom_cycle_scope = ("Block" if self.summer_flower_crop()
+			                           else "Greenhouse")
+		# The flag and the scope answer different questions -- which planner, and
+		# which thing is occupied -- but the crop decides the first, so it is set
+		# from the crop rather than left for someone to tick.
+		if self.summer_flower_crop() and not self.get("custom_is_summer_flower_cycle"):
+			self.custom_is_summer_flower_cycle = 1
+
+	def summer_flower_crop(self):
+		"""Whether this cycle's variety is planned as a summer flower.
+
+		Asked of the protocol, which is where the farm says so, rather than of the
+		cycle's own tick box -- a new cycle has not got one yet.
+		"""
+		if cint(self.get("custom_is_summer_flower_cycle")):
+			return True
+		variety = self.get("variety") or self.get("custom_sf_variety")
+		if not variety:
+			return False
+		if self.get("custom_crop_protocol_version"):
+			return True
+		return bool(frappe.db.exists("Crop Protocol",
+		                             {"variety": variety,
+		                              "custom_is_summer_flower": 1}))
+
+	def check_scope(self):
+		"""One thing occupied, and the right one.
+
+		Refused rather than guessed: a cycle holding both a greenhouse and a block
+		says the same crop is standing in two places, and every figure hanging off
+		it -- capacity, coverage, what is free to plant -- is then wrong for one of
+		them.
+		"""
+		scope = self.get("custom_cycle_scope")
+		block, house = self.get("custom_block"), self.get("greenhouse")
+		if scope == "Block":
+			if not block:
+				frappe.throw(
+					_("This is a block cycle, so it needs a Block. Summer flowers are "
+					  "planned on blocks; roses and the bed-range crops are planned "
+					  "on a greenhouse -- change the scope if that is what this is."),
+					title=_("No block"))
+			if house:
+				frappe.throw(
+					_("A block cycle is described by its block, not by a greenhouse. "
+					  "{0} is set as well, which would put this crop in two places at "
+					  "once. Clear it, or make this a greenhouse cycle.").format(house),
+					title=_("Both a block and a greenhouse"))
+		else:
+			if not house:
+				frappe.throw(
+					_("This is a greenhouse cycle, so it needs a Greenhouse. If this "
+					  "is a summer flower planted on a block, set the scope to Block."),
+					title=_("No greenhouse"))
+			if block:
+				frappe.throw(
+					_("A greenhouse cycle is described by a bed range on the "
+					  "greenhouse, not by a block. {0} is set as well. Clear it, or "
+					  "make this a block cycle.").format(block),
+					title=_("Both a greenhouse and a block"))
 
 	def is_block_scoped(self):
 		"""Block-scoped when scope says so, or when a block is set.

@@ -535,8 +535,8 @@ function source_plantlets(frm) {
 					args: { production_plan: frm.doc.name, method: values.method,
 						entry_stage: values.entry_stage, supplier: values.supplier,
 						fit_to_space: values.fit_to_space ? 1 : 0,
-						cycles: values.tc_cycles || null,
-						tc_qty: values.tc_qty || null } })
+						cycles: d.get_value("tc_cycles") || null,
+						tc_qty: d.get_value("tc_qty") || null } })
 					.then((res) => {
 						if (!res || !res.message) return;
 						d.hide();
@@ -769,6 +769,7 @@ function sf_tc_section(d, frm, M) {
 	const int = (n) => format_number(n || 0, null, 0);
 	const esc = frappe.utils.escape_html;
 	let busy = false;
+	let quiet = false;
 
 	const show = (o) => {
 		const on = !!(o && o.standing);
@@ -848,12 +849,15 @@ function sf_tc_section(d, frm, M) {
 				const o = r.message;
 				show(o);
 				if (o && o.standing) {
-					// Set without firing onchange, or picking a cycle count rewrites
-					// the quantity and the quantity's own handler reloads again.
-					d.fields_dict.tc_cycles.value = o.cycles;
-					d.fields_dict.tc_cycles.$input && d.fields_dict.tc_cycles.$input.val(o.cycles);
-					d.fields_dict.tc_qty.value = o.units;
-					d.fields_dict.tc_qty.$input && d.fields_dict.tc_qty.$input.val(o.units);
+					// Through set_value, so get_value sees them: poking .value onto
+					// the control left the dialog showing 4 cycles and sending none,
+					// and the document then recorded a cycle count of zero. Guarded
+					// against re-entry, or setting the cycles rewrites the quantity
+					// and the quantity's handler loads again.
+					quiet = true;
+					d.set_value("tc_cycles", o.cycles);
+					d.set_value("tc_qty", o.units);
+					quiet = false;
 				}
 			})
 			.always(() => { busy = false; });
@@ -862,6 +866,7 @@ function sf_tc_section(d, frm, M) {
 	// Changing the cycles re-works the quantity; typing a quantity leaves the
 	// cycles alone and is carried through as the order.
 	d.fields_dict.tc_cycles.df.onchange = () => {
+		if (quiet) return;
 		const c = d.get_value("tc_cycles");
 		if (c) load({ cycles: c });
 	};
