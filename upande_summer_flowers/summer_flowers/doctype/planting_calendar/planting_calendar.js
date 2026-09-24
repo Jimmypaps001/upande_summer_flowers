@@ -56,3 +56,29 @@ function draw_calendar(frm) {
 		empty: __("No dates on this planting yet."),
 	});
 }
+
+// Plants are bought, so they sit in a warehouse until something consumes them.
+// Planting is what consumes them. It happens on its own the moment an actual
+// planting date is recorded; this is for the times it could not -- no stock on
+// the day, an item nobody enabled, a warehouse nobody named -- and the ledger
+// has to be put right afterwards.
+frappe.ui.form.on("Planting Calendar", {
+	refresh(frm) {
+		if (frm.doc.docstatus === 2) return;
+		if (frm.doc.stock_entry) {
+			frm.dashboard.add_comment(
+				__("{0} took these plants out of stock.", [frm.doc.stock_entry]),
+				"green", true);
+			return;
+		}
+		if (!frm.doc.actual_planting_date) return;
+		frm.add_custom_button(__("Issue Plants From Stock"), () => {
+			frappe.call({
+				method: "upande_summer_flowers.summer_flowers.plant_issue.issue_plants",
+				args: { planting: frm.doc.name },
+				freeze: true,
+				freeze_message: __("Taking the plants out of stock..."),
+			}).then(() => frm.reload_doc());
+		});
+	},
+});

@@ -30,6 +30,7 @@
   "dates_section",
   "planting_date",
   "actual_planting_date",
+  "stock_entry",
   "planting_slip_days",
   "harvest_dates_from",
   "planting_year",
@@ -216,6 +217,15 @@
    "label": "Actual Planting Date",
    "description": "The day the beds were really planted. Every date downstream -- pinch, uprooting and every harvest week -- is counted from this once it is filled in, because a flush lands so many weeks after the plants went in, not so many weeks after somebody planned that they would.",
    "allow_on_submit": 1
+  },
+  {
+   "fieldname": "stock_entry",
+   "fieldtype": "Link",
+   "options": "Stock Entry",
+   "label": "Plants Issued On",
+   "read_only": 1,
+   "allow_on_submit": 1,
+   "description": "The Stock Entry that took these plants out of the store when they went in the ground. Plants are bought, so they sit in a warehouse until something consumes them; planting is what consumes them."
   },
   {
    "fieldname": "planting_slip_days",

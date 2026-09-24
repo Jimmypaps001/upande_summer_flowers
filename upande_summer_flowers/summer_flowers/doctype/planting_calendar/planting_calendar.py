@@ -57,6 +57,32 @@ class PlantingCalendar(Document):
 
 	def on_update(self):
 		self.refresh_block_coverage()
+		self.issue_plants_if_planted()
+
+	def issue_plants_if_planted(self):
+		"""Take the plants out of stock the day they go in the ground.
+
+		Never fatal. A planting that happened is a fact about the field, and a
+		store that cannot spare the stock, an item nobody enabled or a warehouse
+		nobody named must not make it unrecordable. What is said instead is that
+		the ledger is behind, and the button raises it by hand.
+		"""
+		if not self.get("actual_planting_date") or self.get("stock_entry"):
+			return
+		from upande_summer_flowers.summer_flowers import plant_issue
+
+		out = plant_issue.issue_for(self)
+		if out and out.get("skipped"):
+			frappe.msgprint(
+				_("{0} is planted, but its plants are still on the books: {1}")
+				.format(self.name, out["skipped"]),
+				indicator="orange", title=_("Not taken out of stock"))
+		elif out and out.get("stock_entry"):
+			frappe.msgprint(
+				_("{0} took {1} {2} out of {3}.").format(
+					out["stock_entry"], "{:,}".format(out["qty"]), self.variety,
+					out["warehouse"]),
+				indicator="green", alert=True)
 
 	def on_trash(self):
 		self.refresh_block_coverage()

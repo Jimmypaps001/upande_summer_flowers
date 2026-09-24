@@ -136,7 +136,13 @@ app_include_js = [
 ]
 
 # Crop Protocol belongs to another app, so this is where its form script lives.
-doctype_js = {"Crop Protocol": "public/js/crop_protocol_walkthrough.js"}
+doctype_js = {
+	"Crop Protocol": "public/js/crop_protocol_walkthrough.js",
+	# Crop Cycle belongs to upande_agriculture. The plants a cycle stands on were
+	# bought and are still stock until something consumes them, and this is the
+	# document a grower opens when the crop is in the ground.
+	"Crop Cycle": "public/js/crop_cycle_planting.js",
+}
 
 # Block belongs to upande_propagation, so its list view is customised from here.
 # Drawing a block over a run of beds is the only way to make one that carries its
