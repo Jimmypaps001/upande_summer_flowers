@@ -113,6 +113,7 @@ class SummerFlowerCropCycle(CropCycle):
 		to hold a value even though nobody types one any more.
 		"""
 		self.settle_scope()
+		self.fill_farm_from_block()
 		if self.get("variety") and not self.get("custom_sf_variety"):
 			self.custom_sf_variety = self.get("variety")
 		elif self.get("custom_sf_variety") and not self.get("variety"):
@@ -120,6 +121,20 @@ class SummerFlowerCropCycle(CropCycle):
 		parent = getattr(super(), "before_validate", None)
 		if parent:
 			parent()
+
+	def fill_farm_from_block(self):
+		"""A block cycle's farm comes from its block.
+
+		Done in before_validate as well as in sync_block_geometry, because the farm
+		is read-only on the form: nobody can type it, and anything that runs before
+		the geometry sync -- a permission check, another app's validate -- would
+		otherwise see it empty.
+		"""
+		if self.get("farm") or not self.get("custom_block"):
+			return
+		farm = frappe.db.get_value("Block", self.custom_block, "farm")
+		if farm:
+			self.farm = farm
 
 	# --------------------------------------------------------------- naming
 	def autoname(self):
@@ -284,16 +299,34 @@ class SummerFlowerCropCycle(CropCycle):
 		# The native greenhouse field is unique, so it stays empty; the greenhouse is
 		# still recorded, derived from the block, so reports do not lose it.
 		self.greenhouse = None
-		self.custom_greenhouse = frappe.db.get_value("Block", self.custom_block,
-		                                             "greenhouse")
+		house, farm = frappe.db.get_value("Block", self.custom_block,
+		                                  ["greenhouse", "farm"])
+		self.custom_greenhouse = house
+		# Farm is read-only and fetched from greenhouse.custom_farm, which a block
+		# cycle has not got -- so hiding the greenhouse left the farm permanently
+		# blank and the cycle unsaveable. The block knows which farm it is on; that
+		# is where a block cycle's farm comes from.
+		if farm:
+			self.farm = farm
+		elif house:
+			self.farm = frappe.db.get_value("Warehouse", house, "custom_farm")
 		ha = flt(frappe.db.get_value("Block", self.custom_block,
 		                             "custom_net_area_ha"))
 		area_sqm = ha * 10_000
 		self.custom_block_area_sqm = area_sqm
 
 		if not flt(self.custom_planting_density_per_sqm):
-			self.custom_planting_density_per_sqm = flt(
-				self._version.plants_per_sqm_net)
+			# _version is resolved further down validate(), after the summer flower
+			# gate -- so it is not there yet when the geometry runs, and reaching for
+			# it threw AttributeError on every block cycle whose density was blank,
+			# which is every new one. Read it off the version the cycle names, and
+			# leave the density alone when it names none.
+			version = getattr(self, "_version", None)
+			if version is None and self.get("custom_crop_protocol_version"):
+				version = frappe.get_cached_doc(
+					"Crop Protocol Version", self.custom_crop_protocol_version)
+			if version is not None:
+				self.custom_planting_density_per_sqm = flt(version.plants_per_sqm_net)
 
 		if flt(self.custom_area_planted_sqm) and area_sqm and \
 				flt(self.custom_area_planted_sqm) > area_sqm + 0.5:
