@@ -4716,10 +4716,9 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
 
     const rows = r.rows.filter((x) => x.total_cap || x.events.length).slice(0, 400);
     $("ls-table").innerHTML =
-      '<p class="pl-note">Click any <b>To farm</b> figure to change the split for that ' +
-      'week. What you leave behind goes to the propagation unit and comes back as its ' +
-      'own motherstock pool after establishment, building up to full capacity like any ' +
-      'other — so it shows up in Prop-MS and in the total from then on.</p>' +
+      '<p class="pl-note">Click a <b>To farm</b> figure to change that week\'s split. ' +
+      'What is left goes to propagation and returns later as its own pool, in ' +
+      '<b>Prop-MS</b>.</p>' +
       // "Wk" and "Week" were two different things -- weeks since the order, and the
       // ISO week it lands in -- reading as the same column written twice.
       '<table class="pl-t pl-t-cols"><thead><tr><th>Wk from order</th>' +

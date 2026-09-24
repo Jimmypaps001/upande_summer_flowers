@@ -23,6 +23,7 @@ a what-if slider.
 import datetime
 
 import frappe
+from frappe import _
 from frappe.utils import cint, flt, getdate
 
 from upande_summer_flowers.summer_flowers.planning import iso_year_week
@@ -292,6 +293,10 @@ def simulate(p, tc_qty, order_date, num_cycles=None, farm_overrides=None,
 	prop_pools = []      # {"start_sw", "plants", "src_sw"}
 	rows = []
 	truncated = False
+	# The bench filling is an event; the bench BEING full is a state, and the week
+	# figure already carries a warning glyph for it. Saying it in words every week
+	# put the same sentence on ninety consecutive rows.
+	bench_was_full = False
 
 	for sw in range(0, horizon + 1):
 		date = base + datetime.timedelta(weeks=sw)
@@ -411,10 +416,15 @@ def simulate(p, tc_qty, order_date, num_cycles=None, farm_overrides=None,
 			if room > 0:
 				prop_pools.append({"start_sw": start, "plants": room, "src_sw": sw})
 				diverted_planted = room
-				ev(start, f"Prop-MS from week {sw} ready ({room:,} plants, ramp begins)")
-			if bench_limited:
-				ev(sw, f"Bench full — only {room:,} of {to_prop:,} diverted cuttings "
-				       f"could be potted")
+				# No event. A pool coming online is what the Prop-MS column IS, and
+				# one of these fired most weeks of the run -- ninety lines of the
+				# Event column saying what the column beside it already showed.
+			if bench_limited and not bench_was_full:
+				# Once, when it starts. The bench staying full is a state, and the
+				# ⚠ on the bench figure says it every week without a sentence.
+				ev(sw, _("Bench full from here — diverted cuttings have nowhere "
+				         "to go"))
+
 			# Cuttings with nowhere to go are wasted, not silently absorbed.
 			wasted = to_prop - diverted_planted
 		elif to_prop > 0 and len(prop_pools) >= MAX_POOLS:
@@ -422,6 +432,10 @@ def simulate(p, tc_qty, order_date, num_cycles=None, farm_overrides=None,
 			wasted = to_prop
 		else:
 			wasted = 0
+
+		if bench_was_full and not bench_limited:
+			ev(sw, _("Bench has room again"))
+		bench_was_full = bench_limited
 
 		harvest_sw = sw + cut2harv if to_farm > 0 else None
 		rows.append({
