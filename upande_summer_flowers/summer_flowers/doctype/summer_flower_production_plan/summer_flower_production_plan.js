@@ -409,7 +409,7 @@ function source_plantlets(frm) {
 								 + "material is bought at, approve it, then regenerate this plan."))}</p>`
 							: "") }],
 				primary_action_label: fixOnProtocol
-					? __("Open the Crop Protocol") : __("Regenerate this plan"),
+					? __("Add the route now") : __("Regenerate this plan"),
 				primary_action() {
 					blocked.hide();
 					if (!fixOnProtocol) {
@@ -418,8 +418,52 @@ function source_plantlets(frm) {
 							.then(() => frm.reload_doc());
 						return;
 					}
-					frappe.set_route("Form", "Crop Protocol",
-						`${frm.doc.variety}-${frm.doc.farm}`);
+					// Taken to the table to fill in, not dropped at the top of a long
+					// protocol to find it. The docname is followed off the version's
+					// own link, so this cannot route to a form that is not there.
+					if (!s.crop_protocol) {
+						frappe.msgprint({
+							title: __("No Crop Protocol to open"),
+							indicator: "red",
+							message: __("{0} does not link back to a Crop Protocol, so the "
+								+ "route cannot be added from here. Find the protocol for "
+								+ "{1} at {2} and add it there.",
+								[s.protocol, s.variety, s.farm]),
+						});
+						return;
+					}
+					const target = s.crop_protocol, field = s.route_fieldname;
+					frappe.set_route("Form", "Crop Protocol", target).then(() => {
+						// set_route resolves before the form has finished drawing, and a
+						// tab switched on a half-built form is undone by the refresh that
+						// follows. So wait for the control to exist, switch, and check it
+						// took -- the route lives on its own tab, and landing on Details
+						// leaves the reader hunting for the table they were sent to fill in.
+						let tries = 0;
+						const land = () => {
+							const ctl = cur_frm && cur_frm.doc && cur_frm.doc.name === target
+								&& cur_frm.fields_dict && cur_frm.fields_dict[field];
+							if (!ctl) {
+								if (tries++ < 40) setTimeout(land, 150);
+								return;
+							}
+							if (ctl.tab && ctl.tab.set_active) ctl.tab.set_active();
+							cur_frm.scroll_to_field(field);
+							// Settled only when the table is really on screen; a refresh can
+							// still put Details back under it.
+							if (ctl.$wrapper[0].offsetParent === null && tries++ < 40) {
+								setTimeout(land, 150);
+								return;
+							}
+							frappe.show_alert({
+								indicator: "blue",
+								message: __("Add the stages here, tick the one the material "
+									+ "is bought at, then approve and regenerate {0}.",
+									[frm.doc.name]),
+							}, 12);
+						};
+						land();
+					});
 				},
 			});
 			blocked.show();

@@ -439,9 +439,20 @@ def methods_for(production_plan):
 	# a guess that looks like one, and on a crop the farm propagates it was wrong
 	# in both fields at once.
 	decided = sourcing.route_plan(v)
+	# The protocol to send someone to when the route is what is missing. Followed
+	# off the version's own link rather than rebuilt from variety and farm: a name
+	# assembled from two fields is a guess, and a guess routes to a 404 the moment
+	# a protocol is named anything else.
+	crop_protocol = v.get("crop_protocol")
+	if crop_protocol and not frappe.db.exists("Crop Protocol", crop_protocol):
+		crop_protocol = None
 	return {
 		"plan": p.name, "variety": p.variety, "farm": p.farm,
 		"protocol": v.name, "route": v.get("route_summary"),
+		"crop_protocol": crop_protocol,
+		# Where the route lives on that form, so the reader lands on the table they
+		# were sent to fill in rather than at the top of a long protocol.
+		"route_fieldname": "custom_sf_material_route",
 		"decided": decided,
 		"options": options,
 		"beds_available": space, "space_basis": basis,
