@@ -384,6 +384,48 @@ function source_plantlets(frm) {
 		// wrong in both fields at once on every crop the farm propagates.
 		const dec = s.decided || {};
 		const buyable = (dec.buyable || []).length ? dec.buyable : stages;
+
+		// Nothing can be built from this protocol, and build() will say so the
+		// moment Generate is pressed. Offering the button anyway made the reader
+		// pick a supplier, tick a box and press it to be told the protocol was
+		// never going to allow any of it. Say it once, and offer the fix.
+		if (!dec.method) {
+			const st = s.stale_version;
+			// If the route was added since this plan was built, the answer is to
+			// regenerate, not to edit the protocol again.
+			const why = (st && st.newer_has_route)
+				? __("{0} has no material route. {1} is the current version and does have one — point this plan at it and Regenerate.",
+					[st.plan_version, st.current_version])
+				: (dec.reason
+					|| __("This protocol does not say how {0}'s material is got.", [s.variety]));
+			const fixOnProtocol = !(st && st.newer_has_route);
+			const blocked = new frappe.ui.Dialog({
+				title: __("Nothing to procure yet"),
+				fields: [{ fieldname: "why", fieldtype: "HTML",
+					options: `<p>${frappe.utils.escape_html(why)}</p>` +
+						(fixOnProtocol
+							? `<p class="text-muted small">${frappe.utils.escape_html(
+								__("The material route is on the Crop Protocol. Mark the stage the "
+								 + "material is bought at, approve it, then regenerate this plan."))}</p>`
+							: "") }],
+				primary_action_label: fixOnProtocol
+					? __("Open the Crop Protocol") : __("Regenerate this plan"),
+				primary_action() {
+					blocked.hide();
+					if (!fixOnProtocol) {
+						frm.call({ doc: frm.doc, method: "regenerate", freeze: true,
+							freeze_message: __("Regenerating...") })
+							.then(() => frm.reload_doc());
+						return;
+					}
+					frappe.set_route("Form", "Crop Protocol",
+						`${frm.doc.variety}-${frm.doc.farm}`);
+				},
+			});
+			blocked.show();
+			return;
+		}
+
 		const verdict = dec.reason
 			? `<p class="text-muted small">${frappe.utils.escape_html(dec.reason)}</p>`
 			: "";
@@ -394,10 +436,9 @@ function source_plantlets(frm) {
 				{ fieldname: "verdict", fieldtype: "HTML", options: verdict },
 				{ fieldname: "method", label: __("Method"), fieldtype: "Select", reqd: 1,
 				  options: ["Purchase", "Propagate"], default: dec.method || "Purchase",
-				  read_only: dec.method ? 1 : 0,
-				  description: dec.method
-					? __("Read off the material route on {0}. Change it there, not here.", [s.protocol])
-					: __("The route does not say. Mark the stage it is bought at on the protocol.") },
+				  read_only: 1,
+				  description: __("Read off the material route on {0}. Change it there, not here.",
+					[s.protocol]) },
 				{ fieldname: "propagation_note", fieldtype: "HTML",
 				  options: dec.propagates
 					? `<p class="text-muted small">${frappe.utils.escape_html(
@@ -437,18 +478,9 @@ function source_plantlets(frm) {
 		d.fields_dict.entry_stage.df.onchange = note;
 		d.show();
 		note();
-		if (!s.has_route) {
-			// Say WHICH protocol has no route. "This crop's protocol" reads as the
-			// one you just edited, and if a newer version has the route you added,
-			// the answer is to regenerate rather than to edit it again.
-			const st = s.stale_version;
-			d.set_df_property("entry_stage", "description",
-				st && st.newer_has_route
-					? __("{0} has no material route. {1} is the current version and does have one — point this plan at it and Regenerate.",
-						[st.plan_version, st.current_version])
-					: __("{0} has no material route, so nothing can be dated from it. Add one on the Crop Protocol and approve it.",
-						[s.protocol]));
-		} else if (s.stale_version) {
+		// The no-route case never reaches here: it is refused above, before a form
+		// the reader cannot use is put in front of them.
+		if (s.stale_version) {
 			d.set_df_property("entry_stage", "description",
 				__("Dated from {0}. {1} is now the current version; regenerate the plan to use it.",
 					[s.stale_version.plan_version, s.stale_version.current_version]));
