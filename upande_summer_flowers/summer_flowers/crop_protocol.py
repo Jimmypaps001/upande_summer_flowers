@@ -297,6 +297,17 @@ def check_route(doc):
 # as many times as there are cohorts.
 STANDING_STAGES = ("Motherstock",)
 
+# Material that comes from outside the farm. A route that starts at one of these
+# is a route that buys, and saying so is not a judgement call -- it is what the
+# stage IS. Asking someone to tick a box to confirm that tissue culture is bought
+# was a question with one answer, and a procurement plan refused to build until
+# somebody answered it.
+BOUGHT_STAGES = ("TC", "Seeds", "Tubers", "Budwoods", "Bought-in Plants")
+
+# Material the farm takes off its own crop. Nothing is ordered for these.
+TAKEN_STAGES = ("Cuttings (Own)", "Roots (Own)", "Tubers (Own)")
+
+
 # Where each stage's numbers live on the protocol. The route used to hold its own
 # copy and the two disagreed by a factor of forty-five -- the plan's TC block said
 # 3,024 plantlets and the procurement plan said 136,851 for the same crop, because
@@ -340,9 +351,45 @@ def set_route_quantities(doc, native=False):
 	establishment = _n(doc, "field_establishment_pct", 100, native=native) / 100.0
 	rows = (doc.get("material_route") or []) if native else None
 
-	for stage, steps in (_native_blocks(rows) if native else route_blocks(doc)):
+	# Weeks each stage takes, off the protocol's own timings. They were typed on the
+	# route as well, which asked for the tray and pot weeks twice and let the two
+	# copies disagree.
+	establish = (cint(_n(doc, "weeks_on_tray", native=native))
+	             + cint(_n(doc, "weeks_on_pot", native=native)))
+	hardening = cint(_n(doc, "hardening_weeks", native=native))
+	cycle_time = cint(_n(doc, "cycle_time_weeks", native=native))
+	to_planting = cint(_n(doc, "sticking_to_planting_weeks", native=native))
+
+	blocks = _native_blocks(rows) if native else route_blocks(doc)
+	names = [st.stage for st, _s in blocks]
+	# The first stage that comes from outside the farm is the one it is bought at.
+	first_bought = next((n for n in names if n in BOUGHT_STAGES), None)
+
+	for stage, steps in blocks:
 		name = stage.stage
 		standing = 1 if name in STANDING_STAGES else 0
+		# What the stage is decides whether it is bought. A farm that buys the same
+		# crop at two points on one route is not a thing this has seen; if it becomes
+		# one, it is a field on the protocol, not a tick box on a derived table.
+		stage.is_purchase = 1 if (name == first_bought) else 0
+		# And how long it takes. A stage with steps under it is the sum of them --
+		# check_route already sets that -- so only the ones without are derived here.
+		if not steps:
+			if name == ROUTE_END:
+				stage.weeks = 0
+			elif standing:
+				# Plantlet to first cutting off the pool it becomes.
+				stage.weeks = establish + (hardening if cint(_n(
+					doc, "establishment_includes_hardening", native=native)) else 0)
+			elif name in ("Propagation", "Sprouting", "Cooling", "Roots"):
+				# Stuck to plantable.
+				stage.weeks = to_planting or establish
+			elif name == first_bought:
+				# The material arriving takes no time; the wait is the supplier's,
+				# and that is lead_weeks, not this.
+				stage.weeks = 0
+			elif cycle_time:
+				stage.weeks = cycle_time
 		stage.is_standing = standing
 		stage.yields_per_week = (_n(doc, "cuttings_per_plant_per_week", native=native)
 		                         if standing else 0)

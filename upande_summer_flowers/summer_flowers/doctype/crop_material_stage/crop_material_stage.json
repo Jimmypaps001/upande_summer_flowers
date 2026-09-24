@@ -54,12 +54,13 @@
    "options": "\nTC\nSeeds\nCuttings (Own)\nRoots (Own)\nTubers (Own)\nBudwoods\nBought-in Plants\nMotherstock\nRoots\nTubers\nSprouting\nCooling\nPropagation\nPlants"
   },
   {
-   "description": "Weeks this row takes. A stage that has steps under it is the sum of those steps and is worked out, not typed.",
+   "description": "How long this stage takes, off the protocol's own timings: tray plus pot for a motherstock, sticking to planting for a propagation stage. A stage with steps under it is the sum of them. Change the weeks on the protocol, not here.",
    "fieldname": "weeks",
    "fieldtype": "Int",
    "in_list_view": 1,
    "label": "Weeks",
-   "non_negative": 1
+   "non_negative": 1,
+   "read_only": 1
   },
   {
    "description": "Material lost at this stage. Worked out from the protocol's own loss fields -- the TC order allowance, the cutting reject rate, rooting and field establishment. Change it on the protocol.",
@@ -76,10 +77,11 @@
   {
    "default": "0",
    "depends_on": "eval:doc.row_type!='Step'",
-   "description": "A stage the material can be bought at. More than one may be ticked -- the plan chooses where to enter the route.",
+   "description": "Ticked on the first stage that comes from outside the farm -- TC, Seeds, Tubers, Budwoods, Bought-in Plants. What the stage is decides this; there is nothing to choose.",
    "fieldname": "is_purchase",
    "fieldtype": "Check",
-   "label": "Bought at this stage"
+   "label": "Bought at this stage",
+   "read_only": 1
   },
   {
    "depends_on": "eval:doc.is_purchase",
