@@ -498,6 +498,22 @@ function source_plantlets(frm) {
 				{ fieldname: "stage_note", fieldtype: "HTML" },
 				{ fieldname: "supplier", label: __("Supplier"), fieldtype: "Link",
 				  options: "Supplier", depends_on: "eval:doc.method=='Purchase'" },
+				// Only a route through a pool has any of this to decide. A crop
+				// bought as rooted plants buys one per plant and there is nothing
+				// to choose.
+				{ fieldname: "tc_break", fieldtype: "Section Break",
+				  label: __("Tissue culture"), hidden: 1 },
+				{ fieldname: "tc_working", fieldtype: "HTML" },
+				{ fieldname: "tc_cycles", label: __("Multiplication cycles"),
+				  fieldtype: "Int",
+				  description: __("Bought once and multiplied. Each cycle is fewer "
+					+ "plantlets and one more establishment to wait through, so the "
+					+ "order goes in earlier and the line has less of its life left "
+					+ "to cut.") },
+				{ fieldname: "tc_qty", label: __("Plantlets to buy"), fieldtype: "Int",
+				  description: __("Leave it as the sum works it out, or type the "
+					+ "figure being ordered. Both are kept.") },
+				{ fieldname: "tc_table", fieldtype: "HTML" },
 				{ fieldname: "space_break", fieldtype: "Section Break", label: __("Ground") },
 				{ fieldname: "space_note", fieldtype: "HTML",
 				  options: `<p class="text-muted">${frappe.utils.escape_html(space)}</p>` },
@@ -513,7 +529,9 @@ function source_plantlets(frm) {
 					freeze_message: __("Working out the orders..."),
 					args: { production_plan: frm.doc.name, method: values.method,
 						entry_stage: values.entry_stage, supplier: values.supplier,
-						fit_to_space: values.fit_to_space ? 1 : 0 } })
+						fit_to_space: values.fit_to_space ? 1 : 0,
+						cycles: values.tc_cycles || null,
+						tc_qty: values.tc_qty || null } })
 					.then((res) => { if (res.message) frappe.set_route("Form", "Summer Flower Procurement Plan", res.message); });
 			},
 		});
@@ -522,6 +540,7 @@ function source_plantlets(frm) {
 		d.fields_dict.entry_stage.df.onchange = note;
 		d.show();
 		note();
+		sf_tc_section(d, frm, M);
 		// The no-route case never reaches here: it is refused above, before a form
 		// the reader cannot use is put in front of them.
 		if (s.stale_version) {
@@ -702,3 +721,113 @@ const SF_ALLOC_CSS = `<style>
 .sfa-chip.clear{min-width:0;border-left:3px solid transparent;color:var(--text-muted)}
 .sfa-empty{font-size:.78rem;color:var(--orange-600, #b35309)}
 </style>`;
+
+
+// ---------------------------------------------------------- tissue culture
+// Tissue culture is bought ONCE, multiplied if the farm wants to, and cut from
+// until the line expires. So the quantity is not "one per plant" -- it is the
+// pool the busiest week needs, divided by what the multiplication turns one
+// plantlet into. That division is the whole decision, and it was happening
+// invisibly inside build(): the reader saw a number and no way to move it.
+function sf_tc_section(d, frm, M) {
+	const int = (n) => format_number(n || 0, null, 0);
+	const esc = frappe.utils.escape_html;
+	let busy = false;
+
+	const show = (o) => {
+		const on = !!(o && o.standing);
+		d.set_df_property("tc_break", "hidden", on ? 0 : 1);
+		["tc_working", "tc_cycles", "tc_qty", "tc_table"].forEach((f) =>
+			d.set_df_property(f, "hidden", on ? 0 : 1));
+		if (!on) return;
+
+		// The working, in the order it happens, so the figure at the end can be
+		// followed rather than taken on trust.
+		const bits = [
+			__("{0} plants stuck in {1}", [int(o.peak_plants), o.peak_week || "—"]),
+			__("× {0} cuttings a plant = {1} cuttings", [o.cuttings_per_plant,
+				int(o.weekly_draw)]),
+		];
+		if (o.standing_capacity) {
+			bits.push(__("− {0} off motherstock already standing = {1}",
+				[int(o.standing_capacity), int(o.net_cuttings)]));
+		}
+		bits.push(__("÷ {0} cuttings a mother a week = {1} mother plants",
+			[o.cuttings_per_mother_per_week, int(o.pool)]));
+		bits.push(__("÷ {0} from {1} multiplication cycles = <b>{2} plantlets</b>",
+			[o.by_cycles.find((r) => r.cycles === o.cycles)?.factor ?? o.cycles,
+			 o.cycles, int(o.calculated)]));
+
+		const warn = [];
+		if (o.order_late) {
+			warn.push(__("That order was due {0}. Fewer cycles is a later order date.",
+				[frappe.datetime.str_to_user(o.order_by)]));
+		}
+		if (o.cutting_weeks === 0) {
+			warn.push(__("{0} cycles leaves nothing to cut: the pool is full the week "
+				+ "the line expires.", [o.cycles]));
+		}
+		d.fields_dict.tc_working.$wrapper.html(
+			`<p class="text-muted small" style="line-height:1.7">${bits.join(" <br>")}</p>` +
+			(o.order_by
+				? `<p class="small">${__("Order by")} <b>${esc(
+					frappe.datetime.str_to_user(o.order_by))}</b>` +
+				  (o.cutting_weeks != null
+					? ` · ${int(o.cutting_weeks)} ${__("cutting weeks left in the line")}`
+					: "") + `</p>`
+				: "") +
+			warn.map((w) => `<p class="small" style="color:var(--red-600,#c0392b)">${esc(w)}</p>`).join(""));
+
+		// Every cycle count side by side, because the trade only reads as a trade
+		// when the plantlets and the weeks are on the same row.
+		d.fields_dict.tc_table.$wrapper.html(
+			`<table class="table table-bordered" style="font-size:.8rem;margin:0">` +
+			`<thead><tr><th>${__("Cycles")}</th><th class="text-right">${__("Plantlets")}</th>` +
+			`<th>${__("Order by")}</th><th class="text-right">${__("Cutting weeks")}</th></tr></thead><tbody>` +
+			o.by_cycles.map((r) => {
+				const chosen = r.cycles === o.cycles;
+				const dead = r.cutting_weeks === 0;
+				return `<tr data-cycles="${r.cycles}" style="cursor:pointer` +
+					(chosen ? ";font-weight:600;background:var(--control-bg,#f4f5f6)" : "") +
+					`"><td>${r.cycles}${r.is_protocol ? " ★" : ""}</td>` +
+					`<td class="text-right">${int(r.units)}</td>` +
+					`<td>${r.order_by ? esc(frappe.datetime.str_to_user(r.order_by)) : "—"}</td>` +
+					`<td class="text-right"${dead ? ' style="color:var(--red-600,#c0392b)"' : ""}>` +
+					`${r.cutting_weeks == null ? "?" : (r.cutting_weeks || __("none"))}</td></tr>`;
+			}).join("") + `</tbody></table>` +
+			`<p class="text-muted small">★ ${__("what the protocol says")}. ` +
+			__("Click a row to use it.") + `</p>`);
+
+		d.fields_dict.tc_table.$wrapper.find("tr[data-cycles]").on("click", function () {
+			d.set_value("tc_cycles", parseInt(this.dataset.cycles, 10));
+		});
+	};
+
+	const load = (args) => {
+		if (busy) return;
+		busy = true;
+		return frappe.call({ method: M + "tc_options",
+			args: Object.assign({ production_plan: frm.doc.name }, args || {}) })
+			.then((r) => {
+				const o = r.message;
+				show(o);
+				if (o && o.standing) {
+					// Set without firing onchange, or picking a cycle count rewrites
+					// the quantity and the quantity's own handler reloads again.
+					d.fields_dict.tc_cycles.value = o.cycles;
+					d.fields_dict.tc_cycles.$input && d.fields_dict.tc_cycles.$input.val(o.cycles);
+					d.fields_dict.tc_qty.value = o.units;
+					d.fields_dict.tc_qty.$input && d.fields_dict.tc_qty.$input.val(o.units);
+				}
+			})
+			.always(() => { busy = false; });
+	};
+
+	// Changing the cycles re-works the quantity; typing a quantity leaves the
+	// cycles alone and is carried through as the order.
+	d.fields_dict.tc_cycles.df.onchange = () => {
+		const c = d.get_value("tc_cycles");
+		if (c) load({ cycles: c });
+	};
+	load();
+}

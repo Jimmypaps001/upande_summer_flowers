@@ -462,7 +462,100 @@ def methods_for(production_plan):
 
 
 @frappe.whitelist()
-def build(production_plan, method=None, entry_stage=None, supplier=None, fit_to_space=1):
+def tc_options(production_plan, cycles=None, tc_qty=None):
+	"""What to buy at the pool's entry stage, and what each cycle count costs.
+
+	Only a route that passes a standing stage has any of this to say. A crop
+	bought as rooted plants buys one per plant and there is nothing to choose; a
+	crop raised through a motherstock is bought once, multiplied if the farm wants
+	to, and cut from until the line expires -- and every extra multiplication is
+	fewer plantlets bought and more of the line's life spent buying them.
+	"""
+	p = frappe.get_doc("Summer Flower Production Plan", production_plan)
+	v = frappe.get_cached_doc("Crop Protocol Version", p.protocol)
+	from upande_summer_flowers.summer_flowers import sourcing
+	from upande_summer_flowers.summer_flowers.doctype \
+		.summer_flower_motherstock_batch.summer_flower_motherstock_batch import (
+			tc_order_by_date,
+		)
+
+	decided = sourcing.route_plan(v)
+	entry = decided.get("entry_stage")
+	if not entry or not sourcing.standing_stage(v, entry):
+		return {"standing": False, "reason": decided.get("reason")}
+
+	# The busiest sticking week is what the pool is sized for: cuttings cannot be
+	# banked, so the weeks either side lend it nothing. The plants figure is the
+	# plan's own, already rounded to whole minimum planting areas.
+	weekly = cint(p.peak_weekly_sticking_planned)
+	first = None
+	sticks = [(cint(b.sticking_year), cint(b.sticking_week)) for b in p.plan_blocks
+	          if b.is_new_planting and cint(b.sticking_year)]
+	if sticks:
+		y, w = min(sticks)
+		first = iso_monday(y, w)
+
+	protocol_cycles = cint(v.max_multiplication_cycles)
+	chosen = cint(cycles) if cycles not in (None, "") else protocol_cycles
+	life = cint(v.motherstock_life_weeks)
+	est = cint(v.weeks_tc_to_first_cut())
+
+	rows = []
+	for c in range(1, max(6, protocol_cycles + 2)):
+		r = sourcing.requirement(v, entry, cint(p.new_plants_required), weekly,
+		                         cycles=c)
+		if not r:
+			continue
+		# Every cycle is an establishment, so the order goes in that much earlier
+		# and the line has that much less left to cut.
+		rows.append({
+			"cycles": c,
+			"factor": round(v.multiplication_factor(c), 2),
+			"pool": cint(r.get("pool")),
+			"units": cint(r.get("calculated_units")),
+			"order_by": str(tc_order_by_date(v, first, cycles=c) or "") if first else "",
+			"cutting_weeks": (max(0, life - est * max(0, c - 1)) if life and est
+			                  else None),
+			"is_protocol": c == protocol_cycles,
+		})
+
+	now = sourcing.requirement(v, entry, cint(p.new_plants_required), weekly,
+	                           cycles=chosen, units_override=tc_qty)
+	order_by = tc_order_by_date(v, first, cycles=chosen) if first else None
+	return {
+		"standing": True,
+		"plan": p.name, "variety": p.variety, "farm": p.farm, "protocol": v.name,
+		"entry_stage": entry,
+		"standing_stage": now.get("standing_stage"),
+		"peak_week": p.peak_sticking_week_planned,
+		"peak_plants": weekly,
+		"season_plants": cint(p.new_plants_required),
+		"cuttings_per_plant": flt(v.cuttings_per_plant_required) or 1.0,
+		"cuttings_per_mother_per_week": flt(v.cuttings_per_plant_per_week),
+		"weekly_draw": cint(now.get("weekly_draw")),
+		"standing_capacity": cint(now.get("standing_capacity")),
+		"net_cuttings": cint(now.get("net_cuttings")),
+		"pool": cint(now.get("pool")),
+		"calculated": cint(now.get("calculated_units")),
+		"units": cint(now.get("units")),
+		"overridden": bool(now.get("overridden")),
+		"cycles": chosen,
+		"protocol_cycles": protocol_cycles,
+		"order_by": str(order_by or ""),
+		"order_late": bool(order_by and getdate(order_by) < getdate(nowdate())),
+		"line_life_weeks": life,
+		"cycle_cost_weeks": est,
+		"cutting_weeks": (max(0, life - est * max(0, chosen - 1)) if life and est
+		                  else None),
+		"blocked": now.get("blocked"),
+		"basis": now.get("basis"),
+		"by_cycles": rows,
+	}
+
+
+@frappe.whitelist()
+def build(production_plan, method=None, entry_stage=None, supplier=None,
+          fit_to_space=1, cycles=None, tc_qty=None):
 	"""Turn a plan's plantings into one requirement line each, and price the order."""
 	fit_to_space = cint(fit_to_space)
 	p = frappe.get_doc("Summer Flower Production Plan", production_plan)
@@ -521,7 +614,8 @@ def build(production_plan, method=None, entry_stage=None, supplier=None, fit_to_
 		peak_monday = iso_monday(cint(_y), cint(_w))
 	need = (sourcing.requirement(v, entry_stage, cint(p.new_plants_required),
 	                             cint(p.peak_weekly_sticking_planned),
-	                             peak_date=peak_monday)
+	                             peak_date=peak_monday, cycles=cycles,
+	                             units_override=tc_qty)
 	        if entry_stage else None)
 	standing = bool(need and need.get("kind") == "standing")
 	if standing and need.get("blocked"):
@@ -638,7 +732,14 @@ def build(production_plan, method=None, entry_stage=None, supplier=None, fit_to_
 		})
 		doc.pool_plants = cint(need.get("pool"))
 		doc.weekly_draw = cint(need.get("weekly_draw"))
-		doc.sizing_basis = need.get("basis")
+		doc.multiplication_cycles = cint(need.get("cycles"))
+		doc.calculated_units = cint(need.get("calculated_units"))
+		doc.units_overridden = 1 if need.get("overridden") else 0
+		doc.sizing_basis = need.get("basis") + (
+			_(" Ordered {0} instead of the {1} the sum asks for.").format(
+				"{:,}".format(cint(need.get("units"))),
+				"{:,}".format(cint(need.get("calculated_units"))))
+			if need.get("overridden") else "")
 
 	wanted_beds = sum(cint(b.beds) for b in rows)
 	if trimmed:

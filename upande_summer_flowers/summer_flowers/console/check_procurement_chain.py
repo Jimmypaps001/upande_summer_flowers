@@ -101,6 +101,10 @@ def _run():
 	for old in frappe.get_all("Summer Flower Procurement Plan",
 	                          filters={"production_plan": p.name, "docstatus": ["<", 2]},
 	                          pluck="name"):
+		dd = frappe.get_doc("Summer Flower Procurement Plan", old)
+		if dd.docstatus == 1:
+			dd.flags.ignore_permissions = True
+			dd.cancel()
 		frappe.delete_doc("Summer Flower Procurement Plan", old, force=True,
 		                  ignore_permissions=True)
 	name = build(p.name)

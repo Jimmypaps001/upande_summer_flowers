@@ -222,7 +222,8 @@ def standing_pool_capacity(version, on_date):
 	return total, used
 
 
-def requirement(version, from_stage, plants, weekly_plants=None, peak_date=None):
+def requirement(version, from_stage, plants, weekly_plants=None, peak_date=None,
+                cycles=None, units_override=None):
 	"""What to buy at `from_stage`, and in what shape, to grow `plants` plants.
 
 	Two routes, two shapes of answer, and the shape is the whole point:
@@ -256,7 +257,11 @@ def requirement(version, from_stage, plants, weekly_plants=None, peak_date=None)
 	# to raise those mothers. Every step of it is a named protocol field.
 	weekly = cint(weekly_plants or 0)
 	per_week = flt(stage.get("yields_per_week"))
-	cycles = cint(version.max_multiplication_cycles)
+	# The protocol's cycle count unless the reader is trying another. Cycles are the
+	# one lever worth turning here: more of them buys fewer plantlets and spends
+	# more of the line's life getting there.
+	cycles = cint(cycles) if cycles not in (None, "") else cint(
+		version.max_multiplication_cycles)
 	cuttings = cint(version.cuttings_for_plants(weekly)) if weekly else 0
 	# Net off the pool the farm already stands. Sizing the order against the gross
 	# requirement buys a motherstock that is partly already there, which on a crop
@@ -264,7 +269,11 @@ def requirement(version, from_stage, plants, weekly_plants=None, peak_date=None)
 	standing, from_batches = standing_pool_capacity(version, peak_date)
 	short = max(0, cuttings - standing)
 	mothers = int(math.ceil(short / per_week)) if (short and per_week) else 0
-	units = int(math.ceil(version.tc_plants_for(mothers, cycles))) if mothers else 0
+	calculated = int(math.ceil(version.tc_plants_for(mothers, cycles))) if mothers else 0
+	# A figure typed by a person is the order; the calculation becomes advice about
+	# it. Both are carried, because "you asked for 30,000 where the sum says 37,792"
+	# is the only useful thing to say about an override.
+	units = cint(units_override) if cint(units_override or 0) > 0 else calculated
 	blocked = None
 	if weekly and not per_week:
 		# Yields nothing per week and the route still says it multiplies: the answer
@@ -285,6 +294,9 @@ def requirement(version, from_stage, plants, weekly_plants=None, peak_date=None)
 	            weekly_plants=weekly, yields_per_week=per_week, cycles=cycles,
 	            blocked=blocked, standing_capacity=standing,
 	            net_cuttings=short, from_batches=from_batches,
+	            calculated_units=calculated,
+	            overridden=bool(cint(units_override or 0) > 0
+	                            and cint(units_override) != calculated),
 	            basis=_("{0} plants stuck in the busiest week needs {1} cuttings.{2} "
 	                    "That is {3} mother plants, raised from {4} plantlets at {5} "
 	                    "multiplication cycles.")

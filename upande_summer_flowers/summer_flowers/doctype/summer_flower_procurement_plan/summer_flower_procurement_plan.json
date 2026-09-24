@@ -41,6 +41,9 @@
   "total_units_to_order",
   "pool_plants",
   "weekly_draw",
+  "multiplication_cycles",
+  "calculated_units",
+  "units_overridden",
   "sizing_basis",
   "column_break_totals",
   "first_order_by",
@@ -264,6 +267,30 @@
    "label": "Cuttings a week at the peak",
    "read_only": 1,
    "description": "Cuttings taken off the pool in the busiest week, allowing for rooting, field establishment and the cutting reject rate.",
+   "depends_on": "eval:doc.pool_plants"
+  },
+  {
+   "fieldname": "multiplication_cycles",
+   "fieldtype": "Int",
+   "label": "Multiplication Cycles",
+   "read_only": 1,
+   "description": "How many times the plantlets are multiplied before the pool is full. More cycles is fewer plantlets bought and a longer wait, so the order goes in earlier and the line has less of its life left to cut.",
+   "depends_on": "eval:doc.pool_plants"
+  },
+  {
+   "fieldname": "calculated_units",
+   "fieldtype": "Int",
+   "label": "What The Sum Asks For",
+   "read_only": 1,
+   "description": "The quantity the protocol's arithmetic works out. Where the order differs from it, somebody decided that; this is what they decided against.",
+   "depends_on": "eval:doc.pool_plants"
+  },
+  {
+   "fieldname": "units_overridden",
+   "fieldtype": "Check",
+   "label": "Quantity Set By Hand",
+   "read_only": 1,
+   "description": "The order is a person's figure, not the calculation's.",
    "depends_on": "eval:doc.pool_plants"
   },
   {
