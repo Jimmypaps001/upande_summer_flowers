@@ -1512,7 +1512,7 @@
    "creation": "2026-07-31 22:37:44.603331",
    "default": "",
    "depends_on": null,
-   "description": "What this cycle occupies. Summer flowers are planned on a block; roses and the other bed-range crops are planned on a greenhouse. Filled in from the crop, and the two cannot both be set -- a cycle carrying a greenhouse and a block says the same crop is standing in two places.",
+   "description": "What this cycle stands on. Summer flowers are planned on a block; roses and the other bed-range crops are planned on a greenhouse. Filled in from the crop when it can be, and the two cannot both be set.",
    "docstatus": 0,
    "dt": "Crop Cycle",
    "fetch_from": null,
@@ -1530,7 +1530,7 @@
    "in_list_view": 1,
    "in_preview": 0,
    "in_standard_filter": 1,
-   "insert_after": "custom_is_summer_flower_cycle",
+   "insert_after": "naming_series",
    "is_system_generated": 0,
    "is_virtual": 0,
    "label": "Planned on",
@@ -5970,6 +5970,26 @@
    "property": "label",
    "property_type": "Data",
    "value": "Variety (summer flower link)"
+  },
+  {
+   "doctype": "Property Setter",
+   "doctype_or_field": "DocField",
+   "doc_type": "Crop Cycle",
+   "field_name": "greenhouse",
+   "property": "depends_on",
+   "property_type": "Data",
+   "value": "eval:doc.custom_cycle_scope!='Block'",
+   "name": "Crop Cycle-greenhouse-depends_on"
+  },
+  {
+   "doctype": "Property Setter",
+   "doctype_or_field": "DocField",
+   "doc_type": "Crop Cycle",
+   "field_name": "greenhouse",
+   "property": "mandatory_depends_on",
+   "property_type": "Data",
+   "value": "eval:doc.custom_cycle_scope=='Greenhouse'",
+   "name": "Crop Cycle-greenhouse-mandatory_depends_on"
   }
  ],
  "sync_on_migrate": 1
