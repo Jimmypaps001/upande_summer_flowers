@@ -769,7 +769,17 @@ function sf_tc_section(d, frm, M) {
 	const int = (n) => format_number(n || 0, null, 0);
 	const esc = frappe.utils.escape_html;
 	let busy = false;
-	let quiet = false;
+	let current = null;
+
+	// Not df.onchange and not set_value's side effects. Frappe fires df.onchange
+	// for a user edit and not for a programmatic set, so the row click set the
+	// field and nothing reloaded, while the reload that did happen wrote the old
+	// count straight back over it -- the box said 4 whatever was clicked or typed.
+	// One function does the work, and both ways in call it.
+	const pick = (cycles) => {
+		if (busy || !cycles || cycles === current) return;
+		load({ cycles: cycles });
+	};
 
 	const show = (o) => {
 		const on = !!(o && o.standing);
@@ -777,9 +787,8 @@ function sf_tc_section(d, frm, M) {
 		["tc_working", "tc_cycles", "tc_qty", "tc_table"].forEach((f) =>
 			d.set_df_property(f, "hidden", on ? 0 : 1));
 		if (!on) return;
+		current = o.cycles;
 
-		// The working, in the order it happens, so the figure at the end can be
-		// followed rather than taken on trust.
 		const bits = [
 			__("{0} plants stuck in {1}", [int(o.peak_plants), o.peak_week || "—"]),
 			__("× {0} cuttings a plant = {1} cuttings", [o.cuttings_per_plant,
@@ -792,7 +801,7 @@ function sf_tc_section(d, frm, M) {
 		bits.push(__("÷ {0} cuttings a mother a week = {1} mother plants",
 			[o.cuttings_per_mother_per_week, int(o.pool)]));
 		bits.push(__("÷ {0} from {1} multiplication cycles = <b>{2} plantlets</b>",
-			[o.by_cycles.find((r) => r.cycles === o.cycles)?.factor ?? o.cycles,
+			[(o.by_cycles.find((r) => r.cycles === o.cycles) || {}).factor || o.cycles,
 			 o.cycles, int(o.calculated)]));
 
 		const warn = [];
@@ -815,8 +824,6 @@ function sf_tc_section(d, frm, M) {
 				: "") +
 			warn.map((w) => `<p class="small" style="color:var(--red-600,#c0392b)">${esc(w)}</p>`).join(""));
 
-		// Every cycle count side by side, because the trade only reads as a trade
-		// when the plantlets and the weeks are on the same row.
 		d.fields_dict.tc_table.$wrapper.html(
 			`<table class="table table-bordered" style="font-size:.8rem;margin:0">` +
 			`<thead><tr><th>${__("Cycles")}</th><th class="text-right">${__("Plantlets")}</th>` +
@@ -836,7 +843,7 @@ function sf_tc_section(d, frm, M) {
 			__("Click a row to use it.") + `</p>`);
 
 		d.fields_dict.tc_table.$wrapper.find("tr[data-cycles]").on("click", function () {
-			d.set_value("tc_cycles", parseInt(this.dataset.cycles, 10));
+			pick(parseInt(this.dataset.cycles, 10));
 		});
 	};
 
@@ -849,26 +856,26 @@ function sf_tc_section(d, frm, M) {
 				const o = r.message;
 				show(o);
 				if (o && o.standing) {
-					// Through set_value, so get_value sees them: poking .value onto
-					// the control left the dialog showing 4 cycles and sending none,
-					// and the document then recorded a cycle count of zero. Guarded
-					// against re-entry, or setting the cycles rewrites the quantity
-					// and the quantity's handler loads again.
-					quiet = true;
-					d.set_value("tc_cycles", o.cycles);
-					d.set_value("tc_qty", o.units);
-					quiet = false;
+					// Straight at the input as well as the model: set_value alone
+					// left the box showing the figure it had before.
+					d.fields_dict.tc_cycles.set_value(o.cycles);
+					d.fields_dict.tc_qty.set_value(o.units);
+					if (d.fields_dict.tc_cycles.$input) {
+						d.fields_dict.tc_cycles.$input.val(o.cycles);
+					}
+					if (d.fields_dict.tc_qty.$input) {
+						d.fields_dict.tc_qty.$input.val(o.units);
+					}
 				}
 			})
 			.always(() => { busy = false; });
 	};
 
-	// Changing the cycles re-works the quantity; typing a quantity leaves the
-	// cycles alone and is carried through as the order.
-	d.fields_dict.tc_cycles.df.onchange = () => {
-		if (quiet) return;
-		const c = d.get_value("tc_cycles");
-		if (c) load({ cycles: c });
-	};
-	load();
+	// The box itself, on the browser's own change event rather than Frappe's.
+	load().then(() => {
+		const $c = d.fields_dict.tc_cycles.$input;
+		if ($c) {
+			$c.on("change", () => pick(parseInt($c.val(), 10)));
+		}
+	});
 }
