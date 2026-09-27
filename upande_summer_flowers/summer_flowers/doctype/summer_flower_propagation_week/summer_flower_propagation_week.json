@@ -25,14 +25,14 @@
    "columns": 1,
    "fieldname": "year",
    "fieldtype": "Int",
-   "in_list_view": 1,
+   "in_list_view": 0,
    "label": "Year"
   },
   {
    "columns": 1,
    "fieldname": "week_no",
    "fieldtype": "Int",
-   "in_list_view": 1,
+   "in_list_view": 0,
    "label": "Week"
   },
   {
@@ -40,42 +40,43 @@
    "fieldname": "week_start_date",
    "fieldtype": "Date",
    "in_list_view": 1,
-   "label": "Sticking Week"
+   "label": "Week"
   },
   {
    "columns": 1,
    "fieldname": "plants_to_stick",
    "fieldtype": "Int",
    "in_list_view": 1,
-   "label": "Plants"
+   "label": "Plants Supplied",
+   "description": "Plants this week's sticking supplies, for the planting week beside it. This is what the propagation unit hands the field."
   },
   {
    "columns": 1,
    "description": "Plants scaled up for rooting, field and reject losses.",
    "fieldname": "cuttings_required",
    "fieldtype": "Int",
-   "in_list_view": 1,
+   "in_list_view": 0,
    "label": "Cuttings"
   },
   {
    "columns": 2,
    "fieldname": "from_existing_ms",
    "fieldtype": "Int",
-   "in_list_view": 1,
+   "in_list_view": 0,
    "label": "From Existing MS"
   },
   {
    "columns": 2,
    "fieldname": "from_new_ms",
    "fieldtype": "Int",
-   "in_list_view": 1,
+   "in_list_view": 0,
    "label": "From New MS"
   },
   {
    "fieldname": "capacity_available",
    "fieldtype": "Int",
    "label": "Capacity Available",
-   "in_list_view": 1,
+   "in_list_view": 0,
    "read_only": 1,
    "description": "Cuttings every live pool can actually take this week, after the build-up to full capacity."
   },
@@ -83,24 +84,27 @@
    "fieldname": "ramp_pct",
    "fieldtype": "Percent",
    "label": "Of Full Capacity",
-   "read_only": 1
+   "read_only": 1,
+   "in_list_view": 0
   },
   {
    "columns": 1,
    "fieldname": "shortfall",
    "fieldtype": "Int",
    "in_list_view": 1,
-   "label": "Uncovered"
+   "label": "Short By"
   },
   {
    "fieldname": "plant_week",
    "fieldtype": "Data",
-   "label": "Plants Out"
+   "label": "Planted",
+   "in_list_view": 1
   },
   {
    "fieldname": "notes",
    "fieldtype": "Small Text",
-   "label": "Notes"
+   "label": "Notes",
+   "in_list_view": 0
   }
  ],
  "grid_page_length": 50,

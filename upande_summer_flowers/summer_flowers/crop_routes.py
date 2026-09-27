@@ -37,7 +37,12 @@ ROUTES = {
 	"TC through roots": ["TC", "Roots", "Propagation", "Plants"],
 	"Seed raised": ["Seeds", "Propagation", "Plants"],
 	"Bought as plants": ["Bought-in Plants", "Plants"],
-	"Own cuttings": ["Cuttings (Own)", "Propagation", "Plants"],
+	# Own cuttings are a draw from a motherstock, and the motherstock was tissue
+	# culture. So there is no route that starts at a cutting: this crop runs the
+	# same TC line as the rest, and "we are not buying TC this year" is what the
+	# netting says when the pool already standing covers the peak week, not a
+	# property of the crop.
+	"Own cuttings": ["TC", "Motherstock", "Plants"],
 	"Own roots, cooled": ["Roots (Own)", "Cooling", "Plants"],
 	"Own roots, direct": ["Roots (Own)", "Plants"],
 	"Budwood": ["Budwoods", "Propagation", "Plants"],

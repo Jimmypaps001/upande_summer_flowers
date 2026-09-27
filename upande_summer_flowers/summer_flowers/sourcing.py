@@ -96,7 +96,9 @@ def journey(version, from_stage):
 
 # Entry stages the farm takes off its own crop rather than buying. Nothing is
 # ordered for these, so a route starting at one has no purchase in it at all.
-OWN_STAGES = ("Cuttings (Own)", "Roots (Own)", "Tubers (Own)")
+# Not Cuttings (Own): a cutting is a draw from a motherstock that was bought as
+# tissue culture, so it is never where a route begins. See crop_protocol.ROUTE_ENTRY.
+OWN_STAGES = ("Roots (Own)", "Tubers (Own)")
 
 
 @frappe.whitelist()

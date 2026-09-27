@@ -21,6 +21,18 @@
   "company",
   "currency",
   "status",
+  "sec_tc",
+  "tc_plants_required",
+  "tc_order_date",
+  "tc_on_farm_date",
+  "cb4",
+  "first_sticking_date",
+  "tc_cost",
+  "total_cost",
+  "schedule_warning",
+  "protocol_note",
+  "sec_weeks",
+  "weeks",
   "sec_req",
   "total_plants_to_stick",
   "total_cuttings_required",
@@ -47,18 +59,6 @@
   "cuttings_lost_to_ramp",
   "ramp_short_weeks",
   "mother_plants_to_cover_ramp",
-  "sec_tc",
-  "tc_plants_required",
-  "tc_order_date",
-  "tc_on_farm_date",
-  "cb4",
-  "first_sticking_date",
-  "tc_cost",
-  "total_cost",
-  "schedule_warning",
-  "protocol_note",
-  "sec_weeks",
-  "weeks",
   "calendar_section",
   "calendar_html",
   "sec_sources",
@@ -175,7 +175,8 @@
   {
    "fieldname": "sec_req",
    "fieldtype": "Section Break",
-   "label": "Requirement"
+   "label": "Working: what it takes",
+   "collapsible": 1
   },
   {
    "fieldname": "total_plants_to_stick",
@@ -224,7 +225,8 @@
   {
    "fieldname": "sec_cover",
    "fieldtype": "Section Break",
-   "label": "Sourcing"
+   "label": "Working: where the cuttings come from",
+   "collapsible": 1
   },
   {
    "fieldname": "cuttings_from_existing",
@@ -338,7 +340,7 @@
   {
    "fieldname": "sec_tc",
    "fieldtype": "Section Break",
-   "label": "Tissue Culture"
+   "label": "When the tissue culture arrives"
   },
   {
    "fieldname": "tc_plants_required",
@@ -385,7 +387,7 @@
   {
    "fieldname": "sec_weeks",
    "fieldtype": "Section Break",
-   "label": "Week by Week"
+   "label": "Plants supplied, week by week"
   },
   {
    "fieldname": "weeks",
@@ -408,7 +410,8 @@
   {
    "fieldname": "sec_sources",
    "fieldtype": "Section Break",
-   "label": "Sources"
+   "label": "Sources",
+   "collapsible": 1
   },
   {
    "fieldname": "sources",
@@ -419,7 +422,8 @@
   {
    "fieldname": "sec_out",
    "fieldtype": "Section Break",
-   "label": "Created"
+   "label": "Created",
+   "collapsible": 1
   },
   {
    "fieldname": "motherstock_batches_created",

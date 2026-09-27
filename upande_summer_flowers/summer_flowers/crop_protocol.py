@@ -118,7 +118,11 @@ def before_validate(doc, method=None):
 # The stages material can be bought at, and the one every route has to end on.
 # A route that starts halfway through nothing, or stops before a plant exists, is
 # a route that cannot be costed or scheduled.
-ROUTE_ENTRY = ("TC", "Seeds", "Cuttings (Own)", "Roots (Own)", "Tubers (Own)",
+# Cuttings (Own) is deliberately absent. A cutting comes off a motherstock and the
+# motherstock was tissue culture, so a route cannot start at one -- calling it a
+# start hid where the material actually came from and made a crop look as though
+# it bought nothing, when what it had was a pool bought in an earlier season.
+ROUTE_ENTRY = ("TC", "Seeds", "Roots (Own)", "Tubers (Own)",
                "Tubers", "Budwoods", "Bought-in Plants")
 ROUTE_END = "Plants"
 
@@ -305,7 +309,7 @@ STANDING_STAGES = ("Motherstock",)
 BOUGHT_STAGES = ("TC", "Seeds", "Tubers", "Budwoods", "Bought-in Plants")
 
 # Material the farm takes off its own crop. Nothing is ordered for these.
-TAKEN_STAGES = ("Cuttings (Own)", "Roots (Own)", "Tubers (Own)")
+TAKEN_STAGES = ("Roots (Own)", "Tubers (Own)")
 
 
 # Where each stage's numbers live on the protocol. The route used to hold its own

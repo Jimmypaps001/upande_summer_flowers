@@ -193,11 +193,15 @@ class SummerFlowerProcurementPlan(Document):
 		source = ("In-house Propagation" if cint(self.propagates_here)
 		          else "Purchased from Breeder")
 		made, skipped, at_risk, refused = [], 0, [], []
-		for r in self.requirements:
-			if not cint(r.qty_at_field):
+		# Off the production plan's own plantings. The requirement lines are the
+		# purchase, and on a buy-once route there are none per cohort -- reading the
+		# calendar off them wrote nothing at all for exactly the crops that need it.
+		for row in [b for b in plan.plan_blocks if b.is_new_planting]:
+			r = next((x for x in self.requirements if x.cohort == row.name), None)
+			plants_here = cint(r.qty_at_field) if r else cint(row.plants)
+			if not plants_here:
 				continue
-			row = next((b for b in plan.plan_blocks if b.name == r.cohort), None)
-			if not row or not row.block:
+			if not row.block:
 				# No block yet. The calendar is a place as well as a date, so it
 				# cannot be written until allocation has happened.
 				skipped += 1
@@ -213,7 +217,7 @@ class SummerFlowerProcurementPlan(Document):
 					"The propagation plan is {0} cuttings short of the {1} this week "
 					"needs, so this planting may go in smaller than {2} plants or "
 					"later than {3}."
-				).format(f"{short:,}", f"{asked:,}", f"{cint(r.qty_at_field):,}",
+				).format(f"{short:,}", f"{asked:,}", f"{plants_here:,}",
 				         row.planting_date)
 			cal = frappe.get_doc({
 				"doctype": "Planting Calendar",
@@ -223,12 +227,12 @@ class SummerFlowerProcurementPlan(Document):
 				"crop_protocol_version": self.protocol,
 				"company": self.company,
 				"beds": cint(row.beds),
-				"plants": cint(r.qty_at_field),
+				"plants": plants_here,
 				# The delivery date is the planting date only where what arrives IS
 				# the plant. Where the farm propagates, the delivery is tissue
 				# culture months earlier, and planting on it put the crop in the
 				# ground before it existed.
-				"planting_date": (row.planting_date if cint(self.propagates_here)
+				"planting_date": (row.planting_date if cint(self.propagates_here) or not r
 				                  else (r.expected_delivery_date or row.planting_date)),
 				"sticking_date": row.sticking_date if row.get("sticking_date") else None,
 				"seedling_source": source,
@@ -348,9 +352,20 @@ class SummerFlowerProcurementPlan(Document):
 		# is mother plants standing on a bench, and adding it to the plants going in
 		# the ground would overstate the crop by the size of the pool.
 		field = [r for r in rows if (r.line_type or "Planting") != "Establishment"]
-		self.total_plants_at_field = sum(cint(r.qty_at_field) for r in field)
 		self.total_units_to_order = sum(cint(r.qty_to_order) for r in rows)
-		self.beds_required = sum(cint(r.beds) for r in field)
+		if field:
+			self.total_plants_at_field = sum(cint(r.qty_at_field) for r in field)
+			self.beds_required = sum(cint(r.beds) for r in field)
+		elif self.production_plan:
+			# A buy-once plan writes no cohort lines -- the plantings are the
+			# propagation plan's to schedule -- so what goes in the ground is read
+			# from the plan that decided it, rather than adding up rows that are
+			# deliberately not here.
+			plan = frappe.db.get_value(
+				"Summer Flower Production Plan", self.production_plan,
+				["new_plants_required", "new_beds_required"], as_dict=True)
+			self.total_plants_at_field = cint(plan.new_plants_required) if plan else 0
+			self.beds_required = cint(plan.new_beds_required) if plan else 0
 		dates = [getdate(r.order_by_date) for r in rows if r.order_by_date]
 		self.first_order_by = min(dates) if dates else None
 		self.last_order_by = max(dates) if dates else None
@@ -781,7 +796,13 @@ def build(production_plan, method=None, entry_stage=None, supplier=None,
 
 	beds_left = beds_available if (fit_to_space and beds_available) else None
 	trimmed = 0
-	for b in rows:
+	# A procurement plan is the purchase and nothing else. Where the material is
+	# bought once and propagated -- tissue culture into a motherstock -- there is
+	# one thing to buy, and the cohorts are not it: when each planting gets its
+	# plants is the propagation plan's answer, off the pool that purchase built.
+	# Listing all thirty-eight here with nothing to order against them said the
+	# farm was buying something for each of them, in a column of zeros.
+	for b in ([] if standing else rows):
 		beds = cint(b.beds)
 		plants = cint(b.plants)
 		capped = 0
@@ -869,6 +890,10 @@ def build(production_plan, method=None, entry_stage=None, supplier=None,
 			if need.get("overridden") else "")
 
 	wanted_beds = sum(cint(b.beds) for b in rows)
+	if standing:
+		# Nothing was trimmed because nothing per-cohort was written; the ground
+		# question belongs to the plantings, which the propagation plan schedules.
+		trimmed = 0
 	if trimmed:
 		short = wanted_beds - beds_available
 		doc.space_note = _(
