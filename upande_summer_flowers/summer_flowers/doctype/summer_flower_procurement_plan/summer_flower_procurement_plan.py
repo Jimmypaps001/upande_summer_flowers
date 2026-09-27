@@ -244,6 +244,7 @@ class SummerFlowerProcurementPlan(Document):
 					if cal.meta.has_field("notes") else cal.get("notes")
 				at_risk.append(row.planting_date)
 			cal.flags.ignore_permissions = True
+			cal.flags.built_in_bulk = True
 			# One cohort the calendar refuses -- a protocol version that takes effect
 			# after the planting date, a block rule this module knows nothing about --
 			# must not cost the farm the other twenty-five and the propagation plan
@@ -404,6 +405,44 @@ def space_at(farm):
 	return beds, _("{0} beds in summer flower blocks").format(beds)
 
 
+def existing_for(production_plan):
+	"""The procurement plan already sourcing this one, and whether it can go.
+
+	A draft is a working document and can be replaced. An approved plan has raised
+	its orders, and once its order date has come round the material is on its way --
+	replacing it then would quietly buy the same thing twice, so it is refused and
+	the reason is said rather than the button doing nothing.
+	"""
+	row = frappe.db.get_value(
+		"Summer Flower Procurement Plan",
+		{"production_plan": production_plan, "docstatus": ["<", 2]},
+		["name", "docstatus", "status", "first_order_by", "total_units_to_order",
+		 "entry_stage"], as_dict=True)
+	if not row:
+		return None
+	today = getdate(nowdate())
+	ordered = bool(row.first_order_by and getdate(row.first_order_by) <= today)
+	if row.docstatus == 1 and ordered:
+		why = _("{0} is approved and its order was due {1}, which has passed -- the "
+		        "material is on its way. Replacing it now would order it a second "
+		        "time. Cancel {0} first if that order never went out."
+		        ).format(row.name, frappe.format(row.first_order_by,
+		                                         {"fieldtype": "Date"}))
+	elif row.docstatus == 1:
+		why = _("{0} is approved. Cancel it first: replacing it would leave its "
+		        "material requests behind with nothing to answer for them."
+		        ).format(row.name)
+	else:
+		why = None
+	return {
+		"name": row.name, "docstatus": row.docstatus, "status": row.status,
+		"first_order_by": str(row.first_order_by or ""),
+		"units": cint(row.total_units_to_order), "entry_stage": row.entry_stage,
+		"order_date_passed": ordered,
+		"can_replace": why is None, "why_not": why,
+	}
+
+
 @frappe.whitelist()
 def methods_for(production_plan):
 	"""The ways this plan's material could be got, for the button to offer.
@@ -468,6 +507,9 @@ def methods_for(production_plan):
 	if crop_protocol and not frappe.db.exists("Crop Protocol", crop_protocol):
 		crop_protocol = None
 	return {
+		# What already sources this plan, so the dialog can offer to replace it
+		# rather than letting Generate fail on it.
+		"existing": existing_for(p.name),
 		"plan": p.name, "variety": p.variety, "farm": p.farm,
 		"protocol": v.name, "route": v.get("route_summary"),
 		"crop_protocol": crop_protocol,
@@ -697,7 +739,7 @@ def tc_options(production_plan, cycles=None, tc_qty=None):
 
 @frappe.whitelist()
 def build(production_plan, method=None, entry_stage=None, supplier=None,
-          fit_to_space=1, cycles=None, tc_qty=None):
+          fit_to_space=1, cycles=None, tc_qty=None, replace=0):
 	"""Turn a plan's plantings into one requirement line each, and price the order."""
 	fit_to_space = cint(fit_to_space)
 	p = frappe.get_doc("Summer Flower Production Plan", production_plan)
@@ -708,13 +750,18 @@ def build(production_plan, method=None, entry_stage=None, supplier=None,
 			plants_per_bed_for,
 		)
 
-	existing = frappe.db.get_value("Summer Flower Procurement Plan",
-	                               {"production_plan": p.name, "docstatus": ["<", 2]},
-	                               "name")
-	if existing:
-		frappe.throw(_("{0} already sources {1}. Cancel it, or amend it, rather than "
-		               "raising a second set of orders for one plan.")
-		             .format(existing, p.name))
+	have = existing_for(p.name)
+	if have and not cint(replace):
+		frappe.throw(
+			_("{0} already sources {1}. Replace it, or open it -- raising a second "
+			  "set of orders for one plan orders the material twice.")
+			.format(have["name"], p.name),
+			title=_("Already sourced"))
+	if have and cint(replace):
+		if not have["can_replace"]:
+			frappe.throw(have["why_not"], title=_("Cannot be replaced"))
+		frappe.delete_doc("Summer Flower Procurement Plan", have["name"], force=True,
+		                  ignore_permissions=True)
 
 	# The route decides how the material is got; a person only picks WHICH buyable
 	# stage, and only when the protocol offers more than one. A choice that

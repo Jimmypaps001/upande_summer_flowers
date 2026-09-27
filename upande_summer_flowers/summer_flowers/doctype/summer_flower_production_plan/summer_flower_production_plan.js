@@ -470,9 +470,21 @@ function source_plantlets(frm) {
 			return;
 		}
 
-		const verdict = dec.reason
-			? `<p class="text-muted small">${frappe.utils.escape_html(dec.reason)}</p>`
-			: "";
+		// A plan already sourcing this one is not an error to discover on Generate.
+		// Said here, with the choice: replace it, or go and look at it.
+		const had = s.existing;
+		const verdict =
+			(had
+				? `<p style="color:var(--${had.can_replace ? "orange" : "red"}-600,#b35309)">` +
+				  frappe.utils.escape_html(had.can_replace
+					? __("{0} already sources this plan ({1} {2}). Generating will replace it.",
+						[had.name, format_number(had.units || 0, null, 0),
+						 had.entry_stage || __("units")])
+					: had.why_not) + `</p>`
+				: "") +
+			(dec.reason
+				? `<p class="text-muted small">${frappe.utils.escape_html(dec.reason)}</p>`
+				: "");
 
 		const d = new frappe.ui.Dialog({
 			title: __("How is the plant material got?"),
@@ -522,8 +534,22 @@ function source_plantlets(frm) {
 				  read_only: s.beds_available ? 0 : 1,
 				  description: __("The demand is not reduced by this. It says what can be planted, not what is wanted.") },
 			],
-			primary_action_label: __("Generate"),
+			primary_action_label: (s.existing && s.existing.can_replace)
+				? __("Replace {0}", [s.existing.name]) : __("Generate"),
 			primary_action(values) {
+				const had = s.existing;
+				if (had && !had.can_replace) {
+					frappe.msgprint({ title: __("Cannot be replaced"),
+						indicator: "red", message: had.why_not });
+					return;
+				}
+				if (had && !d.__confirmed) {
+					frappe.confirm(
+						__("Replace {0}? Its lines go and a fresh set is worked out "
+						   + "from the choices above.", [had.name]),
+						() => { d.__confirmed = true; d.primary_action(d.get_values()); });
+					return;
+				}
 				// The dialog used to hide itself before the call. A server refusal --
 				// "SFPROC-… already sources this plan" is the common one -- then had
 				// no dialog to appear over and went nowhere at all: the button did
@@ -536,7 +562,8 @@ function source_plantlets(frm) {
 						entry_stage: values.entry_stage, supplier: values.supplier,
 						fit_to_space: values.fit_to_space ? 1 : 0,
 						cycles: d.get_value("tc_cycles") || null,
-						tc_qty: d.get_value("tc_qty") || null } })
+						tc_qty: d.get_value("tc_qty") || null,
+						replace: s.existing ? 1 : 0 } })
 					.then((res) => {
 						if (!res || !res.message) return;
 						d.hide();
@@ -544,29 +571,9 @@ function source_plantlets(frm) {
 							res.message);
 					})
 					.catch(() => {
-						// Frappe has already shown the server's own message. All this
-						// adds is the way out of the one refusal that has one.
-						frappe.call({ method: "frappe.client.get_value",
-							args: { doctype: "Summer Flower Procurement Plan",
-								filters: { production_plan: frm.doc.name,
-									docstatus: ["<", 2] },
-								fieldname: "name" } })
-							.then((r) => {
-								const has = r && r.message && r.message.name;
-								if (!has) return;
-								d.set_df_property("verdict", "options",
-									`<p style="color:var(--red-600,#c0392b)">` +
-									frappe.utils.escape_html(__(
-										"{0} already sources this plan. Cancel or amend it "
-										+ "rather than raising a second set of orders.",
-										[has])) + `</p>`);
-								d.set_secondary_action_label(__("Open {0}", [has]));
-								d.set_secondary_action(() => {
-									d.hide();
-									frappe.set_route("Form",
-										"Summer Flower Procurement Plan", has);
-								});
-							});
+						// Frappe has already shown the server's own message, and the
+						// one collision that used to land here is now settled before
+						// the form is drawn.
 					})
 					.always(() => d.get_primary_btn().prop("disabled", false));
 			},
@@ -646,10 +653,21 @@ function sf_block_picker(frm, s, M) {
 		const held = (c.blockers || []).map((b) =>
 			__("{0} holds {1} beds to {2}", [b.planting, int(b.beds),
 				shortDate(b.frees_on)])).join("\n");
+		// A block that is held is a decision, not a dead end: taking the crop
+		// standing on it out a fortnight early is usually cheaper than finding land.
+		// Offered here, where the clash is seen, rather than discovered at submit.
+		const blocker = (c.blockers || [])[0];
+		const up = (!c.fits && blocker && !c.free_from) || (!c.fits && blocker)
+			? `<span class="sfa-up" data-uproot="${esc(blocker.planting)}" ` +
+			  `data-on="${esc(row.planting_date)}" ` +
+			  `title="${esc(__("Take {0} out on {1} so this block is free",
+				[blocker.planting, shortDate(row.planting_date)]))}">` +
+			  `${__("uproot")}</span>`
+			: "";
 		return `<button type="button" class="${cls}" data-row="${esc(row.row)}" ` +
 			`data-block="${esc(c.block)}" title="${esc(held || c.block)}">` +
 			`<span class="sfa-top">${bits.join(" ")}</span>` +
-			`<span class="sfa-sub">${esc(sub)}</span></button>`;
+			`<span class="sfa-sub">${esc(sub)}${up}</span></button>`;
 	};
 
 	const rowHtml = (row) => {
@@ -716,6 +734,25 @@ function sf_block_picker(frm, s, M) {
 			`<div class="sfa-list">${s.rows.map(rowHtml).join("")}</div>`);
 	};
 
+	d.fields_dict.picker.$wrapper.on("click", ".sfa-up", function (e) {
+		e.stopPropagation();
+		const holder = this.dataset.uproot, on = this.dataset.on;
+		frappe.confirm(
+			__("Take {0} out on {1}? Its remaining flushes are given up, and the "
+			   + "block is free from that day.", [holder, shortDate(on)]),
+			() => frappe.call({ method: M + "uproot_to_free", freeze: true,
+				args: { planting: holder, on_date: on },
+				freeze_message: __("Uprooting...") })
+				.then((r) => {
+					const m = r.message || {};
+					frappe.show_alert({ indicator: "orange",
+						message: __("{0} out {1} weeks early — {2} stems given up.",
+							[m.planting, m.weeks_early, int(m.stems_lost)]) }, 10);
+					d.hide();
+					allocate_blocks(frm);
+				}));
+	});
+
 	d.fields_dict.picker.$wrapper.on("click", ".sfa-chip", function () {
 		const rowid = this.dataset.row;
 		// Clicking the block already chosen clears it, so a row can be emptied
@@ -756,6 +793,10 @@ const SF_ALLOC_CSS = `<style>
 .sfa-chip.on .sfa-sub,.sfa-chip.on .sfa-beds{color:var(--text-color)}
 .sfa-chip.clear{min-width:0;border-left:3px solid transparent;color:var(--text-muted)}
 .sfa-empty{font-size:.78rem;color:var(--orange-600, #b35309)}
+.sfa-up{margin-left:6px;padding:0 5px;border-radius:4px;font-size:.66rem;
+  text-transform:uppercase;letter-spacing:.4px;cursor:pointer;
+  border:1px solid var(--orange-500, #d9822b);color:var(--orange-600, #b35309)}
+.sfa-up:hover{background:var(--orange-500, #d9822b);color:#fff}
 </style>`;
 
 

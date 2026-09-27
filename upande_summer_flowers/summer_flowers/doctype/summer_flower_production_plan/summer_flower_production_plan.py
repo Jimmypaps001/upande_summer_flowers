@@ -8,7 +8,8 @@ from collections import defaultdict
 import frappe
 from frappe import _
 from frappe.model.document import Document
-from frappe.utils import cint, flt, get_datetime, getdate, nowdate
+from frappe.utils import (cint, flt, get_datetime, getdate, now_datetime,
+                          nowdate)
 
 from upande_summer_flowers.summer_flowers.doctype.crop_protocol_version.crop_protocol_version import (
 	current_version,
@@ -16,6 +17,7 @@ from upande_summer_flowers.summer_flowers.doctype.crop_protocol_version.crop_pro
 from upande_summer_flowers.summer_flowers.doctype.planting_calendar.planting_calendar import (
 	RESERVING_STATES,
 	production_by_week,
+	refresh_coverage,
 	standing_plantings,
 )
 from upande_summer_flowers.summer_flowers.planning import (
@@ -1102,6 +1104,92 @@ def size_planting(v, plants_required, min_beds=1):
 	plants = int(round(area * per_sqm))
 	beds = max(cint(min_beds), int(math.ceil(area / bed))) if bed else cint(min_beds)
 	return beds, plants, area
+
+
+@frappe.whitelist()
+def uproot_to_free(planting, on_date, reason=None):
+	"""Bring a standing planting out early so its block can be used.
+
+	A block that is held is not a dead end -- it is a decision about which crop
+	the ground is worth more to. The picker offers it where a block only nearly
+	fits, because moving one uprooting forward a fortnight is usually cheaper than
+	finding land, and the cost of doing it is the flushes the crop still had left.
+
+	Nothing is destroyed. The date is written on the planting that holds the block,
+	which is what every occupancy check reads, so the block frees up from that day
+	and the crop cycle's own end follows it.
+	"""
+	doc = frappe.get_doc("Planting Calendar", planting)
+	when = getdate(on_date)
+	planned = getdate(doc.planned_uproot_date) if doc.planned_uproot_date else None
+	if planned and when > planned:
+		frappe.throw(
+			_("{0} is already due out on {1}. Uprooting is for bringing that "
+			  "forward, not putting it back.").format(
+				doc.name, frappe.format(planned, {"fieldtype": "Date"})),
+			title=_("That is later, not earlier"))
+	start = doc.effective_planting_date()
+	if when < start:
+		frappe.throw(
+			_("{0} goes in on {1}. It cannot come out before it is planted.").format(
+				doc.name, frappe.format(start, {"fieldtype": "Date"})),
+			title=_("Before it was planted"))
+
+	# What it costs: the flushes that were still to come after this date.
+	lost = [r for r in doc.flush_projection
+	        if r.harvest_date and getdate(r.harvest_date) > when
+	        and not cint(r.is_harvested)]
+	stems = sum(cint(r.expected_stems) for r in lost)
+	weeks_early = ((planned - when).days // 7) if planned else 0
+
+	doc.db_set("actual_uproot_date", when, update_modified=False)
+	doc.db_set("revision_reason",
+	           (reason or _("Uprooted early to free {0}").format(doc.block)),
+	           update_modified=False)
+	doc.db_set("revised_on", now_datetime(), update_modified=False)
+	doc.db_set("revised_by", frappe.session.user, update_modified=False)
+	if doc.calendar_status in ("Approved", "Planted"):
+		doc.db_set("calendar_status", "Uprooted", update_modified=False)
+	refresh_coverage(doc.block)
+	return {
+		"planting": doc.name, "block": doc.block, "variety": doc.variety,
+		"uproot_on": str(when), "weeks_early": weeks_early,
+		"flushes_lost": len(lost), "stems_lost": stems,
+	}
+
+
+@frappe.whitelist()
+def uprooting_plan(farm=None, season_start_year=None):
+	"""Everything being taken out early, and what it costs.
+
+	The uprooting decisions are scattered one per planting; this is them together,
+	which is the only way to see whether the farm has quietly agreed to lose more
+	than it meant to.
+	"""
+	f = {"actual_uproot_date": ["is", "set"]}
+	if farm:
+		f["farm"] = farm
+	rows = frappe.get_all(
+		"Planting Calendar", filters=f,
+		fields=["name", "block", "farm", "variety", "beds", "plants",
+		        "planting_date", "actual_planting_date", "planned_uproot_date",
+		        "actual_uproot_date", "revision_reason", "calendar_status",
+		        "expected_stems_life", "actual_stems_harvested"],
+		order_by="actual_uproot_date asc")
+	out = []
+	for r in rows:
+		planned = getdate(r.planned_uproot_date) if r.planned_uproot_date else None
+		actual = getdate(r.actual_uproot_date)
+		if planned and actual >= planned:
+			continue
+		out.append(dict(
+			r, weeks_early=(planned - actual).days // 7 if planned else 0,
+			stems_forgone=max(0, cint(r.expected_stems_life)
+			                  - cint(r.actual_stems_harvested)),
+		))
+	return {"farm": farm, "rows": out,
+	        "beds_freed": sum(cint(x["beds"]) for x in out),
+	        "stems_forgone": sum(cint(x["stems_forgone"]) for x in out)}
 
 
 @frappe.whitelist()

@@ -198,18 +198,26 @@ class PlantingCalendar(Document):
 			)
 
 	def check_block_not_double_booked(self):
-		"""A block holds one planting at a time.
+		"""A block holds as many plantings as it has beds for, and no more.
 
-		Two plantings clash when their [planting, uproot] windows overlap, which is
-		not the same as their beds summing under capacity.
+		It used to refuse ANY overlap: two plantings whose windows crossed were a
+		clash whatever their size. But Allocate Blocks places plantings by free
+		BEDS -- a forty-bed block legitimately takes two twenty-bed cohorts -- so
+		the allocator said yes and the calendar then said no to the same pair, and
+		an approval that had been allocated came apart in a wall of refusals for
+		ground that was genuinely free.
+
+		One rule now, the allocator's: what is standing over this window, in beds,
+		against what the block has.
 		"""
-		if self.calendar_status == "Cancelled":
+		if self.calendar_status == "Cancelled" or not self.block:
 			return
 
 		# Occupancy is a fact about the ground, so it runs from when the plants
 		# actually went in -- a planting three weeks late leaves the block free for
 		# those three weeks and holds it three weeks longer at the other end.
 		mine_start, mine_end = self.effective_planting_date(), self.end_date()
+		total = cint(frappe.db.get_value("Block", self.block, "custom_total_beds"))
 		others = frappe.get_all(
 			"Planting Calendar",
 			filters={
@@ -217,22 +225,31 @@ class PlantingCalendar(Document):
 				"name": ["!=", self.name or "__new__"],
 				"calendar_status": ["in", RESERVING_STATES],
 			},
-			fields=["name", "variety", "planting_date", "actual_planting_date",
-			        "planned_uproot_date", "actual_uproot_date"],
+			fields=["name", "variety", "beds", "planting_date",
+			        "actual_planting_date", "planned_uproot_date",
+			        "actual_uproot_date"],
 		)
+		holders, held = [], 0
 		for o in others:
 			other_end = getdate(o.actual_uproot_date or o.planned_uproot_date)
 			other_start = getdate(o.actual_planting_date or o.planting_date)
 			if mine_start <= other_end and other_start <= mine_end:
-				frappe.throw(
-					_("Block {0} is already occupied by {1} ({2}) from {3} to {4}. "
-					  "A block holds one planting at a time.").format(
-						self.block, o.name, o.variety,
-						frappe.format(other_start, {"fieldtype": "Date"}),
-						frappe.format(other_end, {"fieldtype": "Date"}),
-					),
-					title=_("Block already occupied"),
-				)
+				held += cint(o.beds)
+				holders.append((o, other_start, other_end))
+		if not total or held + cint(self.beds) <= total:
+			return
+
+		who = "; ".join(
+			_("{0} ({1}) holds {2} beds to {3}").format(
+				o.name, o.variety, cint(o.beds),
+				frappe.format(end, {"fieldtype": "Date"}))
+			for o, _st, end in holders[:4])
+		frappe.throw(
+			_("Block {0} has {1} beds and {2} are already held over this period, so "
+			  "there is no room for {3} more. {4}. Uproot one of them earlier, or "
+			  "put this planting in another block."
+			  ).format(self.block, total, held, cint(self.beds), who),
+			title=_("Not enough beds free"))
 
 	# --------------------------------------------------------------------- beds
 	def allocate_beds(self):
@@ -348,6 +365,11 @@ class PlantingCalendar(Document):
 		self.harvest_week_family = week_family_label({r.week_no for r in rows})
 
 	def check_seedling_source(self):
+		# Not while a procurement plan is writing the season's calendar. Twenty-eight
+		# plantings meant twenty-eight identical nags stacked over the one message
+		# the reader needed.
+		if self.flags.get("built_in_bulk"):
+			return
 		if self.seedling_source == "Purchased from Breeder" and not self.supplier:
 			frappe.msgprint(_("Record the supplier for a breeder-purchased planting."),
 			                indicator="orange", alert=True)

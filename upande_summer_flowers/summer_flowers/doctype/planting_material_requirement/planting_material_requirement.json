@@ -78,8 +78,8 @@
   {
    "fieldname": "qty_at_field",
    "fieldtype": "Int",
-   "label": "Plants At Field",
-   "in_list_view": 1,
+   "label": "Plants This Line Provides",
+   "in_list_view": 0,
    "read_only": 1
   },
   {
@@ -129,7 +129,8 @@
    "label": "Cut from the motherstock",
    "read_only": 1,
    "description": "This cohort is stuck with cuttings off the standing motherstock, so there is nothing to buy for it. What it costs was bought on the Establishment line.",
-   "in_list_view": 1
+   "in_list_view": 0,
+   "hidden": 1
   },
   {
    "fieldname": "qty_to_order",
