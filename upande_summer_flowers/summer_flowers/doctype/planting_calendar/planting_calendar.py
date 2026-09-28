@@ -172,6 +172,11 @@ class PlantingCalendar(Document):
 		# Planted is a fact about the ground, not a step someone remembers to take.
 		if self.actual_planting_date and self.calendar_status == "Approved":
 			self.calendar_status = "Planted"
+		# The beds follow the planting: reserved until the day it went in, planted
+		# from then, and left alone once one has been individually uprooted.
+		for r in (self.bed_allocation or []):
+			if not r.actual_uproot_date and r.bed_status != "Producing":
+				r.bed_status = self.bed_state()
 
 	def end_date(self):
 		return getdate(self.actual_uproot_date or self.planned_uproot_date)
@@ -251,6 +256,30 @@ class PlantingCalendar(Document):
 			  ).format(self.block, total, held, cint(self.beds), who),
 			title=_("Not enough beds free"))
 
+	def bed_state(self):
+		"""What a bed of this planting is: reserved, planted, or out.
+
+		The planting's own dates decide it. Nothing is planted because a block was
+		allocated; it is planted on the day somebody records that it was.
+		"""
+		if self.get("actual_uproot_date"):
+			return "Uprooted"
+		return "Planted" if self.get("actual_planting_date") else "Reserved"
+
+	def bed_record_state(self, row):
+		"""And what the Bed record itself should say.
+
+		Bed has an Empty state that the allocation table has not got: a bed merely
+		reserved for a future planting is empty ground today, and anyone looking at
+		the farm's beds should see that rather than a crop that is not there.
+		"""
+		if row.actual_uproot_date:
+			return "Uprooted"
+		state = row.bed_status or self.bed_state()
+		if state in ("Reserved", None, ""):
+			return "Empty"
+		return state
+
 	# --------------------------------------------------------------------- beds
 	def allocate_beds(self):
 		"""Attach individual beds so one can be uprooted independently.
@@ -285,7 +314,10 @@ class PlantingCalendar(Document):
 				prior = existing.get(b["name"])
 				self.append("bed_allocation", {
 					"bed": b["name"], "bed_number": b["bed"], "plants": per_bed,
-					"bed_status": prior.bed_status if prior else "Planted",
+					# Allocated is not planted. A bed born "Planted" had the ground
+					# reporting a crop standing on it months before anything went in
+					# -- 858 bed rows here said Planted against no planting at all.
+					"bed_status": prior.bed_status if prior else self.bed_state(),
 					"actual_uproot_date": prior.actual_uproot_date if prior else None,
 					"uproot_reason": prior.uproot_reason if prior else None,
 				})
@@ -395,7 +427,7 @@ class PlantingCalendar(Document):
 			frappe.db.set_value("Bed", r.bed, {
 				"custom_planting_calendar": self.name,
 				"custom_plants": r.plants or 0,
-				"custom_bed_status": r.bed_status or "Planted",
+				"custom_bed_status": self.bed_record_state(r),
 				"custom_uproot_date": r.actual_uproot_date,
 			}, update_modified=False)
 

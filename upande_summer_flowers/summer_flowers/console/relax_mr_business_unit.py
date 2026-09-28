@@ -10,14 +10,14 @@ site record rather than a line of anybody's code.
 import frappe
 
 
-def run(apply=0, field="custom_business_unit"):
+def run(apply=0, field="custom_business_unit", doctype="Material Request"):
 	from frappe.utils import cint
 	apply = cint(apply)
 	cf = frappe.db.get_value("Custom Field",
-	                         {"dt": "Material Request", "fieldname": field},
+	                         {"dt": doctype, "fieldname": field},
 	                         ["name", "label", "reqd"], as_dict=True)
 	if not cf:
-		print("no such field on Material Request: %s" % field)
+		print("no such field on %s: %s" % (doctype, field))
 		return
 	print("%s (%s) reqd=%s" % (field, cf.label, cf.reqd))
 	existing = frappe.db.get_value("Property Setter",
@@ -32,14 +32,14 @@ def run(apply=0, field="custom_business_unit"):
 		print("\n   (dry run -- pass apply=1 to write it)")
 		return
 	frappe.make_property_setter({
-		"doctype": "Material Request",
+		"doctype": doctype,
 		"doctype_or_field": "DocField",
 		"fieldname": field,
 		"property": "reqd",
 		"value": "0",
 		"property_type": "Check",
 	}, is_system_generated=False)
-	frappe.clear_cache(doctype="Material Request")
+	frappe.clear_cache(doctype=doctype)
 	frappe.db.commit()
 	print("\n   written. mandatory now: %s"
-	      % frappe.get_meta("Material Request").get_field(field).reqd)
+	      % frappe.get_meta(doctype).get_field(field).reqd)

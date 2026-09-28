@@ -40,12 +40,13 @@
   },
   {
    "columns": 2,
-   "default": "Planted",
+   "default": "Reserved",
    "fieldname": "bed_status",
    "fieldtype": "Select",
    "in_list_view": 1,
    "label": "Status",
-   "options": "Planted\nProducing\nUprooted"
+   "options": "Reserved\nPlanted\nProducing\nUprooted",
+   "description": "Reserved once the bed is allocated to this planting; Planted when the planting records the day it actually went in the ground."
   },
   {
    "columns": 2,
