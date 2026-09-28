@@ -31,6 +31,7 @@
   "planting_date",
   "actual_planting_date",
   "stock_entry",
+  "dispatch_entry",
   "planting_slip_days",
   "harvest_dates_from",
   "planting_year",
@@ -226,6 +227,15 @@
    "read_only": 1,
    "allow_on_submit": 1,
    "description": "The Stock Entry that took these plants out of the store when they went in the ground. Plants are bought, so they sit in a warehouse until something consumes them; planting is what consumes them."
+  },
+  {
+   "fieldname": "dispatch_entry",
+   "fieldtype": "Link",
+   "options": "Stock Entry",
+   "label": "Moved From Propagation On",
+   "read_only": 1,
+   "allow_on_submit": 1,
+   "description": "The transfer that moved these plants out of the propagation unit and onto this block's warehouse. Only for a crop raised here; bought plants arrive at the block's own store."
   },
   {
    "fieldname": "planting_slip_days",

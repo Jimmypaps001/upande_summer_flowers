@@ -17,6 +17,7 @@
   "capacity_available",
   "ramp_pct",
   "shortfall",
+  "deliver_on",
   "plant_week",
   "notes"
  ],
@@ -40,7 +41,7 @@
    "fieldname": "week_start_date",
    "fieldtype": "Date",
    "in_list_view": 1,
-   "label": "Week"
+   "label": "Stuck In Week"
   },
   {
    "columns": 1,
@@ -95,10 +96,18 @@
    "label": "Short By"
   },
   {
+   "fieldname": "deliver_on",
+   "fieldtype": "Date",
+   "label": "Deliver To Farm",
+   "read_only": 1,
+   "in_list_view": 1,
+   "description": "The day this week's plants are wanted in the field. The plants are stuck weeks earlier; this is when they leave the propagation unit for the block."
+  },
+  {
    "fieldname": "plant_week",
    "fieldtype": "Data",
-   "label": "Planted",
-   "in_list_view": 1
+   "label": "Planting Weeks",
+   "in_list_view": 0
   },
   {
    "fieldname": "notes",

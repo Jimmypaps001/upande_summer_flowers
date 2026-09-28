@@ -192,7 +192,7 @@ class SummerFlowerProcurementPlan(Document):
 		# supplier delivered a plantlet, not a plant.
 		source = ("In-house Propagation" if cint(self.propagates_here)
 		          else "Purchased from Breeder")
-		made, skipped, at_risk, refused = [], 0, [], []
+		made, skipped, at_risk, refused, already = [], 0, [], [], 0
 		# Off the production plan's own plantings. The requirement lines are the
 		# purchase, and on a buy-once route there are none per cohort -- reading the
 		# calendar off them wrote nothing at all for exactly the crops that need it.
@@ -208,6 +208,7 @@ class SummerFlowerProcurementPlan(Document):
 				continue
 			if row.existing_planting and frappe.db.exists("Planting Calendar",
 			                                              row.existing_planting):
+				already += 1
 				continue
 			short, asked = covered.get((cint(row.sticking_year), cint(row.sticking_week)),
 			                           (0, 0))
@@ -263,6 +264,19 @@ class SummerFlowerProcurementPlan(Document):
 		if made:
 			frappe.msgprint(_("{0} planting calendar entries created.").format(len(made)),
 			                indicator="green", title=_("Planting plan"))
+		# Saying nothing is what an approval did when every cohort already had its
+		# entry: no calendar appeared, none was needed, and the reader was left to
+		# work out which of those it was.
+		if already and not made:
+			frappe.msgprint(
+				_("All {0} plantings already have a calendar entry, so nothing new "
+				  "was written. They are on the Planting Calendar for {1} at {2}."
+				  ).format(already, self.variety, self.farm),
+				indicator="blue", title=_("Planting plan"))
+		elif already:
+			frappe.msgprint(
+				_("{0} plantings already had an entry and were left alone.").format(
+					already), indicator="blue", title=_("Planting plan"))
 		if refused:
 			frappe.msgprint(_(
 				"{0} planting(s) were refused by the calendar and have no entry: {1}. "
@@ -729,6 +743,14 @@ def tc_options(production_plan, cycles=None, tc_qty=None):
 		"order_late": bool(order_by and getdate(order_by) < getdate(nowdate())),
 		"line_life_weeks": life,
 		"cycle_cost_weeks": est,
+		# The parts of that establishment, so the dialog can show the sum rather
+		# than a number nobody can check.
+		"weeks_on_tray": cint(v.weeks_on_tray),
+		"weeks_on_pot": cint(v.weeks_on_pot),
+		"ramp_weeks": cint(v.ramp_weeks) or cint(v.weeks_to_max_pc),
+		"hardening_weeks": cint(v.hardening_weeks),
+		"counts_ramp": bool(cint(v.establishment_includes_ramp)),
+		"counts_hardening": bool(cint(v.establishment_includes_hardening)),
 		"cutting_weeks": (max(0, life - est * max(0, chosen - 1)) if life and est
 		                  else None),
 		"blocked": now.get("blocked"),

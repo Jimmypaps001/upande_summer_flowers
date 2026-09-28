@@ -25,7 +25,8 @@
   "bio_section",
   "biological_asset_item",
   "season_curve_build",
-  "season_curve_tail"
+  "season_curve_tail",
+  "propagation_warehouse"
  ],
  "fields": [
   {
@@ -186,6 +187,13 @@
    "fieldname": "season_curve_tail",
    "fieldtype": "Data",
    "label": "Season curve: tail-off weights"
+  },
+  {
+   "fieldname": "propagation_warehouse",
+   "fieldtype": "Link",
+   "options": "Warehouse",
+   "label": "Propagation Unit Warehouse",
+   "description": "Where the propagation unit holds the plants it has raised. Sending them to a block is a transfer out of this warehouse into the block's own -- without it nothing can be moved, and the unit goes on holding plants it has already sent out."
   }
  ],
  "grid_page_length": 50,

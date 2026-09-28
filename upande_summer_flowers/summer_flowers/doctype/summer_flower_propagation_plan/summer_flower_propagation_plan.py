@@ -185,6 +185,12 @@ class SummerFlowerPropagationPlan(Document):
 				slot["no_block"] += cint(b.plants)
 			if b.planting_year and b.planting_week:
 				slot["out"].add("%s-W%02d" % (b.planting_year, cint(b.planting_week)))
+				# The day the field wants them. A sticking week says when the
+				# cuttings go in the tray; it never said when the plants leave the
+				# unit, which is the date the farm actually works to.
+				out_on = iso_monday(cint(b.planting_year), cint(b.planting_week))
+				if not slot.get("deliver") or out_on < slot["deliver"]:
+					slot["deliver"] = out_on
 
 		self.set("weeks", [])
 		for (y, w) in sorted(by_week):
@@ -194,6 +200,7 @@ class SummerFlowerPropagationPlan(Document):
 				"plants_to_stick": slot["plants"],
 				"cuttings_required": v.cuttings_for_plants(slot["plants"]),
 				"plant_week": ", ".join(sorted(slot["out"]))[:140],
+				"deliver_on": slot.get("deliver"),
 				"notes": _("{0} of these plants have no block yet").format(
 					slot["no_block"]) if slot["no_block"] else None,
 			})

@@ -71,6 +71,24 @@ frappe.ui.form.on("Planting Calendar", {
 				"green", true);
 			return;
 		}
+		// Raised here? Then the plants move out of the propagation unit onto this
+		// block before they can be planted. Bought plants arrive at the block's own
+		// store and have nothing to transfer.
+		if (frm.doc.seedling_source === "In-house Propagation"
+		    && !frm.doc.dispatch_entry) {
+			frm.add_custom_button(__("Send Plants From Propagation"), () => {
+				frappe.call({
+					method: "upande_summer_flowers.summer_flowers.plant_issue.dispatch_to_block",
+					args: { planting: frm.doc.name },
+					freeze: true,
+					freeze_message: __("Moving the plants..."),
+				}).then(() => frm.reload_doc());
+			});
+		} else if (frm.doc.dispatch_entry) {
+			frm.dashboard.add_comment(
+				__("{0} moved these plants out of propagation.",
+					[frm.doc.dispatch_entry]), "blue", true);
+		}
 		if (!frm.doc.actual_planting_date) return;
 		frm.add_custom_button(__("Issue Plants From Stock"), () => {
 			frappe.call({

@@ -902,7 +902,25 @@ function sf_tc_section(d, frm, M) {
 					`${r.cutting_weeks == null ? "?" : (r.cutting_weeks || __("none"))}</td></tr>`;
 			}).join("") + `</tbody></table>` +
 			`<p class="text-muted small">★ ${__("what the protocol says")}. ` +
-			__("Click a row to use it.") + `</p>`);
+			__("Click a row to use it.") + `</p>` +
+			// The column nobody can guess the meaning of, explained where it is
+			// read rather than in a manual: it is the one number that says what
+			// multiplying costs, and the sum behind it is three fields long.
+			(o.line_life_weeks
+				? `<p class="text-muted small"><b>${__("Cutting weeks")}</b> ${__(
+					"is how long the pool can be cut from. The line is renewed from "
+					+ "tissue culture on the FIRST motherstock's clock — 1.2 and "
+					+ "everything after it come out when 1 does — so each extra "
+					+ "multiplication is one establishment spent getting to the full "
+					+ "pool, taken out of that same {0} weeks rather than added to it.",
+					[o.line_life_weeks])}<br>` +
+				  `<code>${o.line_life_weeks} − ${o.cycle_cost_weeks} × (${__("cycles")} − 1)</code>` +
+				  ` · ${__("{0} weeks is tray {1} + pot {2}{3}{4}.",
+					[o.cycle_cost_weeks, o.weeks_on_tray, o.weeks_on_pot,
+					 o.counts_ramp ? __(" + ramp {0}", [o.ramp_weeks]) : "",
+					 o.counts_hardening ? __(" + hardening {0}", [o.hardening_weeks]) : ""])}` +
+				  `</p>`
+				: ""));
 
 		d.fields_dict.tc_table.$wrapper.find("tr[data-cycles]").on("click", function () {
 			pick(parseInt(this.dataset.cycles, 10));

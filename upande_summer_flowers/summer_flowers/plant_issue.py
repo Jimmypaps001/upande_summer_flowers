@@ -189,3 +189,117 @@ def issue_plants(planting, qty=None, on_date=None):
 			out["warehouse"]),
 		indicator="green", title=_("Plants issued"))
 	return out
+
+# --------------------------------------------------------------- internal move
+# Plants raised here are not bought, but they still move: out of the propagation
+# unit and onto the block that was allocated for them. That is a transfer between
+# two warehouses, not a purchase and not a consumption, and nothing recorded it --
+# so the unit held plants it had already sent to the field.
+TRANSFER_TYPE = "Propagation Dispatch"
+TRANSFER_PURPOSE = "Material Transfer"
+
+
+def ensure_transfer_type():
+	if frappe.db.exists("Stock Entry Type", TRANSFER_TYPE):
+		return TRANSFER_TYPE
+	doc = frappe.get_doc({"doctype": "Stock Entry Type", "name": TRANSFER_TYPE,
+	                      "purpose": TRANSFER_PURPOSE})
+	doc.flags.ignore_permissions = True
+	doc.insert()
+	return TRANSFER_TYPE
+
+
+def propagation_warehouse(farm):
+	"""Where the propagation unit holds what it has raised.
+
+	Named on Summer Flower Settings when the farm has said so. Otherwise nothing
+	is guessed: a transfer out of the wrong store is worse than no transfer.
+	"""
+	return frappe.db.get_single_value("Summer Flower Settings",
+	                                  "propagation_warehouse")
+
+
+@frappe.whitelist()
+def dispatch_to_block(planting, qty=None, on_date=None):
+	"""Move this planting's plants from the propagation unit to its block.
+
+	Only for a crop raised here. Plants bought in arrive at the block's own store
+	on a Purchase Receipt and have nothing to transfer.
+	"""
+	doc = frappe.get_doc("Planting Calendar", planting)
+	if doc.get("dispatch_entry") and frappe.db.get_value(
+			"Stock Entry", doc.dispatch_entry, "docstatus") == 1:
+		frappe.msgprint(_("{0} already moved these plants on {1}.").format(
+			doc.name, doc.dispatch_entry), indicator="blue")
+		return {"stock_entry": doc.dispatch_entry}
+
+	source = propagation_warehouse(doc.farm)
+	if not source:
+		frappe.throw(
+			_("No propagation warehouse is named on Summer Flower Settings, so "
+			  "there is nowhere to move these plants from. Set it, or record the "
+			  "movement by hand."), title=_("No propagation warehouse"))
+	target = doc.get("greenhouse") or frappe.db.get_value("Block", doc.block,
+	                                                      "greenhouse")
+	if not target:
+		frappe.throw(
+			_("{0} is not in a warehouse, so there is nowhere to move the plants "
+			  "to. Give its block a greenhouse.").format(doc.block),
+			title=_("No destination"))
+	if source == target:
+		frappe.throw(
+			_("The propagation unit and {0} are the same warehouse, so nothing "
+			  "moves.").format(doc.block), title=_("Nothing to move"))
+
+	qty = cint(qty if qty is not None else doc.plants)
+	if qty <= 0:
+		frappe.throw(_("This planting has no plant count to move."))
+
+	uom = frappe.db.get_value("Item", doc.variety, "stock_uom") or "Nos"
+	valued = flt(frappe.db.get_value("Bin", {"item_code": doc.variety,
+	                                         "warehouse": source},
+	                                 "valuation_rate"))
+	ensure_transfer_type()
+	se = frappe.new_doc("Stock Entry")
+	se.stock_entry_type = TRANSFER_TYPE
+	se.purpose = TRANSFER_PURPOSE
+	se.company = doc.company
+	se.posting_date = getdate(on_date or doc.get("actual_planting_date")
+	                          or doc.planting_date or nowdate())
+	se.set_posting_time = 1
+	se.from_warehouse = source
+	se.to_warehouse = target
+	if se.meta.has_field("custom_farm"):
+		se.custom_farm = doc.farm
+	se.append("items", {
+		"item_code": doc.variety, "qty": qty, "uom": uom, "stock_uom": uom,
+		"conversion_factor": 1,
+		"s_warehouse": source, "t_warehouse": target,
+		"allow_zero_valuation_rate": 0 if valued else 1,
+		"description": _("Raised here and sent to {0} for {1}").format(
+			doc.block, doc.name),
+	})
+	se.remarks = _("Propagation dispatch for {0}").format(doc.name)
+	se.flags.ignore_permissions = True
+	try:
+		se.insert()
+		se.submit()
+	except Exception as e:
+		frappe.log_error(frappe.get_traceback(), "Dispatch for %s" % doc.name)
+		if se.get("name") and frappe.db.exists("Stock Entry", se.name):
+			try:
+				frappe.delete_doc("Stock Entry", se.name, force=True,
+				                  ignore_permissions=True)
+			except Exception:
+				pass
+		frappe.throw(
+			_("The plants could not be moved: {0}").format(
+				frappe.utils.strip_html(str(e)).split("\n")[0][:200]),
+			title=_("Not moved"))
+
+	doc.db_set("dispatch_entry", se.name, update_modified=False)
+	frappe.msgprint(
+		_("{0} moved {1} {2} from {3} to {4}.").format(
+			se.name, "{:,}".format(qty), doc.variety, source, target),
+		indicator="green", title=_("Plants dispatched"))
+	return {"stock_entry": se.name, "qty": qty, "from": source, "to": target}
