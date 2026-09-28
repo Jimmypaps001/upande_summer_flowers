@@ -1,0 +1,230 @@
+{
+ "actions": [],
+ "allow_rename": 0,
+ "autoname": "format:SFSP-{variety}-{farm}-{season_start_year}",
+ "creation": "2026-09-28 00:00:00",
+ "doctype": "DocType",
+ "editable_grid": 0,
+ "engine": "InnoDB",
+ "field_order": [
+  "variety",
+  "farm",
+  "season",
+  "cb_head",
+  "season_start_year",
+  "production_plan",
+  "company",
+  "sec_when",
+  "first_arrival",
+  "first_planting",
+  "last_planting",
+  "cb_when",
+  "first_cut",
+  "last_cut",
+  "sec_size",
+  "plantings",
+  "beds",
+  "plants",
+  "cb_size",
+  "blocks_used",
+  "planted_so_far",
+  "sec_rows",
+  "rows",
+  "sec_note",
+  "summary"
+ ],
+ "fields": [
+  {
+   "fieldname": "variety",
+   "fieldtype": "Link",
+   "options": "Item",
+   "label": "Variety",
+   "read_only": 1,
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "farm",
+   "fieldtype": "Link",
+   "options": "Farm",
+   "label": "Farm",
+   "read_only": 1,
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "season",
+   "fieldtype": "Data",
+   "label": "Season",
+   "read_only": 1,
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "cb_head",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "season_start_year",
+   "fieldtype": "Int",
+   "label": "Season (Starting Year)",
+   "read_only": 1
+  },
+  {
+   "fieldname": "production_plan",
+   "fieldtype": "Link",
+   "options": "Summer Flower Production Plan",
+   "label": "Production Plan",
+   "read_only": 1
+  },
+  {
+   "fieldname": "company",
+   "fieldtype": "Link",
+   "options": "Company",
+   "label": "Company",
+   "read_only": 1
+  },
+  {
+   "fieldname": "sec_when",
+   "fieldtype": "Section Break",
+   "label": "When"
+  },
+  {
+   "fieldname": "first_arrival",
+   "fieldtype": "Date",
+   "label": "First Plants Arrive",
+   "read_only": 1
+  },
+  {
+   "fieldname": "first_planting",
+   "fieldtype": "Date",
+   "label": "First Planting",
+   "read_only": 1
+  },
+  {
+   "fieldname": "last_planting",
+   "fieldtype": "Date",
+   "label": "Last Planting",
+   "read_only": 1
+  },
+  {
+   "fieldname": "cb_when",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "first_cut",
+   "fieldtype": "Data",
+   "label": "First Cut",
+   "read_only": 1
+  },
+  {
+   "fieldname": "last_cut",
+   "fieldtype": "Data",
+   "label": "Last First-Cut",
+   "read_only": 1
+  },
+  {
+   "fieldname": "sec_size",
+   "fieldtype": "Section Break",
+   "label": "Size"
+  },
+  {
+   "fieldname": "plantings",
+   "fieldtype": "Int",
+   "label": "Plantings",
+   "read_only": 1
+  },
+  {
+   "fieldname": "beds",
+   "fieldtype": "Int",
+   "label": "Beds",
+   "read_only": 1
+  },
+  {
+   "fieldname": "plants",
+   "fieldtype": "Int",
+   "label": "Plants",
+   "read_only": 1
+  },
+  {
+   "fieldname": "cb_size",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "blocks_used",
+   "fieldtype": "Int",
+   "label": "Blocks Used",
+   "read_only": 1
+  },
+  {
+   "fieldname": "planted_so_far",
+   "fieldtype": "Int",
+   "label": "Planted So Far",
+   "read_only": 1,
+   "description": "Plantings with a real planting date recorded against them."
+  },
+  {
+   "fieldname": "sec_rows",
+   "fieldtype": "Section Break",
+   "label": "The season, planting by planting"
+  },
+  {
+   "fieldname": "rows",
+   "fieldtype": "Table",
+   "options": "Summer Flower Season Planting",
+   "label": "Plantings",
+   "read_only": 1
+  },
+  {
+   "fieldname": "sec_note",
+   "fieldtype": "Section Break"
+  },
+  {
+   "fieldname": "summary",
+   "fieldtype": "Small Text",
+   "label": "Summary",
+   "read_only": 1
+  }
+ ],
+ "links": [],
+ "modified": "2026-09-28 00:00:00",
+ "modified_by": "Administrator",
+ "module": "Summer Flowers",
+ "name": "Summer Flower Season Plan",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Agriculture Manager",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Agriculture User"
+  }
+ ],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": [],
+ "track_changes": 1
+}

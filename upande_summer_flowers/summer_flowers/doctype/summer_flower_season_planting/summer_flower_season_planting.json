@@ -1,0 +1,107 @@
+{
+ "actions": [],
+ "allow_rename": 0,
+ "creation": "2026-09-28 00:00:00",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "istable": 1,
+ "field_order": [
+  "planting",
+  "block",
+  "beds",
+  "plants",
+  "bed_numbers",
+  "plants_arrive",
+  "plant_on",
+  "first_cut",
+  "status",
+  "note"
+ ],
+ "fields": [
+  {
+   "fieldname": "planting",
+   "fieldtype": "Link",
+   "options": "Planting Calendar",
+   "label": "Planting",
+   "read_only": 1,
+   "in_list_view": 1,
+   "description": "The operating record this row reads. Bed allocation, the stock issue and the crop cycle all live there."
+  },
+  {
+   "fieldname": "block",
+   "fieldtype": "Link",
+   "options": "Block",
+   "label": "Block",
+   "read_only": 1,
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "beds",
+   "fieldtype": "Int",
+   "label": "Beds",
+   "read_only": 1,
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "plants",
+   "fieldtype": "Int",
+   "label": "Plants",
+   "read_only": 1,
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "bed_numbers",
+   "fieldtype": "Small Text",
+   "label": "Which Beds",
+   "read_only": 1,
+   "description": "The beds allocated to this planting, by number."
+  },
+  {
+   "fieldname": "plants_arrive",
+   "fieldtype": "Date",
+   "label": "Plants Arrive",
+   "read_only": 1,
+   "in_list_view": 1,
+   "description": "When the plants reach the farm -- off the propagation plan for a crop raised here, off the supplier's delivery date for one bought in."
+  },
+  {
+   "fieldname": "plant_on",
+   "fieldtype": "Date",
+   "label": "Plant On",
+   "read_only": 1,
+   "in_list_view": 1,
+   "description": "The day it goes in the ground. The actual date once recorded, the planned one until then."
+  },
+  {
+   "fieldname": "first_cut",
+   "fieldtype": "Data",
+   "label": "First Cut",
+   "read_only": 1,
+   "in_list_view": 1,
+   "description": "The week the first flush comes off this planting."
+  },
+  {
+   "fieldname": "status",
+   "fieldtype": "Data",
+   "label": "Status",
+   "read_only": 1
+  },
+  {
+   "fieldname": "note",
+   "fieldtype": "Small Text",
+   "label": "Note",
+   "read_only": 1
+  }
+ ],
+ "links": [],
+ "modified": "2026-09-28 00:00:00",
+ "modified_by": "Administrator",
+ "module": "Summer Flowers",
+ "name": "Summer Flower Season Planting",
+ "owner": "Administrator",
+ "permissions": [],
+ "sort_field": "plant_on",
+ "sort_order": "ASC",
+ "states": []
+}

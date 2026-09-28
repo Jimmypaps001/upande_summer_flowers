@@ -45,6 +45,32 @@ class SummerFlowerProcurementPlan(Document):
 		# and when. How it was got only changes what the calendar records as its
 		# source -- and which date it plants on.
 		self.build_planting_plan()
+		self.build_season_plan()
+
+	def build_season_plan(self):
+		"""The season on one page, for the managers who have to work it.
+
+		Never fatal: it reads the calendars and stores nothing of its own, so a
+		failure here costs a summary, not a plan.
+		"""
+		from upande_summer_flowers.summer_flowers.doctype \
+			.summer_flower_season_plan.summer_flower_season_plan import for_season
+
+		year = frappe.db.get_value("Summer Flower Production Plan",
+		                           self.production_plan, "season_start_year")
+		if not year:
+			return
+		try:
+			name = for_season(self.variety, self.farm, year, self.production_plan)
+		except Exception:
+			frappe.log_error(frappe.get_traceback(),
+			                 "Season plan for %s" % self.name)
+			return
+		frappe.msgprint(
+			_("{0} has the season on one page: when the plants arrive, when each "
+			  "block is planted, and when it first cuts.").format(
+				frappe.utils.get_link_to_form("Summer Flower Season Plan", name)),
+			indicator="green", title=_("Season planting plan"))
 
 	def raise_material_requests(self):
 		"""One Material Request per supplier per week the material is needed.
