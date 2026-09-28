@@ -650,9 +650,23 @@ function sf_block_picker(frm, s, M) {
 		} else {
 			sub = __("no room");
 		}
-		const held = (c.blockers || []).map((b) =>
-			__("{0} holds {1} beds to {2}", [b.planting, int(b.beds),
-				shortDate(b.frees_on)])).join("\n");
+		// What is on the block, and what was on it before. A chip that only said
+		// "52 free" told a grower nothing about whether this is the right ground:
+		// the same crop back on the same beds is a decision, not a detail.
+		const onBlock = c.standing || [];
+		const hist = (c.history || []).filter(
+			(h) => !onBlock.some((x) => x.variety === h.variety));
+		const held = onBlock.map((b) =>
+			__("{0} — {1} holds {2} beds to {3}", [b.variety || "?", b.planting,
+				int(b.beds), shortDate(b.frees_on)]))
+			.concat(hist.map((h) =>
+				__("was {0}, planted {1}", [h.variety || "?", shortDate(h.planted)])))
+			.join("\n");
+		const now = onBlock.length
+			? onBlock.map((b) => esc(b.variety || "?")).filter(
+				(v, i, a) => a.indexOf(v) === i).join(", ")
+			: "";
+		const was = hist.length ? esc(hist[0].variety || "") : "";
 		// A block that is held is a decision, not a dead end: taking the crop
 		// standing on it out a fortnight early is usually cheaper than finding land.
 		// Offered here, where the clash is seen, rather than discovered at submit.
@@ -667,7 +681,10 @@ function sf_block_picker(frm, s, M) {
 		return `<button type="button" class="${cls}" data-row="${esc(row.row)}" ` +
 			`data-block="${esc(c.block)}" title="${esc(held || c.block)}">` +
 			`<span class="sfa-top">${bits.join(" ")}</span>` +
-			`<span class="sfa-sub">${esc(sub)}${up}</span></button>`;
+			`<span class="sfa-sub">${esc(sub)}${up}</span>` +
+			(now ? `<span class="sfa-on">${__("now")}: ${now}</span>` : "") +
+			(was ? `<span class="sfa-was">${__("was")}: ${was}</span>` : "") +
+			`</button>`;
 	};
 
 	const rowHtml = (row) => {
@@ -785,6 +802,10 @@ const SF_ALLOC_CSS = `<style>
 .sfa-chip .sfa-beds{font-variant-numeric:tabular-nums;color:var(--text-muted);
   margin-left:5px}
 .sfa-chip .sfa-sub{font-size:.7rem;color:var(--text-muted)}
+.sfa-chip .sfa-on,.sfa-chip .sfa-was{display:block;font-size:.66rem;line-height:1.3;
+  max-width:190px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.sfa-chip .sfa-on{color:var(--orange-600,#b35309)}
+.sfa-chip .sfa-was{color:var(--text-muted);opacity:.85}
 .sfa-chip.fits{border-left:3px solid var(--green-500, #2e7d32)}
 .sfa-chip.late{border-left:3px solid var(--orange-500, #d9822b)}
 .sfa-chip.no{border-left:3px solid var(--gray-400, #b8c2cc);opacity:.65}

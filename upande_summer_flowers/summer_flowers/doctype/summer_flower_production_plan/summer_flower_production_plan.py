@@ -1965,6 +1965,33 @@ class BlockCalendar:
 			self.blocks.append({"name": r.name, "beds": cint(r.custom_total_beds),
 			                    "busy": []})
 		self._seed_standing(variety)
+		self._seed_history()
+
+	def _seed_history(self):
+		"""The last crop off each block, standing or finished.
+
+		A grower picking a block asks what is on it and what was on it before it --
+		the same crop back on the same ground is a decision, not a detail. Nothing
+		recorded it, so the picker could only ever say how many beds were free.
+		"""
+		names = [b["name"] for b in self.blocks]
+		if not names:
+			return
+		prior = {}
+		for r in frappe.get_all(
+				"Planting Calendar", filters={"block": ["in", names]},
+				fields=["block", "variety", "planting_date", "planned_uproot_date",
+				        "actual_uproot_date", "calendar_status"],
+				order_by="planting_date desc"):
+			prior.setdefault(r.block, []).append(r)
+		for b in self.blocks:
+			rows = prior.get(b["name"]) or []
+			b["last"] = rows[0] if rows else None
+			b["history"] = [{"variety": x.variety, "planted": str(x.planting_date or ""),
+			                 "out": str(x.actual_uproot_date or x.planned_uproot_date
+			                            or ""),
+			                 "status": x.calendar_status}
+			                for x in rows[:3]]
 
 	def _seed_standing(self, variety):
 		"""Whatever already claims a block holds it until it comes out.
@@ -1977,7 +2004,7 @@ class BlockCalendar:
 		f = {"calendar_status": ["in", RESERVING_STATES]}
 		for r in frappe.get_all(
 				"Planting Calendar", filters=f,
-				fields=["name", "block", "beds", "planting_date",
+				fields=["name", "block", "beds", "variety", "planting_date",
 				        "planned_uproot_date", "actual_uproot_date",
 				        "calendar_status"]):
 			b = self._get(r.block)
@@ -1989,6 +2016,7 @@ class BlockCalendar:
 				"end": getdate(end) if end else getdate(r.planting_date),
 				"beds": cint(r.beds) or b["beds"],
 				"holder": r.name,
+				"variety": r.variety,
 				"status": r.calendar_status,
 				# Whether the crop is in the ground decides what freeing the beds
 				# costs: a Draft reservation can simply be moved, a Planted one has
@@ -2067,10 +2095,20 @@ class BlockCalendar:
 		out = []
 		for b in self.blocks:
 			free = self.free_beds(b, start, end)
+			# What is standing there, whether or not there is room for more. A block
+			# that fits is still a block with a crop on it, and the picker could only
+			# say "52 free" -- never what was using the other 28, nor what grew there
+			# last, which is what a grower actually reads a block by.
+			on_it = [{"planting": r["holder"], "variety": r.get("variety"),
+			          "beds": r["beds"], "frees_on": str(r["end"]),
+			          "in_ground": r["in_ground"]}
+			         for r in sorted(b["busy"], key=lambda x: x["end"])
+			         if not (end <= r["start"] or start >= r["end"])]
 			if free >= beds:
 				out.append({"block": b["name"], "total_beds": b["beds"],
 				            "free_beds": free, "fits": True, "free_from": None,
-				            "weeks_late": 0, "blockers": []})
+				            "weeks_late": 0, "blockers": [],
+				            "standing": on_it, "history": b.get("history") or []})
 				continue
 			# What holds it, and when it would be free enough.
 			clash = [r for r in b["busy"]
@@ -2091,6 +2129,8 @@ class BlockCalendar:
 				              "uproot_weeks_early": max(
 					              0, (r["end"] - start).days // 7)}
 				             for r in sorted(clash, key=lambda x: x["end"])[:3]],
+				"standing": on_it,
+				"history": b.get("history") or [],
 			})
 		out.sort(key=lambda c: (not c["fits"],
 		                        c["free_beds"] - beds if c["fits"] else 0,
