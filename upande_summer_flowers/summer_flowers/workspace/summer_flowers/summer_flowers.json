@@ -10,7 +10,7 @@
  "icon": "leaf",
  "idx": 0,
  "indicator_color": "green",
- "is_hidden": 0,
+ "is_hidden": 1,
  "label": "Summer Flowers",
  "link_type": "DocType",
  "links": [

@@ -78,11 +78,23 @@ fixtures = [
 		                            "Reopen", "Revise", "Mark Planted",
 		                            "Mark Uprooted", "Cancel Planting"]]],
 	},
-	# The Workspace itself is NOT a fixture: it belongs to the module, so
-	# developer_mode exports it to summer_flowers/workspace/ and migrate syncs it
-	# from there. Shipping it both ways gives two sources of truth that drift --
-	# and the one that matters is the `content` block layout, which decides what
-	# the page actually draws.
+	{
+		# The page itself. Like the Packhouse workspace this is modelled on, the
+		# workspace draws exactly one thing -- this block -- so the tiles, their
+		# routes and their colours live here rather than in twenty-four link rows.
+		"dt": "Custom HTML Block",
+		"filters": [["name", "in", ["Summer Flowers Navigation"]]],
+	},
+	{
+		# "Summer Flowers Planning" carries no module, so developer_mode cannot
+		# export it to summer_flowers/workspace/ and migrate's workspace sync never
+		# looks at it. That is deliberate -- it is the one a site can rearrange in
+		# the UI -- but it still has to reach a new site somehow, and a fixture is
+		# the only route left. The module-owned "Summer Flowers" workspace ships
+		# hidden beside it; see summer_flowers/workspace/summer_flowers/.
+		"dt": "Workspace",
+		"filters": [["name", "in", ["Summer Flowers Planning"]]],
+	},
 	{
 		"dt": "Workspace Sidebar",
 		"filters": [["title", "in", ["Summer Flowers"]]],
@@ -105,14 +117,14 @@ fixtures = [
 #
 # /desk, not /app: this is the base the sidebar itself builds links with
 # (sidebar_item.js -> "/desk/" + frappe.router.slug(...)), and frappe.router.slug
-# lowercases and hyphenates, so the workspace named "Summer Flowers" is at
-# /desk/summer-flowers.
+# lowercases and hyphenates, so the workspace named "Summer Flowers Planning"
+# is at /desk/summer-flowers-planning.
 add_to_apps_screen = [
 	{
 		"name": "upande_summer_flowers",
 		"logo": "/assets/upande_summer_flowers/images/summer_flowers.svg",
 		"title": "Summer Flowers",
-		"route": "/desk/summer-flowers",
+		"route": "/desk/summer-flowers-planning",
 	}
 ]
 

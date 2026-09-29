@@ -14,7 +14,7 @@
     "indent": 0,
     "keep_closed": 0,
     "label": "Home",
-    "link_to": "Summer Flowers",
+    "link_to": "Summer Flowers Planning",
     "link_type": "Workspace",
     "navigate_to_tab": null,
     "route_options": null,
@@ -583,7 +583,7 @@
     "url": null
    }
   ],
-  "modified": "2026-08-01 11:26:44.283756",
+  "modified": "2026-09-29 09:17:21.805710",
   "module": "Summer Flowers",
   "module_onboarding": null,
   "name": "Summer Flowers",
