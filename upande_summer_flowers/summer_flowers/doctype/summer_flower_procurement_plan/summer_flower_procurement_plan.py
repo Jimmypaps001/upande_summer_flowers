@@ -1016,6 +1016,10 @@ def build(production_plan, method=None, entry_stage=None, supplier=None,
 		doc.weekly_draw = cint(need.get("weekly_draw"))
 		doc.multiplication_cycles = cint(need.get("cycles"))
 		doc.divert_weeks = cint(need.get("divert_weeks"))
+		# The line itself is written down separately. This document says what to
+		# buy; what happens to it week by week after it lands is the motherstock
+		# plan's job, and the propagation plan is built from that.
+		doc.flags.write_motherstock_plan = True
 		doc.calculated_units = cint(need.get("calculated_units"))
 		doc.units_overridden = 1 if need.get("overridden") else 0
 		doc.sizing_basis = (need.get("basis") or "") + (
@@ -1038,6 +1042,32 @@ def build(production_plan, method=None, entry_stage=None, supplier=None,
 			"or accept that this much of the season cannot be grown here."
 		).format(wanted_beds, p.farm, beds_available, short, trimmed, len(rows))
 	doc.insert(ignore_permissions=True)
+
+	# The line, written down beside the order. This document says what to buy; the
+	# motherstock plan says what happens to it week by week once it lands, and the
+	# propagation plan is built from that rather than from here.
+	if doc.flags.get("write_motherstock_plan"):
+		from upande_summer_flowers.summer_flowers.doctype \
+			.summer_flower_motherstock_plan.summer_flower_motherstock_plan import (
+				for_plan,
+			)
+		try:
+			doc.db_set("motherstock_plan",
+			           for_plan(production_plan,
+			                    tc_to_order=cint(need.get("units")),
+			                    divert_weeks=cint(need.get("divert_weeks"))),
+			           update_modified=False)
+		except Exception:
+			# The order is the thing that must survive. A line that cannot be
+			# worked out is worth a message, not a lost procurement plan.
+			frappe.log_error(frappe.get_traceback(),
+			                 "Motherstock plan for %s" % doc.name)
+			frappe.msgprint(
+				_("The order was saved, but the week-by-week motherstock line could "
+				  "not be worked out. Open the production plan and press Plan "
+				  "Procurement again to see why."),
+				indicator="orange", title=_("No motherstock line"))
+
 	if doc.space_note:
 		frappe.msgprint(doc.space_note, indicator="orange",
 		                title=_("Not enough ground"))

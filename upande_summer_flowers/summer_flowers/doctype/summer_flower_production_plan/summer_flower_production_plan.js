@@ -853,6 +853,65 @@ function sf_propagation_section(d, frm) {
 		`<td style="padding:2px 0"><b>${v}</b>${
 			note ? ` <span class="text-muted">${esc(note)}</span>` : ""}</td></tr>`;
 
+	// A generation is not a date. A mother cuts every week, so its cuttings are
+	// stuck week after week and come online a week apart -- "gen 2 arrives" is a
+	// run of weeks, and the arrivals column is how many.
+	const gen_table = (c) => {
+		const g = (c && c.generations) || [];
+		if (!g.length) return "";
+		return `<div style="margin-top:12px"><div class="text-muted small" ` +
+			`style="text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px">` +
+			`${__("Generations")}</div>` +
+			`<table class="table table-bordered" style="font-size:.78rem;margin:0">` +
+			`<thead><tr><th>${__("Gen")}</th><th class="text-right">${__("Mothers")}</th>` +
+			`<th class="text-right">${__("Arrivals")}</th><th>${__("Starts cutting")}</th>` +
+			`<th class="text-right">${__("Cutting weeks")}</th><th>${__("Cleared")}</th>` +
+			`</tr></thead><tbody>` +
+			g.map((r) => `<tr><td>G${r.generation}</td>` +
+				`<td class="text-right">${int(r.mothers)}</td>` +
+				`<td class="text-right">${int(r.arrivals)}</td>` +
+				`<td>${day(r.first_cut_date)}</td>` +
+				`<td class="text-right">${int(r.cutting_weeks)}</td>` +
+				`<td>${day(r.expiry_date)}</td></tr>`).join("") +
+			`</tbody></table>` +
+			`<p class="text-muted small">${esc(__(
+				"Every generation is cleared on the same day, so one raised late gets "
+				+ "fewer cutting weeks rather than a life of its own."))}</p></div>`;
+	};
+
+	// The whole line, week by week. This is the thing to read: a quantity is a
+	// by-product of it, not the other way round.
+	const week_table = (c) => {
+		const t = (c && c.weeks_table) || [];
+		if (!t.length) return "";
+		const row = (r) => {
+			const hot = r.shortfall > 0;
+			return `<tr${r.event ? ' style="font-weight:600"' : ""}>` +
+				`<td>${r.week_no}</td><td>${day(r.week_start)}</td>` +
+				`<td>${esc(r.generations_live || "")}</td>` +
+				`<td class="text-right">${int(r.mothers_standing)}</td>` +
+				`<td class="text-right">${int(r.cuttings_cut)}</td>` +
+				`<td class="text-right">${r.to_multiplication ? int(r.to_multiplication) : ""}</td>` +
+				`<td class="text-right">${r.to_field ? int(r.to_field) : ""}</td>` +
+				`<td class="text-right">${r.demand ? int(r.demand) : ""}</td>` +
+				`<td class="text-right"${hot ? ' style="color:var(--red-600,#c0392b)"' : ""}>` +
+				`${hot ? int(r.shortfall) : ""}</td>` +
+				`<td>${esc(r.event || "")}</td></tr>`;
+		};
+		return `<div style="margin-top:12px"><div class="text-muted small" ` +
+			`style="text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px">` +
+			`${__("Week by week")} <span style="text-transform:none">(${t.length} ${__("weeks")})</span></div>` +
+			`<div style="max-height:320px;overflow:auto;border:1px solid var(--border-color,#e2e4e9);border-radius:6px">` +
+			`<table class="table table-bordered" style="font-size:.74rem;margin:0">` +
+			`<thead style="position:sticky;top:0;background:var(--card-bg,#fff);z-index:1">` +
+			`<tr><th>${__("Wk")}</th><th>${__("Week of")}</th><th>${__("Standing")}</th>` +
+			`<th class="text-right">${__("Mothers")}</th><th class="text-right">${__("Cut")}</th>` +
+			`<th class="text-right">${__("To mult.")}</th><th class="text-right">${__("To field")}</th>` +
+			`<th class="text-right">${__("Needs")}</th><th class="text-right">${__("Short")}</th>` +
+			`<th>${__("Event")}</th></tr></thead><tbody>` +
+			t.map(row).join("") + `</tbody></table></div></div>`;
+	};
+
 	const show = (o) => {
 		const on = !!(o && o.propagates);
 		d.set_df_property("tc_break", "hidden", on ? 0 : 1);
@@ -957,7 +1016,8 @@ function sf_propagation_section(d, frm) {
 			((o.assumed || []).length
 				? `<p class="small" style="color:var(--orange-700,#b45309)">` +
 				  (o.assumed || []).map(esc).join("<br>") + `</p>`
-				: ""));
+				: "") +
+			gen_table(c) + week_table(c));
 	};
 
 	const load = (args) => {

@@ -44,6 +44,7 @@
   "total_units_to_order",
   "pool_plants",
   "weekly_draw",
+  "motherstock_plan",
   "divert_weeks",
   "multiplication_cycles",
   "calculated_units",
@@ -278,32 +279,45 @@
    "fieldtype": "Int",
    "label": "Mother Plants To Stand",
    "read_only": 1,
-   "description": "The motherstock this plan builds: how many mother plants must be standing to cut the busiest week's cuttings. Tissue culture is bought once to raise them, and every planting in the season is then stuck with cuttings off this pool until the line expires.",
-   "depends_on": "eval:doc.pool_plants"
+   "description": "Moved to the Motherstock Plan, which is where the line is worked out week by week. Kept so older plans and reports still read back.",
+   "depends_on": "eval:doc.pool_plants",
+   "hidden": 1
   },
   {
    "fieldname": "weekly_draw",
    "fieldtype": "Int",
    "label": "Cuttings a week at the peak",
    "read_only": 1,
-   "description": "Cuttings taken off the pool in the busiest week, allowing for rooting, field establishment and the cutting reject rate.",
-   "depends_on": "eval:doc.pool_plants"
+   "description": "Moved to the Motherstock Plan, which is where the line is worked out week by week. Kept so older plans and reports still read back.",
+   "depends_on": "eval:doc.pool_plants",
+   "hidden": 1
+  },
+  {
+   "fieldname": "motherstock_plan",
+   "fieldtype": "Link",
+   "label": "Motherstock Plan",
+   "options": "Summer Flower Motherstock Plan",
+   "read_only": 1,
+   "depends_on": "eval:doc.motherstock_plan",
+   "description": "The line week by week: when each generation starts cutting, what the cut is split into, and whether the field gets what it asks for. Open it to change the plantlets or the diversion and see what happens."
   },
   {
    "fieldname": "divert_weeks",
    "fieldtype": "Int",
    "label": "Cut Diverted For (weeks)",
    "read_only": 1,
-   "description": "Weeks from the first cutting in which the WHOLE cut goes back to the propagation unit as new mothers, before any of it goes to the field. Diverting longer needs fewer plantlets but pulls the order date earlier, and past a point the block is cleared before the season's last planting.",
-   "depends_on": "eval:doc.pool_plants"
+   "description": "Moved to the Motherstock Plan, which is where the line is worked out week by week. Kept so older plans and reports still read back.",
+   "depends_on": "eval:doc.pool_plants",
+   "hidden": 1
   },
   {
    "fieldname": "multiplication_cycles",
    "fieldtype": "Int",
    "label": "Multiplication Cycles (superseded)",
    "read_only": 1,
-   "description": "How the order used to be sized: the plantlets multiplied in N sequential generations. Mothers cut every week, so generations overlap week by week instead, and the order is now sized from Cut Diverted For. Kept so a plan made under the old sum still reads back.",
-   "depends_on": "eval:doc.multiplication_cycles"
+   "description": "Moved to the Motherstock Plan, which is where the line is worked out week by week. Kept so older plans and reports still read back.",
+   "depends_on": "eval:doc.multiplication_cycles",
+   "hidden": 1
   },
   {
    "fieldname": "calculated_units",
@@ -326,7 +340,7 @@
    "fieldtype": "Small Text",
    "label": "How the order was sized",
    "read_only": 1,
-   "description": "The arithmetic, spelt out, so the number can be checked without reading code.",
+   "description": "The arithmetic, spelt out, so the number can be checked without reading code. The week-by-week working is on the Motherstock Plan.",
    "depends_on": "eval:doc.pool_plants"
   },
   {
