@@ -470,17 +470,21 @@ function source_plantlets(frm) {
 			return;
 		}
 
-		// A plan already sourcing this one is not an error to discover on Generate.
-		// Said here, with the choice: replace it, or go and look at it.
+		// A plan already sourcing this one is not a problem and not a warning. It is
+		// the document about to be revised, so it is named and left at that. Only
+		// the one case that is actually refused -- the order has gone out -- is red.
 		const had = s.existing;
+		const blocked = had && had.docstatus === 1 && had.order_date_passed;
 		const verdict =
 			(had
-				? `<p style="color:var(--${had.can_replace ? "orange" : "red"}-600,#b35309)">` +
-				  frappe.utils.escape_html(had.can_replace
-					? __("{0} already sources this plan ({1} {2}). Generating will replace it.",
-						[had.name, format_number(had.units || 0, null, 0),
-						 had.entry_stage || __("units")])
-					: had.why_not) + `</p>`
+				? (blocked
+					? `<p style="color:var(--red-600,#c0392b)">${
+						frappe.utils.escape_html(had.why_not)}</p>`
+					: `<p class="text-muted">${frappe.utils.escape_html(
+						__("Revising {0} ({1} {2}). Its lines are worked out again "
+						   + "from the choices below; it keeps its number and history.",
+							[had.name, format_number(had.units || 0, null, 0),
+							 had.entry_stage || __("units")]))}</p>`)
 				: "") +
 			(dec.reason
 				? `<p class="text-muted small">${frappe.utils.escape_html(dec.reason)}</p>`
@@ -536,27 +540,24 @@ function source_plantlets(frm) {
 				  read_only: s.beds_available ? 0 : 1,
 				  description: __("The demand is not reduced by this. It says what can be planted, not what is wanted.") },
 			],
-			primary_action_label: (s.existing && s.existing.can_replace)
-				? __("Replace {0}", [s.existing.name]) : __("Generate"),
+			// "Update", not "Replace": the existing plan is revised in place rather
+			// than deleted and rewritten, so there is nothing to confirm losing. The
+			// confirmation that used to sit here cost the reader a second decision
+			// to get to the only thing they came for.
+			primary_action_label: s.existing
+				? __("Update {0}", [s.existing.name]) : __("Generate"),
 			primary_action(values) {
-				const had = s.existing;
-				if (had && !had.can_replace) {
-					frappe.msgprint({ title: __("Cannot be replaced"),
-						indicator: "red", message: had.why_not });
-					return;
-				}
-				if (had && !d.__confirmed) {
-					frappe.confirm(
-						__("Replace {0}? Its lines go and a fresh set is worked out "
-						   + "from the choices above.", [had.name]),
-						() => { d.__confirmed = true; d.primary_action(d.get_values()); });
-					return;
-				}
 				// The dialog used to hide itself before the call. A server refusal --
 				// "SFPROC-… already sources this plan" is the common one -- then had
 				// no dialog to appear over and went nowhere at all: the button did
 				// nothing, said nothing, and the reader pressed it again. It stays up
 				// until there is something to show for it.
+				if (s.existing && s.existing.docstatus === 1
+					&& s.existing.order_date_passed) {
+					frappe.msgprint({ title: __("The order has already gone out"),
+						indicator: "red", message: s.existing.why_not });
+					return;
+				}
 				d.get_primary_btn().prop("disabled", true);
 				frappe.call({ method: M + "build", freeze: true,
 					freeze_message: __("Working out the orders..."),
@@ -565,7 +566,7 @@ function source_plantlets(frm) {
 						fit_to_space: values.fit_to_space ? 1 : 0,
 						divert_weeks: d.get_value("tc_divert"),
 						tc_qty: d.get_value("tc_qty") || null,
-						replace: s.existing ? 1 : 0 } })
+						replace: 1 } })
 					.then((res) => {
 						if (!res || !res.message) return;
 						d.hide();

@@ -446,12 +446,15 @@ def space_at(farm):
 
 
 def existing_for(production_plan):
-	"""The procurement plan already sourcing this one, and whether it can go.
+	"""The procurement plan already sourcing this one, and whether it can be revised.
 
-	A draft is a working document and can be replaced. An approved plan has raised
-	its orders, and once its order date has come round the material is on its way --
-	replacing it then would quietly buy the same thing twice, so it is refused and
-	the reason is said rather than the button doing nothing.
+	Almost always it can. A draft is rewritten in place, keeping its number and its
+	history; a submitted plan is cancelled and amended, which is frappe's own way
+	of revising one and leaves the original there to read.
+
+	The single refusal is a submitted plan whose order date has come round: the
+	material is on its way, and rewriting the order then buys it twice. That is not
+	a warning about tidiness, so it is the only one left.
 	"""
 	row = frappe.db.get_value(
 		"Summer Flower Procurement Plan",
@@ -464,15 +467,15 @@ def existing_for(production_plan):
 	ordered = bool(row.first_order_by and getdate(row.first_order_by) <= today)
 	if row.docstatus == 1 and ordered:
 		why = _("{0} is approved and its order was due {1}, which has passed -- the "
-		        "material is on its way. Replacing it now would order it a second "
+		        "material is on its way. Revising it now would order it a second "
 		        "time. Cancel {0} first if that order never went out."
 		        ).format(row.name, frappe.format(row.first_order_by,
 		                                         {"fieldtype": "Date"}))
-	elif row.docstatus == 1:
-		why = _("{0} is approved. Cancel it first: replacing it would leave its "
-		        "material requests behind with nothing to answer for them."
-		        ).format(row.name)
 	else:
+		# A submitted plan with nothing ordered yet is amended, not refused. It used
+		# to be refused on the grounds that its material requests would be left
+		# behind -- but cancelling it cancels those with it, which is exactly what
+		# amending is for.
 		why = None
 	return {
 		"name": row.name, "docstatus": row.docstatus, "status": row.status,
@@ -804,18 +807,30 @@ def build(production_plan, method=None, entry_stage=None, supplier=None,
 			plants_per_bed_for,
 		)
 
+	# A plan that already sources this one is revised, not replaced. It used to be
+	# deleted and a new one written in its place, behind a warning and a
+	# confirmation -- which cost the reader two decisions to get to the only thing
+	# they wanted, and took the document's number, its comments and its history
+	# with it every time a number changed.
+	#
+	# The one case that is still refused is a submitted plan whose order date has
+	# come round: the material is on its way, and rewriting the order then buys it
+	# twice. That is not a warning about tidiness, it is money.
 	have = existing_for(p.name)
-	if have and not cint(replace):
-		frappe.throw(
-			_("{0} already sources {1}. Replace it, or open it -- raising a second "
-			  "set of orders for one plan orders the material twice.")
-			.format(have["name"], p.name),
-			title=_("Already sourced"))
-	if have and cint(replace):
-		if not have["can_replace"]:
-			frappe.throw(have["why_not"], title=_("Cannot be replaced"))
-		frappe.delete_doc("Summer Flower Procurement Plan", have["name"], force=True,
-		                  ignore_permissions=True)
+	revising = None
+	if have:
+		if have["docstatus"] == 1 and have["order_date_passed"]:
+			frappe.throw(have["why_not"], title=_("The order has already gone out"))
+		if have["docstatus"] == 1:
+			# Submitted but nothing ordered yet. Frappe's own way to revise a
+			# submitted document is to cancel it and amend, which keeps the chain
+			# rather than pretending the first one never happened.
+			old_doc = frappe.get_doc("Summer Flower Procurement Plan", have["name"])
+			old_doc.flags.ignore_permissions = True
+			old_doc.cancel()
+			revising = have["name"]
+		else:
+			revising = have["name"]
 
 	# The route decides how the material is got; a person only picks WHICH buyable
 	# stage, and only when the protocol offers more than one. A choice that
@@ -901,7 +916,22 @@ def build(production_plan, method=None, entry_stage=None, supplier=None,
 			  "can be sized from it.").format(entry_stage),
 			title=_("The order cannot be sized"))
 
-	doc = frappe.new_doc("Summer Flower Procurement Plan")
+	amended_from = None
+	if revising:
+		prev = frappe.get_doc("Summer Flower Procurement Plan", revising)
+		if prev.docstatus == 2:
+			# Cancelled a moment ago: amend it, so the new one carries its number
+			# forward and the old one is still there to read.
+			amended_from = prev.name
+			doc = frappe.new_doc("Summer Flower Procurement Plan")
+		else:
+			# A draft is just rewritten. Same document, same name, same comments.
+			doc = prev
+			for table in ("requirements",):
+				doc.set(table, [])
+	else:
+		doc = frappe.new_doc("Summer Flower Procurement Plan")
+	doc.amended_from = amended_from
 	doc.production_plan = p.name
 	doc.variety, doc.farm, doc.company = p.variety, p.farm, p.company
 	doc.season, doc.protocol = p.get("season"), v.name
@@ -1041,7 +1071,11 @@ def build(production_plan, method=None, entry_stage=None, supplier=None,
 			"reduced by this -- it still asks for {0} beds. Either find more land, "
 			"or accept that this much of the season cannot be grown here."
 		).format(wanted_beds, p.farm, beds_available, short, trimmed, len(rows))
-	doc.insert(ignore_permissions=True)
+	if doc.is_new():
+		doc.insert(ignore_permissions=True)
+	else:
+		doc.flags.ignore_permissions = True
+		doc.save()
 
 	# The line, written down beside the order. This document says what to buy; the
 	# motherstock plan says what happens to it week by week once it lands, and the
