@@ -239,7 +239,7 @@ def ramp_ratio(week_in_pool, ramp):
 
 def simulate(p, tc_qty, order_date, num_cycles=None, farm_overrides=None,
              default_to_prop_pct=0.0, extra_weeks=None, max_bench_sqm=None,
-             horizon_weeks=None, demand_by_sw=None):
+             horizon_weeks=None, demand_by_sw=None, divert_until_sw=None):
 	"""Walk every week forward, letting diverted cuttings build new pools.
 
 	`farm_overrides` is {sim_week: plants_to_field}; anything not overridden falls
@@ -250,6 +250,13 @@ def simulate(p, tc_qty, order_date, num_cycles=None, farm_overrides=None,
 	standing divert percentage compounds without bound and runs to absurd numbers
 	within a couple of years. Bench space is what actually stops it, so once the
 	bench is full the diversion is trimmed to what fits and the week is flagged.
+
+	`divert_until_sw` ends the multiplying on a week. After it the cut goes to the
+	field and whatever the field has not asked for is simply not taken -- a mother
+	makes cuttings whether or not anyone wants them, and leaving them on the plant
+	is neither a planting nor a loss. Without this, every week's surplus was banked
+	as new mothers whose surplus was banked in turn, which is how a plan for
+	550,000 plants came back proposing a pool of 71 million.
 	"""
 	farm_overrides = {int(k): int(v) for k, v in (farm_overrides or {}).items()}
 	# Derived unless a caller insists, so the answer to "how many cycles" comes
@@ -419,6 +426,11 @@ def simulate(p, tc_qty, order_date, num_cycles=None, farm_overrides=None,
 		else:
 			to_farm = to_prop = 0
 
+		# ---- multiplying stops on its week; after it, surplus is left on the plant
+		not_taken = 0
+		if divert_until_sw is not None and sw >= divert_until_sw and to_prop > 0:
+			not_taken, to_prop = to_prop, 0
+
 		# ---- diverted cuttings become a pool of their own later
 		bench_limited = False
 		diverted_planted = 0
@@ -502,6 +514,9 @@ def simulate(p, tc_qty, order_date, num_cycles=None, farm_overrides=None,
 			"bench_limited": bench_limited,
 			"cuttings_potted": diverted_planted,
 			"cuttings_wasted": wasted,
+			# Not wasted: once multiplying has stopped, a cutting the field has not
+			# asked for is left on the mother rather than taken and thrown away.
+			"cuttings_not_taken": not_taken,
 			"ms_plants": _pool_plants(cycles, prop_pools, sw, life),
 			"events": events.get(sw, []),
 		})
@@ -576,6 +591,7 @@ def simulate(p, tc_qty, order_date, num_cycles=None, farm_overrides=None,
 			"cuttings_to_prop": to_prop_total,
 			"cuttings_potted": sum(r["cuttings_potted"] for r in rows),
 			"cuttings_wasted": sum(r["cuttings_wasted"] for r in rows),
+			"cuttings_not_taken": sum(r["cuttings_not_taken"] for r in rows),
 			"peak_ms_plants": peak.get("ms_plants", 0),
 			"peak_ms_week": peak.get("label"),
 			"peak_bench_sqm": peak.get("bench_sqm", 0),
