@@ -1,0 +1,311 @@
+{
+ "actions": [],
+ "allow_rename": 0,
+ "autoname": "naming_series:",
+ "creation": "2026-09-29 00:00:00.000000",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "naming_series",
+  "what_section",
+  "production_plan",
+  "variety",
+  "farm",
+  "cb_what",
+  "protocol",
+  "company",
+  "season",
+  "decision_section",
+  "tc_to_order",
+  "divert_weeks",
+  "cb_decision",
+  "generations",
+  "cuttings_per_mother_per_week",
+  "outcome_section",
+  "order_by_date",
+  "tc_arrival_date",
+  "first_cut_date",
+  "line_end_date",
+  "cb_outcome",
+  "peak_pool",
+  "plants_to_field",
+  "cuttings_required",
+  "cb_outcome_2",
+  "weeks_met",
+  "weeks_required",
+  "covers",
+  "shortfall",
+  "notes",
+  "gen_section",
+  "generation_table",
+  "weeks_section",
+  "schedule",
+  "amended_from"
+ ],
+ "fields": [
+  {
+   "fieldname": "naming_series",
+   "fieldtype": "Select",
+   "label": "Series",
+   "options": "SFMSP-.YYYY.-.#####",
+   "hidden": 1,
+   "default": "SFMSP-.YYYY.-.#####"
+  },
+  {
+   "fieldname": "what_section",
+   "fieldtype": "Section Break",
+   "label": "What this plans for"
+  },
+  {
+   "fieldname": "production_plan",
+   "fieldtype": "Link",
+   "label": "Production Plan",
+   "options": "Summer Flower Production Plan",
+   "reqd": 1
+  },
+  {
+   "fieldname": "variety",
+   "fieldtype": "Link",
+   "label": "Variety",
+   "options": "Item",
+   "read_only": 1
+  },
+  {
+   "fieldname": "farm",
+   "fieldtype": "Link",
+   "label": "Farm",
+   "options": "Farm",
+   "read_only": 1
+  },
+  {
+   "fieldname": "cb_what",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "protocol",
+   "fieldtype": "Link",
+   "label": "Protocol Version",
+   "options": "Crop Protocol Version",
+   "read_only": 1
+  },
+  {
+   "fieldname": "company",
+   "fieldtype": "Link",
+   "label": "Company",
+   "options": "Company"
+  },
+  {
+   "fieldname": "season",
+   "fieldtype": "Data",
+   "label": "Season",
+   "read_only": 1
+  },
+  {
+   "fieldname": "decision_section",
+   "fieldtype": "Section Break",
+   "label": "The decision",
+   "description": "Two numbers, and they trade against each other. Buying fewer plantlets means diverting the cut for longer, which means ordering earlier. Change either and press Rebuild."
+  },
+  {
+   "fieldname": "tc_to_order",
+   "fieldtype": "Int",
+   "label": "Plantlets To Order",
+   "reqd": 1
+  },
+  {
+   "fieldname": "divert_weeks",
+   "fieldtype": "Int",
+   "label": "Cut Diverted For (weeks)",
+   "description": "Weeks from the first cutting in which the WHOLE cut goes back to the propagation unit as new mothers. After them the cut goes to the field, and what the field has not asked for is left on the mother."
+  },
+  {
+   "fieldname": "cb_decision",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "generations",
+   "fieldtype": "Int",
+   "label": "Generations",
+   "read_only": 1,
+   "description": "Not something you set. A mother cuts every week, so generations overlap a week apart rather than queueing up; how many there are follows from how long the cut is diverted."
+  },
+  {
+   "fieldname": "cuttings_per_mother_per_week",
+   "fieldtype": "Float",
+   "label": "Cuttings Per Mother Per Week",
+   "read_only": 1,
+   "description": "Off the protocol. Every figure below scales with it."
+  },
+  {
+   "fieldname": "outcome_section",
+   "fieldtype": "Section Break",
+   "label": "What it gives"
+  },
+  {
+   "fieldname": "order_by_date",
+   "fieldtype": "Date",
+   "label": "Order Plantlets By",
+   "read_only": 1
+  },
+  {
+   "fieldname": "tc_arrival_date",
+   "fieldtype": "Date",
+   "label": "Plantlets Arrive",
+   "read_only": 1
+  },
+  {
+   "fieldname": "first_cut_date",
+   "fieldtype": "Date",
+   "label": "First Cutting",
+   "read_only": 1
+  },
+  {
+   "fieldname": "line_end_date",
+   "fieldtype": "Date",
+   "label": "Block Cleared",
+   "read_only": 1,
+   "description": "The whole block goes at once, one motherstock life after the first cut. Nothing in it outlives this."
+  },
+  {
+   "fieldname": "cb_outcome",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "peak_pool",
+   "fieldtype": "Int",
+   "label": "Mother Plants At The Peak",
+   "read_only": 1
+  },
+  {
+   "fieldname": "plants_to_field",
+   "fieldtype": "Int",
+   "label": "Cuttings To The Field",
+   "read_only": 1
+  },
+  {
+   "fieldname": "cuttings_required",
+   "fieldtype": "Int",
+   "label": "Cuttings The Plan Asks For",
+   "read_only": 1
+  },
+  {
+   "fieldname": "cb_outcome_2",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "weeks_met",
+   "fieldtype": "Int",
+   "label": "Planting Weeks Met",
+   "read_only": 1
+  },
+  {
+   "fieldname": "weeks_required",
+   "fieldtype": "Int",
+   "label": "Planting Weeks",
+   "read_only": 1
+  },
+  {
+   "fieldname": "covers",
+   "fieldtype": "Check",
+   "label": "Covers Every Week",
+   "read_only": 1
+  },
+  {
+   "fieldname": "shortfall",
+   "fieldtype": "Int",
+   "label": "Cuttings Short",
+   "read_only": 1,
+   "depends_on": "eval:doc.shortfall"
+  },
+  {
+   "fieldname": "notes",
+   "fieldtype": "Small Text",
+   "label": "How it was worked out",
+   "read_only": 1
+  },
+  {
+   "fieldname": "gen_section",
+   "fieldtype": "Section Break",
+   "label": "Generations"
+  },
+  {
+   "fieldname": "generation_table",
+   "fieldtype": "Table",
+   "label": "Generations",
+   "options": "Summer Flower Motherstock Generation",
+   "read_only": 1
+  },
+  {
+   "fieldname": "weeks_section",
+   "fieldtype": "Section Break",
+   "label": "Week by week"
+  },
+  {
+   "fieldname": "schedule",
+   "fieldtype": "Table",
+   "label": "Schedule",
+   "options": "Summer Flower Motherstock Week",
+   "read_only": 1
+  },
+  {
+   "fieldname": "amended_from",
+   "fieldtype": "Link",
+   "label": "Amended From",
+   "options": "Summer Flower Motherstock Plan",
+   "no_copy": 1,
+   "print_hide": 1,
+   "read_only": 1
+  }
+ ],
+ "index_web_pages_for_search": 1,
+ "links": [],
+ "modified": "2026-09-29 00:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Summer Flowers",
+ "name": "Summer Flower Motherstock Plan",
+ "naming_rule": "By \"Naming Series\" field",
+ "owner": "Administrator",
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": [],
+ "title_field": "variety",
+ "track_changes": 1,
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Agriculture Manager",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "create": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Agriculture User",
+   "share": 1,
+   "write": 1
+  }
+ ]
+}

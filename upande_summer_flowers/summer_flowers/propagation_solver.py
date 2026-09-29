@@ -283,8 +283,10 @@ def recommend(plan, tc=None, divert_weeks=None):
 			r = least_tc_for(plan.protocol, chosen_d, demand, first_sticking, loss)
 			at_d = r if (r and r.get("covers")) else None
 		chosen_tc = (at_d or pick or {}).get("tc")
-	detail = (evaluate(plan.protocol, chosen_tc, chosen_d, demand, first_sticking,
-	                   loss) if chosen_tc else None)
+	# The chosen pair comes back with its whole schedule, because the week list is
+	# the thing the reader is here to look at -- the quantity is a by-product.
+	detail = (schedule_for(plan.protocol, chosen_tc, chosen_d, demand,
+	                       first_sticking, loss) if chosen_tc else None)
 	if detail:
 		detail.pop("sim", None)
 		detail["order_late"] = getdate(detail["order_by"]) < today
@@ -369,3 +371,111 @@ def options(production_plan, tc=None, divert_weeks=None):
 	"""Everything the propagation dialog draws, for one production plan."""
 	plan = frappe.get_doc("Summer Flower Production Plan", production_plan)
 	return recommend(plan, tc=tc, divert_weeks=divert_weeks)
+
+
+def _generation_of(start_sw, first_cut_sw, estab):
+	"""Which generation a pool coming online in `start_sw` belongs to.
+
+	Generations are bands one establishment wide, counted from the first cut of
+	the plantlets. Gen 1 is what the plantlets became. Cuttings taken off gen 1
+	establish one band later and are gen 2; cuttings taken once gen 2 is cutting
+	are gen 3, and so on.
+
+	Within a band the pools arrive a week apart rather than together, because a
+	mother cuts every week -- so "gen 2 arrives" is a run of weeks, not a date.
+	That is the whole difference from counting multiplication cycles, and it is
+	why the number of generations follows from how long the cut is diverted
+	instead of being set on its own.
+	"""
+	if not estab or start_sw <= first_cut_sw:
+		return 1
+	return 1 + max(1, int(round((start_sw - first_cut_sw) / float(estab))))
+
+
+def schedule_for(version, tc, divert_weeks, demand, first_sticking, tc_loss_pct=0.0):
+	"""The line week by week, and the generations that make it up.
+
+	This is what the reader actually wants to see: not a quantity, but when each
+	generation starts cutting, how many mothers are standing that week, how the
+	week's cut splits, and whether the field got what it asked for.
+	"""
+	p = ls.params_from_version(version, TC_IS_ONE_MOTHER)
+	res = evaluate(version, tc, divert_weeks, demand, first_sticking, tc_loss_pct)
+	if not res:
+		return None
+	sim = res.pop("sim")
+	order = getdate(res["order_by"])
+	first_cut_sw = res["first_cut_sw"]
+	line_end = res["line_end_sw"] or 0
+	estab = cint(p.get("cutting_to_mother_weeks")) or cint(p["ms_establishment_weeks"])
+
+	def sw_of(d):
+		return (getdate(d) - order).days // 7
+
+	demand_by_sw = {sw_of(d): n for d, n in demand.items() if sw_of(d) >= 0}
+
+	# ---- the generations, as bands rather than dates
+	bands = {}
+	arriving = res["arriving"]
+	bands[1] = {"generation": 1, "mothers": arriving,
+	            "first_sw": first_cut_sw, "last_sw": first_cut_sw, "pools": 1}
+	for pool in sim.get("prop_pool_rows") or []:
+		s = cint(pool.get("ready_sw"))
+		g = _generation_of(s, first_cut_sw, estab)
+		b = bands.setdefault(g, {"generation": g, "mothers": 0,
+		                         "first_sw": s, "last_sw": s, "pools": 0})
+		b["mothers"] += cint(pool.get("plants"))
+		b["first_sw"] = min(b["first_sw"], s)
+		b["last_sw"] = max(b["last_sw"], s)
+		b["pools"] += 1
+
+	generations = []
+	for g in sorted(bands):
+		b = bands[g]
+		generations.append({
+			"generation": g,
+			"mothers": b["mothers"],
+			"arrivals": b["pools"],
+			"first_cut_date": str(add_days(order, 7 * b["first_sw"])),
+			"last_arrival_date": str(add_days(order, 7 * b["last_sw"])),
+			"stuck_date": str(add_days(order, 7 * max(0, b["first_sw"] - estab)))
+			if g > 1 else None,
+			# The block is cleared as one, so a later generation simply gets less.
+			"cutting_weeks": max(0, line_end - b["first_sw"]),
+			"expiry_date": str(add_days(order, 7 * line_end)) if line_end else None,
+		})
+	gen_start = {b["first_sw"]: g for g, b in bands.items()}
+
+	# ---- the weeks
+	rows, running = [], 0
+	for r in sim["rows"]:
+		sw = cint(r["sw"])
+		if sw < first_cut_sw or (line_end and sw > line_end):
+			continue
+		to_field = cint(r.get("to_farm"))
+		running += to_field
+		need = cint(demand_by_sw.get(sw, 0))
+		live = sorted({g for g, b in bands.items() if b["first_sw"] <= sw < line_end})
+		event = ""
+		if sw in gen_start and gen_start[sw] > 1:
+			event = _("Gen {0} starts cutting").format(gen_start[sw])
+		elif sw == first_cut_sw:
+			event = _("Gen 1 first cut")
+		elif line_end and sw == line_end:
+			event = _("Block cleared")
+		rows.append({
+			"week_no": sw - first_cut_sw + 1,
+			"week_start": str(add_days(order, 7 * sw)),
+			"event": event,
+			"generations_live": ", ".join("G%d" % g for g in live),
+			"mothers_standing": cint(r.get("ms_plants")),
+			"cuttings_cut": cint(r.get("total_cap")),
+			"to_multiplication": cint(r.get("to_prop")),
+			"to_field": to_field,
+			"cumulative_to_field": running,
+			"demand": need,
+			"shortfall": max(0, need - to_field),
+		})
+	res["generations"] = generations
+	res["weeks_table"] = rows
+	return res

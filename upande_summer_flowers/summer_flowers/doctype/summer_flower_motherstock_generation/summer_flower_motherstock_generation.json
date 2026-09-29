@@ -1,0 +1,80 @@
+{
+ "actions": [],
+ "allow_rename": 0,
+ "creation": "2026-09-29 00:00:00.000000",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "generation",
+  "mothers",
+  "arrivals",
+  "stuck_date",
+  "first_cut_date",
+  "cutting_weeks",
+  "expiry_date"
+ ],
+ "fields": [
+  {
+   "fieldname": "generation",
+   "fieldtype": "Int",
+   "label": "Gen",
+   "in_list_view": 1,
+   "columns": 1
+  },
+  {
+   "fieldname": "mothers",
+   "fieldtype": "Int",
+   "label": "Mother Plants",
+   "in_list_view": 1,
+   "columns": 2
+  },
+  {
+   "fieldname": "arrivals",
+   "fieldtype": "Int",
+   "label": "Arrivals",
+   "in_list_view": 1,
+   "columns": 1,
+   "description": "A generation does not arrive on a date. A mother cuts every week, so its cuttings are stuck week after week and come online a week apart. This is how many of those arrivals there are."
+  },
+  {
+   "fieldname": "stuck_date",
+   "fieldtype": "Date",
+   "label": "Stuck From",
+   "in_list_view": 1,
+   "columns": 2
+  },
+  {
+   "fieldname": "first_cut_date",
+   "fieldtype": "Date",
+   "label": "Starts Cutting",
+   "in_list_view": 1,
+   "columns": 2
+  },
+  {
+   "fieldname": "cutting_weeks",
+   "fieldtype": "Int",
+   "label": "Cutting Weeks",
+   "in_list_view": 1,
+   "columns": 1,
+   "description": "Less for a later generation: the block is cleared as one, so a generation raised late dies with the first one rather than living a full life of its own."
+  },
+  {
+   "fieldname": "expiry_date",
+   "fieldtype": "Date",
+   "label": "Cleared"
+  }
+ ],
+ "index_web_pages_for_search": 1,
+ "links": [],
+ "modified": "2026-09-29 00:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Summer Flowers",
+ "name": "Summer Flower Motherstock Generation",
+ "owner": "Administrator",
+ "permissions": [],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": [],
+ "istable": 1,
+ "editable_grid": 1
+}

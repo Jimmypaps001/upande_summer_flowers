@@ -562,8 +562,12 @@ def simulate(p, tc_qty, order_date, num_cycles=None, farm_overrides=None,
 			"full_sw": x["start_sw"] + len(ramp) - 1,
 			"full_date": str(base + datetime.timedelta(
 				weeks=x["start_sw"] + len(ramp) - 1)),
-			"ends_sw": x["start_sw"] + life,
-			"ends_date": str(base + datetime.timedelta(weeks=x["start_sw"] + life)),
+			# The block is cleared as one, so a pool ends at the clearance if that
+			# comes first. Reporting its own age here while the simulation ran to
+			# the clearance put two different end dates on the same pool.
+			"ends_sw": min(x["start_sw"] + life, x.get("line_end_sw", 10 ** 9)),
+			"ends_date": str(base + datetime.timedelta(
+				weeks=min(x["start_sw"] + life, x.get("line_end_sw", 10 ** 9)))),
 			"weekly_capacity": int(round(x["plants"] * per_plant)),
 			"establishment_weeks": x["start_sw"] - x["src_sw"],
 		} for x in prop_pools],

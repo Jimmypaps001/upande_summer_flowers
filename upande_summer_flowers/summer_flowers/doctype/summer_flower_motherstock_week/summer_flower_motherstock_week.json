@@ -1,0 +1,112 @@
+{
+ "actions": [],
+ "allow_rename": 0,
+ "creation": "2026-09-29 00:00:00.000000",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "week_no",
+  "week_start",
+  "generations_live",
+  "mothers_standing",
+  "cuttings_cut",
+  "to_multiplication",
+  "to_field",
+  "cumulative_to_field",
+  "demand",
+  "shortfall",
+  "event"
+ ],
+ "fields": [
+  {
+   "fieldname": "week_no",
+   "fieldtype": "Int",
+   "label": "Wk",
+   "in_list_view": 1,
+   "columns": 1
+  },
+  {
+   "fieldname": "week_start",
+   "fieldtype": "Date",
+   "label": "Week Of",
+   "in_list_view": 1,
+   "columns": 1
+  },
+  {
+   "fieldname": "generations_live",
+   "fieldtype": "Data",
+   "label": "Standing",
+   "in_list_view": 1,
+   "columns": 1
+  },
+  {
+   "fieldname": "mothers_standing",
+   "fieldtype": "Int",
+   "label": "Mother Plants",
+   "in_list_view": 1,
+   "columns": 1
+  },
+  {
+   "fieldname": "cuttings_cut",
+   "fieldtype": "Int",
+   "label": "Cut",
+   "in_list_view": 1,
+   "columns": 1
+  },
+  {
+   "fieldname": "to_multiplication",
+   "fieldtype": "Int",
+   "label": "To Multiplication",
+   "in_list_view": 1,
+   "columns": 1
+  },
+  {
+   "fieldname": "to_field",
+   "fieldtype": "Int",
+   "label": "To Field",
+   "in_list_view": 1,
+   "columns": 1
+  },
+  {
+   "fieldname": "cumulative_to_field",
+   "fieldtype": "Int",
+   "label": "Cumulative",
+   "in_list_view": 1,
+   "columns": 1
+  },
+  {
+   "fieldname": "demand",
+   "fieldtype": "Int",
+   "label": "Field Needs",
+   "in_list_view": 1,
+   "columns": 1
+  },
+  {
+   "fieldname": "shortfall",
+   "fieldtype": "Int",
+   "label": "Short",
+   "in_list_view": 1,
+   "columns": 1
+  },
+  {
+   "fieldname": "event",
+   "fieldtype": "Data",
+   "label": "Event",
+   "in_list_view": 1,
+   "columns": 2
+  }
+ ],
+ "index_web_pages_for_search": 1,
+ "links": [],
+ "modified": "2026-09-29 00:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Summer Flowers",
+ "name": "Summer Flower Motherstock Week",
+ "owner": "Administrator",
+ "permissions": [],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": [],
+ "istable": 1,
+ "editable_grid": 0
+}
