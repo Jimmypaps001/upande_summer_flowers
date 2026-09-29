@@ -514,17 +514,19 @@ function source_plantlets(frm) {
 				// bought as rooted plants buys one per plant and there is nothing
 				// to choose.
 				{ fieldname: "tc_break", fieldtype: "Section Break",
-				  label: __("Tissue culture"), hidden: 1 },
+				  label: __("Propagation"), hidden: 1 },
 				{ fieldname: "tc_working", fieldtype: "HTML" },
-				{ fieldname: "tc_cycles", label: __("Multiplication cycles"),
+				{ fieldname: "tc_qty", label: __("Plantlets to order"),
 				  fieldtype: "Int",
-				  description: __("Bought once and multiplied. Each cycle is fewer "
-					+ "plantlets and one more establishment to wait through, so the "
-					+ "order goes in earlier and the line has less of its life left "
-					+ "to cut.") },
-				{ fieldname: "tc_qty", label: __("Plantlets to buy"), fieldtype: "Int",
-				  description: __("Leave it as the sum works it out, or type the "
-					+ "figure being ordered. Both are kept.") },
+				  description: __("The recommendation is the cheapest order that "
+					+ "covers every planting week. Type another figure to see what "
+					+ "it does to the cover.") },
+				{ fieldname: "tc_divert", label: __("Divert the cut for"),
+				  fieldtype: "Int",
+				  description: __("Weeks. Everything cut in them goes back to the "
+					+ "propagation unit as new mothers; after them the cut goes to "
+					+ "the field. Diverting longer needs fewer plantlets but pulls "
+					+ "the order date earlier.") },
 				{ fieldname: "tc_table", fieldtype: "HTML" },
 				{ fieldname: "space_break", fieldtype: "Section Break", label: __("Ground") },
 				{ fieldname: "space_note", fieldtype: "HTML",
@@ -561,7 +563,7 @@ function source_plantlets(frm) {
 					args: { production_plan: frm.doc.name, method: values.method,
 						entry_stage: values.entry_stage, supplier: values.supplier,
 						fit_to_space: values.fit_to_space ? 1 : 0,
-						cycles: d.get_value("tc_cycles") || null,
+						divert_weeks: d.get_value("tc_divert"),
 						tc_qty: d.get_value("tc_qty") || null,
 						replace: s.existing ? 1 : 0 } })
 					.then((res) => {
@@ -583,7 +585,7 @@ function source_plantlets(frm) {
 		d.fields_dict.entry_stage.df.onchange = note;
 		d.show();
 		note();
-		sf_tc_section(d, frm, M);
+		sf_propagation_section(d, frm);
 		// The no-route case never reaches here: it is refused above, before a form
 		// the reader cannot use is put in front of them.
 		if (s.stale_version) {
@@ -827,135 +829,190 @@ const SF_ALLOC_CSS = `<style>
 // pool the busiest week needs, divided by what the multiplication turns one
 // plantlet into. That division is the whole decision, and it was happening
 // invisibly inside build(): the reader saw a number and no way to move it.
-function sf_tc_section(d, frm, M) {
+// ------------------------------------------------------- propagation decision
+// Two knobs, and they trade against each other: how many plantlets to buy, and
+// how many weeks to send the whole cut back before any of it goes to the field.
+// Buy fewer and you divert longer, which means ordering earlier. Everything else
+// on this panel is a consequence of those two and the protocol, so none of it is
+// editable.
+//
+// It used to ask for "multiplication cycles", which is not a thing anyone can
+// choose: a mother cuts every week, so generations overlap week by week rather
+// than queueing up one establishment apart. The number that replaced it is the
+// one the propagation unit actually acts on.
+function sf_propagation_section(d, frm) {
+	const M = "upande_summer_flowers.summer_flowers.propagation_solver.";
 	const int = (n) => format_number(n || 0, null, 0);
 	const esc = frappe.utils.escape_html;
+	const day = (x) => (x ? esc(frappe.datetime.str_to_user(x)) : "—");
 	let busy = false;
-	let current = null;
+	let last = { tc: null, divert: null };
 
-	// Not df.onchange and not set_value's side effects. Frappe fires df.onchange
-	// for a user edit and not for a programmatic set, so the row click set the
-	// field and nothing reloaded, while the reload that did happen wrote the old
-	// count straight back over it -- the box said 4 whatever was clicked or typed.
-	// One function does the work, and both ways in call it.
-	const pick = (cycles) => {
-		if (busy || !cycles || cycles === current) return;
-		load({ cycles: cycles });
-	};
+	const line = (k, v, note) =>
+		`<tr><td class="text-muted" style="padding:2px 12px 2px 0;white-space:nowrap">${esc(k)}</td>` +
+		`<td style="padding:2px 0"><b>${v}</b>${
+			note ? ` <span class="text-muted">${esc(note)}</span>` : ""}</td></tr>`;
 
 	const show = (o) => {
-		const on = !!(o && o.standing);
+		const on = !!(o && o.propagates);
 		d.set_df_property("tc_break", "hidden", on ? 0 : 1);
-		["tc_working", "tc_cycles", "tc_qty", "tc_table"].forEach((f) =>
+		["tc_working", "tc_qty", "tc_divert", "tc_table"].forEach((f) =>
 			d.set_df_property(f, "hidden", on ? 0 : 1));
 		if (!on) return;
-		current = o.cycles;
 
-		const bits = [
-			__("{0} plants stuck in {1}", [int(o.peak_plants), o.peak_week || "—"]),
-			__("× {0} cuttings a plant = {1} cuttings", [o.cuttings_per_plant,
-				int(o.weekly_draw)]),
-		];
-		if (o.standing_capacity) {
-			bits.push(__("− {0} off motherstock already standing = {1}",
-				[int(o.standing_capacity), int(o.net_cuttings)]));
-		}
-		bits.push(__("÷ {0} cuttings a mother a week = {1} mother plants",
-			[o.cuttings_per_mother_per_week, int(o.pool)]));
-		bits.push(__("÷ {0} from {1} multiplication cycles = <b>{2} plantlets</b>",
-			[(o.by_cycles.find((r) => r.cycles === o.cycles) || {}).factor || o.cycles,
-			 o.cycles, int(o.calculated)]));
+		const need = o.need || {};
+		const rec = o.recommended;
+		const c = o.chosen;
 
-		const warn = [];
-		if (o.order_late) {
-			warn.push(__("That order was due {0}. Fewer cycles is a later order date.",
-				[frappe.datetime.str_to_user(o.order_by)]));
+		// ---- what the plan is asking the propagation unit for
+		let head = `<p class="small" style="margin-bottom:6px">` +
+			`<b>${int(need.plants)}</b> ${__("plants")} · ` +
+			`<b>${int(need.cuttings)}</b> ${__("cuttings")} · ` +
+			`${__("first planting")} <b>${day(need.first_sticking)}</b> · ` +
+			`${__("peak week")} <b>${int(need.peak_week_cuttings)}</b></p>`;
+
+		if (!o.solvable) {
+			d.fields_dict.tc_working.$wrapper.html(head +
+				`<p class="small" style="color:var(--red-600,#c0392b)">${
+					esc(o.reason || __("No order covers this plan."))}</p>`);
+			d.fields_dict.tc_table.$wrapper.html("");
+			return;
 		}
-		if (o.cutting_weeks === 0) {
-			warn.push(__("{0} cycles leaves nothing to cut: the pool is full the week "
-				+ "the line expires.", [o.cycles]));
+
+		if (rec) {
+			head += `<p class="small" style="margin-bottom:2px">` +
+				__("Cheapest order that covers every planting week:") + ` ` +
+				`<b>${int(rec.tc)}</b> ${__("plantlets")}, ` +
+				__("diverting the cut for") + ` <b>${rec.divert_weeks}</b> ` +
+				__("weeks") + `.</p>`;
+			if (rec.order_late) {
+				head += `<p class="small" style="color:var(--red-600,#c0392b)">` +
+					esc(__("That order was due {0}. It cannot be placed in time, so "
+						+ "this plan needs a later first planting week, or plants "
+						+ "bought in for the early weeks.",
+						[frappe.datetime.str_to_user(rec.order_by)])) + `</p>`;
+			}
 		}
-		d.fields_dict.tc_working.$wrapper.html(
-			`<p class="text-muted small" style="line-height:1.7">${bits.join(" <br>")}</p>` +
-			(o.order_by
-				? `<p class="small">${__("Order by")} <b>${esc(
-					frappe.datetime.str_to_user(o.order_by))}</b>` +
-				  (o.cutting_weeks != null
-					? ` · ${int(o.cutting_weeks)} ${__("cutting weeks left in the line")}`
-					: "") + `</p>`
-				: "") +
-			warn.map((w) => `<p class="small" style="color:var(--red-600,#c0392b)">${esc(w)}</p>`).join(""));
+		d.fields_dict.tc_working.$wrapper.html(head);
+
+		if (!c) { d.fields_dict.tc_table.$wrapper.html(""); return; }
+
+		// ---- what the two numbers currently in the boxes actually do
+		const met = c.weeks_met, all = c.weeks;
+		const pct = all ? Math.round((met / all) * 100) : 0;
+		const bar = `<div style="height:8px;border-radius:4px;background:var(--control-bg,#f0f1f3);overflow:hidden">` +
+			`<div style="height:100%;width:${pct}%;background:${
+				met === all ? "var(--green-500,#28a745)" : "var(--orange-500,#f0932b)"}"></div></div>`;
+
+		const L = o.limits || {};
+		let rows = "";
+		rows += line(__("Order by"), day(c.order_by),
+			c.order_late ? __("already passed") : "");
+		rows += line(__("Plantlets arrive"), day(c.arrive_date),
+			L.supplier_lead_weeks ? __("{0} week supplier lead", [L.supplier_lead_weeks])
+				: __("no supplier lead set"));
+		rows += line(__("First cutting"), day(c.first_cut_date),
+			__("{0} plantlets became mothers", [int(c.arriving)]));
+		rows += line(__("Pool peaks"), int(c.peak_pool),
+			__("week {0} of the line", [c.peak_pool_week]));
+		rows += line(__("First plants to the field"), day(need.first_sticking),
+			__("stuck; planted after rooting"));
+		rows += line(__("Block cleared"), day(c.line_end_date),
+			__("{0} weeks after the first cut", [L.life_weeks]));
+		rows += line(__("Cuttings to the field"), int(c.total_to_field),
+			__("against {0} the plan asks for", [int(need.cuttings)]));
+		if (c.cost) {
+			rows += line(__("Cost"), format_currency(c.cost));
+		}
+		rows += line(__("Standing motherstock"), int((o.standing || {}).plants),
+			__("shown, not taken off the order"));
+
+		// ---- diversions that cannot be made, and why. Somebody is about to ask.
+		const blocked = (o.options || []).filter((x) => !x.covers && x.blocked);
+		const first_blocked = blocked.length ? blocked[0] : null;
 
 		d.fields_dict.tc_table.$wrapper.html(
-			`<table class="table table-bordered" style="font-size:.8rem;margin:0">` +
-			`<thead><tr><th>${__("Cycles")}</th><th class="text-right">${__("Plantlets")}</th>` +
-			`<th>${__("Order by")}</th><th class="text-right">${__("Cutting weeks")}</th></tr></thead><tbody>` +
-			o.by_cycles.map((r) => {
-				const chosen = r.cycles === o.cycles;
-				const dead = r.cutting_weeks === 0;
-				return `<tr data-cycles="${r.cycles}" style="cursor:pointer` +
-					(chosen ? ";font-weight:600;background:var(--control-bg,#f4f5f6)" : "") +
-					`"><td>${r.cycles}${r.is_protocol ? " ★" : ""}</td>` +
-					`<td class="text-right">${int(r.units)}</td>` +
-					`<td>${r.order_by ? esc(frappe.datetime.str_to_user(r.order_by)) : "—"}</td>` +
-					`<td class="text-right"${dead ? ' style="color:var(--red-600,#c0392b)"' : ""}>` +
-					`${r.cutting_weeks == null ? "?" : (r.cutting_weeks || __("none"))}</td></tr>`;
-			}).join("") + `</tbody></table>` +
-			`<p class="text-muted small">★ ${__("what the protocol says")}. ` +
-			__("Click a row to use it.") + `</p>` +
-			// The column nobody can guess the meaning of, explained where it is
-			// read rather than in a manual: it is the one number that says what
-			// multiplying costs, and the sum behind it is three fields long.
-			(o.line_life_weeks
-				? `<p class="text-muted small"><b>${__("Cutting weeks")}</b> ${__(
-					"is how long the pool can be cut from. The line is renewed from "
-					+ "tissue culture on the FIRST motherstock's clock — 1.2 and "
-					+ "everything after it come out when 1 does — so each extra "
-					+ "multiplication is one establishment spent getting to the full "
-					+ "pool, taken out of that same {0} weeks rather than added to it.",
-					[o.line_life_weeks])}<br>` +
-				  `<code>${o.line_life_weeks} − ${o.cycle_cost_weeks} × (${__("cycles")} − 1)</code>` +
-				  ` · ${__("{0} weeks is tray {1} + pot {2}{3}{4}.",
-					[o.cycle_cost_weeks, o.weeks_on_tray, o.weeks_on_pot,
-					 o.counts_ramp ? __(" + ramp {0}", [o.ramp_weeks]) : "",
-					 o.counts_hardening ? __(" + hardening {0}", [o.hardening_weeks]) : ""])}` +
-				  `</p>`
+			`<table style="font-size:.85rem;margin:0 0 10px 0">${rows}</table>` +
+			bar +
+			`<p class="small" style="margin-top:4px${
+				met === all ? "" : ";color:var(--orange-700,#b45309)"}">` +
+			__("{0} of {1} planting weeks met", [met, all]) +
+			(c.shortfall ? ` · ${int(c.shortfall)} ${__("cuttings short")}` : "") +
+			`</p>` +
+			// The binding limit, not the theoretical one. The protocol may allow a
+			// long diversion while this season does not, and quoting the protocol's
+			// figure told a reader they had 41 weeks when the answer was 4.
+			(L.max_divert_that_covers != null && first_blocked
+				? `<p class="text-muted small">` +
+				  `<b>${__("Divert at most {0} weeks on this plan.", [L.max_divert_that_covers])}</b> ` +
+				  esc(first_blocked.blocked) + `</p>`
+				: (L.last_divert_weeks != null
+					? `<p class="text-muted small">${esc(__(
+						"Diverting is worth it for {0} weeks of cutting at most. A "
+						+ "cutting stuck after that becomes a mother that dies before "
+						+ "its own first cut, because the block is cleared {1} weeks "
+						+ "after it starts.",
+						[L.last_divert_weeks, L.life_weeks]))}</p>`
+					: "")) +
+			((o.assumed || []).length
+				? `<p class="small" style="color:var(--orange-700,#b45309)">` +
+				  (o.assumed || []).map(esc).join("<br>") + `</p>`
 				: ""));
-
-		d.fields_dict.tc_table.$wrapper.find("tr[data-cycles]").on("click", function () {
-			pick(parseInt(this.dataset.cycles, 10));
-		});
 	};
 
 	const load = (args) => {
-		if (busy) return;
+		if (busy) return Promise.resolve();
 		busy = true;
-		return frappe.call({ method: M + "tc_options",
+		return frappe.call({ method: M + "options",
 			args: Object.assign({ production_plan: frm.doc.name }, args || {}) })
 			.then((r) => {
 				const o = r.message;
 				show(o);
-				if (o && o.standing) {
-					// Straight at the input as well as the model: set_value alone
-					// left the box showing the figure it had before.
-					d.fields_dict.tc_cycles.set_value(o.cycles);
-					d.fields_dict.tc_qty.set_value(o.units);
-					if (d.fields_dict.tc_cycles.$input) {
-						d.fields_dict.tc_cycles.$input.val(o.cycles);
-					}
-					if (d.fields_dict.tc_qty.$input) {
-						d.fields_dict.tc_qty.$input.val(o.units);
-					}
+				const c = o && o.chosen;
+				if (!c) return;
+				last = { tc: c.tc, divert: c.divert_weeks };
+				// Straight at the input as well as the model: set_value alone leaves
+				// the box showing whatever it held before.
+				d.fields_dict.tc_qty.set_value(c.tc);
+				d.fields_dict.tc_divert.set_value(c.divert_weeks);
+				if (d.fields_dict.tc_qty.$input) {
+					d.fields_dict.tc_qty.$input.val(c.tc);
+				}
+				if (d.fields_dict.tc_divert.$input) {
+					d.fields_dict.tc_divert.$input.val(c.divert_weeks);
 				}
 			})
 			.always(() => { busy = false; });
 	};
 
-	// The box itself, on the browser's own change event rather than Frappe's.
+	// Which box was touched decides what is asked of the server. Moving the weeks
+	// re-solves the quantity, because the cheapest order that covers is a
+	// different number at a different diversion and keeping the old one reports a
+	// shortfall against a figure nobody chose. Typing a quantity keeps it, because
+	// that is the whole point of typing it.
+	//
+	// Frappe fires df.onchange for a user edit and not for a programmatic set, so
+	// this listens to the browser's own change event; a reload writing the box back
+	// over the reader's typing looked like the field refusing to take a value.
+	const val = (f) => {
+		const $i = d.fields_dict[f].$input;
+		const n = parseInt($i ? $i.val() : "", 10);
+		return isNaN(n) ? null : n;
+	};
+	const pick = (edited) => {
+		if (busy) return;
+		const tc = val("tc_qty");
+		const dv = val("tc_divert");
+		if (tc === last.tc && dv === last.divert) return;
+		load(edited === "tc_divert"
+			? { divert_weeks: dv }
+			: { tc: tc || null, divert_weeks: dv });
+	};
+
 	load().then(() => {
-		const $c = d.fields_dict.tc_cycles.$input;
-		if ($c) {
-			$c.on("change", () => pick(parseInt($c.val(), 10)));
-		}
+		["tc_qty", "tc_divert"].forEach((f) => {
+			const $i = d.fields_dict[f].$input;
+			if ($i) { $i.on("change", () => pick(f)); }
+		});
 	});
 }

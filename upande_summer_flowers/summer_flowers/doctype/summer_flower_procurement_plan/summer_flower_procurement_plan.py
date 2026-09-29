@@ -787,8 +787,14 @@ def tc_options(production_plan, cycles=None, tc_qty=None):
 
 @frappe.whitelist()
 def build(production_plan, method=None, entry_stage=None, supplier=None,
-          fit_to_space=1, cycles=None, tc_qty=None, replace=0):
-	"""Turn a plan's plantings into one requirement line each, and price the order."""
+          fit_to_space=1, cycles=None, tc_qty=None, replace=0, divert_weeks=None):
+	"""Turn a plan's plantings into one requirement line each, and price the order.
+
+	`divert_weeks` is how the order is sized on a route through a motherstock:
+	weeks from the first cutting in which the whole cut goes back as new mothers.
+	`cycles` is the figure that used to do that job and is kept only so an older
+	caller does not fail; it no longer sizes anything.
+	"""
 	fit_to_space = cint(fit_to_space)
 	p = frappe.get_doc("Summer Flower Production Plan", production_plan)
 	v = frappe.get_cached_doc("Crop Protocol Version", p.protocol)
@@ -857,6 +863,38 @@ def build(production_plan, method=None, entry_stage=None, supplier=None,
 	standing = bool(need and need.get("kind") == "standing")
 	if standing and need.get("blocked"):
 		frappe.throw(need["blocked"], title=_("The order cannot be sized"))
+
+	# The order through a motherstock is sized by the week-by-week cut, not by a
+	# multiplication factor. A mother cuts every week of its life, so generations
+	# overlap a week apart rather than queueing an establishment apart, and the old
+	# sum worked the order date back from a pool that lands after the block is
+	# cleared -- 60 weeks of build-up against a 52-week line.
+	solved = None
+	if standing:
+		from upande_summer_flowers.summer_flowers import propagation_solver as psol
+
+		solved = psol.recommend(p, tc=tc_qty, divert_weeks=divert_weeks)
+		chosen = (solved or {}).get("chosen")
+		if solved and not solved.get("solvable") and not chosen:
+			frappe.throw(solved.get("reason")
+			             or _("No order of plantlets covers this plan."),
+			             title=_("The order cannot be sized"))
+		if chosen:
+			need["units"] = cint(chosen["tc"])
+			need["calculated_units"] = cint(
+				((solved.get("recommended") or {}).get("tc")) or chosen["tc"])
+			need["overridden"] = cint(chosen["tc"]) != cint(need["calculated_units"])
+			need["pool"] = cint(chosen["peak_pool"])
+			need["order_by_date"] = chosen["order_by"]
+			need["divert_weeks"] = cint(chosen["divert_weeks"])
+			need["basis"] = _(
+				"{0} plantlets, with the whole cut diverted back as mothers for "
+				"{1} weeks from the first cutting. That covers {2} of {3} planting "
+				"weeks; the pool peaks at {4} mother plants and the block is "
+				"cleared on {5}.").format(
+				"{:,}".format(cint(chosen["tc"])), cint(chosen["divert_weeks"]),
+				cint(chosen["weeks_met"]), cint(chosen["weeks"]),
+				"{:,}".format(cint(chosen["peak_pool"])), chosen["line_end_date"])
 	if need and not standing and not per_unit:
 		frappe.throw(
 			_("Nothing survives the route from {0} as the protocol has it, so no order "
@@ -968,17 +1006,19 @@ def build(production_plan, method=None, entry_stage=None, supplier=None,
 			"supplier": doc.supplier,
 			"qty_to_order": cint(need.get("units")),
 			"required_at_site_date": first_stick,
-			"order_by_date": tc_order_by_date(v, first_stick,
-			                                  cycles=cint(need.get("cycles"))),
+			"order_by_date": (need.get("order_by_date")
+			                  or tc_order_by_date(v, first_stick,
+			                                     cycles=cint(need.get("cycles")))),
 			"expected_delivery_date": first_stick,
 			"notes": need.get("basis"),
 		})
 		doc.pool_plants = cint(need.get("pool"))
 		doc.weekly_draw = cint(need.get("weekly_draw"))
 		doc.multiplication_cycles = cint(need.get("cycles"))
+		doc.divert_weeks = cint(need.get("divert_weeks"))
 		doc.calculated_units = cint(need.get("calculated_units"))
 		doc.units_overridden = 1 if need.get("overridden") else 0
-		doc.sizing_basis = need.get("basis") + (
+		doc.sizing_basis = (need.get("basis") or "") + (
 			_(" Ordered {0} instead of the {1} the sum asks for.").format(
 				"{:,}".format(cint(need.get("units"))),
 				"{:,}".format(cint(need.get("calculated_units"))))

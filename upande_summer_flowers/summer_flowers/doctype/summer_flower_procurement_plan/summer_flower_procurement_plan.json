@@ -44,6 +44,7 @@
   "total_units_to_order",
   "pool_plants",
   "weekly_draw",
+  "divert_weeks",
   "multiplication_cycles",
   "calculated_units",
   "units_overridden",
@@ -289,12 +290,20 @@
    "depends_on": "eval:doc.pool_plants"
   },
   {
+   "fieldname": "divert_weeks",
+   "fieldtype": "Int",
+   "label": "Cut Diverted For (weeks)",
+   "read_only": 1,
+   "description": "Weeks from the first cutting in which the WHOLE cut goes back to the propagation unit as new mothers, before any of it goes to the field. Diverting longer needs fewer plantlets but pulls the order date earlier, and past a point the block is cleared before the season's last planting.",
+   "depends_on": "eval:doc.pool_plants"
+  },
+  {
    "fieldname": "multiplication_cycles",
    "fieldtype": "Int",
-   "label": "Multiplication Cycles",
+   "label": "Multiplication Cycles (superseded)",
    "read_only": 1,
-   "description": "How many times the plantlets are multiplied before the pool is full. More cycles is fewer plantlets bought and a longer wait, so the order goes in earlier and the line has less of its life left to cut.",
-   "depends_on": "eval:doc.pool_plants"
+   "description": "How the order used to be sized: the plantlets multiplied in N sequential generations. Mothers cut every week, so generations overlap week by week instead, and the order is now sized from Cut Diverted For. Kept so a plan made under the old sum still reads back.",
+   "depends_on": "eval:doc.multiplication_cycles"
   },
   {
    "fieldname": "calculated_units",

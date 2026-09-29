@@ -170,9 +170,12 @@ def least_tc_for(version, divert_weeks, demand, first_sticking, tc_loss_pct=0.0)
 			"tc": None, "divert_weeks": cint(divert_weeks),
 			"order_by": probe["order_by"], "covers": False,
 			"line_end_date": probe["line_end_date"],
-			"blocked": _("Diverting {0} weeks means ordering {0} weeks earlier, so "
-			             "the block is cleared on {1} -- before the last planting "
-			             "week of {2}. No quantity of plantlets changes that.")
+			# Not "before": the clearance falling ON the last planting week is just
+			# as fatal, and saying "before 2028-12-11" of 2028-12-11 reads as a bug.
+			"blocked": _("Diverting {0} weeks pulls the order {0} weeks earlier, so "
+			             "the block would be cleared on {1}. The season's last "
+			             "planting is {2}, and the block has to outlast it. No "
+			             "quantity of plantlets changes that.")
 			.format(cint(divert_weeks), probe["line_end_date"], last_sticking),
 		}
 
@@ -267,9 +270,19 @@ def recommend(plan, tc=None, divert_weeks=None):
 	        (min(usable, key=lambda o: (o["tc"], -o["divert_weeks"]))
 	         if usable else None))
 
-	chosen_tc = cint(tc) if tc not in (None, "", 0) else (pick or {}).get("tc")
 	chosen_d = (cint(divert_weeks) if divert_weeks not in (None, "")
 	            else (pick or {}).get("divert_weeks", 0))
+	if tc not in (None, "", 0):
+		chosen_tc = cint(tc)
+	else:
+		# The least that covers AT THIS DIVERSION, not the recommendation's own
+		# quantity. Moving the weeks and keeping the other number is how the panel
+		# came to report a shortfall against a quantity nobody had chosen.
+		at_d = next((o for o in usable if o["divert_weeks"] == chosen_d), None)
+		if not at_d:
+			r = least_tc_for(plan.protocol, chosen_d, demand, first_sticking, loss)
+			at_d = r if (r and r.get("covers")) else None
+		chosen_tc = (at_d or pick or {}).get("tc")
 	detail = (evaluate(plan.protocol, chosen_tc, chosen_d, demand, first_sticking,
 	                   loss) if chosen_tc else None)
 	if detail:
@@ -300,7 +313,14 @@ def recommend(plan, tc=None, divert_weeks=None):
 		"chosen": detail,
 		"options": options,
 		"limits": {
+			# What the protocol allows, and what THIS season allows. The second is
+			# usually the binding one, and quoting only the first told a reader they
+			# had 41 weeks to play with when the answer was 4.
 			"last_divert_weeks": last_divert,
+			"max_divert_that_covers": (max(o["divert_weeks"] for o in usable)
+			                           if usable else None),
+			"blocked_above": (min((o["divert_weeks"] for o in options
+			                       if not o.get("covers")), default=None)),
 			"last_divert_date": str(add_days(
 				first_sticking, 7 * (last_divert - (cint(divert_weeks) or 0)))),
 			"life_weeks": cint(p["ms_life_weeks"]),
