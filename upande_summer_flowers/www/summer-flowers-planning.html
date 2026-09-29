@@ -38,6 +38,22 @@
 
   <p id="pl-loading" class="pl-note">{{ _("Loading…") }}</p>
 
+  <!-- Nothing is chosen, so nothing is shown. The page used to pick a plan when
+       the scope bar was empty and label it "1 of 42 plans" in amber -- which is a
+       page telling you it is showing you something you did not ask for, and a
+       variety has more than one demand and more than one plan, so there was no
+       right one to pick. -->
+  <div id="pl-choose" hidden>
+    <div class="pl-card">
+      <div class="pl-card-head"><div>
+        <h2>{{ _("Choose a variety") }}</h2>
+        <p class="pl-note">{{ _("A variety has more than one demand and more than one plan, so there is nothing sensible to show until you say which. Pick one, then narrow by farm and financial year if you want to.") }}</p>
+      </div></div>
+      <div id="ch-varieties" class="pl-tiles pl-tiles-sm"></div>
+      <div id="ch-note"></div>
+    </div>
+  </div>
+
   <div id="pl-body" hidden>
     <nav class="pl-tabs" role="tablist" aria-label="{{ _('Sections') }}">
       <button role="tab" data-tab="overview" class="is-on" aria-selected="true">{{ _("Overview") }}</button>
@@ -2974,6 +2990,27 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
 
   // Variety, farm and protocol are properties of the selected plan, not separate
   // dials. Stated here so it is obvious where the numbers on every tab come from.
+  // Shown instead of the tabs while the scope is empty. Clicking a variety is the
+  // same as typing it, so the combo box stays the one source of that choice.
+  function showChooser(on) {
+    const want = on !== false;
+    const ch = $("pl-choose"), body = $("pl-body");
+    if (!ch || !body) return;
+    ch.hidden = !want;
+    body.hidden = want;
+    if (!want) return;
+    const list = S.varieties || [];
+    $("ch-varieties").innerHTML = list.length
+      ? list.map((v) => `<button type="button" class="pl-tile" data-pickvar="${esc(v)}" ` +
+          `style="text-align:left;cursor:pointer">` +
+          `<div class="v" style="font-size:1rem">${esc(v)}</div></button>`).join("")
+      : `<p class="pl-empty">No summer flower varieties on this site yet.</p>`;
+    $("ch-note").innerHTML = S.plans && S.plans.plans
+      ? `<p class="pl-note">${esc(
+          `${S.plans.plans.length} production plans across all varieties.`)}</p>`
+      : "";
+  }
+
   function renderScopeLine() {
     const el = $("f-derived");
     if (!el) return;
@@ -2984,13 +3021,17 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
     // A filter bar reading "All varieties" above figures that are one plan for one
     // variety at one farm is the page telling the reader something untrue. It
     // picked that plan because nothing was chosen; it says so.
+    // The "no variety chosen — this is 1 of 42 plans" pill is gone with the state
+    // it described: the page no longer picks a plan for you. What is worth saying
+    // now is how many OTHER plans this variety has, because it has more than one.
     const sc = S.sc || {};
-    const implicit = sc.implicit
-      ? `<span class="pill"><i class="dot2" style="background:var(--warning)"></i>` +
-        `no variety or farm chosen — this is 1 of ${sc.plans_in_scope} plans, and ` +
-        `every figure below is this one</span> `
+    const mine = ((S.plans && S.plans.plans) || []).filter(
+      (x) => !S.variety || x.variety === S.variety).length;
+    const siblings = mine > 1
+      ? `<span class="pill"><i class="dot2" style="background:var(--muted,#8a8f98)"></i>` +
+        `${mine} plans for this variety — this is the one in the picker</span> `
       : "";
-    el.innerHTML = implicit +
+    el.innerHTML = siblings +
       `Showing <b>${esc(S.plan || d.plan || "—")}</b>` +
       (d.variety || S.variety ? ` · ${esc(d.variety || S.variety)}` : "") +
       (d.farm || S.farm ? ` at ${esc(d.farm || S.farm)}` : "") +
@@ -5585,6 +5626,11 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
   }
 
   function loadScope() {
+    // Nothing chosen, nothing loaded. Every endpoint below resolves a plan when it
+    // is given none, so calling them with an empty scope is how the page came to
+    // show one arbitrary plan of forty-two as though it were the answer.
+    if (!S.variety && !S.plan) { showChooser(); return Promise.resolve(); }
+    showChooser(false);
     // The plan is part of the scope: every plan-aware endpoint is given the same
     // one, so the tabs cannot end up describing different plans.
     const a = { variety: S.variety, farm: S.farm, plan: S.plan || null };
@@ -6011,7 +6057,14 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
         sel.add(o);
       });
       if (!shown.length) { sel.add(new Option("No plan", "")); S.plan = ""; }
-      else {
+      else if (!S.variety) {
+        // Nothing narrowed to a variety, so there is no plan to default to. The
+        // list used to fall through to shown[0] here, which is how the page
+        // arrived already showing one plan of forty-two.
+        sel.insertBefore(new Option("Choose a plan…", ""), sel.firstChild);
+        S.plan = "";
+        sel.value = "";
+      } else {
         S.plan = (S.plan && shown.some((p) => p.name === S.plan)) ? S.plan
                  : ((S.plans.default && shown.some((p) => p.name === S.plans.default))
                      ? S.plans.default : shown[0].name);
@@ -6068,6 +6121,15 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
           S.version = vr.value; S.versionPicked = true; runLifecycle();
         });
       }
+
+      $("ch-varieties").addEventListener("click", (e) => {
+        const b = e.target.closest("[data-pickvar]");
+        if (!b) return;
+        const v = b.dataset.pickvar;
+        $("f-variety").value = v;
+        S.variety = v; S.plan = "";
+        loadPlans().then(loadScope).catch((er) => toast(esc(er.message), true));
+      });
 
       toggleGroup([["g-month", "month"], ["g-week", "week"]], "grain", dvChart);
       toggleGroup([["pp-by-plant", "plant"], ["pp-by-uproot", "uproot"]],
@@ -6257,7 +6319,9 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
       return loadPlans().then(loadScope);
     }).then(() => {
       $("pl-loading").hidden = true;
-      $("pl-body").hidden = false;
+      // One of the two, never both: the chooser while nothing is picked, the tabs
+      // once something is.
+      showChooser(!(S.variety || S.plan));
       $("asof").textContent = "As of " + frappe.datetime.get_today();
       const want = (location.hash || "").slice(1);
       setTab(TABS.includes(want) ? want : "overview", true);
