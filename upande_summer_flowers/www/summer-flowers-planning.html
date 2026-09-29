@@ -519,43 +519,14 @@
         <div id="tc-gens"></div>
         <div id="tc-weeks" class="pl-scroll"></div>
       </div>
-      <div class="pl-card">
-        <div class="pl-card-head">
-          <div><h2>{{ _("TC lifecycle and propagation feedback") }}</h2>
-               <p class="pl-note" id="ls-sub"></p></div>
-        </div>
-        <div class="pl-controls">
-          <label>{{ _("Protocol version") }}<select id="ls-version"></select></label>
-          <label>{{ _("TC quantity") }}<input type="number" id="ls-qty" min="500" step="500"></label>
-          <label>{{ _("TC order date") }}<input type="date" id="ls-date"></label>
-          <label>{{ _("Build-up cycles") }}
-            <input type="number" id="ls-cycles" min="0" max="12" step="1"></label>
-          <label>{{ _("% diverted to propagation") }}
-            <input type="range" id="ls-prop" min="0" max="60" step="5" value="0">
-            <output id="ls-prop-out">0%</output></label>
-          <label>{{ _("Bench available (m²)") }}<input type="number" id="ls-bench" min="0" step="10"></label>
-        </div>
-        <div class="pl-card-head">
-          <span class="pl-actions">
-            <button type="button" class="pl-btn" data-ls="effect">{{ _("Effect on the plan") }}</button>
-            <button type="button" class="pl-btn" data-ls="reset-inputs">{{ _("Back to the calculated order") }}</button>
-            <button type="button" class="pl-btn primary" data-ls="confirm">{{ _("Confirm this order") }}</button>
-          </span>
-        </div>
-        <div id="ls-confirm-note"></div>
-        <div class="pl-tiles pl-tiles-sm" id="ls-key"></div>
-        <div id="ls-warn"></div>
-        <h3>{{ _("Cycle milestones") }}</h3>
-        <div id="ls-cycles-tbl" class="pl-scroll"></div>
-        <h3>{{ _("Week by week") }}</h3>
-        <div id="ls-table" class="pl-scroll pl-tall"></div>
-        <h3>{{ _("Motherstock pool and weekly cutting capacity") }}</h3>
-        <div class="pl-legend">
-          <span class="pl-key"><i class="sw" style="background:var(--series-1)"></i>{{ _("MS plants standing") }}</span>
-          <span class="pl-key"><i class="sw" style="background:var(--series-2)"></i>{{ _("Cutting capacity / week") }}</span>
-        </div>
-        <div class="pl-chart-wrap"><div id="ls-chart" class="pl-chart"></div></div>
-      </div>
+      <!-- The TC lifecycle card stood here: build-up cycles, a standing
+           "% diverted to propagation", a Prop-MS column and weeks counted
+           from the order rather than from the first cut. It described the
+           sequential-generations model the farm does not work to, and what
+           it had left to say is now said by "The motherstock line" above,
+           in the farm's own terms. Removed rather than mended: two cards
+           answering one question differently is what sent somebody looking
+           for which of them to believe. -->
     </section>
 
     <!-- ══ CALENDAR ══ -->
@@ -4547,6 +4518,9 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
   }
 
   function renderLifecycle() {
+    // The lifecycle card it drew into has been removed; this is kept so the
+    // endpoints and the chart helper are still here if it is ever wanted back.
+    if (!$("ls-key")) return;
     const r = S.ls; if (!r) return;
     const t = r.totals, p = r.params;
     $("ls-sub").textContent = `${num(r.tc_qty)} plantlets ordered ${r.order_date} · ` +
@@ -5156,6 +5130,9 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
   }
 
   function runLifecycle() {
+    // The lifecycle card it drew into has been removed; this is kept so the
+    // endpoints and the chart helper are still here if it is ever wanted back.
+    if (!$("ls-key")) return;
     if (!S.version) return Promise.resolve();
     $("ls-prop-out").textContent = $("ls-prop").value + "%";
     return call("simulate_lifecycle", {
@@ -5211,6 +5188,9 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
   }
 
   function confirmFromLifecycle(btn) {
+    // The lifecycle card it drew into has been removed; this is kept so the
+    // endpoints and the chart helper are still here if it is ever wanted back.
+    if (!$("ls-key")) return;
     const plan = S.dv && S.dv.plan;
     if (!plan) { alert("No plan in scope to confirm against."); return; }
     if (S.deriv && S.deriv.version && S.version && S.version !== S.deriv.version) {
@@ -5507,6 +5487,7 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
 
   function showEffect() {
     if (!(S.dv && S.dv.plan)) { toast("No plan in scope.", true); return; }
+    if (!$("ls-cycles")) return;
     const dlg = $("pw-dlg");
     const cyc = $("ls-cycles").value;
     $("pw-body").innerHTML = '<p class="pl-empty">Working it out…</p>';
@@ -5526,6 +5507,9 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
   }
 
   function renderEffect(r) {
+    // The lifecycle card it drew into has been removed; this is kept so the
+    // endpoints and the chart helper are still here if it is ever wanted back.
+    if (!$("ls-key")) return;
     if (!r || r.error || !r.plan) {
       $("pw-body").innerHTML = `<p class="pl-empty">${esc(
         (r && r.error) || "No plan in scope.")}</p>`;
@@ -5672,7 +5656,11 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
       // quantity nobody had asked for and a date four hundred-odd weeks after the
       // one the order has to be placed on. The calculated figures are the defaults;
       // typing over them is the whole point of the card.
-      if (!$("ls-qty").value) {
+      // The lifecycle card that these seeded has been removed, so there is nothing
+      // to seed. Guarded rather than deleted: the whole load chain ran inside a
+      // .then, so one null lookup here threw, was swallowed by the .catch, and
+      // every tab after it stayed empty with no error on the console.
+      if ($("ls-qty") && !$("ls-qty").value) {
         const tcq = deriv && (deriv.tc_plants || 0);
         $("ls-qty").value = tcq
           ? tcq
@@ -5680,9 +5668,8 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
         $("ls-date").value = (deriv && deriv.tc_order_date)
           || (S.dv && S.dv.weeks.length ? S.dv.weeks[0].date : "2026-01-05");
       }
-      // The derivation carries the build-up its own figures assume, so the quantity
-      // and the cycle count on this card always belong to each other.
-      if ($("ls-cycles").value === "" && deriv && deriv.build_up_cycles != null) {
+      if ($("ls-cycles") && $("ls-cycles").value === ""
+          && deriv && deriv.build_up_cycles != null) {
         $("ls-cycles").value = deriv.build_up_cycles;
       }
       return runLifecycle();
@@ -5754,7 +5741,6 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
     }
     if (name === "planting" && S.pp) renderPlanting();
     if (name === "motherstock") {
-      if (S.ls) drawPool($("ls-chart"), S.ls.rows);
       loadTc($("tc-qty").value || null)
         .catch((e) => toast(esc(e.message), true));
     }
@@ -6047,8 +6033,13 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
       fs.add(new Option("All farms", ""));
       S.farms = sc.farms || [];
       S.farms.forEach((x) => fs.add(new Option(x, x)));
-      (sc.versions || []).forEach((v) =>
-        vr.add(new Option(v.name + (v.is_current ? " (current)" : ""), v.name)));
+      // vr is the removed lifecycle card's version picker. This whole block runs
+      // inside a .then, so calling .add on it threw, the page caught it as "Could
+      // not load" and nothing rendered at all -- including the variety list.
+      if (vr) {
+        (sc.versions || []).forEach((v) =>
+          vr.add(new Option(v.name + (v.is_current ? " (current)" : ""), v.name)));
+      }
 
       // Changing variety or farm changes which plans exist, so the list is
       // rebuilt and the default re-resolved before the panes reload.
@@ -6072,9 +6063,11 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
       });
       // Scoped to the simulator: it re-runs the what-if and changes nothing that
       // the plan asserts.
-      vr.addEventListener("change", () => {
-        S.version = vr.value; S.versionPicked = true; runLifecycle();
-      });
+      if (vr) {
+        vr.addEventListener("change", () => {
+          S.version = vr.value; S.versionPicked = true; runLifecycle();
+        });
+      }
 
       toggleGroup([["g-month", "month"], ["g-week", "week"]], "grain", dvChart);
       toggleGroup([["pp-by-plant", "plant"], ["pp-by-uproot", "uproot"]],
@@ -6164,7 +6157,8 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
           $("ls-date").value = sv.dataset.date || $("ls-date").value;
           if (sv.dataset.cycles !== "") $("ls-cycles").value = sv.dataset.cycles;
           $("pw-dlg").close();
-          confirmFromLifecycle(document.querySelector('[data-ls="confirm"]'));
+          // The lifecycle card's Confirm is gone with the card; committing to a
+          // line is the Motherstock Plan's job now.
         }
       });
       $("up-dlg").addEventListener("click", (e) => {
@@ -6220,34 +6214,6 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
           renderDemand();
         });
       });
-      $("ls-table").addEventListener("click", (e) => {
-        const cell = e.target.closest(".ls-edit");
-        if (cell) { lsEditFarm(cell); return; }
-        const rst = e.target.closest('[data-ls="reset"]');
-        if (rst) { S.lsOverrides = {}; runLifecycle(); }
-      });
-      // The three levers on the motherstock card re-run the simulation as they are
-      // changed, so the schedule below always belongs to the numbers above it.
-      // Generations only changes how far the run goes. Build-up cycles changes what
-      // has to be bought and when, so it re-derives the order before re-running.
-      $("ls-cycles").addEventListener("change", () => syncCyclesToOrder());
-      $("ls-confirm-note").parentElement.addEventListener("click", (e) => {
-        const b = e.target.closest("[data-ls]");
-        if (!b) return;
-        if (b.dataset.ls === "reset-inputs") {
-          const d = S.deriv || {};
-          $("ls-qty").value = d.tc_plants || "";
-          $("ls-qty").dataset.typed = "";
-          $("ls-date").value = d.tc_order_date || "";
-          $("ls-cycles").value = d.build_up_cycles != null ? d.build_up_cycles : "";
-          S.lsOverrides = {};
-          $("ls-confirm-note").innerHTML = "";
-          runLifecycle();
-          return;
-        }
-        if (b.dataset.ls === "effect") { showEffect(); return; }
-        if (b.dataset.ls === "confirm") confirmFromLifecycle(b);
-      });
       $("hc-scope").addEventListener("change", renderHarvestCalendar);
       $("hc-unit").addEventListener("change", renderHarvestCalendar);
       $("hv-cycle").addEventListener("change", (e) => {
@@ -6288,16 +6254,6 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
           renderCalendar();
         });
       });
-      $("ls-qty").addEventListener("input", (e) => {
-        e.target.dataset.typed = e.target.value ? "1" : "";
-      });
-      ["ls-qty", "ls-date", "ls-bench"].forEach((id) =>
-        $(id).addEventListener("change", runLifecycle));
-      $("ls-prop").addEventListener("input", () => {
-        $("ls-prop-out").textContent = $("ls-prop").value + "%";
-      });
-      $("ls-prop").addEventListener("change", runLifecycle);
-
       return loadPlans().then(loadScope);
     }).then(() => {
       $("pl-loading").hidden = true;
@@ -6308,6 +6264,10 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
     }).catch((e) => {
       $("pl-loading").innerHTML = '<span class="warn">' +
         esc("Could not load: " + (e.message || e)) + "</span>";
+      // The stack, not just the message. A null element inside this chain used to
+      // surface as six words with nothing to say which element or which line.
+      window.__bootError = (e && e.stack) || String(e);
+      console.error("dashboard boot failed", e);
       console.error(e);
     });
   });
