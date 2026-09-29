@@ -20,6 +20,10 @@ from frappe import _
 from frappe.model.document import Document
 from frappe.utils import add_days, cint, flt, getdate, now_datetime
 
+from upande_summer_flowers.summer_flowers.doctype \
+	.summer_flower_motherstock_batch.summer_flower_motherstock_batch import (
+		lookup_tc_rate,
+	)
 from upande_summer_flowers.summer_flowers.lifecycle_sim import ramp_ratio
 from upande_summer_flowers.summer_flowers.planning import iso_monday
 
@@ -38,7 +42,7 @@ class SummerFlowerPropagationPlan(Document):
 		self.note_protocol_provenance()
 		self.build_requirement()
 		self.apply_existing_motherstock()
-		self.size_new_motherstock()
+		self.apply_motherstock_plan()
 		self.roll_up()
 
 	# --------------------------------------------------------------- header
@@ -297,104 +301,137 @@ class SummerFlowerPropagationPlan(Document):
 			self._at_full[(r.year, r.week_no)] = at_full
 
 	# ------------------------------------------------------ new motherstock
-	def size_new_motherstock(self):
-		"""Size one new pool against the worst uncovered week.
+	def apply_motherstock_plan(self):
+		"""Take the pool from the Motherstock Plan instead of sizing one here.
 
-		Sized on the peak shortfall rather than the total, for the same reason the
-		whole module sizes motherstock on a peak: the pool has to supply the busiest
-		week, and the weeks either side do not lend it capacity.
+		This used to size its own pool, and it sized it from a single week: the
+		worst uncovered week's cuttings, divided by cuttings per mother per week.
+		That turns a flow into a stock -- 37,000 cuttings in the busiest week became
+		37,000 mother plants -- and then divided the plantlet order by a
+		multiplication factor, which is the sequential-generations model the farm
+		does not work to. The two documents answered the same question differently:
+		9,250 plantlets here against 28,000 on the procurement plan, and this one
+		then reported 372,250 of 550,000 cuttings uncovered without changing its
+		own answer.
+
+		So it no longer answers it. The Motherstock Plan is where the line is
+		decided -- how many plantlets, how many weeks the cut is diverted -- and
+		this reads its week-by-week schedule for what the field can actually be
+		given each week. One engine, one answer, and changing the decision there
+		moves this document with it.
 		"""
-		v = self._version
-		ramp = self._ramp
 		self._peak_shortfall = 0
 		self._first_needed = None
-		self.ramp_weeks = len(ramp)
-		short = [r for r in self.weeks if cint(r.shortfall) > 0]
-		if not short:
+		self._ms_line = None
+		self._at_full = getattr(self, "_at_full", {})
+		self.ramp_weeks = len(self._ramp)
+
+		ms = self._ms_line = self.motherstock_line()
+		if not ms:
+			# No line and something still short: say so rather than silently
+			# leaving the weeks uncovered with no reason given.
 			self.mother_plants_required = 0
 			self.peak_bench_sqm = 0
 			self.full_capacity_date = None
 			self.cuttings_lost_to_ramp = 0
 			self.ramp_short_weeks = 0
 			self.mother_plants_to_cover_ramp = 0
+			self.new_pool_expiry = None
+			self.new_pool_cutting_weeks = 0
 			return
 
-		peak = max(cint(r.shortfall) for r in short)
-		first_needed = min(getdate(r.week_start_date) for r in short)
-		# The line expires on motherstock one's clock, not on this generation's. A
-		# pool reached through four cycles is full three establishments into a life
-		# it did not start, so it has that much less left to cut -- and crediting it
-		# to the end of the horizon, as available_to=None did, promised cuttings off
-		# a pool that would have been pulled out.
-		est = v.weeks_tc_to_first_cut()
-		cycles = max(1, cint(v.max_multiplication_cycles))
-		line_start = add_days(first_needed, -7 * est * (cycles - 1))
-		expires = add_days(line_start, 7 * cint(v.motherstock_life_weeks)) \
-			if cint(v.motherstock_life_weeks) else None
-		self.new_pool_expiry = expires
-		self.new_pool_cutting_weeks = max(0, int(round(
-			(getdate(expires) - first_needed).days / 7.0))) if expires else 0
+		v = self._version
 		per_week = flt(v.cuttings_per_plant_per_week) or 1.0
-		mothers = int(round(peak / per_week)) if per_week else 0
-		self.mother_plants_required = mothers
-		self.peak_bench_sqm = round(mothers / flt(v.plants_per_sqm_bench), 1) \
-			if flt(v.plants_per_sqm_bench) else 0
-		self.full_capacity_date = add_days(first_needed, 7 * (len(ramp) - 1))
+		by_date = {getdate(w.week_start): w for w in ms.schedule}
 
-		# The pool's first cutting week is the first week something is short: you do
-		# not grow mother plants in order to throw the cuttings away. So its early
-		# weeks are cut at the build-up rate, and what it cannot take stays uncovered
-		# rather than being quietly credited at full capacity.
-		lost = 0
-		short_weeks = 0
+		short = [r for r in self.weeks if cint(r.shortfall) > 0]
+		if short:
+			self._peak_shortfall = max(cint(r.shortfall) for r in short)
+			self._first_needed = min(getdate(r.week_start_date) for r in short)
+
+		lost, short_weeks = 0, 0
 		for r in self.weeks:
-			monday = getdate(r.week_start_date)
-			if monday < first_needed:
+			w = by_date.get(getdate(r.week_start_date))
+			if not w:
+				# Outside the line: before its first cut, or after the block is
+				# cleared. Nothing can be taken, and the shortfall stands.
 				continue
-			weeks_in = (monday - first_needed).days // 7
-			pct = ramp_ratio(weeks_in, ramp)
-			if expires and monday > getdate(expires):
-				# Past the line's renewal. Nothing is cut off it.
-				continue
-			cap = int(round(mothers * per_week * pct))
+			# What the field can have is the week's cut less whatever went back as
+			# mothers. In the diversion window that is nothing, which is the cost of
+			# multiplying stated as a number rather than as a warning.
+			cap = max(0, cint(w.cuttings_cut) - cint(w.to_multiplication))
 			r.capacity_available = cint(r.capacity_available) + cap
 			key = (r.year, r.week_no)
-			self._at_full[key] = self._at_full.get(key, 0) + int(round(mothers * per_week))
+			self._at_full[key] = self._at_full.get(key, 0) + int(round(
+				cint(w.mothers_standing) * per_week))
 			if cint(r.shortfall) <= 0:
 				continue
 			take = min(cint(r.shortfall), cap)
-			r.from_new_ms = take
+			r.from_new_ms = cint(r.from_new_ms) + take
 			r.shortfall = cint(r.shortfall) - take
-			if cint(r.shortfall) and pct < 1:
+			if cint(r.shortfall) and cint(w.to_multiplication):
 				lost += cint(r.shortfall)
 				short_weeks += 1
 
+		self.mother_plants_required = cint(ms.peak_pool)
+		self.peak_bench_sqm = round(cint(ms.peak_pool) / flt(v.plants_per_sqm_bench), 1) \
+			if flt(v.plants_per_sqm_bench) else 0
+		self.new_pool_expiry = ms.line_end_date
+		gen1 = next((g for g in ms.generation_table if cint(g.generation) == 1), None)
+		self.new_pool_cutting_weeks = cint(gen1.cutting_weeks) if gen1 else 0
+		self.full_capacity_date = None
+		full = next((w for w in ms.schedule
+		             if cint(w.mothers_standing) and cint(w.cuttings_cut)
+		             >= int(round(cint(w.mothers_standing) * per_week))), None)
+		if full:
+			self.full_capacity_date = full.week_start
 		self.cuttings_lost_to_ramp = lost
 		self.ramp_short_weeks = short_weeks
-		# What it would take to cover even the first build-up week. Bigger than the peak
-		# sizing and idle for the rest of the pool's life, so it is offered as a
-		# number to decide on, not applied.
-		first_week = min(short, key=lambda r: getdate(r.week_start_date))
-		self.mother_plants_to_cover_ramp = int(math.ceil(
-			cint(first_week.cuttings_required) / (per_week * ramp[0])
-		)) if per_week and ramp[0] else 0
+		self.mother_plants_to_cover_ramp = 0
 
-		self.append("sources", {
-			"source_type": "New Motherstock (TC)",
-			"mother_plants": mothers,
-			"weekly_capacity": peak,
-			"available_from": first_needed,
-			"available_to": expires,
-			"notes": _("Sized on the worst uncovered week, {0} cuttings. First cut "
-			           "{1} at {2}% of that; full capacity {3}. The line expires {4} "
-			           "-- {5} weeks after motherstock one first cut, not after this "
-			           "generation did -- leaving {6} cutting weeks.").format(
-				peak, first_needed, int(round(ramp[0] * 100)),
-				self.full_capacity_date, expires or _("never, no life recorded"),
-				cint(v.motherstock_life_weeks), self.new_pool_cutting_weeks),
-		})
-		self._peak_shortfall = peak
-		self._first_needed = first_needed
+		# One source row per generation, because that is what is standing. A single
+		# row for "the new motherstock" could not say that gen 2 arrives over four
+		# weeks and cuts for eleven weeks fewer than gen 1.
+		for g in ms.generation_table:
+			self.append("sources", {
+				# The vocabulary stays as it was -- these are all the new pool. Which
+				# generation is its own column, because "New Motherstock (TC)" four
+				# times over says nothing about which of them cuts when.
+				"source_type": "New Motherstock (TC)",
+				"generation": cint(g.generation),
+				"mother_plants": cint(g.mothers),
+				"weekly_capacity": int(round(cint(g.mothers) * per_week)),
+				"available_from": g.first_cut_date,
+				"available_to": g.expiry_date,
+				"notes": _("{0} mother plants arriving over {1} week(s) from {2}. "
+				           "Cuts for {3} weeks: the whole block is cleared on {4}, "
+				           "so a generation raised later gets fewer weeks rather "
+				           "than a life of its own. From {5}.").format(
+					"{:,}".format(cint(g.mothers)), cint(g.arrivals),
+					g.stuck_date or g.first_cut_date, cint(g.cutting_weeks),
+					g.expiry_date, ms.name),
+			})
+
+	def motherstock_line(self):
+		"""The Motherstock Plan behind this season, built if it is not there yet."""
+		from upande_summer_flowers.summer_flowers.doctype \
+			.summer_flower_motherstock_plan.summer_flower_motherstock_plan import (
+				for_plan,
+			)
+
+		if not self.production_plan:
+			return None
+		name = frappe.db.get_value("Summer Flower Motherstock Plan",
+		                           {"production_plan": self.production_plan}, "name")
+		if not name:
+			try:
+				name = for_plan(self.production_plan)
+			except Exception:
+				# A variety that is not raised through a motherstock has no line, and
+				# that is not a failure of this document.
+				frappe.clear_last_message()
+				return None
+		return frappe.get_doc("Summer Flower Motherstock Plan", name)
 
 	# --------------------------------------------------------------- totals
 	def roll_up(self):
@@ -426,16 +463,21 @@ class SummerFlowerPropagationPlan(Document):
 		self.peak_week = ("%s-W%02d" % (peak_row.year, cint(peak_row.week_no))
 		                  if peak_row else None)
 
-		# The TC order is sized by running an unsaved Motherstock Batch through its
-		# own controller, so these numbers and the real batch's cannot diverge.
-		if cint(self.mother_plants_required) and self._first_needed:
-			probe = self._probe_batch()
-			self.tc_plants_required = cint(probe.tc_plants_required)
-			self.tc_order_date = probe.tc_order_date
-			self.tc_on_farm_date = probe.tc_on_farm_date
-			self.first_sticking_date = probe.first_sticking_date
-			self.tc_cost = flt(probe.tc_cost)
-			self.total_cost = flt(probe.total_cost)
+		# The plantlet order is the Motherstock Plan's, not a second opinion. It used
+		# to be sized here by running an unsaved Motherstock Batch through its own
+		# controller -- which divided the pool by a multiplication factor and came
+		# back with 9,250 plantlets against the procurement plan's 28,000 for the
+		# same season.
+		ms = self._ms_line
+		if ms:
+			self.tc_plants_required = cint(ms.tc_to_order)
+			self.tc_order_date = ms.order_by_date
+			self.tc_on_farm_date = ms.tc_arrival_date
+			self.first_sticking_date = min(
+				(getdate(r.week_start_date) for r in self.weeks), default=None)
+			rate = flt(lookup_tc_rate(cint(ms.tc_to_order)))
+			self.tc_cost = rate * cint(ms.tc_to_order)
+			self.total_cost = flt(self.tc_cost)
 			# The committed order is the order. The probe stays the sizing advice
 			# beside it, which is what the batch's own override fields carry.
 			c = self._committed_choice()

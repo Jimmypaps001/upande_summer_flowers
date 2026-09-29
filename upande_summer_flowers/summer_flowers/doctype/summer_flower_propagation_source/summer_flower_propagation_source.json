@@ -8,6 +8,7 @@
  "engine": "InnoDB",
  "field_order": [
   "source_type",
+  "generation",
   "motherstock_batch",
   "mother_plants",
   "weekly_capacity",
@@ -25,6 +26,14 @@
    "label": "Source",
    "options": "Existing Motherstock\nNew Motherstock (TC)\nBought-in Rooted Cuttings",
    "reqd": 1
+  },
+  {
+   "fieldname": "generation",
+   "fieldtype": "Int",
+   "label": "Gen",
+   "in_list_view": 1,
+   "columns": 1,
+   "description": "Which generation of the line this is. Gen 1 is what the plantlets became; later generations are cuttings off the one before, stuck a week apart rather than arriving together."
   },
   {
    "columns": 2,
