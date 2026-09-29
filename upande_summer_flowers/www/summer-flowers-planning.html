@@ -46,11 +46,11 @@
   <div id="pl-choose" hidden>
     <div class="pl-card">
       <div class="pl-card-head"><div>
-        <h2>{{ _("Choose a variety") }}</h2>
-        <p class="pl-note">{{ _("A variety has more than one demand and more than one plan, so there is nothing sensible to show until you say which. Pick one, then narrow by farm and financial year if you want to.") }}</p>
+        <h2>{{ _("Choose a variety to begin") }}</h2>
+        <p class="pl-note">{{ _("Use the Variety box above — start typing and it narrows. A variety has more than one demand and more than one plan, so there is nothing sensible to show until you say which one.") }}</p>
       </div></div>
-      <div id="ch-varieties" class="pl-tiles pl-tiles-sm"></div>
-      <div id="ch-note"></div>
+      <p id="ch-note" class="pl-note"></p>
+      <p><button type="button" class="pl-btn primary" id="ch-pick">{{ _("Pick a variety") }}</button></p>
     </div>
   </div>
 
@@ -2999,16 +2999,16 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
     ch.hidden = !want;
     body.hidden = want;
     if (!want) return;
+    // Deliberately not a list. Nineteen varieties fit on a card; a few hundred do
+    // not, and a grid of them is a worse version of the box that already narrows
+    // as you type.
     const list = S.varieties || [];
-    $("ch-varieties").innerHTML = list.length
-      ? list.map((v) => `<button type="button" class="pl-tile" data-pickvar="${esc(v)}" ` +
-          `style="text-align:left;cursor:pointer">` +
-          `<div class="v" style="font-size:1rem">${esc(v)}</div></button>`).join("")
-      : `<p class="pl-empty">No summer flower varieties on this site yet.</p>`;
-    $("ch-note").innerHTML = S.plans && S.plans.plans
-      ? `<p class="pl-note">${esc(
-          `${S.plans.plans.length} production plans across all varieties.`)}</p>`
-      : "";
+    const plans = (S.plans && S.plans.plans) || [];
+    $("ch-note").textContent = list.length
+      ? `${list.length} varieties, ${plans.length} production plans between them.`
+      : "No summer flower varieties on this site yet.";
+    const btn = $("ch-pick");
+    if (btn) btn.hidden = !list.length;
   }
 
   function renderScopeLine() {
@@ -6122,13 +6122,12 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
         });
       }
 
-      $("ch-varieties").addEventListener("click", (e) => {
-        const b = e.target.closest("[data-pickvar]");
-        if (!b) return;
-        const v = b.dataset.pickvar;
-        $("f-variety").value = v;
-        S.variety = v; S.plan = "";
-        loadPlans().then(loadScope).catch((er) => toast(esc(er.message), true));
+      // The only way in is the box that already exists, so the button just puts the
+      // cursor in it and opens its list.
+      $("ch-pick").addEventListener("click", () => {
+        const vs = $("f-variety");
+        vs.focus();
+        vs.dispatchEvent(new Event("input", { bubbles: true }));
       });
 
       toggleGroup([["g-month", "month"], ["g-week", "week"]], "grain", dvChart);
