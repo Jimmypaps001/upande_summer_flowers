@@ -290,24 +290,6 @@
       <!-- The decision card. Nothing here is saved: the plan on file is untouched
            until it is regenerated or approved, so this is where to find out whether
            it is worth going on with. -->
-      <div class="pl-card">
-        <div class="pl-card-head">
-          <div><h2>{{ _("TC to buy") }}</h2></div>
-          <span class="pl-actions">
-            <label class="pl-inline">{{ _("Buy") }}
-              <input type="number" id="tc-qty" min="0" step="50"></label>
-            <label class="pl-inline">{{ _("Order on") }}
-              <input type="date" id="tc-date"></label>
-            <label class="pl-inline">{{ _("Cycles") }}
-              <input type="number" id="tc-cycles" min="0" max="12" step="1"></label>
-            <button type="button" class="pl-btn" data-tc="apply">{{ _("Try this") }}</button>
-            <button type="button" class="pl-btn" data-tc="reset">{{ _("Use the recommendation") }}</button>
-            <button type="button" class="pl-btn primary" data-tc="confirm">{{ _("Confirm") }}</button>
-          </span>
-        </div>
-        <div class="pl-tiles pl-tiles-sm" id="tc-tiles"></div>
-        <div id="tc-note"></div>
-      </div>
 
       <div class="pl-card">
         <div class="pl-card-head">
@@ -519,6 +501,24 @@
 
     <!-- ══ MOTHERSTOCK ══ -->
     <section class="pl-pane" data-pane="motherstock">
+      <div class="pl-card">
+        <div class="pl-card-head">
+          <div><h2>{{ _("The motherstock line") }}</h2>
+               <p class="pl-note">{{ _("Two decisions, and they trade against each other: how many plantlets to buy, and how many weeks to send the whole cut back as new mothers before any of it goes to the field. Buying fewer means diverting longer, which means ordering earlier.") }}</p></div>
+          <span class="pl-actions">
+            <label class="pl-inline">{{ _("Plantlets") }}
+              <input type="number" id="tc-qty" min="0" step="50"></label>
+            <label class="pl-inline">{{ _("Divert weeks") }}
+              <input type="number" id="tc-divert" min="0" max="52" step="1"></label>
+            <button type="button" class="pl-btn" data-tc="apply">{{ _("Try this") }}</button>
+            <button type="button" class="pl-btn" data-tc="reset">{{ _("Use the recommendation") }}</button>
+          </span>
+        </div>
+        <div class="pl-tiles pl-tiles-sm" id="tc-tiles"></div>
+        <div id="tc-note"></div>
+        <div id="tc-gens"></div>
+        <div id="tc-weeks" class="pl-scroll"></div>
+      </div>
       <div class="pl-card">
         <div class="pl-card-head">
           <div><h2>{{ _("TC lifecycle and propagation feedback") }}</h2>
@@ -4115,215 +4115,109 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
     // All three levers travel together. Sending only the one that was typed in
     // would reset the other two to the plan's values on every keystroke, so a date
     // chosen a moment ago would vanish the next time a quantity was tried.
-    const d = $("tc-date"), c = $("tc-cycles");
-    return call("tc_purchase", {
+    // Both knobs travel together: sending only the one that was typed would put
+    // the other back to the plan's value on every keystroke.
+    const c = $("tc-divert");
+    return call("motherstock_line", {
       plan: S.dv.plan,
-      tc_qty: qty || null,
-      order_date: (d && d.value) || null,
-      cycles: (c && c.value !== "") ? c.value : null,
+      tc: qty || null,
+      divert_weeks: (c && c.value !== "") ? c.value : null,
     })
       .then((r) => { S.tc = r; renderTc(); })
       .catch((e) => { S.tc = { error: e.message }; renderTc(); });
   }
 
-  // Confirming is the only thing on this card that writes. It says plainly what is
-  // about to change and what it will cost, because the figure being confirmed is
-  // usually not the recommended one -- that is the point of being able to tweak it.
-  function confirmTc(btn) {
-    const t = S.tc;
-    if (!(t && t.plan)) return;
-    if (t.plan_submitted) {
-      alert("This plan is approved. Amend it to change the TC order.");
-      return;
-    }
-    const qty = parseInt($("tc-qty").value, 10) || t.chosen_tc;
-    const date = $("tc-date").value || t.order_date_used || "";
-    const cycles = $("tc-cycles").value !== "" ? parseInt($("tc-cycles").value, 10)
-                                               : t.build_up_cycles;
-    const cov = t.built_coverage_pct;
-    const lines = [
-      `Confirm ${num(qty)} plantlets, ${cycles} build-up cycles` +
-        (date ? `, ordering ${date}?` : "?"),
-      "",
-      cov === null ? "" : `That order supplies ${cov.toFixed(1)}% of the demand ` +
-        `(${num(t.built_production)} stems).`,
-      t.built_dropped ? `${num(t.built_dropped)} plantings do not happen for want of ` +
-        `cuttings.` : "",
-      "",
-      t.cutting_weeks == null ? "" :
-        `This keeps ${t.cutting_weeks} of the line's ${t.line_life_weeks} cutting ` +
-        `weeks.`,
-      "",
-      "This writes the choice to the plan, to the draft procurement plan that " +
-      "places the order, to any propagation plan and draft motherstock batch, " +
-      "and the plan's expected stems will follow it.",
-    ].filter(Boolean);
-    if (!confirm(lines.join("\n"))) return;
-
-    const was = btn.textContent;
-    btn.disabled = true; btn.textContent = "Confirming…";
-    call("confirm_tc_choice", {
-      plan: t.plan, tc_qty: qty, order_date: date || null, cycles: cycles,
-    })
-      .then((r) => {
-        $("tc-note").innerHTML =
-          `<p class="pl-note"><b>Confirmed.</b> ${esc(r.note || "")}</p>`;
-        // Everything downstream moved, so nothing on screen can be trusted as it
-        // stands: the weekly table, the planting dates and the propagation plan
-        // are all derived from what was just written.
-        return loadScope()
-          .then(() => Promise.all([loadChain(), loadTc(), loadWhatIf()]))
-          .then(renderPlanTab);
-      })
-      .catch((e) => {
-        $("tc-note").innerHTML =
-          `<p class="pl-note pl-bad">Could not confirm: ${esc(e.message)}</p>`;
-      })
-      .finally(() => { btn.disabled = false; btn.textContent = was; });
-  }
+  // Nothing on this card writes any more. Trying a quantity or a diversion is
+  // free -- it recalculates and shows what happens -- and committing to a line is
+  // done on the Motherstock Plan, which the card links to. confirmTc used to write
+  // a quantity, a date and a cycle count straight onto the plan from here, and two
+  // of those three no longer exist.
 
   function renderTc() {
     const t = S.tc;
+    const gens = $("tc-gens"), wk = $("tc-weeks");
     if (!t || t.error || !t.plan) {
       $("tc-tiles").innerHTML = `<p class="pl-empty">${esc(
         (t && t.error) || "No plan in scope.")}</p>`;
-      $("tc-note").innerHTML = "";
+      $("tc-note").innerHTML = ""; gens.innerHTML = ""; wk.innerHTML = "";
       return;
     }
-    const input = $("tc-qty");
-    if (input && document.activeElement !== input) input.value = t.chosen_tc || "";
+    if (!t.propagates || !t.solvable) {
+      $("tc-tiles").innerHTML = "";
+      $("tc-note").innerHTML = `<div class="pl-callout">${esc(
+        t.reason || "This variety is not raised through a motherstock.")}</div>`;
+      gens.innerHTML = ""; wk.innerHTML = "";
+      return;
+    }
 
-    const cov = t.built_coverage_pct;
+    const c = t.chosen || {}, rec = t.recommended || {}, need = t.need || {};
+    const qty = $("tc-qty"), dv = $("tc-divert");
+    if (qty && document.activeElement !== qty) qty.value = c.tc || "";
+    if (dv && document.activeElement !== dv) dv.value = c.divert_weeks ?? "";
+
+    const met = c.weeks_met || 0, all = c.weeks || 0;
     $("tc-tiles").innerHTML = [
-      { k: "Buy", v: num(t.chosen_tc),
-        m: `plantlets · ${num(Math.round(t.cost))} at ${t.rate_per_plantlet}/plantlet` },
-      // Sized from the peak sticking week, so name it. The panel read 0 plantlets
-      // against a 3.7 million stem demand while it was sized from the placed
-      // plantings and none of them had a block.
-      { k: "Sized from", v: num(t.peak_plants),
-        m: `plants stuck in ${esc(t.peak_week || "the peak week")}${
-          t.peak_basis === "planned" && t.peak_plants !== t.peak_plants_placed
-            ? ` — includes plantings with no block yet (${num(t.peak_plants_placed)} placed)`
-            : ""}`,
-        c: t.peak_plants ? "" : "--critical" },
-      // This is the tile that was missing: what buying that quantity grows.
-      { k: "Demand it meets", v: cov === null ? "—" : cov.toFixed(1) + "%",
-        m: `${num(t.built_production)} stems, ${num(t.built_unmet)} short`,
-        c: cov === null ? "" : Math.abs(cov - 100) <= t.tolerance_pct ? "--good"
-           : cov >= 100 - t.tolerance_pct * 2 ? "--serious" : "--critical" },
-      { k: `Inside ±${t.tolerance_pct}%`, v: t.in_band ? "yes" : "no",
-        m: t.tc_for_demand_solved
-          ? `${num(t.tc_for_demand)} plantlets lands it`
-          : `nothing lands it — best ${t.tc_for_demand_coverage.toFixed(1)}%`,
-        c: t.in_band ? "--good" : "--critical" },
-      { k: "Plantings it supplies", v: `${num(t.built_full)} full`,
-        m: `${num(t.built_trimmed)} part-planted, ${num(t.built_dropped)} not planted`,
-        c: t.built_dropped ? "--critical" : "--good" },
-      { k: "Plants stuck", v: num(t.built_plants),
-        m: `of ${num(t.built_plants_wanted)} the plan wants`,
-        c: t.built_plants < t.built_plants_wanted ? "--serious" : "--good" },
-      { k: "Pool it builds", v: num(t.chosen_pool),
-        m: `×${t.multiplication_factor} over ${t.build_up_cycles} build-up cycles · ` +
-           `covers ${t.chosen_cover_pct.toFixed(0)}% of the peak week` },
-      // What the multiplication costs. The tile above shows what it buys; this is
-      // the price, and it was invisible while expiry was dated from the multiplied
-      // generation's first cut instead of from motherstock one's.
-      { k: "Cutting weeks left", v: t.cutting_weeks == null ? "—" : t.cutting_weeks,
-        m: t.cutting_weeks == null
-          ? "the protocol does not say how long the line lives"
-          : (t.build_up_cycles > 1
-              ? `of the line's ${t.line_life_weeks} — ${t.build_up_cycles - 1} × ` +
-                `${t.cycle_cost_weeks} weeks spent multiplying`
-              : `the line's full ${t.line_life_weeks}, nothing spent multiplying`),
-        c: t.cutting_weeks == null ? ""
-           : !t.cutting_weeks ? "--critical"
-           : t.cutting_weeks < t.line_life_weeks / 2 ? "--serious" : "--good" },
-      { k: "MS starts cutting", v: t.first_cut_date ? fdate(t.first_cut_date) : "—",
-        m: t.full_capacity_date
-          ? `full rate ${fdate(t.full_capacity_date)} after ${t.ramp_weeks} weeks`
-          : "no schedule yet" },
-    ].map(tile).join("");
+      { k: "Buy", v: num(c.tc), m: "plantlets" },
+      { k: "Divert", v: `${c.divert_weeks}`, m: "weeks of cutting" },
+      { k: "Order by", v: fdate(c.order_by), m: c.order_late ? "already passed" : "" },
+      { k: "First cutting", v: fdate(c.first_cut_date), m: `${num(c.arriving)} mothers` },
+      { k: "Pool peaks", v: num(c.peak_pool), m: `week ${c.peak_pool_week} of the line` },
+      { k: "Block cleared", v: fdate(c.line_end_date), m: "the whole line goes at once" },
+      { k: "Weeks met", v: `${met} / ${all}`,
+        m: c.shortfall ? `${num(c.shortfall)} cuttings short` : "every planting week" },
+      { k: "Needs", v: num(need.cuttings), m: `cuttings over ${need.weeks} weeks` },
+    ].map((x) => `<div class="pl-tile"><div class="k">${esc(x.k)}</div>` +
+      `<div class="v">${esc(String(x.v))}</div>` +
+      `<div class="m">${esc(x.m || "")}</div></div>`).join("");
 
     const notes = [];
-    if (cov !== null && Math.abs(cov - 100) > t.tolerance_pct) {
-      notes.push(`${num(t.chosen_tc)} plantlets grows ${num(t.built_production)} stems ` +
-        `against ${num(t.built_production + t.built_unmet)} of demand — ` +
-        `<b>${cov.toFixed(1)}%</b>. ${num(t.built_trimmed)} plantings are part-planted ` +
-        `and ${num(t.built_dropped)} do not happen for want of cuttings, which is ` +
-        `${num(t.built_plants_wanted - t.built_plants)} plants never stuck.`);
+    if (rec.tc && rec.tc !== c.tc) {
+      notes.push(`The cheapest order that covers every planting week is ` +
+        `${num(rec.tc)} plantlets at ${rec.divert_weeks} weeks of diversion.`);
     }
-    if (t.built_dropped_too_early) {
-      notes.push(`${num(t.built_dropped_too_early)} of those plantings stick before ` +
-        `${esc(t.built_first_cut_week || "the first cut")}, which is the earliest week ` +
-        `any pool from this order can be cut. No order size reaches them — they need ` +
-        `either an earlier order or cuttings bought in already rooted.`);
+    const blocked = (t.options || []).find((o) => !o.covers && o.blocked);
+    const lim = t.limits || {};
+    if (blocked && lim.max_divert_that_covers != null) {
+      notes.push(`<b>Divert at most ${lim.max_divert_that_covers} weeks on this ` +
+        `plan.</b> ${esc(blocked.blocked)}`);
     }
-    if (t.binding_constraint) {
-      notes.push(esc(t.binding_constraint));
+    if (t.saved && t.saved.name) {
+      notes.push(`Written down as <a href="/app/summer-flower-motherstock-plan/` +
+        `${encodeURIComponent(t.saved.name)}">${esc(t.saved.name)}</a>: ` +
+        `${num(t.saved.tc_to_order)} plantlets, ${t.saved.divert_weeks} weeks ` +
+        `diverted. Change it there to commit to it.`);
     }
-    // Multiplying is a trade, not a saving, and the table is the only place the
-    // two halves of it sit side by side.
-    if (t.cutting_weeks === null) {
-      notes.push(`<b>What multiplying costs cannot be worked out.</b> ` +
-        `${esc(t.version)} does not record how long the line lives` +
-        (t.cycle_cost_weeks ? "" : " or how long an establishment takes") +
-        `, and every extra cycle is an establishment spent out of that window. ` +
-        `Fill it in on the protocol before choosing more than one cycle.`);
-    } else if (!t.cutting_weeks) {
-      notes.push(`<b>${t.build_up_cycles} cycles leaves nothing to cut.</b> ` +
-        `The line lives ${t.line_life_weeks} weeks from motherstock one's first ` +
-        `cut — 1.2 and everything after it come out when 1 does — and ` +
-        `${t.build_up_cycles - 1} × ${t.cycle_cost_weeks} weeks of that go on ` +
-        `multiplying. The pool is full the week it is pulled out. Buy more ` +
-        `plantlets and multiply fewer times.`);
-    }
-    if (t.cutting_weeks !== null && t.cutting_weeks_by_cycles
-        && t.cutting_weeks_by_cycles.length) {
-      notes.push(`<b>What multiplying costs.</b> Fewer plantlets, fewer cutting ` +
-        `weeks — the line expires on motherstock one's clock whichever generation ` +
-        `is standing.<table class="pl-t"><tr><th>Cycles</th><th class="n">Pool</th>` +
-        `<th class="n">Plantlets</th><th class="n">Cutting weeks</th></tr>` +
-        t.cutting_weeks_by_cycles.map((r) =>
-          `<tr${r.cycles === t.build_up_cycles ? ' class="pl-chosen"' : ""}>` +
-          `<td>${r.cycles}${r.cycles === t.build_up_cycles ? " ←" : ""}</td>` +
-          `<td class="n">×${r.factor}</td><td class="n">${num(r.tc)}</td>` +
-          `<td class="n">${r.weeks == null ? "?" : (r.weeks || "<b>none</b>")}</td>` +
-          `</tr>`).join("") +
-        `</table>`);
-    }
-    // The plan and its sourcing answer different questions, and the plan's answer
-    // is the optimistic one: it sizes plantings from demand and reports what they
-    // would yield. Whether there are cuttings to stick them with is the
-    // propagation plan's answer, and when the two disagree the plan is the one
-    // that is wrong.
-    const src = t.sourcing;
-    if (src && src.plants_short) {
-      notes.push(`This plan and its sourcing do not agree. The plan grows ` +
-        `${num(t.built_production)} stems from ${num(src.plants_to_stick)} plants; ` +
-        `<a href="/app/summer-flower-propagation-plan/${encodeURIComponent(
-          src.propagation_plan)}" target="_blank">${esc(src.propagation_plan)}</a> ` +
-        `says ${num(src.cuttings_uncovered)} of the ${num(src.cuttings_required)} ` +
-        `cuttings it needs have no source, so <b>${num(src.plants_short)} plants ` +
-        `cannot be stuck</b> and <b>${num(src.stems_at_risk)} stems are at risk</b>. ` +
-        `That is the motherstock ramping, not the order being too small — the pool ` +
-        `cuts at 25% in its first week and reaches full rate three weeks later, and ` +
-        `the plan sticks into those weeks. Move the first plantings later, or order ` +
-        `earlier so the pool is at full rate when they start.`);
-    }
-    if (!t.tc_for_demand_solved && t.tc_for_demand_reason) {
-      notes.push(`No order size lands the demand: ${esc(t.tc_for_demand_reason)}. ` +
-        `The limit is when the pool can cut, not how big it is.`);
-    } else if (t.tc_for_demand) {
-      notes.push(`${num(t.tc_for_demand)} plantlets is the smallest order that lands ` +
-        `within ±${t.tolerance_pct}% of demand, reaching ` +
-        `${t.tc_for_demand_coverage.toFixed(1)}%.`);
-    }
-    if (t.order_date) {
-      notes.push(`This order has to be placed by ${fdate(t.order_date)} to be on farm ` +
-        `for a first cut on ${t.first_cut_date ? fdate(t.first_cut_date) : "?"}.`);
-    }
+    (t.assumed || []).forEach((a) => notes.push(a));
     $("tc-note").innerHTML = notes.length
       ? notes.map((n) => `<div class="pl-callout">${n}</div>`).join("") : "";
+
+    // Generations. A mother cuts every week, so a generation arrives over a run of
+    // weeks rather than on a date, and the arrivals column is how many.
+    const g = c.generations || [];
+    gens.innerHTML = !g.length ? "" :
+      `<table class="pl-t"><thead><tr><th>Gen</th><th class="n">Mothers</th>` +
+      `<th class="n">Arrivals</th><th>Starts cutting</th><th class="n">Cutting weeks</th>` +
+      `<th>Cleared</th></tr></thead><tbody>` +
+      g.map((r) => `<tr><td>G${r.generation}</td><td class="n">${num(r.mothers)}</td>` +
+        `<td class="n">${num(r.arrivals)}</td><td>${fdate(r.first_cut_date)}</td>` +
+        `<td class="n">${num(r.cutting_weeks)}</td><td>${fdate(r.expiry_date)}</td></tr>`)
+        .join("") + `</tbody></table>`;
+
+    const t2 = c.weeks_table || [];
+    wk.innerHTML = !t2.length ? "" :
+      `<table class="pl-t"><thead><tr><th>Wk</th><th>Week of</th><th>Standing</th>` +
+      `<th class="n">Mothers</th><th class="n">Cut</th><th class="n">To mult.</th>` +
+      `<th class="n">To field</th><th class="n">Needs</th><th class="n">Short</th>` +
+      `<th>Event</th></tr></thead><tbody>` +
+      t2.map((r) => `<tr${r.event ? ' class="ls-arrive"' : ""}><td>${r.week_no}</td>` +
+        `<td>${fdate(r.week_start)}</td><td>${esc(r.generations_live || "")}</td>` +
+        `<td class="n">${num(r.mothers_standing)}</td>` +
+        `<td class="n">${num(r.cuttings_cut)}</td>` +
+        `<td class="n">${r.to_multiplication ? num(r.to_multiplication) : ""}</td>` +
+        `<td class="n">${r.to_field ? num(r.to_field) : ""}</td>` +
+        `<td class="n">${r.demand ? num(r.demand) : ""}</td>` +
+        `<td class="n">${r.shortfall ? num(r.shortfall) : ""}</td>` +
+        `<td>${esc(r.event || "")}</td></tr>`).join("") + `</tbody></table>`;
   }
 
   function loadReview() {
@@ -4658,12 +4552,13 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
                 : "no propagation plan to size against" },
       { k: "Productivity per plant", v: perPlant ? perPlant.toFixed(2) : "—",
         m: "cuttings a week from one mother" },
-      { k: "Mother plants required", v: num(mothers),
-        m: perPlant && need
-          ? `${num(Math.ceil(need / perPlant))} to cover the peak` : "from the plan",
-        c: t.peak_ms_plants && mothers > t.peak_ms_plants ? "--critical" : "" },
-      { k: "Multiplication cycles", v: r.build_up_cycles != null ? r.build_up_cycles : "—",
-        m: `×${r.multiplication_factor || 1} over ${p.ms_establishment_weeks || 0}w each` },
+      // What the line actually reaches, not the peak week divided by a mother's
+      // weekly yield. That sizing turned one week's flow into a standing pool and
+      // is why this card and the documents used to quote different orders.
+      { k: "Mother plants at the peak", v: num(t.peak_ms_plants || mothers),
+        m: "what the line reaches, standing at once" },
+      { k: "Generations", v: r.generations != null ? r.generations : "—",
+        m: "not a setting — it follows from how long the cut is diverted" },
       { k: "TC plants required", v: num(r.tc_qty),
         m: "ordered " + fdate(r.order_date) },
     ].map(tile).join("");
@@ -5844,7 +5739,11 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
       renderDemandVsProduction(scoped().weeks, !!(S.dv && S.dv.tc_committed));
     }
     if (name === "planting" && S.pp) renderPlanting();
-    if (name === "motherstock" && S.ls) drawPool($("ls-chart"), S.ls.rows);
+    if (name === "motherstock") {
+      if (S.ls) drawPool($("ls-chart"), S.ls.rows);
+      loadTc($("tc-qty").value || null)
+        .catch((e) => toast(esc(e.message), true));
+    }
     // The transactional tabs read live state, so they refetch on reveal rather
     // than showing whatever was true when the page first loaded.
     if (name === "plan") {
@@ -6210,10 +6109,9 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
         const b = e.target.closest("[data-tc]");
         if (!b) return;
         if (b.dataset.tc === "reset") {
-          $("tc-qty").value = ""; $("tc-date").value = ""; $("tc-cycles").value = "";
+          $("tc-qty").value = ""; $("tc-divert").value = "";
           loadTc(null); return;
         }
-        if (b.dataset.tc === "confirm") { confirmTc(b); return; }
         loadTc($("tc-qty").value || null);
       });
       $("dm-table").parentElement.addEventListener("click", (e) => {

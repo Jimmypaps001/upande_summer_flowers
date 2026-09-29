@@ -2692,3 +2692,36 @@ def production_sheet(plan=None, variety=None, farm=None):
 # The CSV is plan_sheet.sheet_csv, which is whitelisted and writes the download
 # response itself. Wrapping it here would be a second implementation of the one
 # thing this file keeps having to un-duplicate.
+
+
+@frappe.whitelist()
+def motherstock_line(plan=None, variety=None, farm=None, tc=None, divert_weeks=None):
+	"""The motherstock line for the dashboard: the decision, and what it gives.
+
+	The same engine the procurement popup and the propagation plan read, so the
+	dashboard cannot quote a different plantlet order from the documents. It used
+	to work its own out through tc_derivation -- peak week, divided by cuttings per
+	mother per week, divided by a multiplication factor -- which is the model the
+	farm does not work to and gave 9,250 plantlets where the documents said 28,000.
+
+	`tc` and `divert_weeks` are the playground: pass either to see what it does
+	without writing anything down.
+	"""
+	_guard()
+	from upande_summer_flowers.summer_flowers import propagation_solver as ps
+
+	name = resolve_plan(variety=variety, farm=farm, plan=plan)
+	if not name:
+		return {"plan": None}
+	doc = frappe.get_doc("Summer Flower Production Plan", name)
+	out = ps.recommend(doc, tc=tc, divert_weeks=divert_weeks)
+	out["plan"] = name
+	out["scope"] = scope_of(variety=variety, farm=farm, plan=plan)
+	# The saved decision, if somebody has committed to one. The figures above are
+	# a proposal until then, and saying which is which is the whole point.
+	saved = frappe.db.get_value(
+		"Summer Flower Motherstock Plan", {"production_plan": name},
+		["name", "tc_to_order", "divert_weeks", "order_by_date", "generations"],
+		as_dict=True)
+	out["saved"] = saved
+	return out
