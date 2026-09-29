@@ -123,7 +123,13 @@ def build_cycles(p, tc_qty, order_date, num_cycles):
 	for i in range(int(num_cycles)):
 		arrive_sw = sw + lead
 		first_cut_sw = arrive_sw + estab
-		expiry_sw = first_cut_sw + life
+		# The line is cleared as one block. Every tranche in it dies here, whatever
+		# its own age, so a late build-up gets less life than an early one rather
+		# than carrying the pool on past the clearance. Letting each tranche keep a
+		# full life of its own made the pool compound without bound -- which is what
+		# max_bench_sqm below was holding back.
+		line_end_sw = first_cut_sw + life
+		expiry_sw = line_end_sw
 		c = {
 			"cycle": i + 1,
 			"tc_qty": int(tc_qty),
@@ -163,23 +169,32 @@ def build_cycles(p, tc_qty, order_date, num_cycles):
 		c["stages"] = []
 		for k in range(bu):
 			ready = first_cut_sw + k * gap
+			# A tranche that comes online at or after the clearance never cuts at
+			# all, so it is not a tranche. Carrying it inflated the pool with plants
+			# that could not exist.
+			if k and ready >= line_end_sw:
+				break
 			c["stages"].append({
 				"stage": k + 1,
 				"label": "MS%d.%d" % (i + 1, k + 1) if bu > 1 else "MS%d" % (i + 1),
 				"plants": int(round(int(tc_qty) * per_stage)),
 				"ready_sw": ready,
 				"full_sw": ready + ramp_w - 1,
-				"expiry_sw": ready + life,
+				"expiry_sw": min(ready + life, line_end_sw),
+				"cutting_weeks": max(0, min(ready + life, line_end_sw) - ready),
 				"ready_date": order + datetime.timedelta(weeks=lead + estab + k * gap),
 				"expiry_date": order + datetime.timedelta(
-					weeks=lead + estab + k * gap + life),
+					weeks=lead + estab + min(k * gap + life, life)),
 			})
 		c["pool_full_sw"] = c["stages"][-1]["full_sw"]
 		c["pool_full_date"] = c["stages"][-1]["ready_date"] + datetime.timedelta(
 			weeks=ramp_w - 1)
-		# The cycle is done when its last tranche dies, not its first.
-		c["expiry_sw"] = c["stages"][-1]["expiry_sw"]
-		c["expiry_date"] = c["stages"][-1]["expiry_date"]
+		# The cycle is done when the block is cleared, which is one life after its
+		# FIRST cut. It used to run to the last tranche's own death, which put the
+		# clearance up to (build-ups - 1) x establishment later than the farm's.
+		c["line_end_sw"] = line_end_sw
+		c["expiry_sw"] = line_end_sw
+		c["expiry_date"] = order + datetime.timedelta(weeks=lead + estab + life)
 		c["next_order_sw"] = c["expiry_sw"] - (lead + gap * bu)
 		c["next_order_date"] = c["expiry_date"] - datetime.timedelta(
 			weeks=lead + gap * bu)
@@ -370,7 +385,10 @@ def simulate(p, tc_qty, order_date, num_cycles=None, farm_overrides=None,
 		prop_detail = []
 		for pool in prop_pools:
 			w = sw - pool["start_sw"]
-			if w < 0 or w >= life:
+			# Dead either by its own age or because the block it belongs to has been
+			# cleared, whichever comes first. Age alone let a diverted pool outlive
+			# the mothers it was cut from.
+			if w < 0 or w >= life or sw >= pool.get("line_end_sw", 10 ** 9):
 				continue
 			pct = ramp_ratio(w, ramp)
 			cap = int(round(pool["plants"] * per_plant * pct))
@@ -406,15 +424,26 @@ def simulate(p, tc_qty, order_date, num_cycles=None, farm_overrides=None,
 		diverted_planted = 0
 		if to_prop > 0 and sw <= last_sw and len(prop_pools) < MAX_POOLS:
 			start = sw + estab
-			room = to_prop
-			if max_plants is not None:
+			# Which block these cuttings belong to, and therefore when they will be
+			# cleared. Cuttings taken within `estab` weeks of the clearance become
+			# mothers that never cut, so they are wasted rather than banked -- and
+			# that is the real deadline on multiplying, not a bench ceiling.
+			line_end = next((c["line_end_sw"] for c in cycles
+			                 if c["first_cut_sw"] <= sw < c["line_end_sw"]), None)
+			too_late = line_end is not None and start >= line_end
+			# Not zeroed: these cuttings were taken, and `wasted` below is what says
+			# so. Zeroing them made a doomed diversion look like no diversion.
+			room = 0 if too_late else to_prop
+			if max_plants is not None and not too_late:
 				# What will already be standing the week this pool comes online.
 				standing = _pool_plants(cycles, prop_pools, start, life)
 				room = max(0, min(to_prop, max_plants - standing))
 				if room < to_prop:
 					bench_limited = True
 			if room > 0:
-				prop_pools.append({"start_sw": start, "plants": room, "src_sw": sw})
+				prop_pools.append({"start_sw": start, "plants": room, "src_sw": sw,
+				                   "line_end_sw": line_end if line_end is not None
+				                   else start + life})
 				diverted_planted = room
 				# No event. A pool coming online is what the Prop-MS column IS, and
 				# one of these fired most weeks of the run -- ninety lines of the
