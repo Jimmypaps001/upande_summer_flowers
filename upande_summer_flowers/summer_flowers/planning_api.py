@@ -596,7 +596,7 @@ def _first_sticking_for(plan, placed_only=False):
 # What a TC quantity actually produces
 # ---------------------------------------------------------------------------
 
-def _tc_production(plan_doc, version, tc_qty, order_date, to_prop_pct=0,
+def _tc_production(plan_doc, version, tc_qty, order_date, divert_weeks=0,
                    max_bench_sqm=None, week_overrides=None):
 	"""Roll a TC quantity all the way through to stems against demand.
 
@@ -635,7 +635,13 @@ def _tc_production(plan_doc, version, tc_qty, order_date, to_prop_pct=0,
 	# before the plan starts, so counting weeks_covered from it stopped the run
 	# short and the last sticking weeks had no capacity row at all -- which read as
 	# plantings that no order size could supply.
-	p = ls.params_from_version(v.name)
+	# One plantlet buys one mother. Without this the simulation applied the
+	# protocol's multiplication factor on top of the diverted cuttings, so a
+	# quantity tried here became four times the pool it can actually raise and the
+	# coverage it reported was four times too good.
+	from upande_summer_flowers.summer_flowers.propagation_solver import TC_IS_ONE_MOTHER
+
+	p = ls.params_from_version(v.name, TC_IS_ONE_MOTHER)
 	# Overrides arrive keyed by the week a grower reads -- "2026-W06" -- and the
 	# simulation counts weeks from the order date, so they are translated here
 	# rather than making the caller do sim-week arithmetic.
@@ -657,11 +663,24 @@ def _tc_production(plan_doc, version, tc_qty, order_date, to_prop_pct=0,
 	span = cint(plan_doc.weeks_covered)
 	if last_stick:
 		span = max(span, ((getdate(last_stick) - getdate(order_date)).days // 7) + 4)
+	# The diversion is weeks, not a standing percentage: the whole cut goes back
+	# for that many weeks from the first cutting, and after it the field takes what
+	# it asks for and the rest is left on the mother. A standing percentage
+	# compounded every week for the life of the run.
+	first_cut_sw = (cint(p["supplier_lead_weeks"])
+	                + (cint(p.get("tc_to_first_cut_weeks"))
+	                   or cint(p["ms_establishment_weeks"])))
+	# Counted before the diversion window is added, because those are not somebody's
+	# splits -- they are the decision being tried, and reporting them as "weeks you
+	# changed" made an 8-week diversion look like eight hand edits.
+	typed_overrides = len(overrides)
+	for i in range(cint(divert_weeks)):
+		overrides.setdefault(first_cut_sw + i, 0)
 	sim = ls.simulate(p, cint(tc_qty), order_date,
 	                  farm_overrides=overrides,
-	                  default_to_prop_pct=flt(to_prop_pct),
 	                  max_bench_sqm=max_bench_sqm,
-	                  horizon_weeks=span)
+	                  horizon_weeks=span,
+	                  divert_until_sw=first_cut_sw + cint(divert_weeks))
 	capacity = {}
 	for r in sim["rows"]:
 		capacity[(r["year"], r["week_no"])] = capacity.get(
@@ -820,7 +839,7 @@ def _tc_production(plan_doc, version, tc_qty, order_date, to_prop_pct=0,
 		"num_cycles": sim.get("num_cycles"),
 		"detail": detail[:40],
 		"sticking": [stick_rows[k] for k in sorted(stick_rows)],
-		"overrides": len(overrides),
+		"overrides": typed_overrides,
 		"prop_returns": sim.get("prop_pool_rows", []),
 		"establishment_weeks": cint(p.get("ms_establishment_weeks")),
 		"tc_to_first_cut_weeks": cint(p.get("tc_to_first_cut_weeks")),
@@ -1069,20 +1088,22 @@ def tc_purchase(plan=None, variety=None, farm=None, tc_qty=None, tolerance_pct=1
 
 @frappe.whitelist()
 def plan_whatif(plan=None, variety=None, farm=None, tc_qty=None, week_overrides=None,
-                to_prop_pct=0, order_date=None, cycles=None):
-	"""Try a different order, a different order date, or a different build-up.
+                divert_weeks=None, order_date=None, to_prop_pct=None, cycles=None):
+	"""Try a different order and see what it does to the plan's stems.
 
 	Same walk as tc_purchase, but it also hands back the per-sticking-week rows the
 	numbers came from so they can be changed one week at a time. Nothing is saved:
 	the plan on file is untouched until the choice is confirmed, so this is the
 	place to find out whether the plan is worth going on with.
 
-	Three levers, because those are the three the farm actually pulls. The quantity
-	decides how much can be cut; the order date decides which weeks can be supplied
-	at all; the cycles decide both how many plantlets are needed for a given pool
-	and how long the lead time is, so changing them moves the order date too unless
-	one is pinned. A quantity tried against the wrong date reads as a shortfall
-	that buying more would not fix.
+	Two levers, and they are the ones the farm pulls: how many plantlets, and how
+	many weeks the whole cut goes back as new mothers before any of it goes to the
+	field. The order date follows from the second unless it is pinned -- diverting
+	longer needs fewer plantlets but pulls the order earlier.
+
+	`cycles` and `to_prop_pct` were the old levers: a count of sequential
+	generations, and a standing percentage diverted every week for ever. Both are
+	accepted and ignored so an older caller does not fail; neither sizes anything.
 	"""
 	_guard()
 	plan = resolve_plan(variety, farm, plan)
@@ -1102,18 +1123,30 @@ def plan_whatif(plan=None, variety=None, farm=None, tc_qty=None, week_overrides=
 		order_by="creation desc", limit=1)
 	prop = prop[0] if prop else None
 
-	cycles = cint(cycles) if cycles not in (None, "") else cint(v.max_multiplication_cycles)
+	from upande_summer_flowers.summer_flowers import propagation_solver as ps
 
-	# An asked-for date wins; otherwise the propagation plan's, otherwise the one the
-	# cycles imply. Asking for cycles without a date has to re-derive the date, since
-	# a shorter build-up is precisely a shorter lead time.
+	# The line as the solver works it out, for the diversion being asked for. This
+	# is the same engine the popup, the propagation plan and the dashboard read, so
+	# what-if and the documents cannot quote different orders for the same choice.
+	line = ps.recommend(p, tc=tc_qty,
+	                    divert_weeks=(divert_weeks
+	                                  if divert_weeks not in (None, "") else None))
+	chosen_line = (line or {}).get("chosen") or {}
+	rec_line = (line or {}).get("recommended") or {}
+	divert = cint(chosen_line.get("divert_weeks")
+	              if divert_weeks in (None, "") else divert_weeks)
+
+	# An asked-for date wins; otherwise the one the diversion implies, which is what
+	# the order actually has to be placed on.
 	asked_date = getdate(order_date) if order_date else None
 	if asked_date:
 		order_date = asked_date
-	elif prop and prop.tc_order_date and cycles == cint(v.max_multiplication_cycles):
+	elif chosen_line.get("order_by"):
+		order_date = getdate(chosen_line["order_by"])
+	elif prop and prop.tc_order_date:
 		order_date = prop.tc_order_date
 	else:
-		order_date = tc_order_by_date(v, _first_sticking_for(plan), cycles=cycles)
+		order_date = tc_order_by_date(v, _first_sticking_for(plan))
 	if not order_date:
 		return {"plan": plan, "error": "No sticking weeks to plan cuttings for."}
 
@@ -1122,30 +1155,14 @@ def plan_whatif(plan=None, variety=None, farm=None, tc_qty=None, week_overrides=
 	# half the plantlets. Sized off the pool the propagation plan worked out, by the
 	# same helper the motherstock batch uses, so the recommendation and the batch
 	# cannot disagree.
-	same_cycles = cycles == cint(v.max_multiplication_cycles)
-	if prop and cint(prop.mother_plants_required):
-		recommended = int(math.ceil(
-			v.tc_plants_for(cint(prop.mother_plants_required), cycles)))
-	elif prop and same_cycles:
-		recommended = cint(prop.tc_plants_required)
-	else:
-		peak = v.cuttings_for_plants(sizing_peak(p)[0])
-		per_week = flt(v.cuttings_per_plant_per_week) or 1.0
-		factor = v.multiplication_factor(cycles)
-		recommended = int(math.ceil(peak / per_week / factor)) if per_week and factor else 0
+	# The least that covers every planting week at THIS diversion -- not the plan's
+	# stored figure, which was worked out at a different one. Reusing it is what
+	# made the quantity sit still while the order date moved, so the order on
+	# screen raised a pool that no longer matched the one being asked for.
+	recommended = cint(rec_line.get("tc") or chosen_line.get("tc") or 0)
+	chosen = cint(tc_qty) if cint(tc_qty) else cint(chosen_line.get("tc") or recommended)
 
-	# A typed quantity wins. Otherwise take the plan's own figure only while the
-	# cycles are the plan's own -- reusing it under different cycles is what made
-	# the quantity sit still while the order date moved, so the order on screen
-	# raised a pool that no longer matched the one being asked for.
-	if cint(tc_qty):
-		chosen = cint(tc_qty)
-	elif prop and same_cycles and cint(prop.tc_plants_required):
-		chosen = cint(prop.tc_plants_required)
-	else:
-		chosen = recommended
-
-	built = _tc_production(p, v, chosen, order_date, to_prop_pct=flt(to_prop_pct),
+	built = _tc_production(p, v, chosen, order_date, divert_weeks=divert,
 	                       week_overrides=week_overrides)
 	# The plan as it stands, for comparison: what changing anything is measured
 	# against. Read from the document, not recomputed, so the baseline is the plan.
@@ -1154,7 +1171,14 @@ def plan_whatif(plan=None, variety=None, farm=None, tc_qty=None, week_overrides=
 		"status": p.workflow_state or p.status,
 		"order_date": str(order_date),
 		"tc_qty": chosen,
-		"cycles": cycles,
+		"divert_weeks": divert,
+		"generations": len(chosen_line.get("generations") or []),
+		"weeks_met": cint(chosen_line.get("weeks_met")),
+		"weeks_required": cint(chosen_line.get("weeks")),
+		"line_end_date": chosen_line.get("line_end_date"),
+		"first_cut_date": chosen_line.get("first_cut_date"),
+		"max_divert_that_covers": (line.get("limits") or {}).get(
+			"max_divert_that_covers"),
 		# For the cycles asked for, not for the plan's. What the plan is running on
 		# is in "current" below, which is what this used to duplicate.
 		"recommended_tc": cint(recommended),
@@ -1164,12 +1188,13 @@ def plan_whatif(plan=None, variety=None, farm=None, tc_qty=None, week_overrides=
 		"current": {
 			"tc_qty": cint(prop.tc_plants_required) if prop else 0,
 			"order_date": str(prop.tc_order_date) if prop and prop.tc_order_date else None,
-			"cycles": cint(v.max_multiplication_cycles),
-			"lead_time_weeks": cint(v.lead_time_for_cycles(cint(v.max_multiplication_cycles))),
+			"divert_weeks": cint(frappe.db.get_value(
+				"Summer Flower Motherstock Plan",
+				{"production_plan": plan}, "divert_weeks") or 0),
 		},
-		"lead_time_weeks": cint(v.lead_time_for_cycles(cycles)),
-		"multiplication_factor": flt(v.multiplication_factor(cycles)),
-		"mother_plants_from_order": int(round(v.mother_plants_for(chosen, cycles))),
+		# What the order actually becomes, week by week, rather than the order times
+		# a multiplication factor.
+		"mother_plants_from_order": cint(chosen_line.get("peak_pool")),
 		"baseline": {
 			"coverage_pct": flt(p.coverage_pct),
 			"production_stems": cint(p.total_production_stems),

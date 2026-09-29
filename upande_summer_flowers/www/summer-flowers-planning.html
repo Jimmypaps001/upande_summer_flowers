@@ -295,10 +295,10 @@
         <div class="pl-card-head">
           <div><h2>{{ _("Try it before you commit") }}</h2></div>
           <span class="pl-actions">
-            <label class="pl-inline">{{ _("TC to buy") }}
+            <label class="pl-inline">{{ _("Plantlets") }}
               <input type="number" id="wi-tc" min="0" step="50"></label>
-            <label class="pl-inline">{{ _("Divert %") }}
-              <input type="number" id="wi-prop" min="0" max="90" step="5" value="0"></label>
+            <label class="pl-inline">{{ _("Divert weeks") }}
+              <input type="number" id="wi-prop" min="0" max="52" step="1"></label>
             <button type="button" class="pl-btn primary" data-wi="run">{{ _("Recalculate") }}</button>
             <button type="button" class="pl-btn" data-wi="reset">{{ _("Back to the plan") }}</button>
           </span>
@@ -3902,7 +3902,7 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
   function loadWhatIf(opts) {
     const o = opts || {};
     if (!(S.dv && S.dv.plan)) { S.wi = null; renderWhatIf(); return Promise.resolve(); }
-    if (o.reset) { S.wiOverrides = {}; S.wiTc = null; S.wiProp = 0; }
+    if (o.reset) { S.wiOverrides = {}; S.wiTc = null; S.wiProp = null; }
     // Read the boxes on every run. Typing a quantity and then clicking a week --
     // rather than pressing Recalculate -- used to throw the typed figure away and
     // snap the box back to the plan's own order, which read as the number being
@@ -3915,7 +3915,10 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
     return call("plan_whatif", {
       plan: S.dv.plan,
       tc_qty: S.wiTc || null,
-      to_prop_pct: S.wiProp || 0,
+      // Weeks of diversion, not a standing percentage. The old lever diverted
+      // that share of every week's cut for ever, which compounds without bound;
+      // the farm diverts the whole cut for a few weeks and then stops.
+      divert_weeks: S.wiProp === null || S.wiProp === undefined ? null : S.wiProp,
       week_overrides: JSON.stringify(S.wiOverrides || {}),
     }).then((r) => { S.wi = r; renderWhatIf(); })
       .catch((e) => { S.wi = { error: e.message }; renderWhatIf(); });
@@ -3933,7 +3936,10 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
     const b = r.built, base = r.baseline;
     const tcIn = $("wi-tc"), prIn = $("wi-prop");
     if (tcIn && document.activeElement !== tcIn) tcIn.value = r.tc_qty || "";
-    if (prIn && document.activeElement !== prIn) prIn.value = S.wiProp || 0;
+    if (prIn && document.activeElement !== prIn) {
+      prIn.value = (S.wiProp === null || S.wiProp === undefined)
+        ? (r.divert_weeks ?? "") : S.wiProp;
+    }
 
     const delta = b.coverage_pct - base.coverage_pct;
     const changed = (b.overrides || 0) > 0 || (S.wiTc && S.wiTc !== r.recommended_tc)
@@ -3964,8 +3970,10 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
       `</div>`;
 
     $("wi-tiles").innerHTML = [
-      { k: "TC to buy", v: num(r.tc_qty),
-        m: r.recommended_tc ? `plan's own order is ${num(r.recommended_tc)}` : "sized here" },
+      { k: "Plantlets", v: num(r.tc_qty),
+        m: r.recommended_tc
+          ? `least that covers at this diversion: ${num(r.recommended_tc)}`
+          : "sized here" },
       { k: "Coverage", v: b.coverage_pct.toFixed(1) + "%",
         m: `plan on file ${base.coverage_pct.toFixed(1)}%`,
         c: delta < -0.05 ? "--critical" : delta > 0.05 ? "--good" : "" },
@@ -3974,8 +3982,14 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
         c: b.plantings_dropped ? "--critical" : "--good" },
       { k: "Plants stuck", v: num(b.plants_stuck),
         m: `of ${num(b.plants_wanted)} wanted` },
-      { k: "Generations", v: num(b.generations),
-        m: `${num(b.num_cycles)} from TC orders` },
+      { k: "Divert", v: `${r.divert_weeks ?? 0}`,
+        m: r.max_divert_that_covers != null
+          ? `at most ${r.max_divert_that_covers} weeks on this plan`
+          : "weeks of cutting held back" },
+      { k: "Generations", v: num(r.generations || b.generations),
+        m: r.line_end_date ? `block cleared ${fdate(r.line_end_date)}` : "" },
+      { k: "Planting weeks met", v: `${num(r.weeks_met)} / ${num(r.weeks_required)}`,
+        m: "by the cut, week for week" },
       { k: "Weeks changed", v: num(b.overrides || 0),
         m: b.overrides ? "your splits" : "none — the plan as sized" },
     ].map(tile).join("");
