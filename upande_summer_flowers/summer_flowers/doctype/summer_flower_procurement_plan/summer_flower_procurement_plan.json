@@ -42,6 +42,11 @@
   "section_totals",
   "total_plants_at_field",
   "total_units_to_order",
+  "peak_cuttings",
+  "peak_week",
+  "generations",
+  "cutting_weeks_left",
+  "cycles_suggested",
   "pool_plants",
   "weekly_draw",
   "motherstock_plan",
@@ -275,13 +280,53 @@
    "description": "Everything bought by this plan. On a crop raised through a motherstock that is one purchase -- the plantlets on the Establishment line -- not one per planting."
   },
   {
+   "fieldname": "peak_cuttings",
+   "fieldtype": "Int",
+   "label": "Peak Week Cuttings",
+   "read_only": 1,
+   "description": "The busiest sticking week. The pool is bought once and cut from every week, so this is what sizes the order -- the weeks either side lend it nothing.",
+   "depends_on": "eval:doc.peak_cuttings"
+  },
+  {
+   "fieldname": "peak_week",
+   "fieldtype": "Data",
+   "label": "Peak Week",
+   "read_only": 1,
+   "description": "The week that figure falls in.",
+   "depends_on": "eval:doc.peak_cuttings"
+  },
+  {
+   "fieldname": "generations",
+   "fieldtype": "Float",
+   "label": "Generations Standing",
+   "read_only": 1,
+   "description": "The plantlets plus one for each multiplication. The peak is divided by this: 70,000 cuttings is 70,000 plantlets at no multiplication, 35,000 at one, 23,333 at two.",
+   "depends_on": "eval:doc.peak_cuttings"
+  },
+  {
+   "fieldname": "cutting_weeks_left",
+   "fieldtype": "Int",
+   "label": "Cutting Weeks Left",
+   "read_only": 1,
+   "description": "How long the pool can be cut from. Each multiplication is one establishment spent reaching the full pool, taken out of the line's life rather than added to it, because the block is cleared one life after its FIRST cut.",
+   "depends_on": "eval:doc.peak_cuttings"
+  },
+  {
+   "fieldname": "cycles_suggested",
+   "fieldtype": "Int",
+   "label": "Multiplications Suggested",
+   "read_only": 1,
+   "description": "Worked out, not chosen: the most multiplication whose pool still outlasts the season. Every extra one is plantlets saved, so the cheapest workable answer is the last one that still covers the sticking weeks.",
+   "depends_on": "eval:doc.peak_cuttings"
+  },
+  {
    "fieldname": "pool_plants",
    "fieldtype": "Int",
-   "label": "Mother Plants To Stand",
+   "label": "Mother Plants The Order Becomes",
    "read_only": 1,
-   "description": "Moved to the Motherstock Plan, which is where the line is worked out week by week. Kept so older plans and reports still read back.",
+   "description": "Plantlets x generations. This is what has to be standing in the peak week.",
    "depends_on": "eval:doc.pool_plants",
-   "hidden": 1
+   "hidden": 0
   },
   {
    "fieldname": "weekly_draw",
@@ -313,11 +358,11 @@
   {
    "fieldname": "multiplication_cycles",
    "fieldtype": "Int",
-   "label": "Multiplication Cycles (superseded)",
+   "label": "Multiplications",
    "read_only": 1,
-   "description": "Moved to the Motherstock Plan, which is where the line is worked out week by week. Kept so older plans and reports still read back.",
-   "depends_on": "eval:doc.multiplication_cycles",
-   "hidden": 1
+   "description": "How many times the plantlets are multiplied before the pool is full. Suggested by the peak week and the line's life; see Multiplications Suggested for what the arithmetic asks for.",
+   "depends_on": "eval:doc.peak_cuttings",
+   "hidden": 0
   },
   {
    "fieldname": "calculated_units",

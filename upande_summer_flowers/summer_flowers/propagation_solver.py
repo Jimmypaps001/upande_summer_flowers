@@ -31,6 +31,7 @@ from a pool that lands after the block is cleared.
 """
 
 import datetime
+import math
 
 import frappe
 from frappe import _
@@ -479,3 +480,90 @@ def schedule_for(version, tc, divert_weeks, demand, first_sticking, tc_loss_pct=
 	res["generations"] = generations
 	res["weeks_table"] = rows
 	return res
+
+
+# ---------------------------------------------------------------------------
+# Sizing off the peak week, with the multiplication the system works out
+# ---------------------------------------------------------------------------
+
+def round_up_to_area(plants, per_area):
+	"""Up to a whole minimum planting area. Nobody buys a third of a bed."""
+	if not per_area or per_area <= 0:
+		return int(math.ceil(plants))
+	return int(math.ceil(plants / float(per_area)) * per_area)
+
+
+def peak_sizing(plan, cycles=None, max_cycles=5):
+	"""What to buy, sized by the busiest week, and how often to multiply.
+
+	The pool is bought once and cut from every week of the season, so the week
+	that sets its size is the busiest one -- the weeks either side lend it
+	nothing. Divide that week's cuttings by the generations standing (the
+	plantlets plus one per multiplication) and round up to a whole planting area.
+
+	What a multiplication costs is time, and that is the part nobody should have
+	to work out. Each one is an establishment of a diverted cutting, so the pool
+	is full that much later, the order goes in that much earlier, and the line --
+	which still dies one motherstock life after its FIRST cut -- has that many
+	fewer weeks left to cut from. So the suggestion is the most multiplication
+	that still leaves the pool enough cutting weeks to see the season out.
+	"""
+	v = frappe.get_cached_doc("Crop Protocol Version", plan.protocol)
+	demand = demand_by_sticking_week(plan)
+	if not demand:
+		return None
+	peak = max(demand.values())
+	peak_week = max(demand, key=lambda d: demand[d])
+	first_stick = min(demand)
+	estab = cint(v.weeks_tc_to_first_cut())
+	regen = cint(v.weeks_on_tray) + cint(v.weeks_on_pot)
+	lead = cint(v.supplier_lead_weeks)
+	per_week = flt(v.cuttings_per_plant_per_week) or 1.0
+	per_area = cint(v.plants_per_bed) or cint(v.min_planting_area_sqm) or 1
+	life = cint(v.motherstock_life_weeks)
+	need_weeks = len(demand)
+
+	options = []
+	for c in range(0, cint(max_cycles) + 1):
+		gens = 1 + c * (flt(v.multiplication_factor_per_cycle) or 1.0)
+		mothers = peak / per_week
+		raw = mothers / gens
+		buy = round_up_to_area(raw, per_area)
+		full_after = estab + c * regen
+		order_by = add_days(getdate(first_stick), -7 * (lead + full_after))
+		cut_weeks = max(0, life - c * regen)
+		options.append({
+			"cycles": c, "generations": round(gens, 2),
+			"raw": int(round(raw)), "buy": buy,
+			"weeks_to_full_pool": full_after,
+			"order_by": str(order_by),
+			"first_cut": str(add_days(order_by, 7 * (lead + estab))),
+			"cutting_weeks": cut_weeks,
+			"covers_season": cut_weeks >= need_weeks,
+			"pool": int(round(buy * gens)),
+		})
+
+	# The most multiplication whose pool still outlasts the season. Every extra
+	# one is plantlets saved, so the cheapest workable answer is the last of them.
+	workable = [o for o in options if o["covers_season"]]
+	suggested = workable[-1]["cycles"] if workable else 0
+	chosen = cint(cycles) if cycles not in (None, "") else suggested
+	chosen = max(0, min(chosen, cint(max_cycles)))
+
+	return {
+		"peak_cuttings": peak,
+		"peak_week": str(peak_week),
+		"peak_week_label": "%s-W%02d" % peak_week.isocalendar()[:2],
+		"first_sticking": str(first_stick),
+		"sticking_weeks": need_weeks,
+		"season_cuttings": sum(demand.values()),
+		"cuttings_per_mother_per_week": per_week,
+		"min_planting_area": per_area,
+		"establishment_weeks": estab,
+		"regen_weeks": regen,
+		"life_weeks": life,
+		"options": options,
+		"suggested": suggested,
+		"chosen": chosen,
+		"pick": options[chosen],
+	}

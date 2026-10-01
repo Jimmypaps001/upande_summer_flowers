@@ -888,28 +888,46 @@ def build(production_plan, method=None, entry_stage=None, supplier=None,
 	if standing:
 		from upande_summer_flowers.summer_flowers import propagation_solver as psol
 
-		solved = psol.recommend(p, tc=tc_qty, divert_weeks=divert_weeks)
-		chosen = (solved or {}).get("chosen")
-		if solved and not solved.get("solvable") and not chosen:
-			frappe.throw(solved.get("reason")
-			             or _("No order of plantlets covers this plan."),
-			             title=_("The order cannot be sized"))
-		if chosen:
-			need["units"] = cint(chosen["tc"])
-			need["calculated_units"] = cint(
-				((solved.get("recommended") or {}).get("tc")) or chosen["tc"])
-			need["overridden"] = cint(chosen["tc"]) != cint(need["calculated_units"])
-			need["pool"] = cint(chosen["peak_pool"])
-			need["order_by_date"] = chosen["order_by"]
-			need["divert_weeks"] = cint(chosen["divert_weeks"])
-			need["basis"] = _(
-				"{0} plantlets, with the whole cut diverted back as mothers for "
-				"{1} weeks from the first cutting. That covers {2} of {3} planting "
-				"weeks; the pool peaks at {4} mother plants and the block is "
-				"cleared on {5}.").format(
-				"{:,}".format(cint(chosen["tc"])), cint(chosen["divert_weeks"]),
-				cint(chosen["weeks_met"]), cint(chosen["weeks"]),
-				"{:,}".format(cint(chosen["peak_pool"])), chosen["line_end_date"])
+		# Sized by the busiest week. The pool is bought once and cut from every
+		# week of the season, so the week that sets its size is the busiest one --
+		# and the multiplication is worked out here rather than asked for, because
+		# what it costs is time and nobody should have to do that arithmetic.
+		sizing = psol.peak_sizing(p, cycles=cycles)
+		if not sizing:
+			frappe.throw(
+				_("This plan has no sticking weeks, so there is no peak week to size "
+				  "the order from."), title=_("The order cannot be sized"))
+		pick = sizing["pick"]
+		need["units"] = cint(pick["buy"])
+		need["calculated_units"] = cint(sizing["options"][sizing["suggested"]]["buy"])
+		need["overridden"] = cint(tc_qty) and cint(tc_qty) != cint(pick["buy"])
+		if cint(tc_qty):
+			need["units"] = cint(tc_qty)
+		need["pool"] = cint(pick["pool"])
+		need["order_by_date"] = pick["order_by"]
+		need["peak"] = sizing
+		need["basis"] = _(
+			"The busiest sticking week is {0}, which needs {1} cuttings -- and that "
+			"is what the pool is sized for, because cuttings cannot be banked. At "
+			"{2} cuttings a mother a week that is {3} mother plants, divided by {4} "
+			"generations standing, rounded up to a whole planting area of {5}: "
+			"{6} plantlets. Ordered by {7} so the pool is full for the first "
+			"sticking on {8}, and the line has {9} cutting weeks left for {10} "
+			"sticking weeks.").format(
+			sizing["peak_week_label"], "{:,}".format(cint(sizing["peak_cuttings"])),
+			flt(sizing["cuttings_per_mother_per_week"]),
+			"{:,}".format(int(round(cint(sizing["peak_cuttings"])
+			                        / flt(sizing["cuttings_per_mother_per_week"])))),
+			pick["generations"], "{:,}".format(cint(sizing["min_planting_area"])),
+			"{:,}".format(cint(pick["buy"])), pick["order_by"],
+			sizing["first_sticking"], cint(pick["cutting_weeks"]),
+			cint(sizing["sticking_weeks"]))
+		if not pick["covers_season"]:
+			need["basis"] += " " + _(
+				"That is {0} cutting weeks short of the season; {1} multiplication(s) "
+				"is the most the line can carry.").format(
+				cint(sizing["sticking_weeks"]) - cint(pick["cutting_weeks"]),
+				sizing["suggested"])
 	if need and not standing and not per_unit:
 		frappe.throw(
 			_("Nothing survives the route from {0} as the protocol has it, so no order "
@@ -1044,7 +1062,14 @@ def build(production_plan, method=None, entry_stage=None, supplier=None,
 		})
 		doc.pool_plants = cint(need.get("pool"))
 		doc.weekly_draw = cint(need.get("weekly_draw"))
-		doc.multiplication_cycles = cint(need.get("cycles"))
+		szg = need.get("peak") or {}
+		pk = szg.get("pick") or {}
+		doc.peak_cuttings = cint(szg.get("peak_cuttings"))
+		doc.peak_week = szg.get("peak_week_label")
+		doc.generations = flt(pk.get("generations"))
+		doc.cutting_weeks_left = cint(pk.get("cutting_weeks"))
+		doc.cycles_suggested = cint(szg.get("suggested"))
+		doc.multiplication_cycles = cint(pk.get("cycles"))
 		doc.divert_weeks = cint(need.get("divert_weeks"))
 		# The line itself is written down separately. This document says what to
 		# buy; what happens to it week by week after it lands is the motherstock

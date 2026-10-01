@@ -497,19 +497,20 @@ class CropProtocolVersion(Document):
 	def multiplication_factor(self, cycles=None):
 		"""How many mother plants one TC plantlet ends up as.
 
-		The cycles govern: four multiplication cycles turn one plantlet into four
-		plants, so 4,000 plants wanted is 1,000 plantlets bought. The per-cycle
-		factor scales that for a variety where one cycle yields more than one
-		generation, and defaults to 1 so that a protocol which never filled it in is
-		still driven by its cycle count alone.
+		GENERATIONS, not cycles. The plantlet itself is the first generation, and
+		each multiplication adds another, so one multiplication is a factor of two
+		and the order halves. In the farm's own words: a peak of 70,000 cuttings is
+		70,000 plantlets if you never multiply, 35,000 if you multiply once and
+		23,333 if you multiply twice -- which is 70,000 over 1, 2 and 3.
 
-		No cycles means no multiplication: one plantlet is one plant, so the factor
-		is 1 and the full requirement is bought.
+		This used to return the cycle count alone, so one multiplication came back
+		as a factor of one and bought the whole 70,000. The docstring argued for it
+		-- that counting the plantlet "divides by five where the farm divides by
+		four" -- but the farm divides by the generations standing, and the plantlet
+		is one of them.
 
-		This deliberately does not count the arriving plantlet as a generation of
-		its own. Doing so divides by five where the farm divides by four and
-		under-buys by a fifth, which is the whole reason this lives in one place
-		instead of being spelt out at each of the eight sites that needed it.
+		The per-cycle factor scales what each multiplication yields, for a variety
+		where one round gives more than one generation back; it defaults to 1.
 		"""
 		if cycles is None:
 			cycles = self.max_multiplication_cycles or 0
@@ -517,7 +518,7 @@ class CropProtocolVersion(Document):
 		if not cycles:
 			return 1.0
 		per_cycle = flt(self.multiplication_factor_per_cycle)
-		return cycles * (per_cycle if per_cycle > 0 else 1.0)
+		return 1.0 + cycles * (per_cycle if per_cycle > 0 else 1.0)
 
 	def mother_plants_for(self, tc_plants, cycles=None):
 		"""Mother plants a given order of plantlets ends up as. The inverse of
