@@ -45,6 +45,11 @@ from upande_summer_flowers.summer_flowers.planning import iso_monday
 # four tranches of mothers that nobody ever cut for.
 TC_IS_ONE_MOTHER = {"multiplication_factor": 1.0, "build_up_cycles": 1}
 
+#: The farm sends a motherstock block back to multiplication four times at the
+#: most -- "i only send 4 times". Past that the block is simply cut for the
+#: field until it is cleared.
+MAX_MULTIPLICATIONS = 4
+
 MAX_TC = 2_000_000
 SEARCH_CEILING_STEPS = 24
 
@@ -493,7 +498,7 @@ def round_up_to_area(plants, per_area):
 	return int(math.ceil(plants / float(per_area)) * per_area)
 
 
-def peak_sizing(plan, cycles=None, max_cycles=5):
+def peak_sizing(plan, cycles=None, max_cycles=MAX_MULTIPLICATIONS):
 	"""What to buy, sized by the busiest week, and how often to multiply.
 
 	The pool is bought once and cut from every week of the season, so the week
@@ -528,6 +533,11 @@ def peak_sizing(plan, cycles=None, max_cycles=5):
 	# pool that dies six sticking weeks before the end.
 	last_stick = max(demand)
 	span_weeks = (getdate(last_stick) - getdate(first_stick)).days // 7
+	# A generation ramps before it cuts at full rate, so the pool has to START
+	# cutting that much before the field wants anything. Without this the first
+	# cutting week and the first sticking week were the same, and the pool was at
+	# 25% in a week that needed 25,000 cuttings -- 22,250 short across the ramp.
+	ramp_lead = max(0, len(v.ramp_ratios() or [1.0]) - 1)
 
 	options = []
 	for c in range(0, cint(max_cycles) + 1):
@@ -535,9 +545,12 @@ def peak_sizing(plan, cycles=None, max_cycles=5):
 		mothers = peak / per_week
 		raw = mothers / gens
 		buy = round_up_to_area(raw, per_area)
-		full_after = estab + c * regen
+		full_after = estab + c * regen + ramp_lead
 		order_by = add_days(getdate(first_stick), -7 * (lead + full_after))
-		cut_weeks = max(0, life - c * regen)
+		# The line still lives one motherstock life from its first cut, and that
+		# cut is now earlier, so the weeks it has left for the season shrink by the
+		# ramp as well as by the multiplication.
+		cut_weeks = max(0, life - c * regen - ramp_lead)
 		options.append({
 			"cycles": c, "generations": round(gens, 2),
 			"raw": int(round(raw)), "buy": buy,
@@ -569,6 +582,7 @@ def peak_sizing(plan, cycles=None, max_cycles=5):
 		"min_planting_area": per_area,
 		"establishment_weeks": estab,
 		"regen_weeks": regen,
+		"ramp_lead_weeks": ramp_lead,
 		"life_weeks": life,
 		"options": options,
 		"suggested": suggested,
@@ -580,10 +594,16 @@ def peak_sizing(plan, cycles=None, max_cycles=5):
 def peak_schedule(plan, sizing, cycles=None, tc=None):
 	"""The line week by week under the peak-week sizing.
 
-	The plantlets become generation one; the whole cut goes back until the last
-	generation is standing, and from then the field takes what it asks for and the
-	rest is left on the mother. Every generation is cleared together, one
-	motherstock life after the FIRST cut, so a later one simply gets fewer weeks.
+	The farm's rule, in its own words: even in ramp one the cut can go to
+	hardening and then to the farm. So the field is served first, every week,
+	from the very first cut -- a ramping pool still roots and hardens and those
+	plants are plantable. Only what the field does not ask for goes back as
+	mothers, and a generation leaves only when a full batch has been gathered.
+	Multiplication is a thing you do a counted number of times, never more than
+	MAX_MULTIPLICATIONS.
+
+	Every generation is cleared together, one motherstock life after the FIRST
+	cut, so a later one simply gets fewer weeks.
 	"""
 	v = frappe.get_cached_doc("Crop Protocol Version", plan.protocol)
 	demand = demand_by_sticking_week(plan)
@@ -596,45 +616,78 @@ def peak_schedule(plan, sizing, cycles=None, tc=None):
 	per_week = flt(sizing["cuttings_per_mother_per_week"]) or 1.0
 	first_cut = getdate(pick["first_cut"])
 	line_end = add_days(first_cut, 7 * cint(sizing["life_weeks"]))
-	full_on = add_days(first_cut, 7 * c * regen)
+	sends_allowed = min(cint(c), MAX_MULTIPLICATIONS)
+
+	# A generation does not cut at full rate the week it arrives: it ramps, and the
+	# protocol says over how long.
+	from upande_summer_flowers.summer_flowers.lifecycle_sim import ramp_ratio
+
+	ramp = v.ramp_ratios() or [1.0]
 
 	gens = [{"generation": 1, "mothers": buy, "arrivals": 1,
 	         "first_cut_date": str(first_cut),
 	         "cutting_weeks": cint(sizing["life_weeks"]),
-	         "expiry_date": str(line_end)}]
-	for k in range(1, c + 1):
-		on = add_days(first_cut, 7 * k * regen)
-		gens.append({
-			"generation": k + 1, "mothers": buy, "arrivals": 1,
-			"first_cut_date": str(on),
-			"cutting_weeks": max(0, (line_end - on).days // 7),
-			"expiry_date": str(line_end),
-		})
+	         "expiry_date": str(line_end), "stuck_date": None}]
+	arrivals = {}          # week -> list of pending generations landing then
+	batch, sends = 0, 0    # cuttings gathered so far, multiplications sent
+	batch_from = None
 
 	rows, week, n, run, short = [], first_cut, 0, 0, 0
 	while week < line_end:
 		n += 1
-		standing = buy * sum(1 for g in gens if getdate(g["first_cut_date"]) <= week)
-		cut = int(round(standing * per_week))
-		building = week < full_on
-		wants = cint(demand.get(week, 0))
-		to_field = 0 if building else min(cut, wants)
-		run += to_field
-		short += max(0, wants - to_field)
-		event = ""
+		event = []
+		for g in arrivals.pop(week, []):
+			gens.append(g)
+			event.append(_("Generation {0} starts cutting").format(g["generation"]))
+
+		standing, cut = 0, 0.0
 		for g in gens:
-			if getdate(g["first_cut_date"]) == week:
-				event = (_("Generation 1 first cut") if g["generation"] == 1
-				         else _("Generation {0} starts cutting").format(g["generation"]))
-		if week == full_on and c:
-			event = (event + "; " if event else "") + _("pool full, field starts")
+			on = getdate(g["first_cut_date"])
+			if on > week:
+				continue
+			standing += cint(g["mothers"])
+			cut += cint(g["mothers"]) * per_week * ramp_ratio((week - on).days // 7, ramp)
+		cut = int(round(cut))
+
+		# Field first -- this is the correction. What is left over is the only
+		# thing that can be multiplied, which is why a line that is already fully
+		# committed to the farm cannot multiply at all and must be bought outright.
+		wants = cint(demand.get(week, 0))
+		to_field = min(cut, wants)
+		surplus = cut - to_field
+		run += to_field
+
+		to_mult = 0
+		if sends < sends_allowed and surplus > 0:
+			to_mult = min(surplus, buy - batch)
+			if batch == 0 and to_mult:
+				batch_from = week
+			batch += to_mult
+			if batch >= buy:
+				sends += 1
+				lands = add_days(week, 7 * regen)
+				arrivals.setdefault(lands, []).append({
+					"generation": len(gens) + len(
+						[x for v2 in arrivals.values() for x in v2]) + 1,
+					"mothers": buy, "arrivals": 1,
+					"first_cut_date": str(lands),
+					"cutting_weeks": max(0, (line_end - lands).days // 7),
+					"expiry_date": str(line_end),
+					"stuck_date": str(batch_from),
+				})
+				event.append(_("Multiplication {0} of {1} sent, {2} plants land {3}").format(
+					sends, sends_allowed, "{:,}".format(buy), lands))
+				batch, batch_from = 0, None
+
+		if week == first_cut:
+			event.insert(0, _("Generation 1 first cut"))
 		rows.append({
-			"week_no": n, "week_start": str(week), "event": event,
+			"week_no": n, "week_start": str(week), "event": "; ".join(event),
 			"generations_live": ", ".join(
 				"G%d" % g["generation"] for g in gens
 				if getdate(g["first_cut_date"]) <= week),
 			"mothers_standing": standing, "cuttings_cut": cut,
-			"to_multiplication": cut if building else 0,
+			"to_multiplication": to_mult,
 			"to_field": to_field, "cumulative_to_field": run,
 			"demand": wants, "shortfall": max(0, wants - to_field),
 		})
@@ -660,7 +713,9 @@ def peak_schedule(plan, sizing, cycles=None, tc=None):
 	return {"tc": buy, "cycles": c, "pick": pick, "generations": gens,
 	        "weeks_table": rows, "to_field": run, "shortfall": short,
 	        "weeks_met": weeks_met, "weeks": len(demand),
-	        "peak_pool": buy * len(gens), "line_end_date": str(line_end),
+	        "sends_made": sends, "sends_allowed": sends_allowed,
+	        "peak_pool": sum(cint(g["mothers"]) for g in gens),
+	        "line_end_date": str(line_end),
 	        "first_cut_date": str(first_cut), "order_by": pick["order_by"],
 	        "covers": short == 0}
 

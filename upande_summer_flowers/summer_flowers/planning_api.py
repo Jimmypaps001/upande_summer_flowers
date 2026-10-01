@@ -597,7 +597,7 @@ def _first_sticking_for(plan, placed_only=False):
 # ---------------------------------------------------------------------------
 
 def _tc_production(plan_doc, version, tc_qty, order_date, divert_weeks=0,
-                   max_bench_sqm=None, week_overrides=None):
+                   max_bench_sqm=None, week_overrides=None, schedule=None):
 	"""Roll a TC quantity all the way through to stems against demand.
 
 	The chain has always been TC -> pool -> cuttings -> plants stuck -> plantings
@@ -676,11 +676,41 @@ def _tc_production(plan_doc, version, tc_qty, order_date, divert_weeks=0,
 	typed_overrides = len(overrides)
 	for i in range(cint(divert_weeks)):
 		overrides.setdefault(first_cut_sw + i, 0)
-	sim = ls.simulate(p, cint(tc_qty), order_date,
-	                  farm_overrides=overrides,
-	                  max_bench_sqm=max_bench_sqm,
-	                  horizon_weeks=span,
-	                  divert_until_sw=first_cut_sw + cint(divert_weeks))
+	if schedule is not None:
+		# The peak-week line, already worked out, rather than a second simulation
+		# of it. Two engines answering the same question is what had the what-if
+		# card and the motherstock card quoting different orders for one plan, so
+		# the schedule is handed in and walked rather than re-derived.
+		rows = []
+		for r in schedule.get("weeks_table") or []:
+			y, w = getdate(r["week_start"]).isocalendar()[:2]
+			cut = cint(r.get("cuttings_cut"))
+			rows.append({"year": y, "week_no": w,
+			             "to_farm": cint(r.get("to_field")),
+			             "total_cap": cut, "base_cap": cut, "prop_cap": 0})
+		# A typed week still wins over the line, which is the point of the card.
+		by_key = {}
+		for key, value in (week_overrides or {}).items():
+			try:
+				yy, ww = str(key).split("-W")
+				by_key[(int(yy), int(ww))] = cint(value)
+			except Exception:
+				continue
+		for r in rows:
+			k = (r["year"], r["week_no"])
+			if k in by_key:
+				r["to_farm"] = by_key[k]
+		typed_overrides = len(by_key)
+		sim = {"rows": rows,
+		       "generations": len(schedule.get("generations") or []),
+		       "num_cycles": cint(schedule.get("cycles")),
+		       "prop_pool_rows": []}
+	else:
+		sim = ls.simulate(p, cint(tc_qty), order_date,
+		                  farm_overrides=overrides,
+		                  max_bench_sqm=max_bench_sqm,
+		                  horizon_weeks=span,
+		                  divert_until_sw=first_cut_sw + cint(divert_weeks))
 	capacity = {}
 	for r in sim["rows"]:
 		capacity[(r["year"], r["week_no"])] = capacity.get(
@@ -1088,7 +1118,8 @@ def tc_purchase(plan=None, variety=None, farm=None, tc_qty=None, tolerance_pct=1
 
 @frappe.whitelist()
 def plan_whatif(plan=None, variety=None, farm=None, tc_qty=None, week_overrides=None,
-                divert_weeks=None, order_date=None, to_prop_pct=None, cycles=None):
+                multiplications=None, divert_weeks=None, order_date=None,
+                to_prop_pct=None, cycles=None):
 	"""Try a different order and see what it does to the plan's stems.
 
 	Same walk as tc_purchase, but it also hands back the per-sticking-week rows the
@@ -1097,13 +1128,15 @@ def plan_whatif(plan=None, variety=None, farm=None, tc_qty=None, week_overrides=
 	place to find out whether the plan is worth going on with.
 
 	Two levers, and they are the ones the farm pulls: how many plantlets, and how
-	many weeks the whole cut goes back as new mothers before any of it goes to the
-	field. The order date follows from the second unless it is pinned -- diverting
-	longer needs fewer plantlets but pulls the order earlier.
+	many times the cut is sent back to build another generation -- four at the
+	most. The order date follows from the second unless it is pinned: multiplying
+	needs fewer plantlets but pulls the order earlier and leaves the line fewer
+	weeks to cut, because the block is cleared one life after its FIRST cut.
 
-	`cycles` and `to_prop_pct` were the old levers: a count of sequential
-	generations, and a standing percentage diverted every week for ever. Both are
-	accepted and ignored so an older caller does not fail; neither sizes anything.
+	`divert_weeks`, `cycles` and `to_prop_pct` were earlier levers: a window in
+	which the whole cut went back, a count of sequential generations, and a
+	standing percentage diverted for ever. All three are accepted and ignored so
+	an older caller does not fail; none of them sizes anything.
 	"""
 	_guard()
 	plan = resolve_plan(variety, farm, plan)
@@ -1125,16 +1158,39 @@ def plan_whatif(plan=None, variety=None, farm=None, tc_qty=None, week_overrides=
 
 	from upande_summer_flowers.summer_flowers import propagation_solver as ps
 
-	# The line as the solver works it out, for the diversion being asked for. This
-	# is the same engine the popup, the propagation plan and the dashboard read, so
-	# what-if and the documents cannot quote different orders for the same choice.
-	line = ps.recommend(p, tc=tc_qty,
-	                    divert_weeks=(divert_weeks
-	                                  if divert_weeks not in (None, "") else None))
-	chosen_line = (line or {}).get("chosen") or {}
-	rec_line = (line or {}).get("recommended") or {}
-	divert = cint(chosen_line.get("divert_weeks")
-	              if divert_weeks in (None, "") else divert_weeks)
+	# The line as the solver works it out, for the multiplication being asked for.
+	# This is the same engine the popup, the Motherstock Plan and the dashboard
+	# read, so what-if and the documents cannot quote different orders for the
+	# same choice.
+	# The agreed line is the starting point, so the card opens on the figure that
+	# will actually be ordered rather than on a fresh proposal beside it.
+	agreed = frappe.db.get_value(
+		"Summer Flower Motherstock Plan", {"production_plan": plan},
+		["tc_to_order", "multiplications"], as_dict=True)
+	if agreed:
+		if multiplications in (None, "") and agreed.multiplications not in (None, ""):
+			multiplications = cint(agreed.multiplications)
+		if not cint(tc_qty) and cint(agreed.tc_to_order):
+			tc_qty = cint(agreed.tc_to_order)
+
+	mult = multiplications if multiplications not in (None, "") else None
+	sizing = ps.peak_sizing(p, cycles=mult)
+	if not sizing:
+		return {"plan": plan, "error": "No sticking weeks to plan cuttings for."}
+	sched = ps.peak_schedule(p, sizing, cycles=mult, tc=tc_qty)
+	chosen_line = {
+		"tc": (sched or {}).get("tc"),
+		"multiplications": (sched or {}).get("cycles"),
+		"order_by": (sched or {}).get("order_by"),
+		"first_cut_date": (sched or {}).get("first_cut_date"),
+		"line_end_date": (sched or {}).get("line_end_date"),
+		"peak_pool": (sched or {}).get("peak_pool"),
+		"weeks_met": (sched or {}).get("weeks_met"),
+		"weeks": (sched or {}).get("weeks"),
+		"generations": (sched or {}).get("generations") or [],
+	}
+	rec_line = sizing["options"][sizing["suggested"]]
+	mult = cint(chosen_line.get("multiplications") if mult is None else mult)
 
 	# An asked-for date wins; otherwise the one the diversion implies, which is what
 	# the order actually has to be placed on.
@@ -1159,11 +1215,11 @@ def plan_whatif(plan=None, variety=None, farm=None, tc_qty=None, week_overrides=
 	# stored figure, which was worked out at a different one. Reusing it is what
 	# made the quantity sit still while the order date moved, so the order on
 	# screen raised a pool that no longer matched the one being asked for.
-	recommended = cint(rec_line.get("tc") or chosen_line.get("tc") or 0)
+	recommended = cint(rec_line.get("buy") or chosen_line.get("tc") or 0)
 	chosen = cint(tc_qty) if cint(tc_qty) else cint(chosen_line.get("tc") or recommended)
 
-	built = _tc_production(p, v, chosen, order_date, divert_weeks=divert,
-	                       week_overrides=week_overrides)
+	built = _tc_production(p, v, chosen, order_date, week_overrides=week_overrides,
+	                       schedule=sched)
 	# The plan as it stands, for comparison: what changing anything is measured
 	# against. Read from the document, not recomputed, so the baseline is the plan.
 	return {
@@ -1171,14 +1227,21 @@ def plan_whatif(plan=None, variety=None, farm=None, tc_qty=None, week_overrides=
 		"status": p.workflow_state or p.status,
 		"order_date": str(order_date),
 		"tc_qty": chosen,
-		"divert_weeks": divert,
+		"multiplications": mult,
+		# Kept under its old name as well, because the card and the saved plan
+		# both still read it and a missing key reads as zero rather than as a
+		# changed model.
+		"divert_weeks": mult,
 		"generations": len(chosen_line.get("generations") or []),
 		"weeks_met": cint(chosen_line.get("weeks_met")),
 		"weeks_required": cint(chosen_line.get("weeks")),
 		"line_end_date": chosen_line.get("line_end_date"),
 		"first_cut_date": chosen_line.get("first_cut_date"),
-		"max_divert_that_covers": (line.get("limits") or {}).get(
-			"max_divert_that_covers"),
+		"max_multiplications": ps.MAX_MULTIPLICATIONS,
+		"suggested_multiplications": cint(sizing["suggested"]),
+		"covers": 1 if (sched or {}).get("covers") else 0,
+		"shortfall": cint((sched or {}).get("shortfall")),
+		"sends_made": cint((sched or {}).get("sends_made")),
 		# For the cycles asked for, not for the plan's. What the plan is running on
 		# is in "current" below, which is what this used to duplicate.
 		"recommended_tc": cint(recommended),
@@ -1190,7 +1253,7 @@ def plan_whatif(plan=None, variety=None, farm=None, tc_qty=None, week_overrides=
 			"order_date": str(prop.tc_order_date) if prop and prop.tc_order_date else None,
 			"divert_weeks": cint(frappe.db.get_value(
 				"Summer Flower Motherstock Plan",
-				{"production_plan": plan}, "divert_weeks") or 0),
+				{"production_plan": plan}, "multiplications") or 0),
 		},
 		# What the order actually becomes, week by week, rather than the order times
 		# a multiplication factor.
@@ -2720,17 +2783,25 @@ def production_sheet(plan=None, variety=None, farm=None):
 
 
 @frappe.whitelist()
-def motherstock_line(plan=None, variety=None, farm=None, tc=None, divert_weeks=None):
+def motherstock_line(plan=None, variety=None, farm=None, tc=None,
+                     multiplications=None, divert_weeks=None):
 	"""The motherstock line for the dashboard: the decision, and what it gives.
 
-	The same engine the procurement popup and the propagation plan read, so the
-	dashboard cannot quote a different plantlet order from the documents. It used
-	to work its own out through tc_derivation -- peak week, divided by cuttings per
-	mother per week, divided by a multiplication factor -- which is the model the
-	farm does not work to and gave 9,250 plantlets where the documents said 28,000.
+	The same engine the procurement popup and the Motherstock Plan read, so the
+	dashboard cannot quote a different plantlet order from the documents.
 
-	`tc` and `divert_weeks` are the playground: pass either to see what it does
-	without writing anything down.
+	Sized by the busiest sticking week: that week's cuttings divided by the
+	generations standing, rounded up to a whole planting area. Cuttings cannot be
+	banked, so the weeks either side lend the peak nothing and there is no total
+	to divide by instead.
+
+	The weekly split is demand-led. The field is served first from the very first
+	cut -- a ramping pool still roots and hardens, and those plants are plantable
+	-- and only the surplus can go back as mothers, four times at the most.
+
+	`tc` and `multiplications` are the playground: pass either to see what it does
+	without writing anything down. `divert_weeks` belonged to the model before
+	this one and is accepted and ignored so old links do not break.
 	"""
 	_guard()
 	from upande_summer_flowers.summer_flowers import propagation_solver as ps
@@ -2738,15 +2809,58 @@ def motherstock_line(plan=None, variety=None, farm=None, tc=None, divert_weeks=N
 	name = resolve_plan(variety=variety, farm=farm, plan=plan)
 	if not name:
 		return {"plan": None}
-	doc = frappe.get_doc("Summer Flower Production Plan", name)
-	out = ps.recommend(doc, tc=tc, divert_weeks=divert_weeks)
-	out["plan"] = name
-	out["scope"] = scope_of(variety=variety, farm=farm, plan=plan)
-	# The saved decision, if somebody has committed to one. The figures above are
-	# a proposal until then, and saying which is which is the whole point.
+	# The agreed line, if somebody has committed to one. Read BEFORE solving, not
+	# after: the card is meant to show the figure procurement will order, and
+	# solving first had the dashboard quoting its own proposal (37,000) beside a
+	# document that said 19,000. Anything passed in still wins -- that is a person
+	# trying something on purpose.
 	saved = frappe.db.get_value(
 		"Summer Flower Motherstock Plan", {"production_plan": name},
-		["name", "tc_to_order", "divert_weeks", "order_by_date", "generations"],
+		["name", "tc_to_order", "multiplications", "order_by_date", "generations"],
 		as_dict=True)
+	if saved:
+		if multiplications in (None, "") and saved.multiplications not in (None, ""):
+			multiplications = cint(saved.multiplications)
+		if not cint(tc) and cint(saved.tc_to_order):
+			tc = cint(saved.tc_to_order)
+
+	out = ps.peak_options(name, cycles=multiplications, tc=tc)
+	out["plan"] = name
+	out["scope"] = scope_of(variety=variety, farm=farm, plan=plan)
+
+	sizing, sch = out.get("sizing"), out.get("schedule")
+	if sizing and sch:
+		# Flattened into the shape the card draws, so the dashboard and the
+		# document cannot disagree about which figure is the decision.
+		out["chosen"] = {
+			"tc": sch["tc"],
+			"multiplications": sch["cycles"],
+			"sends_made": sch.get("sends_made"),
+			"sends_allowed": sch.get("sends_allowed"),
+			"order_by": sch["order_by"],
+			"first_cut_date": sch["first_cut_date"],
+			"line_end_date": sch["line_end_date"],
+			"peak_pool": sch["peak_pool"],
+			"weeks_met": sch["weeks_met"],
+			"weeks": sch["weeks"],
+			"shortfall": sch["shortfall"],
+			"covers": sch["covers"],
+			"cutting_weeks": sch["pick"]["cutting_weeks"],
+			"generations": sch["generations"],
+			"weeks_table": sch["weeks_table"],
+			"order_late": getdate(sch["order_by"]) < getdate(nowdate()),
+		}
+		out["recommended"] = sizing["options"][sizing["suggested"]]
+		out["options"] = sizing["options"]
+		out["peak"] = {
+			"cuttings": sizing["peak_cuttings"],
+			"week": sizing["peak_week"],
+			"week_label": sizing["peak_week_label"],
+			"per_mother_per_week": sizing["cuttings_per_mother_per_week"],
+			"min_planting_area": sizing["min_planting_area"],
+			"suggested": sizing["suggested"],
+			"max": ps.MAX_MULTIPLICATIONS,
+		}
+
 	out["saved"] = saved
 	return out

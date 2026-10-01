@@ -58,6 +58,11 @@ frappe.ui.form.on("Summer Flower Production Plan", {
 			// lead time, and the lead time sets the order date. Asked once, here.
 			frm.add_custom_button(__("Allocate Blocks"), () => allocate_blocks(frm),
 				ACTIONS);
+			// The line is decided before it is bought. Plan Motherstock works out
+			// how many plantlets a line would need; Plan Procurement then orders
+			// that figure rather than deriving its own.
+			frm.add_custom_button(__("Plan Motherstock"), () => plan_motherstock(frm),
+				ACTIONS);
 			frm.add_custom_button(__("Plan Procurement"), () => source_plantlets(frm),
 				ACTIONS);
 			frm.add_custom_button(__("Create Plantings"), () =>
@@ -850,6 +855,17 @@ function sf_propagation_section(d, frm) {
 	let busy = false;
 	let last = { tc: null, divert: null };
 
+	// An Int box showing nothing is worse than one showing a figure you disagree
+	// with, and zero multiplications is a real answer, not an empty one -- so the
+	// value goes at the model and at the input, and 0 is written as "0".
+	const seed = (field, value) => {
+		const f = d.fields_dict[field];
+		if (!f) return;
+		const n = cint(value);
+		f.set_value(n);
+		if (f.$input) f.$input.val(String(n));
+	};
+
 	const line = (k, v, note) =>
 		`<tr><td class="text-muted" style="padding:2px 12px 2px 0;white-space:nowrap">${esc(k)}</td>` +
 		`<td style="padding:2px 0"><b>${v}</b>${
@@ -985,9 +1001,10 @@ function sf_propagation_section(d, frm) {
 			`<td class="text-right">${x.generations}</td>` +
 			`<td class="text-right">${int(x.buy)}</td>` +
 			`<td>${day(x.order_by)}</td>` +
-			`<td class="text-right">${x.cutting_weeks}</td>` +
-			`<td${x.covers_season ? "" : ' style="color:var(--red-600,#c0392b)"'}>` +
-			`${x.covers_season ? __("yes") : __("line dies first")}</td></tr>`).join("");
+			`<td class="text-right"` +
+			`${x.covers_season ? "" : ' style="color:var(--red-600,#c0392b)"' +
+				` title="${esc(__("the line is cleared before the season ends"))}"`}>` +
+			`${x.cutting_weeks}${x.covers_season ? "" : " !"}</td></tr>`).join("");
 
 		gens.html(
 			`<table style="font-size:.85rem;margin:0 0 12px 0">${rows}</table>` +
@@ -997,7 +1014,7 @@ function sf_propagation_section(d, frm) {
 			`<thead><tr><th>${__("Multiply")}</th><th class="text-right">${__("Gens")}</th>` +
 			`<th class="text-right">${__("Plantlets")}</th><th>${__("Order by")}</th>` +
 			`<th class="text-right">${__("Cutting weeks")}</th>` +
-			`<th>${__("Lasts the season")}</th></tr></thead><tbody>${opts}</tbody></table>` +
+			`</tr></thead><tbody>${opts}</tbody></table>` +
 			`<p class="text-muted small">★ ${esc(__(
 				"what the arithmetic suggests. Each multiplication is one "
 				+ "establishment spent reaching the full pool, taken out of the "
@@ -1011,9 +1028,7 @@ function sf_propagation_section(d, frm) {
 
 		gens.find("tr[data-mult]").on("click", function () {
 			const n = parseInt(this.dataset.mult, 10);
-			if (d.fields_dict.tc_divert.$input) {
-				d.fields_dict.tc_divert.$input.val(n);
-			}
+			seed("tc_divert", n);
 			load({ cycles: n });
 		});
 	};
@@ -1025,20 +1040,17 @@ function sf_propagation_section(d, frm) {
 			args: Object.assign({ production_plan: frm.doc.name }, args || {}) })
 			.then((r) => {
 				const o = r.message;
-				show(o);
 				const c = o && o.schedule;
-				if (!c) return;
-				last = { tc: c.tc, divert: c.cycles };
-				// Straight at the input as well as the model: set_value alone leaves
-				// the box showing whatever it held before.
-				d.fields_dict.tc_qty.set_value(c.tc);
-				d.fields_dict.tc_divert.set_value(c.cycles);
-				if (d.fields_dict.tc_qty.$input) {
-					d.fields_dict.tc_qty.$input.val(c.tc);
+				if (c) {
+					last = { tc: c.tc, divert: c.cycles };
+					// Straight at the input as well as the model: set_value alone
+					// leaves the box showing whatever it held before. Seeded before
+					// the draw, because a throw inside show() used to abort the
+					// whole .then and leave both boxes blank.
+					seed("tc_qty", c.tc);
+					seed("tc_divert", c.cycles);
 				}
-				if (d.fields_dict.tc_divert.$input) {
-					d.fields_dict.tc_divert.$input.val(c.cycles);
-				}
+				show(o);
 			})
 			.always(() => { busy = false; });
 	};
@@ -1075,3 +1087,31 @@ function sf_propagation_section(d, frm) {
 		});
 	});
 }
+
+
+// Open the motherstock line for this plan, making it if it is not there yet. The
+// figures it settles on -- plantlets to order, how many times to multiply -- are
+// what Plan Procurement then buys.
+const plan_motherstock = (frm) => {
+	frappe.db.get_value("Summer Flower Motherstock Plan",
+		{ production_plan: frm.doc.name }, "name")
+		.then((r) => {
+			const found = r && r.message && r.message.name;
+			if (found) {
+				frappe.set_route("Form", "Summer Flower Motherstock Plan", found);
+				return;
+			}
+			frappe.call({
+				method: "upande_summer_flowers.summer_flowers.doctype"
+					+ ".summer_flower_motherstock_plan.summer_flower_motherstock_plan"
+					+ ".for_plan",
+				args: { production_plan: frm.doc.name },
+				freeze: true,
+				freeze_message: __("Working out the motherstock line..."),
+			}).then((x) => {
+				if (x && x.message) {
+					frappe.set_route("Form", "Summer Flower Motherstock Plan", x.message);
+				}
+			});
+		});
+};

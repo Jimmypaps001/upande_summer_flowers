@@ -315,7 +315,7 @@ class SummerFlowerPropagationPlan(Document):
 		own answer.
 
 		So it no longer answers it. The Motherstock Plan is where the line is
-		decided -- how many plantlets, how many weeks the cut is diverted -- and
+		decided -- how many plantlets, how many times the cut is sent back -- and
 		this reads its week-by-week schedule for what the field can actually be
 		given each week. One engine, one answer, and changing the decision there
 		moves this document with it.

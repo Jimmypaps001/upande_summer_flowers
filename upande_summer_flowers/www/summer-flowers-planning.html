@@ -313,8 +313,8 @@
           <span class="pl-actions">
             <label class="pl-inline">{{ _("Plantlets") }}
               <input type="number" id="wi-tc" min="0" step="50"></label>
-            <label class="pl-inline">{{ _("Divert weeks") }}
-              <input type="number" id="wi-prop" min="0" max="52" step="1"></label>
+            <label class="pl-inline">{{ _("Multiply") }}
+              <input type="number" id="wi-prop" min="0" max="4" step="1"></label>
             <button type="button" class="pl-btn primary" data-wi="run">{{ _("Recalculate") }}</button>
             <button type="button" class="pl-btn" data-wi="reset">{{ _("Back to the plan") }}</button>
           </span>
@@ -520,12 +520,12 @@
       <div class="pl-card">
         <div class="pl-card-head">
           <div><h2>{{ _("The motherstock line") }}</h2>
-               <p class="pl-note">{{ _("Two decisions, and they trade against each other: how many plantlets to buy, and how many weeks to send the whole cut back as new mothers before any of it goes to the field. Buying fewer means diverting longer, which means ordering earlier.") }}</p></div>
+               <p class="pl-note">{{ _("Sized by the busiest sticking week: that week's cuttings divided by the generations standing, rounded up to a whole planting area. Cuttings cannot be banked, so the weeks either side lend the peak nothing. Each multiplication divides what you buy and costs one establishment off the weeks the line has left to cut — four at the most. The field is served first from the very first cut, ramp and all; only the surplus goes back as mothers.") }}</p></div>
           <span class="pl-actions">
             <label class="pl-inline">{{ _("Plantlets") }}
               <input type="number" id="tc-qty" min="0" step="50"></label>
-            <label class="pl-inline">{{ _("Divert weeks") }}
-              <input type="number" id="tc-divert" min="0" max="52" step="1"></label>
+            <label class="pl-inline">{{ _("Multiply") }}
+              <input type="number" id="tc-divert" min="0" max="4" step="1"></label>
             <button type="button" class="pl-btn" data-tc="apply">{{ _("Try this") }}</button>
             <button type="button" class="pl-btn" data-tc="reset">{{ _("Use the recommendation") }}</button>
           </span>
@@ -3930,7 +3930,7 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
       // Weeks of diversion, not a standing percentage. The old lever diverted
       // that share of every week's cut for ever, which compounds without bound;
       // the farm diverts the whole cut for a few weeks and then stops.
-      divert_weeks: S.wiProp === null || S.wiProp === undefined ? null : S.wiProp,
+      multiplications: S.wiProp === null || S.wiProp === undefined ? null : S.wiProp,
       week_overrides: JSON.stringify(S.wiOverrides || {}),
     }).then((r) => { S.wi = r; renderWhatIf(); })
       .catch((e) => { S.wi = { error: e.message }; renderWhatIf(); });
@@ -3950,7 +3950,7 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
     if (tcIn && document.activeElement !== tcIn) tcIn.value = r.tc_qty || "";
     if (prIn && document.activeElement !== prIn) {
       prIn.value = (S.wiProp === null || S.wiProp === undefined)
-        ? (r.divert_weeks ?? "") : S.wiProp;
+        ? (r.multiplications ?? "") : S.wiProp;
     }
 
     const delta = b.coverage_pct - base.coverage_pct;
@@ -3994,10 +3994,11 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
         c: b.plantings_dropped ? "--critical" : "--good" },
       { k: "Plants stuck", v: num(b.plants_stuck),
         m: `of ${num(b.plants_wanted)} wanted` },
-      { k: "Divert", v: `${r.divert_weeks ?? 0}`,
-        m: r.max_divert_that_covers != null
-          ? `at most ${r.max_divert_that_covers} weeks on this plan`
-          : "weeks of cutting held back" },
+      { k: "Multiply", v: `${r.multiplications ?? 0}`,
+        m: r.sends_made === r.multiplications
+          ? `times, of ${r.max_multiplications ?? 4} the farm allows`
+          : `asked; only ${num(r.sends_made)} could be sent`,
+        c: r.sends_made === r.multiplications ? "" : "--critical" },
       { k: "Generations", v: num(r.generations || b.generations),
         m: r.line_end_date ? `block cleared ${fdate(r.line_end_date)}` : "" },
       { k: "Planting weeks met", v: `${num(r.weeks_met)} / ${num(r.weeks_required)}`,
@@ -4010,9 +4011,9 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
       +x.label.slice(0, 4), +x.label.slice(6)));
     $("wi-body").innerHTML =
       '<p class="pl-note">Click a <b>To field</b> figure to hold cuttings back that ' +
-      'week. What you hold back goes to propagation and returns as motherstock later, ' +
-      'so the weeks after it gain capacity. <b>Stuck</b> is what the plan actually ' +
-      'achieves that week once the cuttings are counted.</p>' +
+      'week. The field is served first every week, ramp and all, so what you hold ' +
+      'back is what is left for building another generation. <b>Stuck</b> is what ' +
+      'the plan actually achieves that week once the cuttings are counted.</p>' +
       (periodOn() ? `<p class="pl-note">Showing ${rows.length} of ${b.sticking.length} ` +
         `sticking weeks — ${esc(periodLabel())}.</p>` : "") +
       (rows.length
@@ -4147,7 +4148,7 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
     return call("motherstock_line", {
       plan: S.dv.plan,
       tc: qty || null,
-      divert_weeks: (c && c.value !== "") ? c.value : null,
+      multiplications: (c && c.value !== "") ? c.value : null,
     })
       .then((r) => { S.tc = r; renderTc(); })
       .catch((e) => { S.tc = { error: e.message }; renderTc(); });
@@ -4179,15 +4180,20 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
     const c = t.chosen || {}, rec = t.recommended || {}, need = t.need || {};
     const qty = $("tc-qty"), dv = $("tc-divert");
     if (qty && document.activeElement !== qty) qty.value = c.tc || "";
-    if (dv && document.activeElement !== dv) dv.value = c.divert_weeks ?? "";
+    if (dv && document.activeElement !== dv) dv.value = c.multiplications ?? "";
 
     const met = c.weeks_met || 0, all = c.weeks || 0;
     $("tc-tiles").innerHTML = [
-      { k: "Buy", v: num(c.tc), m: "plantlets" },
-      { k: "Divert", v: `${c.divert_weeks}`, m: "weeks of cutting" },
+      { k: "TC to buy", v: num(c.tc),
+        m: `plantlets for week ${(t.peak || {}).week_label || "—"}` },
+      { k: "Multiply", v: `${c.multiplications}`,
+        m: c.sends_made === c.multiplications
+          ? `times, of ${(t.peak || {}).max ?? 4} allowed`
+          : `asked; only ${c.sends_made} could be sent` },
       { k: "Order by", v: fdate(c.order_by), m: c.order_late ? "already passed" : "" },
       { k: "First cutting", v: fdate(c.first_cut_date), m: `${num(c.arriving)} mothers` },
-      { k: "Pool peaks", v: num(c.peak_pool), m: `week ${c.peak_pool_week} of the line` },
+      { k: "Peak week wants", v: num((t.peak || {}).cuttings), m: "cuttings, and sets the order" },
+      { k: "Pool standing", v: num(c.peak_pool), m: `${(c.generations || []).length} generations` },
       { k: "Block cleared", v: fdate(c.line_end_date), m: "the whole line goes at once" },
       { k: "Weeks met", v: `${met} / ${all}`,
         m: c.shortfall ? `${num(c.shortfall)} cuttings short` : "every planting week" },
@@ -4197,9 +4203,15 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
       `<div class="m">${esc(x.m || "")}</div></div>`).join("");
 
     const notes = [];
-    if (rec.tc && rec.tc !== c.tc) {
-      notes.push(`The cheapest order that covers every planting week is ` +
-        `${num(rec.tc)} plantlets at ${rec.divert_weeks} weeks of diversion.`);
+    if (rec.buy && rec.buy !== c.tc) {
+      notes.push(`The arithmetic suggests ${num(rec.buy)} plantlets at ` +
+        `${rec.cycles} multiplication${rec.cycles === 1 ? "" : "s"}, ordered by ` +
+        `${fdate(rec.order_by)}.`);
+    }
+    if (c.multiplications && c.sends_made === 0) {
+      notes.push(`<b>Nothing could be sent back.</b> The field asks for the whole ` +
+        `cut every week, so there is no surplus to build another generation from ` +
+        `and the pool has to be bought outright.`);
     }
     const blocked = (t.options || []).find((o) => !o.covers && o.blocked);
     const lim = t.limits || {};
@@ -4208,10 +4220,12 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
         `plan.</b> ${esc(blocked.blocked)}`);
     }
     if (t.saved && t.saved.name) {
-      notes.push(`Written down as <a href="/app/summer-flower-motherstock-plan/` +
+      notes.push(`Agreed as <a href="/app/summer-flower-motherstock-plan/` +
         `${encodeURIComponent(t.saved.name)}">${esc(t.saved.name)}</a>: ` +
-        `${num(t.saved.tc_to_order)} plantlets, ${t.saved.divert_weeks} weeks ` +
-        `diverted. Change it there to commit to it.`);
+        `${num(t.saved.tc_to_order)} plantlets, ` +
+        `${t.saved.multiplications} multiplication` +
+        `${t.saved.multiplications === 1 ? "" : "s"}. That is the figure ` +
+        `procurement orders — change it there, not here.`);
     }
     (t.assumed || []).forEach((a) => notes.push(a));
     $("tc-note").innerHTML = notes.length

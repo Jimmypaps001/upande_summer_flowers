@@ -888,6 +888,22 @@ def build(production_plan, method=None, entry_stage=None, supplier=None,
 	if standing:
 		from upande_summer_flowers.summer_flowers import propagation_solver as psol
 
+		# The motherstock plan decides, this document buys. Sizing used to happen
+		# here and the line was written afterwards, which put the decision after
+		# the purchase order that was supposed to follow from it. If a line has
+		# already been agreed for this production plan, its figures are the ones
+		# ordered -- unless the caller passed something explicitly, which is a
+		# person overruling it on purpose.
+		agreed = frappe.db.get_value(
+			"Summer Flower Motherstock Plan", {"production_plan": p.name},
+			["name", "tc_to_order", "multiplications"], as_dict=True)
+		if agreed:
+			if cycles in (None, "") and agreed.multiplications not in (None, ""):
+				cycles = cint(agreed.multiplications)
+			if not cint(tc_qty) and cint(agreed.tc_to_order):
+				tc_qty = cint(agreed.tc_to_order)
+			need["agreed_from"] = agreed.name
+
 		# Sized by the busiest week. The pool is bought once and cut from every
 		# week of the season, so the week that sets its size is the busiest one --
 		# and the multiplication is worked out here rather than asked for, because
@@ -898,6 +914,7 @@ def build(production_plan, method=None, entry_stage=None, supplier=None,
 				_("This plan has no sticking weeks, so there is no peak week to size "
 				  "the order from."), title=_("The order cannot be sized"))
 		pick = sizing["pick"]
+		need["cycles"] = cint(pick["cycles"])
 		need["units"] = cint(pick["buy"])
 		need["calculated_units"] = cint(sizing["options"][sizing["suggested"]]["buy"])
 		need["overridden"] = cint(tc_qty) and cint(tc_qty) != cint(pick["buy"])
@@ -1114,7 +1131,7 @@ def build(production_plan, method=None, entry_stage=None, supplier=None,
 			doc.db_set("motherstock_plan",
 			           for_plan(production_plan,
 			                    tc_to_order=cint(need.get("units")),
-			                    divert_weeks=cint(need.get("divert_weeks"))),
+			                    multiplications=cint(need.get("cycles"))),
 			           update_modified=False)
 		except Exception:
 			# The order is the thing that must survive. A line that cannot be

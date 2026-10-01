@@ -18,6 +18,7 @@
   "season",
   "decision_section",
   "tc_to_order",
+  "multiplications",
   "divert_weeks",
   "cb_decision",
   "generations",
@@ -114,10 +115,19 @@
    "reqd": 1
   },
   {
+   "fieldname": "multiplications",
+   "fieldtype": "Int",
+   "label": "Multiplications",
+   "description": "How many times the cut is sent back to build another generation. Four at the most — that is how the farm works it. Each one divides the plantlets to buy, and costs one establishment off the weeks the line has left to cut.",
+   "non_negative": 1
+  },
+  {
    "fieldname": "divert_weeks",
    "fieldtype": "Int",
-   "label": "Cut Diverted For (weeks)",
-   "description": "Weeks from the first cutting in which the WHOLE cut goes back to the propagation unit as new mothers. After them the cut goes to the field, and what the field has not asked for is left on the mother."
+   "label": "Divert Weeks (old model)",
+   "description": "Weeks from the first cutting in which the WHOLE cut goes back to the propagation unit as new mothers. After them the cut goes to the field, and what the field has not asked for is left on the mother.",
+   "hidden": 1,
+   "read_only": 1
   },
   {
    "fieldname": "cb_decision",
