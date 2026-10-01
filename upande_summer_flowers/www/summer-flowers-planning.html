@@ -520,15 +520,18 @@
       <div class="pl-card">
         <div class="pl-card-head">
           <div><h2>{{ _("The motherstock line") }}</h2>
-               <p class="pl-note">{{ _("Sized by the busiest sticking week: that week's cuttings divided by the generations standing, rounded up to a whole planting area. Cuttings cannot be banked, so the weeks either side lend the peak nothing. Each multiplication divides what you buy and costs one establishment off the weeks the line has left to cut — four at the most. The field is served first from the very first cut, ramp and all; only the surplus goes back as mothers.") }}</p></div>
+               <p class="pl-note">{{ _("Sized by the busiest sticking week: that week's cuttings divided by the generations standing, rounded up to a whole planting area. Cuttings cannot be banked, so the weeks either side lend the peak nothing. Each multiplication divides what you buy and costs one establishment off the weeks the line has left to cut — four at the most. The field is served first from the very first cut, ramp and all; only the surplus goes back as mothers. Change either box and the line is worked out again — that costs nothing and saves nothing. Agree this line is the only thing that writes, and what it writes is what procurement orders.") }}</p></div>
           <span class="pl-actions">
             <label class="pl-inline">{{ _("Plantlets") }}
               <input type="number" id="tc-qty" min="0" step="50"></label>
             <label class="pl-inline">{{ _("Multiply") }}
               <input type="number" id="tc-divert" min="0" max="4" step="1"></label>
-            <button type="button" class="pl-btn" data-tc="apply">{{ _("Try this") }}</button>
-            <button type="button" class="pl-btn" data-tc="reset">{{ _("Use the recommendation") }}</button>
-            <button type="button" class="pl-btn primary" data-tc="agree">{{ _("Agree this line") }}</button>
+            <button type="button" class="pl-btn primary" data-tc="agree"
+                    title="{{ _('Writes these figures to the Motherstock Plan. Until you press this, nothing is saved and the procurement plan still orders the old line.') }}"
+            >{{ _("Agree this line") }}</button>
+            <button type="button" class="pl-btn quiet" data-tc="reset"
+                    title="{{ _('Put both boxes back to what the arithmetic suggests') }}"
+            >{{ _("Reset") }}</button>
           </span>
         </div>
         <div class="pl-tiles pl-tiles-sm" id="tc-tiles"></div>
@@ -1089,6 +1092,9 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
   padding:6px 14px;border-radius:6px;font-size:.8rem;cursor:pointer}
 .pl-btn:hover{background:var(--surface-2)}
 .pl-btn.primary{background:var(--seq-400);color:#fff;border-color:var(--seq-400)}
+.pl-btn.quiet{border-color:transparent;background:none;color:var(--text-muted,#6b7280);
+  text-decoration:underline;text-underline-offset:2px;padding:6px 6px}
+.pl-btn.quiet:hover{background:none;color:var(--text-primary)}
 .pl-two{display:grid;gap:16px;grid-template-columns:1fr 1fr}
 .pl-three{display:grid;gap:16px;grid-template-columns:repeat(auto-fit,minmax(280px,1fr))}
 @media(max-width:800px){.pl-two{grid-template-columns:1fr}}
@@ -6301,12 +6307,14 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
           $("tc-qty").value = ""; $("tc-divert").value = "";
           loadTc(null); return;
         }
-        if (b.dataset.tc === "agree") { agreeTc(); return; }
-        loadTc($("tc-qty").value || null);
+        if (b.dataset.tc === "agree") agreeTc();
       });
       // Multiplication guides how many plantlets to buy, so moving it re-solves
       // the quantity instead of leaving the previous one pinned. Typing a
       // quantity afterwards still overrides it.
+      $("tc-qty").addEventListener("change", () => {
+        loadTc($("tc-qty").value || null);
+      });
       $("tc-divert").addEventListener("change", () => {
         $("tc-qty").value = "";
         loadTc(null);
