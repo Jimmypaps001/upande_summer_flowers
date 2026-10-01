@@ -4223,7 +4223,14 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
           ? `times, of ${(t.peak || {}).max ?? 4} allowed`
           : `asked; only ${c.sends_made} could be sent` },
       { k: "Order by", v: fdate(c.order_by), m: c.order_late ? "already passed" : "" },
-      { k: "First cutting", v: fdate(c.first_cut_date), m: `${num(c.arriving)} mothers` },
+      // The cost nobody sees until they read the table: weeks of cutting a pool
+      // into nothing because the field has not opened yet. Every one of them is
+      // also a week off the end, since the block dies a life after its FIRST cut.
+      { k: "First cutting", v: fdate(c.first_cut_date),
+        m: c.idle_weeks
+          ? `${c.idle_weeks} weeks before the field wants anything`
+          : "as the season opens",
+        c: c.idle_weeks > 8 ? "--critical" : "" },
       { k: "Peak week wants", v: num((t.peak || {}).cuttings), m: "cuttings, and sets the order" },
       { k: "Pool peaks at", v: num(c.peak_pool),
         m: c.mothers_removed
@@ -4236,8 +4243,11 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
       { k: "Needs", v: num(need.cuttings), m: `cuttings over ${need.weeks} weeks` },
       { k: "Spare cuttings", v: num(c.cuttings_spare),
         m: "cut but not planted — they cannot be banked" },
+    // Same treatment of `c` as the shared tile() helper: a CSS variable name
+    // colouring the value, not a class nothing styles.
     ].map((x) => `<div class="pl-tile"><div class="k">${esc(x.k)}</div>` +
-      `<div class="v">${esc(String(x.v))}</div>` +
+      `<div class="v"${x.c ? ` style="color:var(${x.c})"` : ""}>` +
+      `${esc(String(x.v))}</div>` +
       `<div class="m">${esc(x.m || "")}</div></div>`).join("");
 
     const notes = [];

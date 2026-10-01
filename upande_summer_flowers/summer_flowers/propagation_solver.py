@@ -539,33 +539,52 @@ def peak_sizing(plan, cycles=None, max_cycles=MAX_MULTIPLICATIONS):
 	# 25% in a week that needed 25,000 cuttings -- 22,250 short across the ramp.
 	ramp_lead = max(0, len(v.ramp_ratios() or [1.0]) - 1)
 
+	ramp = v.ramp_ratios() or [1.0]
 	options = []
 	for c in range(0, cint(max_cycles) + 1):
 		gens = 1 + c * (flt(v.multiplication_factor_per_cycle) or 1.0)
 		mothers = peak / per_week
 		raw = mothers / gens
 		buy = round_up_to_area(raw, per_area)
-		full_after = estab + c * regen + ramp_lead
-		order_by = add_days(getdate(first_stick), -7 * (lead + full_after))
-		# The line still lives one motherstock life from its first cut, and that
-		# cut is now earlier, so the weeks it has left for the season shrink by the
-		# ramp as well as by the multiplication.
-		cut_weeks = max(0, life - c * regen - ramp_lead)
+		# Two ends of a range, not one date. The earliest is the old anchor --
+		# the whole pool standing before the field wants anything -- and the
+		# latest is generation one ramped up exactly as the season opens, with
+		# the rest arriving during it. The line is walked across the range and
+		# the last of the best starts wins, because every week bought early is a
+		# week of mothers cut into nothing AND a week off the end of the season.
+		earliest = add_days(getdate(first_stick), -7 * (c * regen + ramp_lead))
+		latest = add_days(getdate(first_stick), -7 * ramp_lead)
+		started, walk = best_start(
+			demand, buy, c, regen, per_week, life, ramp, per_area,
+			earliest=earliest, latest=latest)
+		order_by = add_days(started, -7 * (lead + estab))
+		# The line lives one motherstock life from its FIRST cut, so what it has
+		# left for the season is counted from the day it starts cutting.
+		cut_weeks = max(0, life - max(0, (getdate(first_stick) - started).days // 7))
 		options.append({
 			"cycles": c, "generations": round(gens, 2),
 			"raw": int(round(raw)), "buy": buy,
-			"weeks_to_full_pool": full_after,
+			"weeks_to_full_pool": estab + c * regen + ramp_lead,
 			"order_by": str(order_by),
-			"first_cut": str(add_days(order_by, 7 * (lead + estab))),
+			"first_cut": str(started),
+			"earliest_first_cut": str(earliest),
+			"latest_first_cut": str(latest),
+			"idle_weeks": max(0, (getdate(first_stick) - started).days // 7),
+			"weeks_met": cint(walk["weeks_met"]),
+			"shortfall": cint(walk["shortfall"]),
 			"cutting_weeks": cut_weeks,
-			"covers_season": cut_weeks >= span_weeks,
-			"pool": int(round(buy * gens)),
+			"covers_season": cint(walk["weeks_met"]) >= len(demand),
+			"pool": cint(walk["peak_pool"]),
 		})
 
-	# The most multiplication whose pool still outlasts the season. Every extra
-	# one is plantlets saved, so the cheapest workable answer is the last of them.
+	# The most multiplication that still covers every planting week. Every extra
+	# one is plantlets saved, so the cheapest workable answer is the last of
+	# them. Each option has now actually been walked, so this is coverage
+	# measured rather than cutting weeks standing in for it.
 	workable = [o for o in options if o["covers_season"]]
-	suggested = workable[-1]["cycles"] if workable else 0
+	suggested = workable[-1]["cycles"] if workable else max(
+		options, key=lambda o: (o["weeks_met"], -o["shortfall"], -o["cycles"])
+	)["cycles"]
 	chosen = cint(cycles) if cycles not in (None, "") else suggested
 	chosen = max(0, min(chosen, cint(max_cycles)))
 
@@ -590,9 +609,12 @@ def peak_sizing(plan, cycles=None, max_cycles=MAX_MULTIPLICATIONS):
 		"pick": options[chosen],
 	}
 
+def _walk_line(demand, buy, c, regen, per_week, life, ramp, per_area, first_cut,
+               sends_allowed=None):
+	"""One motherstock line, week by week, from a given first cut.
 
-def peak_schedule(plan, sizing, cycles=None, tc=None):
-	"""The line week by week under the peak-week sizing.
+	The engine. Everything that reports a line goes through here, so the card,
+	the document, the what-if and the order cannot walk it differently.
 
 	The farm's rule, in its own words: even in ramp one the cut can go to
 	hardening and then to the farm. So the field is served first, every week,
@@ -610,30 +632,17 @@ def peak_schedule(plan, sizing, cycles=None, tc=None):
 	week.
 
 	Every generation is cleared together, one motherstock life after the FIRST
-	cut, so a later one simply gets fewer weeks.
+	cut, so a later one simply gets fewer weeks. They come off the same order of
+	plantlets and they go at the same time.
 	"""
-	v = frappe.get_cached_doc("Crop Protocol Version", plan.protocol)
-	demand = demand_by_sticking_week(plan)
-	if not demand:
-		return None
-	c = cint(sizing["chosen"] if cycles in (None, "") else cycles)
-	pick = sizing["options"][min(c, len(sizing["options"]) - 1)]
-	buy = cint(tc) if cint(tc) else cint(pick["buy"])
-	regen = cint(sizing["regen_weeks"])
-	per_week = flt(sizing["cuttings_per_mother_per_week"]) or 1.0
-	first_cut = getdate(pick["first_cut"])
-	line_end = add_days(first_cut, 7 * cint(sizing["life_weeks"]))
-	sends_allowed = min(cint(c), MAX_MULTIPLICATIONS)
-
-	# A generation does not cut at full rate the week it arrives: it ramps, and the
-	# protocol says over how long.
-	from upande_summer_flowers.summer_flowers.lifecycle_sim import ramp_ratio
-
-	ramp = v.ramp_ratios() or [1.0]
+	first_cut = getdate(first_cut)
+	line_end = add_days(first_cut, 7 * cint(life))
+	if sends_allowed is None:
+		sends_allowed = min(cint(c), MAX_MULTIPLICATIONS)
 
 	gens = [{"generation": 1, "mothers": buy, "live": buy, "arrivals": 1,
 	         "first_cut_date": str(first_cut),
-	         "cutting_weeks": cint(sizing["life_weeks"]),
+	         "cutting_weeks": cint(life),
 	         "expiry_date": str(line_end), "stuck_date": None}]
 	arrivals = {}          # week -> list of pending generations landing then
 	batch, sends = 0, 0    # cuttings gathered so far, multiplications sent
@@ -641,7 +650,9 @@ def peak_schedule(plan, sizing, cycles=None, tc=None):
 
 	# The biggest week still ahead, week by week: what the pool has to be able to
 	# cut from here on. Everything above it is a mother nobody will need again.
-	per_area = cint(sizing["min_planting_area"]) or 1
+	from upande_summer_flowers.summer_flowers.lifecycle_sim import ramp_ratio
+
+	per_area = cint(per_area) or 1
 	ahead, carry = {}, 0
 	for d in sorted(demand, reverse=True):
 		carry = max(carry, cint(demand[d]))
@@ -765,7 +776,16 @@ def peak_schedule(plan, sizing, cycles=None, tc=None):
 			weeks_met += 1
 		else:
 			short += nn - got
-	return {"tc": buy, "cycles": c, "pick": pick, "generations": gens,
+	by_week = {r["week_start"]: r for r in rows}
+	short = 0
+	weeks_met = 0
+	for d, nn in demand.items():
+		got = cint((by_week.get(str(d)) or {}).get("to_field"))
+		if got >= nn:
+			weeks_met += 1
+		else:
+			short += nn - got
+	return {"tc": buy, "cycles": c, "generations": gens,
 	        "weeks_table": rows, "to_field": run, "shortfall": short,
 	        "weeks_met": weeks_met, "weeks": len(demand),
 	        "sends_made": sends, "sends_allowed": sends_allowed,
@@ -780,8 +800,74 @@ def peak_schedule(plan, sizing, cycles=None, tc=None):
 	        # worth reading: 37,000 down to 14,000 down to 5,000, and when.
 	        "pool_steps": steps,
 	        "line_end_date": str(line_end),
-	        "first_cut_date": str(first_cut), "order_by": pick["order_by"],
+	        "first_cut_date": str(first_cut),
 	        "covers": short == 0}
+
+
+def best_start(demand, buy, c, regen, per_week, life, ramp, per_area,
+               earliest, latest):
+	"""The LATEST first cut that still covers as much as the earliest would.
+
+	Starting early is not free, and the old anchor made it look free: it put the
+	first cut far enough back that the WHOLE pool was standing in the first
+	sticking week. At two multiplications that was twenty-five weeks of cutting
+	thirteen thousand cuttings a week into nothing -- no orders, a year of
+	managing mothers -- and because the block is cleared one life after its FIRST
+	cut, every one of those weeks was also taken off the end of the season. The
+	line died in July with sticking weeks still to come.
+
+	It does not need the whole pool on the first day. Generation one goes to the
+	farm while generation two is still rooting, which is how the farm works it,
+	so the line only has to be big enough each week rather than finished before
+	the season opens. Walking the candidates and keeping the last of the best
+	ones buys as late as the coverage allows.
+	"""
+	best, week = None, getdate(earliest)
+	latest = getdate(latest)
+	while week <= latest:
+		r = _walk_line(demand, buy, c, regen, per_week, life, ramp, per_area, week)
+		# More planting weeks met first, then fewer cuttings short. On a tie the
+		# later start wins, which is the whole point: it is the same coverage for
+		# less standing motherstock and more of the line left for the season.
+		key = (r["weeks_met"], -r["shortfall"])
+		if best is None or key >= best[0]:
+			best = (key, week, r)
+		week = add_days(week, 7)
+	return best[1], best[2]
+
+
+def peak_schedule(plan, sizing, cycles=None, tc=None, first_cut=None):
+	"""The line under the peak-week sizing, started as late as it can be."""
+	v = frappe.get_cached_doc("Crop Protocol Version", plan.protocol)
+	demand = demand_by_sticking_week(plan)
+	if not demand:
+		return None
+	from upande_summer_flowers.summer_flowers.lifecycle_sim import ramp_ratio  # noqa
+
+	c = cint(sizing["chosen"] if cycles in (None, "") else cycles)
+	pick = sizing["options"][min(c, len(sizing["options"]) - 1)]
+	buy = cint(tc) if cint(tc) else cint(pick["buy"])
+	args = (demand, buy, c, cint(sizing["regen_weeks"]),
+	        flt(sizing["cuttings_per_mother_per_week"]) or 1.0,
+	        cint(sizing["life_weeks"]), v.ramp_ratios() or [1.0],
+	        cint(sizing["min_planting_area"]) or 1)
+
+	if first_cut:
+		started = getdate(first_cut)
+		out = _walk_line(*args, first_cut=started)
+	elif buy == cint(pick["buy"]):
+		started = getdate(pick["first_cut"])
+		out = _walk_line(*args, first_cut=started)
+	else:
+		started, out = best_start(*args,
+		                          earliest=pick["earliest_first_cut"],
+		                          latest=pick["latest_first_cut"])
+	lead = cint(v.supplier_lead_weeks) + cint(sizing["establishment_weeks"])
+	out["pick"] = pick
+	out["order_by"] = str(add_days(started, -7 * lead))
+	out["weeks_idle_before_demand"] = max(
+		0, (getdate(sizing["first_sticking"]) - started).days // 7)
+	return out
 
 
 @frappe.whitelist()

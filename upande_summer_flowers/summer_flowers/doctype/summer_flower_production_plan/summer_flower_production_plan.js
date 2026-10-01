@@ -1002,6 +1002,9 @@ function sf_propagation_section(d, frm) {
 			`<td class="text-right">${int(x.buy)}</td>` +
 			`<td>${day(x.order_by)}</td>` +
 			`<td class="text-right"` +
+			`${x.idle_weeks > 8 ? ' style="color:var(--red-600,#c0392b)"' : ""}>` +
+			`${x.idle_weeks}</td>` +
+			`<td class="text-right"` +
 			`${x.covers_season ? "" : ' style="color:var(--red-600,#c0392b)"' +
 				` title="${esc(__("the line is cleared before the season ends"))}"`}>` +
 			`${x.cutting_weeks}${x.covers_season ? "" : " !"}</td></tr>`).join("");
@@ -1013,13 +1016,19 @@ function sf_propagation_section(d, frm) {
 			`<table class="table table-bordered" style="font-size:.78rem;margin:0">` +
 			`<thead><tr><th>${__("Multiply")}</th><th class="text-right">${__("Gens")}</th>` +
 			`<th class="text-right">${__("Plantlets")}</th><th>${__("Order by")}</th>` +
+			`<th class="text-right" title="${esc(__(
+				"weeks the pool is cut into nothing before the field opens — and "
+				+ "every one of them also comes off the end, because the block is "
+				+ "cleared one life after its FIRST cut"))}">${__("Idle")}</th>` +
 			`<th class="text-right">${__("Cutting weeks")}</th>` +
 			`</tr></thead><tbody>${opts}</tbody></table>` +
 			`<p class="text-muted small">★ ${esc(__(
 				"what the arithmetic suggests. Each multiplication is one "
 				+ "establishment spent reaching the full pool, taken out of the "
 				+ "line's life rather than added to it — the block is cleared one "
-				+ "life after its FIRST cut."))}</p>` +
+				+ "life after its FIRST cut. The line starts as late as its "
+				+ "coverage allows, because generation one goes to the farm while "
+				+ "generation two is still rooting."))}</p>` +
 			gen_table(c) + week_table(c) +
 			((o.assumed || []).length
 				? `<p class="small" style="color:var(--orange-700,#b45309)">` +
