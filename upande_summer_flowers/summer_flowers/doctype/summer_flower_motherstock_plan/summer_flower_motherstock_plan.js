@@ -7,6 +7,18 @@ frappe.ui.form.on("Summer Flower Motherstock Plan", {
 			frm.add_custom_button(__("Rebuild"), () => {
 				frm.call("rebuild").then(() => frm.save());
 			});
+			// Where the line is actually worked out: the peak week, the weekly
+			// split and the shortfall side by side. This document stores what
+			// gets agreed there, and can still be edited directly.
+			frm.add_custom_button(__("Plan on Dashboard"), () => {
+				const q = new URLSearchParams({
+					plan: frm.doc.production_plan,
+					variety: frm.doc.variety || "",
+					farm: frm.doc.farm || "",
+				});
+				window.open(
+					`/summer-flowers-planning?${q.toString()}#motherstock`, "_blank");
+			});
 			frm.add_custom_button(__("Production Plan"), () =>
 				frappe.set_route("Form", "Summer Flower Production Plan",
 					frm.doc.production_plan));
@@ -22,5 +34,5 @@ frappe.ui.form.on("Summer Flower Motherstock Plan", {
 	// Either knob changes the whole line, so nothing below them is left standing
 	// from the previous answer.
 	tc_to_order(frm) { frm.set_value("schedule", []); },
-	divert_weeks(frm) { frm.set_value("schedule", []); },
+	multiplications(frm) { frm.set_value("schedule", []); },
 });

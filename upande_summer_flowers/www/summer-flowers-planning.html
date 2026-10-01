@@ -528,6 +528,7 @@
               <input type="number" id="tc-divert" min="0" max="4" step="1"></label>
             <button type="button" class="pl-btn" data-tc="apply">{{ _("Try this") }}</button>
             <button type="button" class="pl-btn" data-tc="reset">{{ _("Use the recommendation") }}</button>
+            <button type="button" class="pl-btn primary" data-tc="agree">{{ _("Agree this line") }}</button>
           </span>
         </div>
         <div class="pl-tiles pl-tiles-sm" id="tc-tiles"></div>
@@ -4154,11 +4155,30 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
       .catch((e) => { S.tc = { error: e.message }; renderTc(); });
   }
 
-  // Nothing on this card writes any more. Trying a quantity or a diversion is
-  // free -- it recalculates and shows what happens -- and committing to a line is
-  // done on the Motherstock Plan, which the card links to. confirmTc used to write
-  // a quantity, a date and a cycle count straight onto the plan from here, and two
-  // of those three no longer exist.
+  // One write, and only one. Trying a quantity or a multiplication is free -- it
+  // recalculates and shows what happens -- and this is the thing that commits to
+  // what is on screen. The planning happens here, so the agreeing does too; the
+  // Motherstock Plan stores it and the procurement plan orders that figure.
+  function agreeTc() {
+    const t = S.tc;
+    if (!(t && t.plan && t.chosen)) { toast("Nothing to agree yet.", true); return; }
+    const c = t.chosen;
+    const warn = c.covers ? "" :
+      `\n\nIt does not cover the season: ${num(c.weeks_met)} of ${num(c.weeks)} ` +
+      `planting weeks, ${num(c.shortfall)} cuttings short.`;
+    const ask = `Agree ${num(c.tc)} plantlets at ${c.multiplications} ` +
+      `multiplication${c.multiplications === 1 ? "" : "s"}, ordered by ` +
+      `${fdate(c.order_by)}?${warn}\n\nThis is the figure the procurement plan ` +
+      `will order.`;
+    if (!window.confirm(ask)) return;
+    callOp("agree_motherstock_line", {
+      plan: t.plan, tc: c.tc, multiplications: c.multiplications,
+    }).then((r) => {
+      toast(`Agreed as ${r.name}: ${num(r.tc_to_order)} plantlets` +
+        (r.covers ? "." : ` — ${num(r.shortfall)} cuttings short.`));
+      return loadTc(null);
+    }).catch((e) => toast(esc(e.message || String(e)), true));
+  }
 
   function renderTc() {
     const t = S.tc;
@@ -4219,13 +4239,19 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
       notes.push(`<b>Divert at most ${lim.max_divert_that_covers} weeks on this ` +
         `plan.</b> ${esc(blocked.blocked)}`);
     }
+    if (!(t.saved && t.saved.name)) {
+      notes.push(`<b>Nothing agreed yet.</b> The figures above are a proposal. ` +
+        `Press <b>Agree this line</b> to write them down as the line procurement ` +
+        `orders.`);
+    }
     if (t.saved && t.saved.name) {
       notes.push(`Agreed as <a href="/app/summer-flower-motherstock-plan/` +
         `${encodeURIComponent(t.saved.name)}">${esc(t.saved.name)}</a>: ` +
         `${num(t.saved.tc_to_order)} plantlets, ` +
         `${t.saved.multiplications} multiplication` +
         `${t.saved.multiplications === 1 ? "" : "s"}. That is the figure ` +
-        `procurement orders — change it there, not here.`);
+        `procurement orders. Try another above and press <b>Agree this line</b> ` +
+        `to change it.`);
     }
     (t.assumed || []).forEach((a) => notes.push(a));
     $("tc-note").innerHTML = notes.length
@@ -6022,6 +6048,22 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
     // The plan list is refreshed on every scope change; the default is the
     // authoritative (approved) plan, not simply the newest, so creating a fresh
     // draft no longer makes the approved plan and its budget vanish from view.
+    // ?plan=…&variety=…&farm=… seeds the scope before anything loads. The plan
+    // alone is not enough: fillPlanPickers only keeps a chosen plan when a variety
+    // narrows the list, so a caller that knows the plan sends the variety with it.
+    function seedFromUrl() {
+      let q;
+      try { q = new URLSearchParams(location.search); } catch (e) { return; }
+      const v = (q.get("variety") || "").trim();
+      const f = (q.get("farm") || "").trim();
+      const pn = (q.get("plan") || "").trim();
+      const yr = (q.get("season") || "").trim();
+      if (v) { S.variety = v; const el = $("f-variety"); if (el) el.value = v; }
+      if (f) { S.farm = f; const el = $("f-farm"); if (el) el.value = f; }
+      if (yr) S.season = yr;
+      if (pn) S.plan = pn;
+    }
+
     function loadPlans() {
       return call("plans", { variety: S.variety, farm: S.farm }).then((r) => {
         S.plans = r;
@@ -6194,6 +6236,7 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
           $("tc-qty").value = ""; $("tc-divert").value = "";
           loadTc(null); return;
         }
+        if (b.dataset.tc === "agree") { agreeTc(); return; }
         loadTc($("tc-qty").value || null);
       });
       $("dm-table").parentElement.addEventListener("click", (e) => {
@@ -6329,6 +6372,11 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
           renderCalendar();
         });
       });
+      // Arrived from somewhere that already knows what it wants -- the Plan
+      // Motherstock button on a production plan, say. Without this the link
+      // landed on the chooser and the person picked the variety again, which is
+      // the opposite of a deep link.
+      seedFromUrl();
       return loadPlans().then(loadScope);
     }).then(() => {
       $("pl-loading").hidden = true;

@@ -1089,29 +1089,17 @@ function sf_propagation_section(d, frm) {
 }
 
 
-// Open the motherstock line for this plan, making it if it is not there yet. The
-// figures it settles on -- plantlets to order, how many times to multiply -- are
-// what Plan Procurement then buys.
+// Plan the line on the dashboard, not on the document. The peak week, the weekly
+// split and the shortfall are visible side by side there, which is what deciding
+// the line actually needs; the Motherstock Plan stores what gets agreed and can
+// still be opened directly. The scope travels in the query string and the tab in
+// the hash, so the link lands on the motherstock pane already narrowed to this
+// plan instead of on the variety chooser.
 const plan_motherstock = (frm) => {
-	frappe.db.get_value("Summer Flower Motherstock Plan",
-		{ production_plan: frm.doc.name }, "name")
-		.then((r) => {
-			const found = r && r.message && r.message.name;
-			if (found) {
-				frappe.set_route("Form", "Summer Flower Motherstock Plan", found);
-				return;
-			}
-			frappe.call({
-				method: "upande_summer_flowers.summer_flowers.doctype"
-					+ ".summer_flower_motherstock_plan.summer_flower_motherstock_plan"
-					+ ".for_plan",
-				args: { production_plan: frm.doc.name },
-				freeze: true,
-				freeze_message: __("Working out the motherstock line..."),
-			}).then((x) => {
-				if (x && x.message) {
-					frappe.set_route("Form", "Summer Flower Motherstock Plan", x.message);
-				}
-			});
-		});
+	const q = new URLSearchParams({
+		plan: frm.doc.name,
+		variety: frm.doc.variety || "",
+		farm: frm.doc.farm || "",
+	});
+	window.open(`/summer-flowers-planning?${q.toString()}#motherstock`, "_blank");
 };

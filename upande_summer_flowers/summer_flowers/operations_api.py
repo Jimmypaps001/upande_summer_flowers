@@ -1469,3 +1469,46 @@ def add_demand_weeks(market_demand, weeks):
 		"note": _("{0} weeks added. The horizon now runs to {1} — {2}.").format(
 			added, d.horizon_end, d.horizon_status),
 	}
+
+
+@frappe.whitelist()
+def agree_motherstock_line(plan=None, variety=None, farm=None, tc=None,
+                           multiplications=None):
+	"""Write the line being tried on the dashboard down as the agreed one.
+
+	The motherstock card used to be read-only, on the reasoning that committing
+	belonged on the document. But the planning happens here -- this is where the
+	peak week, the weekly split and the shortfall are visible side by side -- so
+	the card now does the one write that matters, and the Motherstock Plan stores
+	it. The figure it stores is what the procurement plan then orders.
+
+	Nothing else on the card writes. Trying a quantity or a multiplication is
+	still free; this is the only thing that commits to one.
+	"""
+	_guard()
+	from upande_summer_flowers.summer_flowers.doctype \
+		.summer_flower_motherstock_plan.summer_flower_motherstock_plan import for_plan
+
+	from upande_summer_flowers.summer_flowers.planning_api import resolve_plan
+
+	name = resolve_plan(variety=variety, farm=farm, plan=plan)
+	if not name:
+		frappe.throw(_("No production plan in scope to agree a line for."))
+	if not frappe.has_permission("Summer Flower Motherstock Plan", "write"):
+		frappe.throw(_("You do not have permission to agree a motherstock line."),
+		             frappe.PermissionError)
+
+	ms = for_plan(name, tc_to_order=tc, multiplications=multiplications)
+	doc = frappe.get_doc("Summer Flower Motherstock Plan", ms)
+	frappe.db.commit()
+	return {
+		"name": ms,
+		"production_plan": name,
+		"tc_to_order": cint(doc.tc_to_order),
+		"multiplications": cint(doc.multiplications),
+		"order_by_date": str(doc.order_by_date or ""),
+		"covers": cint(doc.covers),
+		"weeks_met": cint(doc.weeks_met),
+		"weeks_required": cint(doc.weeks_required),
+		"shortfall": cint(doc.shortfall),
+	}
