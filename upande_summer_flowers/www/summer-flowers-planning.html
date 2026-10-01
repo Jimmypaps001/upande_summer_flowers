@@ -610,6 +610,25 @@
   <!-- The demand workbook, read before it is written. The farm keeps three years
        of demand in one sheet, a block per financial year and a row per grade; this
        reads it, says what it would do, and writes only when told. -->
+  <!-- Agreeing is not one write. It settles the line, orders against it and
+       moves the documents the farm works from, so the confirmation says which
+       ones and what each will hold afterwards rather than repeating a figure
+       that is already on the card. -->
+  <dialog id="ag-dlg" class="pl-dlg narrow">
+    <div class="pl-dlg-head">
+      <div><h2 id="ag-title">{{ _("Create the procurement plan?") }}</h2>
+           <p class="pl-note" id="ag-sub"></p></div>
+      <button type="button" class="pl-btn quiet" data-ag="close">{{ _("Close") }}</button>
+    </div>
+    <div class="pl-dlg-body">
+      <div id="ag-body"></div>
+    </div>
+    <div class="pl-dlg-foot">
+      <button type="button" class="pl-btn quiet" data-ag="close">{{ _("Cancel") }}</button>
+      <button type="button" class="pl-btn primary" data-ag="go">{{ _("Create procurement plan") }}</button>
+    </div>
+  </dialog>
+
   <dialog id="up-dlg" class="pl-dlg">
     <div class="pl-dlg-head">
       <div><h2 id="up-title">{{ _("Upload a market demand file") }}</h2>
@@ -953,6 +972,17 @@ table.hc tbody tr:hover td:not(.hc-k):not(.hc-m){background:var(--surface-2)}
   background:var(--surface-1);z-index:2}
 .pl-dlg-head h2{font-size:1rem;margin:0}
 .pl-dlg-body{padding:14px 18px 20px;overflow:auto;max-height:calc(88vh - 70px)}
+/* A confirmation is a short read, not a working surface: 1200px of it would be
+   one line of text across a wide screen. */
+.pl-dlg.narrow{max-width:min(620px,94vw);width:min(620px,94vw)}
+.pl-dlg-foot{display:flex;gap:8px;justify-content:flex-end;align-items:center;
+  padding:12px 18px;border-top:1px solid var(--border);background:var(--surface-1)}
+/* What agreeing will touch, one line each. */
+.ag-step{display:flex;gap:10px;align-items:baseline;padding:7px 0;
+  border-bottom:1px solid var(--border)}
+.ag-step:last-child{border-bottom:0}
+.ag-step .w{font-weight:600;min-width:150px}
+.ag-step .d{color:var(--text-secondary);font-size:.82rem}
 table.ps-t tr.ps-sum td{background:var(--surface-2);font-weight:600;
   border-top:2px solid var(--border)}
 table.ps-t th,table.ps-t td{font-size:.72rem;white-space:nowrap}
@@ -4207,22 +4237,78 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
   function agreeTc() {
     const t = S.tc;
     if (!(t && t.plan && t.chosen)) { toast("Nothing to agree yet.", true); return; }
-    const c = t.chosen;
-    const warn = c.covers ? "" :
-      `\n\nIt does not cover the season: ${num(c.weeks_met)} of ${num(c.weeks)} ` +
-      `planting weeks, ${num(c.shortfall)} cuttings short.`;
-    const ask = `Agree ${num(c.tc)} plantlets at ${c.multiplications} ` +
-      `multiplication${c.multiplications === 1 ? "" : "s"}, ordered by ` +
-      `${fdate(c.order_by)}?${warn}\n\nThis is the figure the procurement plan ` +
-      `will order.`;
-    if (!window.confirm(ask)) return;
+    callOp("motherstock_commitment", { plan: t.plan })
+      .then((w) => showAgree(w || {}))
+      .catch((e) => toast(esc(e.message || String(e)), true));
+  }
+
+  // The confirmation names the documents rather than repeating the quantity. The
+  // figure is already on the card; what is not on the card is that pressing this
+  // writes the line, orders against it, rebuilds the propagation plan and puts
+  // plantings on the ground.
+  function showAgree(w) {
+    const c = (S.tc || {}).chosen || {};
+    const dlg = $("ag-dlg");
+    const was = w.motherstock || null;
+    const changing = was && (cintish(was.tc_to_order) !== cintish(c.tc)
+      || cintish(was.multiplications) !== cintish(c.multiplications));
+
+    $("ag-title").textContent = w.procurement
+      ? "Revise the procurement plan?" : "Create the procurement plan?";
+    $("ag-sub").textContent =
+      `${num(c.tc)} plantlets at ${c.multiplications} multiplication` +
+      `${c.multiplications === 1 ? "" : "s"}, ordered by ${fdate(c.order_by)}` +
+      ` — for ${esc(w.variety || "")} at ${esc(w.farm || "")}.`;
+
+    const step = (what, detail) =>
+      `<div class="ag-step"><div class="w">${what}</div>` +
+      `<div class="d">${detail}</div></div>`;
+    let rows = step("Motherstock Plan",
+      was ? `${esc(was.name)} rewritten` + (changing
+        ? ` — it holds ${num(was.tc_to_order)} at ${was.multiplications} today`
+        : " — unchanged")
+      : "created, and it becomes the agreed line");
+    rows += step("Procurement Plan", w.procurement
+      ? `${esc(w.procurement.name)} revised to ${num(c.tc)}` +
+        (w.procurement.docstatus === 1
+          ? " — it is submitted, so it is cancelled and amended"
+          : " — it is a draft, so it is rewritten")
+      : `created for ${num(c.tc)} plantlets`);
+    rows += step("Propagation Plan", w.propagation
+      ? `${esc(w.propagation.name)} rebuilt from the new line`
+      : "created from the new line");
+    rows += step("Plantings", !w.plan_approved
+      ? "skipped — the production plan is not approved yet"
+      : `${num(w.new_planting_rows - w.plantings_made)} of ` +
+        `${num(w.new_planting_rows)} rows still to put on the ground`);
+    if (!c.covers) {
+      rows += `<p class="pl-callout" style="margin-top:12px">` +
+        `<b>This line does not cover the season.</b> ${num(c.weeks_met)} of ` +
+        `${num(c.weeks)} planting weeks are met and it is ${num(c.shortfall)} ` +
+        `cuttings short. You can still agree it — the documents will say so too.</p>`;
+    }
+    $("ag-body").innerHTML = rows;
+    if (!dlg.open) dlg.showModal();
+  }
+
+  const cintish = (x) => parseInt(x, 10) || 0;
+
+  function runAgree() {
+    const t = S.tc, c = (t || {}).chosen || {};
+    const go = document.querySelector('[data-ag="go"]');
+    go.disabled = true; go.textContent = "Working…";
     callOp("agree_motherstock_line", {
       plan: t.plan, tc: c.tc, multiplications: c.multiplications,
     }).then((r) => {
+      $("ag-dlg").close();
+      const bad = (r.steps || []).filter((x) => !x.ok);
       toast(`Agreed as ${r.name}: ${num(r.tc_to_order)} plantlets` +
-        (r.covers ? "." : ` — ${num(r.shortfall)} cuttings short.`));
+        (bad.length ? ` — ${bad.length} step(s) did not run` : ", chain rebuilt"),
+        bad.length > 0);
+      bad.forEach((x) => toast(`${x.step}: ${x.error}`, true));
       return loadTc(null);
-    }).catch((e) => toast(esc(e.message || String(e)), true));
+    }).catch((e) => toast(esc(e.message || String(e)), true))
+      .finally(() => { go.disabled = false; go.textContent = "Create procurement plan"; });
   }
 
   function renderTc() {
@@ -6308,6 +6394,12 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
           loadTc(null); return;
         }
         if (b.dataset.tc === "agree") agreeTc();
+      });
+      $("ag-dlg").addEventListener("click", (e) => {
+        const b = e.target.closest("[data-ag]");
+        if (!b) return;
+        if (b.dataset.ag === "close") { $("ag-dlg").close(); return; }
+        if (b.dataset.ag === "go") runAgree();
       });
       // Multiplication guides how many plantlets to buy, so moving it re-solves
       // the quantity instead of leaving the previous one pinned. Typing a

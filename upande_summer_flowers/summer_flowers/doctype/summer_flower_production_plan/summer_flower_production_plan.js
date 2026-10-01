@@ -58,11 +58,11 @@ frappe.ui.form.on("Summer Flower Production Plan", {
 			// lead time, and the lead time sets the order date. Asked once, here.
 			frm.add_custom_button(__("Allocate Blocks"), () => allocate_blocks(frm),
 				ACTIONS);
-			// The line is decided before it is bought. Plan Motherstock works out
-			// how many plantlets a line would need; Plan Procurement then orders
-			// that figure rather than deriving its own.
-			frm.add_custom_button(__("Plan Motherstock"), () => plan_motherstock(frm),
-				ACTIONS);
+			// Plan it, or look at what was agreed. Which of the two depends on
+			// whether a line exists, and that is worth saying on the button: a
+			// plan that says "Plan Motherstock" after somebody has already agreed
+			// one invites a second answer to a settled question.
+			motherstock_button(frm);
 			frm.add_custom_button(__("Plan Procurement"), () => source_plantlets(frm),
 				ACTIONS);
 			frm.add_custom_button(__("Create Plantings"), () =>
@@ -1110,11 +1110,58 @@ function sf_propagation_section(d, frm) {
 // still be opened directly. The scope travels in the query string and the tab in
 // the hash, so the link lands on the motherstock pane already narrowed to this
 // plan instead of on the variety chooser.
-const plan_motherstock = (frm) => {
+const motherstock_url = (frm) => {
 	const q = new URLSearchParams({
 		plan: frm.doc.name,
 		variety: frm.doc.variety || "",
 		farm: frm.doc.farm || "",
 	});
-	window.open(`/summer-flowers-planning?${q.toString()}#motherstock`, "_blank");
+	return `/summer-flowers-planning?${q.toString()}#motherstock`;
+};
+
+const plan_motherstock = (frm) => window.open(motherstock_url(frm), "_blank");
+
+// Revising is only offered while there is still time to act on it. An order that
+// had to be placed last month cannot be re-sized by changing a document, and
+// offering the button anyway is how somebody comes to believe they have changed
+// something they have not.
+const motherstock_button = (frm) => {
+	frappe.db.get_value("Summer Flower Motherstock Plan",
+		{ production_plan: frm.doc.name },
+		["name", "tc_to_order", "multiplications", "order_by_date"])
+		.then((r) => {
+			const ms = r && r.message && r.message.name ? r.message : null;
+			if (!ms) {
+				frm.add_custom_button(__("Plan Motherstock"),
+					() => plan_motherstock(frm), ACTIONS);
+				return;
+			}
+			frm.add_custom_button(__("View Motherstock Plan"), () =>
+				frappe.set_route("Form", "Summer Flower Motherstock Plan", ms.name),
+				ACTIONS);
+
+			const days = ms.order_by_date
+				? frappe.datetime.get_day_diff(ms.order_by_date,
+					frappe.datetime.get_today())
+				: null;
+			if (days === null || days > 0) {
+				frm.add_custom_button(__("Revise Motherstock"),
+					() => plan_motherstock(frm), ACTIONS);
+			}
+			// Said once, where the decision is read, rather than left for somebody
+			// to work out from a date on another document.
+			frm.dashboard.add_comment(
+				days !== null && days <= 0
+					? __("Motherstock agreed: {0} plantlets at {1} multiplication(s). "
+						+ "The order date {2} has passed, so it can no longer be revised.",
+						[format_number(ms.tc_to_order, null, 0), ms.multiplications,
+						 frappe.datetime.str_to_user(ms.order_by_date)])
+					: __("Motherstock agreed: {0} plantlets at {1} multiplication(s), "
+						+ "to be ordered by {2} — {3} days left to revise it.",
+						[format_number(ms.tc_to_order, null, 0), ms.multiplications,
+						 ms.order_by_date
+							? frappe.datetime.str_to_user(ms.order_by_date) : "—",
+						 days]),
+				days !== null && days <= 0 ? "red" : "blue", true);
+		});
 };

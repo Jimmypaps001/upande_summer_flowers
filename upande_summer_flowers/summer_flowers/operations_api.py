@@ -1472,15 +1472,61 @@ def add_demand_weeks(market_demand, weeks):
 
 
 @frappe.whitelist()
+def motherstock_commitment(plan=None, variety=None, farm=None):
+	"""What agreeing a line would do, so the dialog can say it before it happens.
+
+	Agreeing is the moment the planning stops being a sketch: it writes the line,
+	orders against it, and moves the documents the farm actually works from. A
+	confirmation that only repeats the quantity does not tell anybody that.
+	"""
+	_guard()
+	from upande_summer_flowers.summer_flowers.planning_api import resolve_plan
+
+	name = resolve_plan(variety=variety, farm=farm, plan=plan)
+	if not name:
+		return {"plan": None}
+	p = frappe.get_doc("Summer Flower Production Plan", name)
+	ms = frappe.db.get_value(
+		"Summer Flower Motherstock Plan", {"production_plan": name},
+		["name", "tc_to_order", "multiplications", "order_by_date"], as_dict=True)
+	proc = frappe.db.get_value(
+		"Summer Flower Procurement Plan", {"production_plan": name,
+		                                   "docstatus": ["<", 2]},
+		["name", "docstatus", "total_units_to_order", "first_order_by"], as_dict=True)
+	prop = frappe.db.get_value(
+		"Summer Flower Propagation Plan",
+		{"variety": p.variety, "season_start_year": cint(p.season_start_year),
+		 "status": ["!=", "Rejected"]},
+		["name", "docstatus"], as_dict=True)
+	return {
+		"plan": name, "variety": p.variety, "farm": p.farm,
+		"plan_approved": cint(p.docstatus) == 1,
+		"motherstock": ms, "procurement": proc, "propagation": prop,
+		"new_planting_rows": sum(1 for b in p.plan_blocks
+		                         if cint(b.is_new_planting)),
+		"plantings_made": sum(1 for b in p.plan_blocks
+		                      if cint(b.is_new_planting) and b.existing_planting),
+	}
+
+
+@frappe.whitelist()
 def agree_motherstock_line(plan=None, variety=None, farm=None, tc=None,
                            multiplications=None):
-	"""Write the line being tried on the dashboard down as the agreed one.
+	"""Write the line down, order against it, and move what follows from it.
 
 	The motherstock card used to be read-only, on the reasoning that committing
 	belonged on the document. But the planning happens here -- this is where the
 	peak week, the weekly split and the shortfall are visible side by side -- so
-	the card now does the one write that matters, and the Motherstock Plan stores
-	it. The figure it stores is what the procurement plan then orders.
+	the card now does the one write that matters.
+
+	And it does not stop at the line. An agreed line that leaves the order, the
+	propagation plan and the plantings quoting the previous one is four documents
+	disagreeing about one decision, which is the failure this whole chain has
+	been pulled apart to prevent. So agreeing runs the chain: the Motherstock
+	Plan, then the Procurement Plan built from it, then the Propagation Plan
+	rebuilt from that, then the plantings -- each step reported, and each one
+	allowed to fail without taking the agreement down with it, because the line
+	is the thing that must survive.
 
 	Nothing else on the card writes. Trying a quantity or a multiplication is
 	still free; this is the only thing that commits to one.
@@ -1488,7 +1534,6 @@ def agree_motherstock_line(plan=None, variety=None, farm=None, tc=None,
 	_guard()
 	from upande_summer_flowers.summer_flowers.doctype \
 		.summer_flower_motherstock_plan.summer_flower_motherstock_plan import for_plan
-
 	from upande_summer_flowers.summer_flowers.planning_api import resolve_plan
 
 	name = resolve_plan(variety=variety, farm=farm, plan=plan)
@@ -1501,7 +1546,8 @@ def agree_motherstock_line(plan=None, variety=None, farm=None, tc=None,
 	ms = for_plan(name, tc_to_order=tc, multiplications=multiplications)
 	doc = frappe.get_doc("Summer Flower Motherstock Plan", ms)
 	frappe.db.commit()
-	return {
+
+	out = {
 		"name": ms,
 		"production_plan": name,
 		"tc_to_order": cint(doc.tc_to_order),
@@ -1511,4 +1557,47 @@ def agree_motherstock_line(plan=None, variety=None, farm=None, tc=None,
 		"weeks_met": cint(doc.weeks_met),
 		"weeks_required": cint(doc.weeks_required),
 		"shortfall": cint(doc.shortfall),
+		"steps": [],
 	}
+	for label, fn in _chain_after_agreement(name):
+		try:
+			out["steps"].append({"step": label, "ok": True, "result": fn()})
+			frappe.db.commit()
+		except Exception as e:
+			# The agreement stands even when something downstream will not build.
+			# Losing the line because a planting row has no block would be the
+			# worst of both: nothing agreed and nothing ordered.
+			frappe.db.rollback()
+			frappe.log_error(frappe.get_traceback(), "Agreeing %s: %s" % (ms, label))
+			out["steps"].append({"step": label, "ok": False,
+			                     "error": frappe.utils.strip_html(str(e))[:200]})
+	return out
+
+
+def _chain_after_agreement(production_plan):
+	"""The documents that follow a line, in the order they follow it."""
+	from upande_summer_flowers.summer_flowers.doctype \
+		.summer_flower_procurement_plan.summer_flower_procurement_plan import build
+	from upande_summer_flowers.summer_flowers.doctype \
+		.summer_flower_propagation_plan.summer_flower_propagation_plan import (
+			build_from_plan,
+		)
+
+	def procurement():
+		return {"name": build(production_plan, replace=1)}
+
+	def propagation():
+		r = build_from_plan(production_plan, as_dict=True)
+		return r if isinstance(r, dict) else {"name": r}
+
+	def plantings():
+		p = frappe.get_doc("Summer Flower Production Plan", production_plan)
+		if cint(p.docstatus) != 1:
+			# create_plantings refuses a plan that is not approved, and that is a
+			# state of the plan rather than a failure of the agreement.
+			return {"skipped": _("the production plan is not approved yet")}
+		return p.create_plantings()
+
+	return [(_("Procurement Plan"), procurement),
+	        (_("Propagation Plan"), propagation),
+	        (_("Plantings"), plantings)]
