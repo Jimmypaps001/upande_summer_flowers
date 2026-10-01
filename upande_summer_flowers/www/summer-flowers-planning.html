@@ -4152,11 +4152,11 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
 
   function loadTc(qty) {
     if (!(S.dv && S.dv.plan)) { S.tc = null; renderTc(); return Promise.resolve(); }
-    // All three levers travel together. Sending only the one that was typed in
-    // would reset the other two to the plan's values on every keystroke, so a date
-    // chosen a moment ago would vanish the next time a quantity was tried.
-    // Both knobs travel together: sending only the one that was typed would put
-    // the other back to the plan's value on every keystroke.
+    // Both knobs travel together, EXCEPT that the multiplication sizes the
+    // quantity rather than sitting beside it. Changing Multiply and keeping the
+    // old plantlet figure is the one combination that cannot be meant: the whole
+    // point of multiplying is that it divides what you buy. The caller clears
+    // the quantity when the multiplication moves, and the server re-solves it.
     const c = $("tc-divert");
     return call("motherstock_line", {
       plan: S.dv.plan,
@@ -6264,6 +6264,13 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
         }
         if (b.dataset.tc === "agree") { agreeTc(); return; }
         loadTc($("tc-qty").value || null);
+      });
+      // Multiplication guides how many plantlets to buy, so moving it re-solves
+      // the quantity instead of leaving the previous one pinned. Typing a
+      // quantity afterwards still overrides it.
+      $("tc-divert").addEventListener("change", () => {
+        $("tc-qty").value = "";
+        loadTc(null);
       });
       $("dm-table").parentElement.addEventListener("click", (e) => {
         const b = e.target.closest("[data-dm]");

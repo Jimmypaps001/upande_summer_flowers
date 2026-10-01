@@ -34,5 +34,11 @@ frappe.ui.form.on("Summer Flower Motherstock Plan", {
 	// Either knob changes the whole line, so nothing below them is left standing
 	// from the previous answer.
 	tc_to_order(frm) { frm.set_value("schedule", []); },
-	multiplications(frm) { frm.set_value("schedule", []); },
+	// Multiplication sizes the order, so moving it clears the quantity and lets
+	// Rebuild work a new one out. Keeping the old figure beside a count it was
+	// never solved for is the one combination that cannot be meant.
+	multiplications(frm) {
+		frm.set_value("tc_to_order", 0);
+		frm.set_value("schedule", []);
+	},
 });

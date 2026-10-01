@@ -897,11 +897,13 @@ def build(production_plan, method=None, entry_stage=None, supplier=None,
 		agreed = frappe.db.get_value(
 			"Summer Flower Motherstock Plan", {"production_plan": p.name},
 			["name", "tc_to_order", "multiplications"], as_dict=True)
+		# Taken as a pair or not at all: a caller who names one lever has the
+		# other re-solved for it, because the agreed quantity was worked out for
+		# the agreed multiplication and means nothing beside a different one.
+		if agreed and cycles in (None, "") and not cint(tc_qty):
+			cycles = cint(agreed.multiplications)
+			tc_qty = cint(agreed.tc_to_order)
 		if agreed:
-			if cycles in (None, "") and agreed.multiplications not in (None, ""):
-				cycles = cint(agreed.multiplications)
-			if not cint(tc_qty) and cint(agreed.tc_to_order):
-				tc_qty = cint(agreed.tc_to_order)
 			need["agreed_from"] = agreed.name
 
 		# Sized by the busiest week. The pool is bought once and cut from every

@@ -1164,14 +1164,15 @@ def plan_whatif(plan=None, variety=None, farm=None, tc_qty=None, week_overrides=
 	# same choice.
 	# The agreed line is the starting point, so the card opens on the figure that
 	# will actually be ordered rather than on a fresh proposal beside it.
+	# The pair, or neither half of it -- see motherstock_line. Moving one lever
+	# must re-size the other, not keep the agreed figure beside a count it was
+	# never worked out for.
 	agreed = frappe.db.get_value(
 		"Summer Flower Motherstock Plan", {"production_plan": plan},
 		["tc_to_order", "multiplications"], as_dict=True)
-	if agreed:
-		if multiplications in (None, "") and agreed.multiplications not in (None, ""):
-			multiplications = cint(agreed.multiplications)
-		if not cint(tc_qty) and cint(agreed.tc_to_order):
-			tc_qty = cint(agreed.tc_to_order)
+	if agreed and multiplications in (None, "") and not cint(tc_qty):
+		multiplications = cint(agreed.multiplications)
+		tc_qty = cint(agreed.tc_to_order)
 
 	mult = multiplications if multiplications not in (None, "") else None
 	sizing = ps.peak_sizing(p, cycles=mult)
@@ -2818,11 +2819,15 @@ def motherstock_line(plan=None, variety=None, farm=None, tc=None,
 		"Summer Flower Motherstock Plan", {"production_plan": name},
 		["name", "tc_to_order", "multiplications", "order_by_date", "generations"],
 		as_dict=True)
-	if saved:
-		if multiplications in (None, "") and saved.multiplications not in (None, ""):
-			multiplications = cint(saved.multiplications)
-		if not cint(tc) and cint(saved.tc_to_order):
-			tc = cint(saved.tc_to_order)
+	# The agreed line is a PAIR -- so many plantlets at so many multiplications --
+	# and it is shown only when nothing has been asked for. Inheriting half of it
+	# beside an overridden half is what had Multiply moving from 0 to 1 while the
+	# plantlet figure sat at 37,000: the whole point of multiplying is that it
+	# divides what you buy, so the half that was not named is re-solved from the
+	# half that was.
+	if saved and multiplications in (None, "") and not cint(tc):
+		multiplications = cint(saved.multiplications)
+		tc = cint(saved.tc_to_order)
 
 	out = ps.peak_options(name, cycles=multiplications, tc=tc)
 	out["plan"] = name
