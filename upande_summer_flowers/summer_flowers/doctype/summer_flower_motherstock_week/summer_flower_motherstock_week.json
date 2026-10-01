@@ -12,6 +12,8 @@
   "cuttings_cut",
   "to_multiplication",
   "to_field",
+  "cuttings_spare",
+  "mothers_removed",
   "cumulative_to_field",
   "demand",
   "shortfall",
@@ -64,6 +66,22 @@
    "fieldname": "to_field",
    "fieldtype": "Int",
    "label": "To Field",
+   "in_list_view": 1,
+   "columns": 1
+  },
+  {
+   "fieldname": "cuttings_spare",
+   "fieldtype": "Int",
+   "label": "Spare",
+   "description": "Cut, but neither planted nor sent back to multiplication. Left on the mother; it cannot be banked for a later week.",
+   "in_list_view": 1,
+   "columns": 1
+  },
+  {
+   "fieldname": "mothers_removed",
+   "fieldtype": "Int",
+   "label": "Mothers Removed",
+   "description": "Mothers cut off this week because no week still ahead needs them. A pool is kept for the biggest week left, not for the biggest week of the year.",
    "in_list_view": 1,
    "columns": 1
   },

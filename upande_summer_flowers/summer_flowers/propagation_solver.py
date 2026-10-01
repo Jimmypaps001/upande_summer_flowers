@@ -602,6 +602,13 @@ def peak_schedule(plan, sizing, cycles=None, tc=None):
 	Multiplication is a thing you do a counted number of times, never more than
 	MAX_MULTIPLICATIONS.
 
+	The pool is not kept at its peak all season. A mother standing in a week that
+	needs a thousand cuttings is a bed that could be growing something else, so
+	mothers are cut off as soon as no week still ahead of them needs them -- the
+	pool is held for the biggest week LEFT, not the biggest week of the year. It
+	only ever shrinks, because a mother cut off cannot be grown back inside a
+	week.
+
 	Every generation is cleared together, one motherstock life after the FIRST
 	cut, so a later one simply gets fewer weeks.
 	"""
@@ -624,13 +631,29 @@ def peak_schedule(plan, sizing, cycles=None, tc=None):
 
 	ramp = v.ramp_ratios() or [1.0]
 
-	gens = [{"generation": 1, "mothers": buy, "arrivals": 1,
+	gens = [{"generation": 1, "mothers": buy, "live": buy, "arrivals": 1,
 	         "first_cut_date": str(first_cut),
 	         "cutting_weeks": cint(sizing["life_weeks"]),
 	         "expiry_date": str(line_end), "stuck_date": None}]
 	arrivals = {}          # week -> list of pending generations landing then
 	batch, sends = 0, 0    # cuttings gathered so far, multiplications sent
 	batch_from = None
+
+	# The biggest week still ahead, week by week: what the pool has to be able to
+	# cut from here on. Everything above it is a mother nobody will need again.
+	per_area = cint(sizing["min_planting_area"]) or 1
+	ahead, carry = {}, 0
+	for d in sorted(demand, reverse=True):
+		carry = max(carry, cint(demand[d]))
+		ahead[d] = carry
+	keep_from = sorted(ahead)
+
+	def keep_at(w):
+		"""Mothers worth standing in week `w`, rounded up to a whole planting area."""
+		nxt = next((d for d in keep_from if d >= w), None)
+		if nxt is None:
+			return 0
+		return round_up_to_area(ahead[nxt] / per_week, per_area)
 
 	rows, week, n, run, short = [], first_cut, 0, 0, 0
 	while week < line_end:
@@ -640,13 +663,32 @@ def peak_schedule(plan, sizing, cycles=None, tc=None):
 			gens.append(g)
 			event.append(_("Generation {0} starts cutting").format(g["generation"]))
 
+		# Cut off what the rest of the season cannot use, oldest mothers first: a
+		# block is thinned from the bed that has been cut longest. Only once the
+		# pool is whole, so the build-up is not thinned before it is finished.
+		removed = 0
+		if sends >= sends_allowed and not arrivals:
+			live = [g for g in gens if getdate(g["first_cut_date"]) <= week]
+			standing_now = sum(cint(g["live"]) for g in live)
+			spare_mothers = standing_now - keep_at(week)
+			for g in sorted(live, key=lambda x: x["generation"]):
+				if spare_mothers <= 0:
+					break
+				take = min(cint(g["live"]), spare_mothers)
+				g["live"] = cint(g["live"]) - take
+				spare_mothers -= take
+				removed += take
+			if removed:
+				event.append(_("{0} mothers cut off; nothing ahead needs them")
+				             .format("{:,}".format(removed)))
+
 		standing, cut = 0, 0.0
 		for g in gens:
 			on = getdate(g["first_cut_date"])
 			if on > week:
 				continue
-			standing += cint(g["mothers"])
-			cut += cint(g["mothers"]) * per_week * ramp_ratio((week - on).days // 7, ramp)
+			standing += cint(g["live"])
+			cut += cint(g["live"]) * per_week * ramp_ratio((week - on).days // 7, ramp)
 		cut = int(round(cut))
 
 		# Field first -- this is the correction. What is left over is the only
@@ -669,7 +711,7 @@ def peak_schedule(plan, sizing, cycles=None, tc=None):
 				arrivals.setdefault(lands, []).append({
 					"generation": len(gens) + len(
 						[x for v2 in arrivals.values() for x in v2]) + 1,
-					"mothers": buy, "arrivals": 1,
+					"mothers": buy, "live": buy, "arrivals": 1,
 					"first_cut_date": str(lands),
 					"cutting_weeks": max(0, (line_end - lands).days // 7),
 					"expiry_date": str(line_end),
@@ -689,13 +731,26 @@ def peak_schedule(plan, sizing, cycles=None, tc=None):
 			"mothers_standing": standing, "cuttings_cut": cut,
 			"to_multiplication": to_mult,
 			"to_field": to_field, "cumulative_to_field": run,
+			# Cut and neither planted nor sent back. Without this column 37,000
+			# was cut, 25,000 went to the field and 12,000 simply vanished off
+			# the table with nothing to say where.
+			"cuttings_spare": max(0, cut - to_field - to_mult),
+			"mothers_removed": removed,
 			"demand": wants, "shortfall": max(0, wants - to_field),
 		})
 		week = add_days(week, 7)
+	steps, held = [], None
+	for r in rows:
+		if cint(r["mothers_standing"]) != held:
+			held = cint(r["mothers_standing"])
+			steps.append({"week_no": r["week_no"], "week_start": r["week_start"],
+			              "mothers": held})
+
 	rows.append({"week_no": n + 1, "week_start": str(line_end),
 	             "event": _("Block cleared"), "generations_live": "",
 	             "mothers_standing": 0, "cuttings_cut": 0,
-	             "to_multiplication": 0, "to_field": 0,
+	             "to_multiplication": 0, "to_field": 0, "cuttings_spare": 0,
+	             "mothers_removed": 0,
 	             "cumulative_to_field": run, "demand": 0, "shortfall": 0})
 	# Over EVERY demand week, not only the ones the line is alive for. A sticking
 	# week before the first cut or after the clearance has no row at all, and
@@ -714,7 +769,16 @@ def peak_schedule(plan, sizing, cycles=None, tc=None):
 	        "weeks_table": rows, "to_field": run, "shortfall": short,
 	        "weeks_met": weeks_met, "weeks": len(demand),
 	        "sends_made": sends, "sends_allowed": sends_allowed,
-	        "peak_pool": sum(cint(g["mothers"]) for g in gens),
+	        "peak_pool": max((cint(r["mothers_standing"]) for r in rows), default=0),
+	        # Thinning only. The last step takes the pool to nothing because no
+	        # sticking week is left, and counting that as "cut off" made the whole
+	        # pool read as thrown away.
+	        "mothers_removed": sum(cint(r["mothers_removed"]) for r in rows
+	                               if cint(r["mothers_standing"])),
+	        "cuttings_spare": sum(cint(r["cuttings_spare"]) for r in rows),
+	        # What the pool actually does over the season, which is the thing
+	        # worth reading: 37,000 down to 14,000 down to 5,000, and when.
+	        "pool_steps": steps,
 	        "line_end_date": str(line_end),
 	        "first_cut_date": str(first_cut), "order_by": pick["order_by"],
 	        "covers": short == 0}

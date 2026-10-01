@@ -88,6 +88,8 @@ class SummerFlowerMotherstockPlan(Document):
 		self.first_cut_date = sch["first_cut_date"]
 		self.line_end_date = sch["line_end_date"]
 		self.peak_pool = cint(sch["peak_pool"])
+		self.mothers_removed = cint(sch.get("mothers_removed"))
+		self.cuttings_spare = cint(sch.get("cuttings_spare"))
 		self.plants_to_field = cint(sch["to_field"])
 		self.cuttings_required = cint(sizing["season_cuttings"])
 		self.weeks_met = cint(sch["weeks_met"])
@@ -107,6 +109,13 @@ class SummerFlowerMotherstockPlan(Document):
 		else:
 			bits.append(_("Nothing is sent back: the field asks for the whole cut, "
 			              "so the pool has to be bought outright."))
+		steps = sch.get("pool_steps") or []
+		if len(steps) > 1:
+			bits.append(_("The pool is thinned as demand falls, {0} -- held for the "
+			              "biggest week left, not the biggest week of the year.")
+			            .format(" then ".join(
+				"{:,} from {}".format(cint(x["mothers"]), x["week_start"])
+				for x in steps)))
 		bits.append(_("Order by {0}; first cut {1}; the block is cleared on {2}.")
 		            .format(self.order_by_date, self.first_cut_date,
 		                    self.line_end_date))

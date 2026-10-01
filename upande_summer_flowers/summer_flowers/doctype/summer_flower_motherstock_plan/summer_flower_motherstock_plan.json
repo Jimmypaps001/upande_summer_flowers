@@ -30,6 +30,8 @@
   "line_end_date",
   "cb_outcome",
   "peak_pool",
+  "cuttings_spare",
+  "mothers_removed",
   "plants_to_field",
   "cuttings_required",
   "cb_outcome_2",
@@ -185,6 +187,20 @@
    "fieldname": "peak_pool",
    "fieldtype": "Int",
    "label": "Mother Plants At The Peak",
+   "read_only": 1
+  },
+  {
+   "fieldname": "cuttings_spare",
+   "fieldtype": "Int",
+   "label": "Spare Cuttings",
+   "description": "Cut but neither planted nor sent back to multiplication. They cannot be banked for a later week.",
+   "read_only": 1
+  },
+  {
+   "fieldname": "mothers_removed",
+   "fieldtype": "Int",
+   "label": "Mothers Cut Off",
+   "description": "Mothers removed across the season because no week still ahead needed them. The pool is held for the biggest week left, not the biggest week of the year.",
    "read_only": 1
   },
   {

@@ -3756,6 +3756,18 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
     // Beds are rarely what runs out; blocks are, because a block holds one
     // planting for that planting's whole life.
     const notes = [];
+    // The pool over the season, as the thing it is: a staircase down. A single
+    // "37,000 cut off" total read as the whole pool thrown away, when what
+    // happens is that it is held for the biggest week still ahead of it.
+    const steps = (c.pool_steps || []).filter((x) => x.mothers);
+    if (steps.length > 1) {
+      notes.push(`<b>The pool is thinned as demand falls.</b> ` +
+        steps.map((x) => `${num(x.mothers)} from ${fdate(x.week_start)}`)
+          .join(" → ") +
+        `. Mothers are cut off once no week still ahead of them needs them — a ` +
+        `pool is held for the biggest week <i>left</i>, not the biggest week of ` +
+        `the year, and one cut off cannot be grown back inside a week.`);
+    }
     if (sp.unallocated) {
       notes.push(`Only ${num(sp.placed)} of ${num(sp.proposals)} proposed plantings ` +
         `have a block free for their whole life, so ${num(sp.unmet_stems)} stems of ` +
@@ -4213,11 +4225,17 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
       { k: "Order by", v: fdate(c.order_by), m: c.order_late ? "already passed" : "" },
       { k: "First cutting", v: fdate(c.first_cut_date), m: `${num(c.arriving)} mothers` },
       { k: "Peak week wants", v: num((t.peak || {}).cuttings), m: "cuttings, and sets the order" },
-      { k: "Pool standing", v: num(c.peak_pool), m: `${(c.generations || []).length} generations` },
+      { k: "Pool peaks at", v: num(c.peak_pool),
+        m: c.mothers_removed
+          ? `thinned to ${num((c.pool_steps || []).filter((x) => x.mothers)
+              .slice(-1)[0]?.mothers || 0)} by the end`
+          : `${(c.generations || []).length} generations` },
       { k: "Block cleared", v: fdate(c.line_end_date), m: "the whole line goes at once" },
       { k: "Weeks met", v: `${met} / ${all}`,
         m: c.shortfall ? `${num(c.shortfall)} cuttings short` : "every planting week" },
       { k: "Needs", v: num(need.cuttings), m: `cuttings over ${need.weeks} weeks` },
+      { k: "Spare cuttings", v: num(c.cuttings_spare),
+        m: "cut but not planted — they cannot be banked" },
     ].map((x) => `<div class="pl-tile"><div class="k">${esc(x.k)}</div>` +
       `<div class="v">${esc(String(x.v))}</div>` +
       `<div class="m">${esc(x.m || "")}</div></div>`).join("");
@@ -4271,18 +4289,26 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
 
     const t2 = c.weeks_table || [];
     wk.innerHTML = !t2.length ? "" :
-      `<table class="pl-t"><thead><tr><th>Wk</th><th>Week of</th><th>Standing</th>` +
-      `<th class="n">Mothers</th><th class="n">Cut</th><th class="n">To mult.</th>` +
+      // Read left to right as the week happens: what is standing, what came off
+      // it, what the field took, what went back as mothers, what was left over.
+      // "To field" sat to the RIGHT of "To mult." while the field is served
+      // first, and the spare had no column at all -- 37,000 cut against 25,000
+      // planted left 12,000 nowhere on the page.
+      `<table class="pl-t"><thead><tr><th>Wk</th><th>Week of</th><th>Gens</th>` +
+      `<th class="n">Mothers</th><th class="n">Cut off</th><th class="n">Cut</th>` +
       `<th class="n">To field</th><th class="n">Needs</th><th class="n">Short</th>` +
+      `<th class="n">To mult.</th><th class="n">Spare</th>` +
       `<th>Event</th></tr></thead><tbody>` +
       t2.map((r) => `<tr${r.event ? ' class="ls-arrive"' : ""}><td>${r.week_no}</td>` +
         `<td>${fdate(r.week_start)}</td><td>${esc(r.generations_live || "")}</td>` +
         `<td class="n">${num(r.mothers_standing)}</td>` +
+        `<td class="n">${r.mothers_removed ? "−" + num(r.mothers_removed) : ""}</td>` +
         `<td class="n">${num(r.cuttings_cut)}</td>` +
-        `<td class="n">${r.to_multiplication ? num(r.to_multiplication) : ""}</td>` +
         `<td class="n">${r.to_field ? num(r.to_field) : ""}</td>` +
         `<td class="n">${r.demand ? num(r.demand) : ""}</td>` +
         `<td class="n">${r.shortfall ? num(r.shortfall) : ""}</td>` +
+        `<td class="n">${r.to_multiplication ? num(r.to_multiplication) : ""}</td>` +
+        `<td class="n">${r.cuttings_spare ? num(r.cuttings_spare) : ""}</td>` +
         `<td>${esc(r.event || "")}</td></tr>`).join("") + `</tbody></table>`;
   }
 
