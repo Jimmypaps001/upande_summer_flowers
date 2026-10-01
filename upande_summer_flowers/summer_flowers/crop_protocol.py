@@ -445,28 +445,41 @@ def set_route_quantities(doc, native=False):
 		if entry:
 			bought_in_chain.add(id(entry))
 
+	# With one way in, every stage figure comes off the protocol's own fields and
+	# the route is derived whole. With two, one field cannot serve both: Eryngium
+	# hardens tissue culture for seven weeks and roots for fifteen, and
+	# sticking_to_planting_weeks is a single number. So on a route bought more than
+	# one way, a figure typed on the row wins and the derivation fills only what is
+	# left blank.
+	multi = len(_chains_of(blocks)) > 1
+
 	for stage, steps in blocks:
 		name = stage.stage
 		standing = 1 if name in STANDING_STAGES else 0
 		stage.is_purchase = 1 if id(stage) in bought_in_chain else 0
+		typed_weeks = cint(stage.get("weeks")) if multi else 0
 		# And how long it takes. A stage with steps under it is the sum of them --
 		# check_route already sets that -- so only the ones without are derived here.
 		if not steps:
-			if name == ROUTE_END:
+			if typed_weeks and name != ROUTE_END:
+				stage.weeks = typed_weeks
+			elif name == ROUTE_END:
 				stage.weeks = 0
 			elif standing:
 				# Plantlet to first cutting off the pool it becomes.
 				stage.weeks = establish + (hardening if cint(_n(
 					doc, "establishment_includes_hardening", native=native)) else 0)
+			elif cint(stage.is_purchase):
+				# The material arriving takes no time; the wait is the supplier's,
+				# and that is lead_weeks. This is checked BEFORE the stage-name
+				# branch below, because Roots is both a thing you buy and a thing
+				# that takes time: as an entry it is 0 and the weeks it needs are
+				# the Propagation row after it, and counting both gave bought roots
+				# 22 weeks to the ground where the tracker says 15.
+				stage.weeks = 0
 			elif name in ("Propagation", "Sprouting", "Cooling", "Roots"):
 				# Stuck to plantable.
 				stage.weeks = to_planting or establish
-			elif cint(stage.is_purchase):
-				# The material arriving takes no time; the wait is the supplier's,
-				# and that is lead_weeks, not this. Bought roots are the exception
-				# and are caught by the branch above: they harden for fifteen weeks
-				# after they land, which is time on the farm, not the supplier's.
-				stage.weeks = 0
 			elif cycle_time:
 				stage.weeks = cycle_time
 		stage.is_standing = standing
