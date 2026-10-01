@@ -1000,6 +1000,8 @@ function sf_propagation_section(d, frm) {
 			`<td>${x.cycles}${x.cycles === z.suggested ? " ★" : ""}</td>` +
 			`<td class="text-right">${x.generations}</td>` +
 			`<td class="text-right">${int(x.buy)}</td>` +
+			`<td class="small text-muted">${(x.batches || []).map(int).join(" + ")
+				|| "—"}</td>` +
 			`<td>${day(x.order_by)}</td>` +
 			`<td class="text-right"` +
 			`${x.idle_weeks > 8 ? ' style="color:var(--red-600,#c0392b)"' : ""}>` +
@@ -1015,7 +1017,11 @@ function sf_propagation_section(d, frm) {
 			`letter-spacing:.05em;margin-bottom:4px">${__("What each multiplication costs")}</div>` +
 			`<table class="table table-bordered" style="font-size:.78rem;margin:0">` +
 			`<thead><tr><th>${__("Multiply")}</th><th class="text-right">${__("Gens")}</th>` +
-			`<th class="text-right">${__("Plantlets")}</th><th>${__("Order by")}</th>` +
+			`<th class="text-right">${__("Plantlets")}</th>` +
+			`<th title="${esc(__(
+				"cuttings taken off the order, each sized to the step in demand it "
+				+ "is raised for"))}">${__("Batches off it")}</th>` +
+			`<th>${__("Order by")}</th>` +
 			`<th class="text-right" title="${esc(__(
 				"weeks the pool is cut into nothing before the field opens — and "
 				+ "every one of them also comes off the end, because the block is "

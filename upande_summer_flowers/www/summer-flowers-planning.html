@@ -3759,6 +3759,17 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
     // The pool over the season, as the thing it is: a staircase down. A single
     // "37,000 cut off" total read as the whole pool thrown away, when what
     // happens is that it is held for the biggest week still ahead of it.
+    // What the season actually asks the pool to climb, which is what decides
+    // the generations. An even division of the peak is only right when the
+    // season arrives in even instalments, and seasons rarely do.
+    if ((c.steps || []).length > 1) {
+      notes.push(`<b>The season climbs in steps.</b> ` +
+        c.steps.map((x, i) => `${i ? "then +" : ""}${num(x.mothers)} by ` +
+          `${fdate(x.by)}`).join(", ") +
+        `. Generation one is bought — ${num(c.tc)} plantlets — and each later ` +
+        `generation is a batch of cuttings taken off it, sized to the step it ` +
+        `is raised for, not to an equal share of the peak.`);
+    }
     const steps = (c.pool_steps || []).filter((x) => x.mothers);
     if (steps.length > 1) {
       notes.push(`<b>The pool is thinned as demand falls.</b> ` +
@@ -4217,7 +4228,9 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
     const met = c.weeks_met || 0, all = c.weeks || 0;
     $("tc-tiles").innerHTML = [
       { k: "TC to buy", v: num(c.tc),
-        m: `plantlets for week ${(t.peak || {}).week_label || "—"}` },
+        m: (c.batches || []).length
+          ? `plantlets; ${(c.batches || []).map(num).join(" + ")} more come off them`
+          : `plantlets for week ${(t.peak || {}).week_label || "—"}` },
       { k: "Multiply", v: `${c.multiplications}`,
         m: c.sends_made === c.multiplications
           ? `times, of ${(t.peak || {}).max ?? 4} allowed`

@@ -542,10 +542,15 @@ def peak_sizing(plan, cycles=None, max_cycles=MAX_MULTIPLICATIONS):
 	ramp = v.ramp_ratios() or [1.0]
 	options = []
 	for c in range(0, cint(max_cycles) + 1):
-		gens = 1 + c * (flt(v.multiplication_factor_per_cycle) or 1.0)
+		# Sized to the shape of the season, not to a flat division of its peak.
+		# Only generation one is bought; the rest are cuttings taken off it, so
+		# the plantlet order is generation one's size alone.
+		gplan = generation_plan(demand, per_week, per_area, c + 1)
+		gens = len(gplan) or 1
 		mothers = peak / per_week
-		raw = mothers / gens
-		buy = round_up_to_area(raw, per_area)
+		buy = cint(gplan[0]["mothers"]) if gplan else round_up_to_area(mothers, per_area)
+		batches = [cint(x["mothers"]) for x in gplan[1:]]
+		raw = mothers / max(1, gens)
 		# Two ends of a range, not one date. The earliest is the old anchor --
 		# the whole pool standing before the field wants anything -- and the
 		# latest is generation one ramped up exactly as the season opens, with
@@ -556,7 +561,7 @@ def peak_sizing(plan, cycles=None, max_cycles=MAX_MULTIPLICATIONS):
 		latest = add_days(getdate(first_stick), -7 * ramp_lead)
 		started, walk = best_start(
 			demand, buy, c, regen, per_week, life, ramp, per_area,
-			earliest=earliest, latest=latest)
+			earliest=earliest, latest=latest, batches=batches)
 		order_by = add_days(started, -7 * (lead + estab))
 		# The line lives one motherstock life from its FIRST cut, so what it has
 		# left for the season is counted from the day it starts cutting.
@@ -564,6 +569,9 @@ def peak_sizing(plan, cycles=None, max_cycles=MAX_MULTIPLICATIONS):
 		options.append({
 			"cycles": c, "generations": round(gens, 2),
 			"raw": int(round(raw)), "buy": buy,
+			"batches": batches,
+			"steps": [{"by": str(x["by"]), "mothers": cint(x["mothers"])}
+			          for x in gplan],
 			"weeks_to_full_pool": estab + c * regen + ramp_lead,
 			"order_by": str(order_by),
 			"first_cut": str(started),
@@ -609,8 +617,68 @@ def peak_sizing(plan, cycles=None, max_cycles=MAX_MULTIPLICATIONS):
 		"pick": options[chosen],
 	}
 
+def generation_plan(demand, per_week, per_area, generations):
+	"""What each generation has to be, and by when, for a given count.
+
+	Dividing the peak evenly is wrong whenever the season does not arrive
+	evenly, and seasons rarely do. Aster Pink Flash opens at 25,000 cuttings a
+	week and climbs 12,000 to its peak eight weeks later, so the line it wants
+	is 25,000 bought and one batch of 12,000 -- not two equal halves of 18,500,
+	which is too much in January and still not enough in March.
+
+	The pool only ever grows towards the peak, so what it must be able to cut by
+	a given week is the biggest week up to and including it. The steps in that
+	curve ARE the generations: each one is an increment, needed by the date the
+	curve steps up.
+
+	Returns a list, generation one first. Only generation one is bought -- the
+	rest are cuttings taken off it -- so its size is the plantlet order.
+	"""
+	levels, carry = [], 0
+	for d in sorted(demand):
+		if cint(demand[d]) > carry:
+			carry = cint(demand[d])
+			levels.append({"by": d, "mothers": round_up_to_area(
+				carry / (flt(per_week) or 1.0), per_area)})
+	if not levels:
+		return []
+	g = max(1, cint(generations))
+
+	if g <= len(levels):
+		# Fewer generations than steps, so the earlier steps have to be bought
+		# together: generation one is sized to the largest level it must cover.
+		head = levels[: len(levels) - g + 1]
+		tail = levels[len(levels) - g + 1:]
+		out = [{"by": head[0]["by"], "mothers": head[-1]["mothers"]}]
+		running = head[-1]["mothers"]
+		for lv in tail:
+			out.append({"by": lv["by"], "mothers": lv["mothers"] - running})
+			running = lv["mothers"]
+		return out
+
+	# More generations than the season has steps, so the first level is reached
+	# in instalments: buy a share of it and multiply up to it before the season
+	# opens, then one generation per step after that.
+	extra = g - len(levels)
+	first = levels[0]["mothers"]
+	share = round_up_to_area(first / float(extra + 1), per_area)
+	out, running = [], 0
+	for _i in range(extra + 1):
+		take = min(share, first - running) if running + share > first else share
+		take = max(0, take)
+		out.append({"by": levels[0]["by"], "mothers": take})
+		running += take
+	if running < first:
+		out[-1]["mothers"] += first - running
+		running = first
+	for lv in levels[1:]:
+		out.append({"by": lv["by"], "mothers": lv["mothers"] - running})
+		running = lv["mothers"]
+	return [x for x in out if cint(x["mothers"]) > 0]
+
+
 def _walk_line(demand, buy, c, regen, per_week, life, ramp, per_area, first_cut,
-               sends_allowed=None):
+               sends_allowed=None, batches=None):
 	"""One motherstock line, week by week, from a given first cut.
 
 	The engine. Everything that reports a line goes through here, so the card,
@@ -637,8 +705,14 @@ def _walk_line(demand, buy, c, regen, per_week, life, ramp, per_area, first_cut,
 	"""
 	first_cut = getdate(first_cut)
 	line_end = add_days(first_cut, 7 * cint(life))
+	# Each multiplication is its own size: the step in demand it was raised for.
+	# Without this every generation was a copy of the order, which is only right
+	# when the season arrives in equal instalments.
+	batches = [cint(b) for b in (batches or []) if cint(b) > 0]
+	if not batches:
+		batches = [cint(buy)] * min(cint(c), MAX_MULTIPLICATIONS)
 	if sends_allowed is None:
-		sends_allowed = min(cint(c), MAX_MULTIPLICATIONS)
+		sends_allowed = min(len(batches), MAX_MULTIPLICATIONS)
 
 	gens = [{"generation": 1, "mothers": buy, "live": buy, "arrivals": 1,
 	         "first_cut_date": str(first_cut),
@@ -712,24 +786,25 @@ def _walk_line(demand, buy, c, regen, per_week, life, ramp, per_area, first_cut,
 
 		to_mult = 0
 		if sends < sends_allowed and surplus > 0:
-			to_mult = min(surplus, buy - batch)
+			want_batch = batches[sends]
+			to_mult = min(surplus, want_batch - batch)
 			if batch == 0 and to_mult:
 				batch_from = week
 			batch += to_mult
-			if batch >= buy:
+			if batch >= want_batch:
 				sends += 1
 				lands = add_days(week, 7 * regen)
 				arrivals.setdefault(lands, []).append({
 					"generation": len(gens) + len(
 						[x for v2 in arrivals.values() for x in v2]) + 1,
-					"mothers": buy, "live": buy, "arrivals": 1,
+					"mothers": want_batch, "live": want_batch, "arrivals": 1,
 					"first_cut_date": str(lands),
 					"cutting_weeks": max(0, (line_end - lands).days // 7),
 					"expiry_date": str(line_end),
 					"stuck_date": str(batch_from),
 				})
 				event.append(_("Multiplication {0} of {1} sent, {2} plants land {3}").format(
-					sends, sends_allowed, "{:,}".format(buy), lands))
+					sends, sends_allowed, "{:,}".format(want_batch), lands))
 				batch, batch_from = 0, None
 
 		if week == first_cut:
@@ -805,7 +880,7 @@ def _walk_line(demand, buy, c, regen, per_week, life, ramp, per_area, first_cut,
 
 
 def best_start(demand, buy, c, regen, per_week, life, ramp, per_area,
-               earliest, latest):
+               earliest, latest, batches=None):
 	"""The LATEST first cut that still covers as much as the earliest would.
 
 	Starting early is not free, and the old anchor made it look free: it put the
@@ -825,7 +900,8 @@ def best_start(demand, buy, c, regen, per_week, life, ramp, per_area,
 	best, week = None, getdate(earliest)
 	latest = getdate(latest)
 	while week <= latest:
-		r = _walk_line(demand, buy, c, regen, per_week, life, ramp, per_area, week)
+		r = _walk_line(demand, buy, c, regen, per_week, life, ramp, per_area, week,
+		               batches=batches)
 		# More planting weeks met first, then fewer cuttings short. On a tie the
 		# later start wins, which is the whole point: it is the same coverage for
 		# less standing motherstock and more of the line left for the season.
@@ -852,16 +928,23 @@ def peak_schedule(plan, sizing, cycles=None, tc=None, first_cut=None):
 	        cint(sizing["life_weeks"]), v.ramp_ratios() or [1.0],
 	        cint(sizing["min_planting_area"]) or 1)
 
+	batches = pick.get("batches") or None
 	if first_cut:
 		started = getdate(first_cut)
-		out = _walk_line(*args, first_cut=started)
+		out = _walk_line(*args, first_cut=started, batches=batches)
 	elif buy == cint(pick["buy"]):
 		started = getdate(pick["first_cut"])
-		out = _walk_line(*args, first_cut=started)
+		out = _walk_line(*args, first_cut=started, batches=batches)
 	else:
+		# An overridden order changes what each batch can be, so the steps are
+		# scaled with it rather than left at the sizes the suggestion worked out.
+		if batches and cint(pick["buy"]):
+			f = flt(buy) / flt(pick["buy"])
+			batches = [max(1, int(round(b * f))) for b in batches]
 		started, out = best_start(*args,
 		                          earliest=pick["earliest_first_cut"],
-		                          latest=pick["latest_first_cut"])
+		                          latest=pick["latest_first_cut"],
+		                          batches=batches)
 	lead = cint(v.supplier_lead_weeks) + cint(sizing["establishment_weeks"])
 	out["pick"] = pick
 	out["order_by"] = str(add_days(started, -7 * lead))
