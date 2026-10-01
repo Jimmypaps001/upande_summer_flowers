@@ -649,7 +649,23 @@
   --baseline:#383835;--border:rgba(255,255,255,.10);--series-1:#3987e5;--series-2:#d95926;--series-3:#9085e9;--series-4:#22a897;
   --seq-400:#3987e5;--seq-200:#184f95;--violet:#9085e9}
 
-.pl-root{max-width:1280px;margin:0 auto;padding:8px 0 64px;color:var(--text-primary)}
+/* The window, not a column. This is a working surface -- a 53-week table
+   with twelve columns -- and 1280px put it in a trough with empty gutters
+   either side. The gutter scales rather than being fixed, so a laptop
+   does not lose width it has not got. */
+.pl-root{max-width:none;margin:0 auto;padding:8px clamp(12px,1.6vw,36px) 64px;color:var(--text-primary)}
+/* Prose still wants a measure; a sentence 2,000px wide is unreadable. */
+.pl-root .pl-sub,.pl-root .pl-note,.pl-root .pl-callout{max-width:92ch}
+/* The chrome above the page follows it out. full_width frees the content but
+   not the navbar, which has a container of its own, and a menu bar stopping at
+   1140px over a page that runs to the edge reads as a mistake. Scoped by the
+   body's data-path so no other page on the site is touched. */
+body[data-path="summer-flowers-planning"] .navbar>.container{
+  max-width:none;padding-left:clamp(12px,1.6vw,36px);
+  padding-right:clamp(12px,1.6vw,36px)}
+body[data-path="summer-flowers-planning"] .page_content,
+body[data-path="summer-flowers-planning"] .page-content-wrapper,
+body[data-path="summer-flowers-planning"] main{max-width:none;padding-left:0;padding-right:0}
 .pl-head h1{font-size:1.7rem;margin:0 0 4px;letter-spacing:-.4px;display:flex;
   align-items:center;gap:11px}
 .pl-logo{flex:none;display:block}

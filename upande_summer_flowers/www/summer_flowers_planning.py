@@ -1,23 +1,17 @@
 # Copyright (c) 2026, James Kiruga and contributors
 # For license information, please see license.txt
-"""Controller for /summer-flowers-planning.
+"""Context for the planning dashboard.
 
-Frappe pairs a www template with the basename's hyphens converted to
-underscores, so this file must be summer_flowers_planning.py.
+The only thing it asks for is the full width of the window. Frappe's web
+template wraps page content in a Bootstrap container unless a page says
+otherwise, and this page is a working surface rather than an article: a
+fifty-three week table of twelve columns was being squeezed into 1140px with
+empty gutters either side of it.
+
+The filename is underscored although the route is hyphenated, because that is
+how Frappe looks a page controller up -- the hyphenated name is never imported.
 """
-
-import frappe
-from frappe import _
-
-no_cache = 1
 
 
 def get_context(context):
-	if frappe.session.user == "Guest":
-		frappe.throw(_("Please sign in to view the planning dashboard."),
-		             frappe.PermissionError)
-
-	context.no_cache = 1
-	context.title = _("Summer Flowers — Planning")
-	context.show_sidebar = False
-	return context
+	context.full_width = True
