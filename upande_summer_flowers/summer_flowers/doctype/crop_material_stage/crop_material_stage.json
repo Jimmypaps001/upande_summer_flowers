@@ -14,6 +14,7 @@
   "column_break_main",
   "is_purchase",
   "lead_weeks",
+  "share_pct",
   "rate",
   "yields_per_unit",
   "is_standing",
@@ -90,6 +91,13 @@
    "fieldtype": "Int",
    "label": "Supplier Lead (weeks)",
    "non_negative": 1
+  },
+  {
+   "fieldname": "share_pct",
+   "fieldtype": "Percent",
+   "label": "Share Of The Order",
+   "depends_on": "eval:doc.is_purchase",
+   "description": "What share of this variety's material is bought in this form. A crop bought one way leaves it blank and takes the lot. Eryngium is bought as tissue culture AND as roots in the same year, from different suppliers, with different lead times -- so each entry stage carries its share and the two order dates fall out of it."
   },
   {
    "depends_on": "eval:doc.is_purchase",

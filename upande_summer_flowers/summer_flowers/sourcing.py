@@ -162,7 +162,52 @@ def route_plan(version):
 
 	return {"has_route": True, "method": method, "entry_stage": entry,
 	        "buyable": buyable, "propagates": propagates, "in_house": in_house,
-	        "first_stage": first, "unmarked": unmarked, "reason": reason}
+	        "first_stage": first, "unmarked": unmarked, "reason": reason,
+	        # Every way in, with its share and its own lead time. A crop bought one
+	        # way has one of these and it carries the whole order; Eryngium has two,
+	        # eight weeks of supplier lead apart, and quoting either one of them for
+	        # the whole order is eight weeks wrong for the other.
+	        "ways_in": entry_ways(v)}
+
+
+def entry_ways(version):
+	"""Each chain of the route that buys something: stage, share, lead, what follows.
+
+	Read off the route rather than asked for. A second chain exists because
+	somebody put a second entry stage on the protocol, which is the act of saying
+	the material is also bought that way.
+	"""
+	from upande_summer_flowers.summer_flowers.crop_protocol import (
+		ROUTE_END, chain_share, route_chains,
+	)
+
+	# A Crop Protocol or a Crop Protocol Version, whichever is handed over: the
+	# route reads the same off both, and the protocol is the only one that can be
+	# edited, so a check has to be able to ask it.
+	v = version
+	if isinstance(version, str):
+		v = frappe.get_cached_doc("Crop Protocol Version", version)
+	chains = route_chains(v)
+	out = []
+	for chain in chains:
+		rows = [r for r, _st in chain]
+		entry = next((r for r in rows if cint(r.get("is_purchase"))), None)
+		if not entry:
+			continue
+		after = [r.stage for r in rows[rows.index(entry) + 1:] if r.stage != ROUTE_END]
+		share = chain_share(chain)
+		out.append({
+			"stage": entry.stage,
+			# One way in takes the whole order whatever the box says.
+			"share_pct": share if len(chains) > 1 else 100.0,
+			"lead_weeks": cint(entry.get("lead_weeks")),
+			"weeks_to_ground": sum(cint(r.get("weeks")) for r in rows[rows.index(entry):]),
+			"rate": flt(entry.get("rate")),
+			"item": entry.get("item"),
+			"in_house": after,
+			"propagates": bool(after),
+		})
+	return out
 
 
 def standing_stage(version, from_stage=None):

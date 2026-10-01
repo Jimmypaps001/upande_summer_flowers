@@ -122,15 +122,59 @@ def before_validate(doc, method=None):
 # motherstock was tissue culture, so a route cannot start at one -- calling it a
 # start hid where the material actually came from and made a crop look as though
 # it bought nothing, when what it had was a pool bought in an earlier season.
-ROUTE_ENTRY = ("TC", "Seeds", "Roots (Own)", "Tubers (Own)",
+# A route starts at one of these. "Roots" is bought roots, not roots lifted off our
+# own crop -- Eryngium buys them from a root supplier alongside its tissue culture,
+# 1.7m plants of 9.5m in the 2026 order, and until this listed them a protocol
+# could not say so: Roots existed only as a step in the middle of a TC route.
+ROUTE_ENTRY = ("TC", "Seeds", "Roots", "Roots (Own)", "Tubers (Own)",
                "Tubers", "Budwoods", "Bought-in Plants")
 ROUTE_END = "Plants"
 
 
 def route_rows(doc):
-	"""Every row of the route in order, stages and the steps inside them."""
-	return [r for r in (doc.get("custom_sf_material_route") or [])
-	        if (r.get("stage") or r.get("step"))]
+	"""Every row of the route in order, stages and the steps inside them.
+
+	A Crop Protocol keeps it on a custom field and a Crop Protocol Version on a
+	native one. Reading whichever is there means route_chains and everything built
+	on it work on both -- without it, asking a version for its chains got the
+	protocol's fieldname, found nothing, and reported a route with no beginning.
+	"""
+	rows = doc.get("custom_sf_material_route") or doc.get("material_route") or []
+	return [r for r in rows if (r.get("stage") or r.get("step"))]
+
+
+def route_chains(doc):
+	"""The route as one or more chains, each [(stage row, [step rows]), ...].
+
+	A variety is not always bought one way. Eryngium is bought as tissue culture
+	from two labs AND as roots from a root supplier, in the same year, for the same
+	variety -- 1.7m plants of 9.5m in the 2026 order -- and the two are seven and
+	fifteen weeks of supplier lead apart, so an order placed on one lead time is
+	eight weeks wrong for the other.
+
+	A chain starts wherever a row is an entry stage, because that is what an entry
+	stage means. No extra column groups them: putting a second TC row halfway down
+	the table IS the act of saying "and some of it is bought this way too".
+	"""
+	return _chains_of(route_blocks(doc))
+
+
+def _chains_of(blocks):
+	"""Split a built block list into chains at each entry stage."""
+	chains, current = [], []
+	for stage, steps in blocks:
+		if current and stage.stage in ROUTE_ENTRY:
+			chains.append(current)
+			current = []
+		current.append((stage, steps))
+	if current:
+		chains.append(current)
+	return chains
+
+
+def chain_share(chain):
+	"""What share of the order this chain carries, 0-100. One chain takes it all."""
+	return flt(chain[0][0].get("share_pct")) if chain else 0.0
 
 
 def is_step(row):
@@ -267,27 +311,51 @@ def check_route(doc):
 		if steps:
 			stage.weeks = block_weeks(stage, steps)
 
-	rows = [r for r, _steps in route_blocks(doc)]
-	if rows[0].stage not in ROUTE_ENTRY:
-		frappe.throw(
-			_("A route starts with the material that is bought or taken: {0}. "
-			  "{1} cannot be the first stage.").format(
-				", ".join(ROUTE_ENTRY), frappe.bold(rows[0].stage)),
-			title=_("Route has no beginning"))
-	if rows[-1].stage != ROUTE_END:
-		frappe.throw(
-			_("Every route ends at {0}, because that is what goes in the ground. "
-			  "This one ends at {1}.").format(
-				frappe.bold(ROUTE_END), frappe.bold(rows[-1].stage)),
-			title=_("Route has no end"))
-	# Bought-in Plants IS the plant, so it needs no stages after it.
-	if rows[0].stage == "Bought-in Plants" and len(rows) > 2:
-		frappe.throw(
-			_("Plants bought ready to plant do not pass through {0}. The route is "
-			  "Bought-in Plants then Plants, or the material is not bought as "
-			  "plants.").format(
-				", ".join(r.stage for r in rows[1:-1])),
-			title=_("Route buys plants and then grows them"))
+	chains = route_chains(doc)
+	for chain in chains:
+		rows = [r for r, _steps in chain]
+		if rows[0].stage not in ROUTE_ENTRY:
+			frappe.throw(
+				_("A route starts with the material that is bought or taken: {0}. "
+				  "{1} cannot be the first stage.").format(
+					", ".join(ROUTE_ENTRY), frappe.bold(rows[0].stage)),
+				title=_("Route has no beginning"))
+		if rows[-1].stage != ROUTE_END:
+			frappe.throw(
+				_("Every route ends at {0}, because that is what goes in the ground. "
+				  "The route starting at {1} ends at {2}.").format(
+					frappe.bold(ROUTE_END), frappe.bold(rows[0].stage),
+					frappe.bold(rows[-1].stage)),
+				title=_("Route has no end"))
+		# Bought-in Plants IS the plant, so it needs no stages after it.
+		if rows[0].stage == "Bought-in Plants" and len(rows) > 2:
+			frappe.throw(
+				_("Plants bought ready to plant do not pass through {0}. The route is "
+				  "Bought-in Plants then Plants, or the material is not bought as "
+				  "plants.").format(
+					", ".join(r.stage for r in rows[1:-1])),
+				title=_("Route buys plants and then grows them"))
+
+	# Shares only mean anything when there is more than one way in. With one chain
+	# the share is the whole order whatever the box says, so it is left alone
+	# rather than demanded.
+	if len(chains) > 1:
+		entries = [c[0][0] for c in chains]
+		total = sum(flt(e.get("share_pct")) for e in entries)
+		if abs(total - 100) > 0.01:
+			frappe.throw(
+				_("This protocol buys the material {0} ways, so each has to carry its "
+				  "share of the order. {1} comes to {2}%, not 100%.").format(
+					len(chains),
+					" + ".join("%s %s%%" % (e.stage, flt(e.get("share_pct")))
+					           for e in entries),
+					total),
+				title=_("The shares do not add up"))
+		if len({e.stage for e in entries}) < len(entries):
+			frappe.throw(
+				_("Two routes here start at the same stage. Buying twice from one "
+				  "form is one line with one share, not two."),
+				title=_("The same way in, twice"))
 
 
 # ---------------------------------------------------------------------------
@@ -306,7 +374,7 @@ STANDING_STAGES = ("Motherstock",)
 # stage IS. Asking someone to tick a box to confirm that tissue culture is bought
 # was a question with one answer, and a procurement plan refused to build until
 # somebody answered it.
-BOUGHT_STAGES = ("TC", "Seeds", "Tubers", "Budwoods", "Bought-in Plants")
+BOUGHT_STAGES = ("TC", "Seeds", "Roots", "Tubers", "Budwoods", "Bought-in Plants")
 
 # Material the farm takes off its own crop. Nothing is ordered for these.
 TAKEN_STAGES = ("Roots (Own)", "Tubers (Own)")
@@ -366,16 +434,21 @@ def set_route_quantities(doc, native=False):
 
 	blocks = _native_blocks(rows) if native else route_blocks(doc)
 	names = [st.stage for st, _s in blocks]
-	# The first stage that comes from outside the farm is the one it is bought at.
-	first_bought = next((n for n in names if n in BOUGHT_STAGES), None)
+	# The first stage from outside the farm, in EACH chain. It used to be the first
+	# in the whole table, on the reasoning that a farm does not buy one crop two
+	# ways -- which Eryngium does: tissue culture from two labs and roots from a
+	# root supplier, same variety, same year, 1.7m plants of 9.5m. The second
+	# chain's entry came back unticked, so nothing downstream could see it.
+	bought_in_chain = set()
+	for chain in _chains_of(blocks):
+		entry = next((st for st, _s in chain if st.stage in BOUGHT_STAGES), None)
+		if entry:
+			bought_in_chain.add(id(entry))
 
 	for stage, steps in blocks:
 		name = stage.stage
 		standing = 1 if name in STANDING_STAGES else 0
-		# What the stage is decides whether it is bought. A farm that buys the same
-		# crop at two points on one route is not a thing this has seen; if it becomes
-		# one, it is a field on the protocol, not a tick box on a derived table.
-		stage.is_purchase = 1 if (name == first_bought) else 0
+		stage.is_purchase = 1 if id(stage) in bought_in_chain else 0
 		# And how long it takes. A stage with steps under it is the sum of them --
 		# check_route already sets that -- so only the ones without are derived here.
 		if not steps:
@@ -388,9 +461,11 @@ def set_route_quantities(doc, native=False):
 			elif name in ("Propagation", "Sprouting", "Cooling", "Roots"):
 				# Stuck to plantable.
 				stage.weeks = to_planting or establish
-			elif name == first_bought:
+			elif cint(stage.is_purchase):
 				# The material arriving takes no time; the wait is the supplier's,
-				# and that is lead_weeks, not this.
+				# and that is lead_weeks, not this. Bought roots are the exception
+				# and are caught by the branch above: they harden for fifteen weeks
+				# after they land, which is time on the farm, not the supplier's.
 				stage.weeks = 0
 			elif cycle_time:
 				stage.weeks = cycle_time

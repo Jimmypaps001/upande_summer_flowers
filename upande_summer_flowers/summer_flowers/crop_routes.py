@@ -35,6 +35,10 @@ ROUTES = {
 	"TC to motherstock": ["TC", "Motherstock", "Plants"],
 	"TC to propagation": ["TC", "Propagation", "Plants"],
 	"TC through roots": ["TC", "Roots", "Propagation", "Plants"],
+	# Roots bought from a root supplier, not grown from our own tissue culture.
+	# Eryngium buys both, in the same year, for the same variety: fifteen weeks of
+	# supplier lead against seven, and fifteen weeks of hardening against seven.
+	"Bought as roots": ["Roots", "Propagation", "Plants"],
 	"Seed raised": ["Seeds", "Propagation", "Plants"],
 	"Bought as plants": ["Bought-in Plants", "Plants"],
 	# Own cuttings are a draw from a motherstock, and the motherstock was tissue
