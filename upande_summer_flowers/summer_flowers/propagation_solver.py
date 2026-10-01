@@ -522,6 +522,12 @@ def peak_sizing(plan, cycles=None, max_cycles=5):
 	per_area = cint(v.plants_per_bed) or cint(v.min_planting_area_sqm) or 1
 	life = cint(v.motherstock_life_weeks)
 	need_weeks = len(demand)
+	# The span the line has to stay alive across, not how many weeks are in it.
+	# 38 sticking weeks that run from January to December need the line alive for
+	# 46 weeks, and comparing 41 cutting weeks to the count of 38 said yes to a
+	# pool that dies six sticking weeks before the end.
+	last_stick = max(demand)
+	span_weeks = (getdate(last_stick) - getdate(first_stick)).days // 7
 
 	options = []
 	for c in range(0, cint(max_cycles) + 1):
@@ -539,7 +545,7 @@ def peak_sizing(plan, cycles=None, max_cycles=5):
 			"order_by": str(order_by),
 			"first_cut": str(add_days(order_by, 7 * (lead + estab))),
 			"cutting_weeks": cut_weeks,
-			"covers_season": cut_weeks >= need_weeks,
+			"covers_season": cut_weeks >= span_weeks,
 			"pool": int(round(buy * gens)),
 		})
 
@@ -556,6 +562,8 @@ def peak_sizing(plan, cycles=None, max_cycles=5):
 		"peak_week_label": "%s-W%02d" % peak_week.isocalendar()[:2],
 		"first_sticking": str(first_stick),
 		"sticking_weeks": need_weeks,
+		"last_sticking": str(last_stick),
+		"span_weeks": span_weeks,
 		"season_cuttings": sum(demand.values()),
 		"cuttings_per_mother_per_week": per_week,
 		"min_planting_area": per_area,
@@ -566,4 +574,125 @@ def peak_sizing(plan, cycles=None, max_cycles=5):
 		"suggested": suggested,
 		"chosen": chosen,
 		"pick": options[chosen],
+	}
+
+
+def peak_schedule(plan, sizing, cycles=None, tc=None):
+	"""The line week by week under the peak-week sizing.
+
+	The plantlets become generation one; the whole cut goes back until the last
+	generation is standing, and from then the field takes what it asks for and the
+	rest is left on the mother. Every generation is cleared together, one
+	motherstock life after the FIRST cut, so a later one simply gets fewer weeks.
+	"""
+	v = frappe.get_cached_doc("Crop Protocol Version", plan.protocol)
+	demand = demand_by_sticking_week(plan)
+	if not demand:
+		return None
+	c = cint(sizing["chosen"] if cycles in (None, "") else cycles)
+	pick = sizing["options"][min(c, len(sizing["options"]) - 1)]
+	buy = cint(tc) if cint(tc) else cint(pick["buy"])
+	regen = cint(sizing["regen_weeks"])
+	per_week = flt(sizing["cuttings_per_mother_per_week"]) or 1.0
+	first_cut = getdate(pick["first_cut"])
+	line_end = add_days(first_cut, 7 * cint(sizing["life_weeks"]))
+	full_on = add_days(first_cut, 7 * c * regen)
+
+	gens = [{"generation": 1, "mothers": buy, "arrivals": 1,
+	         "first_cut_date": str(first_cut),
+	         "cutting_weeks": cint(sizing["life_weeks"]),
+	         "expiry_date": str(line_end)}]
+	for k in range(1, c + 1):
+		on = add_days(first_cut, 7 * k * regen)
+		gens.append({
+			"generation": k + 1, "mothers": buy, "arrivals": 1,
+			"first_cut_date": str(on),
+			"cutting_weeks": max(0, (line_end - on).days // 7),
+			"expiry_date": str(line_end),
+		})
+
+	rows, week, n, run, short = [], first_cut, 0, 0, 0
+	while week < line_end:
+		n += 1
+		standing = buy * sum(1 for g in gens if getdate(g["first_cut_date"]) <= week)
+		cut = int(round(standing * per_week))
+		building = week < full_on
+		wants = cint(demand.get(week, 0))
+		to_field = 0 if building else min(cut, wants)
+		run += to_field
+		short += max(0, wants - to_field)
+		event = ""
+		for g in gens:
+			if getdate(g["first_cut_date"]) == week:
+				event = (_("Generation 1 first cut") if g["generation"] == 1
+				         else _("Generation {0} starts cutting").format(g["generation"]))
+		if week == full_on and c:
+			event = (event + "; " if event else "") + _("pool full, field starts")
+		rows.append({
+			"week_no": n, "week_start": str(week), "event": event,
+			"generations_live": ", ".join(
+				"G%d" % g["generation"] for g in gens
+				if getdate(g["first_cut_date"]) <= week),
+			"mothers_standing": standing, "cuttings_cut": cut,
+			"to_multiplication": cut if building else 0,
+			"to_field": to_field, "cumulative_to_field": run,
+			"demand": wants, "shortfall": max(0, wants - to_field),
+		})
+		week = add_days(week, 7)
+	rows.append({"week_no": n + 1, "week_start": str(line_end),
+	             "event": _("Block cleared"), "generations_live": "",
+	             "mothers_standing": 0, "cuttings_cut": 0,
+	             "to_multiplication": 0, "to_field": 0,
+	             "cumulative_to_field": run, "demand": 0, "shortfall": 0})
+	# Over EVERY demand week, not only the ones the line is alive for. A sticking
+	# week before the first cut or after the clearance has no row at all, and
+	# counting the shortfall only across rows made those weeks disappear: the
+	# schedule reported no shortfall while meeting 32 of 38 weeks.
+	by_week = {r["week_start"]: r for r in rows}
+	short = 0
+	weeks_met = 0
+	for d, nn in demand.items():
+		got = cint((by_week.get(str(d)) or {}).get("to_field"))
+		if got >= nn:
+			weeks_met += 1
+		else:
+			short += nn - got
+	return {"tc": buy, "cycles": c, "pick": pick, "generations": gens,
+	        "weeks_table": rows, "to_field": run, "shortfall": short,
+	        "weeks_met": weeks_met, "weeks": len(demand),
+	        "peak_pool": buy * len(gens), "line_end_date": str(line_end),
+	        "first_cut_date": str(first_cut), "order_by": pick["order_by"],
+	        "covers": short == 0}
+
+
+@frappe.whitelist()
+def peak_options(production_plan, cycles=None, tc=None):
+	"""What the procurement dialog draws: the peak week, and what it implies."""
+	plan = frappe.get_doc("Summer Flower Production Plan", production_plan)
+	from upande_summer_flowers.summer_flowers import sourcing
+
+	v = frappe.get_cached_doc("Crop Protocol Version", plan.protocol)
+	decided = sourcing.route_plan(v)
+	entry = decided.get("entry_stage")
+	if not entry or not sourcing.standing_stage(v, entry):
+		return {"propagates": False, "reason": decided.get("reason"),
+		        "variety": plan.variety, "farm": plan.farm}
+	sizing = peak_sizing(plan, cycles=cycles)
+	if not sizing:
+		return {"propagates": True, "solvable": False,
+		        "reason": _("This plan has no new plantings, so there is no peak "
+		                    "week to size an order from.")}
+	sch = peak_schedule(plan, sizing, cycles=cycles, tc=tc)
+	standing = sourcing.standing_pool_capacity(v, getdate(sizing["first_sticking"]))
+	return {
+		"propagates": True, "solvable": True, "plan": plan.name,
+		"variety": plan.variety, "farm": plan.farm, "protocol": v.name,
+		"sizing": sizing, "schedule": sch,
+		"standing": {"plants": cint(standing)},
+		"need": {"plants": sum(cint(b.plants) for b in plan.plan_blocks
+		                       if cint(b.is_new_planting)),
+		         "cuttings": sizing["season_cuttings"],
+		         "weeks": sizing["sticking_weeks"],
+		         "first_sticking": sizing["first_sticking"]},
+		"assumed": _assumptions(v),
 	}
