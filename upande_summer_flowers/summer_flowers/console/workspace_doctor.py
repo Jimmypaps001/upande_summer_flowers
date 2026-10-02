@@ -30,6 +30,7 @@ import os
 import frappe
 from frappe import _
 
+APP = "upande_summer_flowers"
 SIDEBAR = "Summer Flowers"
 WORKSPACE = "Summer Flowers Planning"
 
@@ -62,10 +63,59 @@ def report(user=None):
 		print("   %-28r module=%-16r app=%-24r items=%d"
 		      % (s.title, s.module, s.app, n))
 
+	_app_tile(user)
+
 	if not frappe.db.exists("Workspace Sidebar", SIDEBAR):
 		print("\n*** No %r sidebar on this site. Nothing will appear." % SIDEBAR)
 		return
 	_what_user_sees(user)
+
+
+def _app_tile(user):
+	"""Whether the app is on the desk at all, which is a separate question.
+
+	A workspace can exist, be public, be visible and be perfectly linked, and the
+	app still not appear on the desk -- because frappe/apps.py get_apps() reads
+	the add_to_apps_screen hook per installed app and skips any app that has
+	none. Nothing about a workspace substitutes for it, and nothing says so.
+	"""
+	from frappe.apps import get_apps
+
+	hooks = frappe.get_hooks("add_to_apps_screen", app_name=APP) or []
+	print("\nDesk app tile")
+	if not hooks:
+		print("   *** %s declares no add_to_apps_screen hook, so it can never "
+		      "appear on the desk however good its workspaces are." % APP)
+		return
+	route = hooks[0].get("route") or ""
+	print("   hook route : %s" % route)
+
+	slug = route.rstrip("/").rsplit("/", 1)[-1]
+	target = next((w for w in frappe.get_all(
+		"Workspace", fields=["name", "is_hidden", "public"])
+		if w.name.lower().replace(" ", "-") == slug), None)
+	if not target:
+		print("   *** the route points at no workspace on this site.")
+	elif target.is_hidden:
+		print("   *** %r is HIDDEN, so the tile opens a page nobody should land "
+		      "on." % target.name)
+	else:
+		print("   opens      : %r (visible)" % target.name)
+
+	was = frappe.session.user
+	try:
+		frappe.set_user(user)
+		frappe.clear_cache(user=user)
+		shown = APP in [a["name"] for a in get_apps()]
+		print("   on the desk for %s: %s" % (user, shown))
+		if not shown:
+			print("   *** get_apps() also drops an app when the user is not a "
+			      "System Manager and the app is in neither the setup-wizard "
+			      "completed nor not-required list. And hooks are cached: after "
+			      "a deploy the workers must be restarted, not only "
+			      "bench clear-cache.")
+	finally:
+		frappe.set_user(was)
 
 
 def _what_user_sees(user):

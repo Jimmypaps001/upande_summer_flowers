@@ -115,16 +115,23 @@ fixtures = [
 # WAS that one page. The workspace opens the menu, and the dashboard is the first
 # link in it, under Dashboard.
 #
+# Without this hook the app is simply not on the desk, whatever its workspaces
+# say: frappe/apps.py get_apps() reads add_to_apps_screen per installed app and
+# skips any app that does not declare one -- `if not len(app_details): continue`.
+# No workspace, sidebar or permission substitutes for it.
+#
 # /desk, not /app: this is the base the sidebar itself builds links with
 # (sidebar_item.js -> "/desk/" + frappe.router.slug(...)), and frappe.router.slug
-# lowercases and hyphenates, so the workspace named "Summer Flowers Planning"
-# is at /desk/summer-flowers-planning.
+# lowercases and hyphenates, so the workspace named "Summer Flowers" is at
+# /desk/summer-flowers. It must name the workspace that is SHOWN -- the route
+# used to point at "Summer Flowers Planning", which is now the hidden one, so
+# the tile would have opened a page nobody is meant to land on.
 add_to_apps_screen = [
 	{
 		"name": "upande_summer_flowers",
 		"logo": "/assets/upande_summer_flowers/images/summer_flowers.svg",
 		"title": "Summer Flowers",
-		"route": "/desk/summer-flowers-planning",
+		"route": "/desk/summer-flowers",
 	}
 ]
 
