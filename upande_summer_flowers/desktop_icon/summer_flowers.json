@@ -1,0 +1,21 @@
+{
+ "app": "upande_summer_flowers",
+ "bg_color": "gray",
+ "creation": "2026-10-02 14:25:18.092511",
+ "docstatus": 0,
+ "doctype": "Desktop Icon",
+ "hidden": 0,
+ "icon_type": "App",
+ "idx": 0,
+ "label": "Summer Flowers",
+ "link": "/desk/summer-flowers",
+ "link_type": "External",
+ "logo_url": "/assets/upande_summer_flowers/images/summer_flowers.svg",
+ "modified": "2026-10-02 14:25:18.092511",
+ "modified_by": "Administrator",
+ "name": "Summer Flowers",
+ "owner": "Administrator",
+ "restrict_removal": 0,
+ "roles": [],
+ "standard": 1
+}
