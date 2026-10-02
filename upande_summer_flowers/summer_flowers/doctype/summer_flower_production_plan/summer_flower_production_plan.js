@@ -67,7 +67,7 @@ frappe.ui.form.on("Summer Flower Production Plan", {
 			// sized the order a second time. The order follows from the agreed
 			// line now and is written when the line is agreed, so there is
 			// nothing left here to decide -- only something to look at.
-			decided_buttons(frm);
+			decided_buttons(frm, ACTIONS);
 			frm.add_custom_button(__("Create Plantings"), () =>
 				frm
 					.call({
@@ -615,7 +615,11 @@ const plan_motherstock = (frm) => window.open(motherstock_url(frm), "_blank");
 // had to be placed last month cannot be re-sized by changing a document, and
 // offering the button anyway is how somebody comes to believe they have changed
 // something they have not.
-const decided_buttons = (frm) => {
+// `group` is passed in rather than read from the enclosing scope. ACTIONS is a
+// const inside refresh(), so reaching for it from out here threw a ReferenceError
+// inside the .then -- an unhandled rejection, which is silent: no buttons, no
+// error, nothing in the console to say the lookup had even run.
+const decided_buttons = (frm, group) => {
 	Promise.all([
 		frappe.db.get_value("Summer Flower Motherstock Plan",
 			{ production_plan: frm.doc.name },
@@ -631,17 +635,17 @@ const decided_buttons = (frm) => {
 			if (proc) {
 				frm.add_custom_button(__("View Procurement"), () =>
 					frappe.set_route("Form", "Summer Flower Procurement Plan",
-						proc.name), ACTIONS);
+						proc.name), group);
 			}
 			const ms = r && r.message && r.message.name ? r.message : null;
 			if (!ms) {
 				frm.add_custom_button(__("Plan Motherstock"),
-					() => plan_motherstock(frm), ACTIONS);
+					() => plan_motherstock(frm), group);
 				return;
 			}
 			frm.add_custom_button(__("View Motherstock Plan"), () =>
 				frappe.set_route("Form", "Summer Flower Motherstock Plan", ms.name),
-				ACTIONS);
+				group);
 
 			const days = ms.order_by_date
 				? frappe.datetime.get_day_diff(ms.order_by_date,
@@ -649,7 +653,7 @@ const decided_buttons = (frm) => {
 				: null;
 			if (days === null || days > 0) {
 				frm.add_custom_button(__("Revise Motherstock"),
-					() => plan_motherstock(frm), ACTIONS);
+					() => plan_motherstock(frm), group);
 			}
 			// Said once, where the decision is read, rather than left for somebody
 			// to work out from a date on another document.
@@ -666,5 +670,13 @@ const decided_buttons = (frm) => {
 							? frappe.datetime.str_to_user(ms.order_by_date) : "—",
 						 days]),
 				days !== null && days <= 0 ? "red" : "blue", true);
+		})
+		.catch((e) => {
+			// Buttons that simply are not there read as a feature nobody built.
+			console.error("Summer Flowers: could not read the agreed line", e);
+			frm.dashboard.add_comment(
+				__("Could not read the motherstock or procurement plan for this "
+					+ "plan, so those buttons are missing. See the browser console."),
+				"red", true);
 		});
 };
