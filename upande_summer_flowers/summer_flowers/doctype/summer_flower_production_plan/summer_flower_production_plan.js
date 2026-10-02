@@ -62,9 +62,12 @@ frappe.ui.form.on("Summer Flower Production Plan", {
 			// whether a line exists, and that is worth saying on the button: a
 			// plan that says "Plan Motherstock" after somebody has already agreed
 			// one invites a second answer to a settled question.
-			motherstock_button(frm);
-			frm.add_custom_button(__("Plan Procurement"), () => source_plantlets(frm),
-				ACTIONS);
+			//
+			// Plan Procurement used to sit here with a dialog of its own that
+			// sized the order a second time. The order follows from the agreed
+			// line now and is written when the line is agreed, so there is
+			// nothing left here to decide -- only something to look at.
+			decided_buttons(frm);
 			frm.add_custom_button(__("Create Plantings"), () =>
 				frm
 					.call({
@@ -361,249 +364,6 @@ function draw_calendar(frm) {
 }
 
 
-// ---------------------------------------------------------------- sourcing
-// Pick how the material is got; everything else follows from it.
-function source_plantlets(frm) {
-	const M = "upande_summer_flowers.summer_flowers.doctype"
-		+ ".summer_flower_procurement_plan.summer_flower_procurement_plan.";
-	frappe.call({ method: M + "methods_for", args: { production_plan: frm.doc.name },
-		freeze: true }).then((r) => {
-		const s = r.message;
-		if (!s) return;
-		const stages = (s.options || []).map((o) => o.stage);
-		const describe = (stage) => {
-			const o = (s.options || []).find((x) => x.stage === stage);
-			if (!o) return "";
-			const notice = (o.weeks_to_ground || 0) + (o.lead_weeks || 0);
-			return __("{0} weeks from ordering to a plant in the ground ({1} raising it, {2} supplier lead). One unit becomes {3} plants.",
-				[notice, o.weeks_to_ground, o.lead_weeks, (o.plants_per_unit || 0).toFixed(2)]);
-		};
-		const space = s.beds_available
-			? __("{0} beds available — {1}", [s.beds_available, s.space_basis])
-			: __("No ground recorded at this farm, so the order cannot be trimmed to fit it.");
-
-		// The protocol already answers this. Buying and propagating are not two
-		// options to pick between: the purchase is where the route starts and
-		// propagation is every stage between there and the ground, so a crop can
-		// want both. Defaulting to Purchase at whichever stage came first was
-		// wrong in both fields at once on every crop the farm propagates.
-		const dec = s.decided || {};
-		const buyable = (dec.buyable || []).length ? dec.buyable : stages;
-
-		// Nothing can be built from this protocol, and build() will say so the
-		// moment Generate is pressed. Offering the button anyway made the reader
-		// pick a supplier, tick a box and press it to be told the protocol was
-		// never going to allow any of it. Say it once, and offer the fix.
-		if (!dec.method) {
-			const st = s.stale_version;
-			// If the route was added since this plan was built, the answer is to
-			// regenerate, not to edit the protocol again.
-			const why = (st && st.newer_has_route)
-				? __("{0} has no material route. {1} is the current version and does have one — point this plan at it and Regenerate.",
-					[st.plan_version, st.current_version])
-				: (dec.reason
-					|| __("This protocol does not say how {0}'s material is got.", [s.variety]));
-			const fixOnProtocol = !(st && st.newer_has_route);
-			const blocked = new frappe.ui.Dialog({
-				title: __("Nothing to procure yet"),
-				fields: [{ fieldname: "why", fieldtype: "HTML",
-					options: `<p>${frappe.utils.escape_html(why)}</p>` +
-						(fixOnProtocol
-							? `<p class="text-muted small">${frappe.utils.escape_html(
-								__("The material route is on the Crop Protocol. Mark the stage the "
-								 + "material is bought at, approve it, then regenerate this plan."))}</p>`
-							: "") }],
-				primary_action_label: fixOnProtocol
-					? __("Add the route now") : __("Regenerate this plan"),
-				primary_action() {
-					blocked.hide();
-					if (!fixOnProtocol) {
-						frm.call({ doc: frm.doc, method: "regenerate", freeze: true,
-							freeze_message: __("Regenerating...") })
-							.then(() => frm.reload_doc());
-						return;
-					}
-					// Taken to the table to fill in, not dropped at the top of a long
-					// protocol to find it. The docname is followed off the version's
-					// own link, so this cannot route to a form that is not there.
-					if (!s.crop_protocol) {
-						frappe.msgprint({
-							title: __("No Crop Protocol to open"),
-							indicator: "red",
-							message: __("{0} does not link back to a Crop Protocol, so the "
-								+ "route cannot be added from here. Find the protocol for "
-								+ "{1} at {2} and add it there.",
-								[s.protocol, s.variety, s.farm]),
-						});
-						return;
-					}
-					const target = s.crop_protocol, field = s.route_fieldname;
-					frappe.set_route("Form", "Crop Protocol", target).then(() => {
-						// set_route resolves before the form has finished drawing, and a
-						// tab switched on a half-built form is undone by the refresh that
-						// follows. So wait for the control to exist, switch, and check it
-						// took -- the route lives on its own tab, and landing on Details
-						// leaves the reader hunting for the table they were sent to fill in.
-						let tries = 0;
-						const land = () => {
-							const ctl = cur_frm && cur_frm.doc && cur_frm.doc.name === target
-								&& cur_frm.fields_dict && cur_frm.fields_dict[field];
-							if (!ctl) {
-								if (tries++ < 40) setTimeout(land, 150);
-								return;
-							}
-							if (ctl.tab && ctl.tab.set_active) ctl.tab.set_active();
-							cur_frm.scroll_to_field(field);
-							// Settled only when the table is really on screen; a refresh can
-							// still put Details back under it.
-							if (ctl.$wrapper[0].offsetParent === null && tries++ < 40) {
-								setTimeout(land, 150);
-								return;
-							}
-							frappe.show_alert({
-								indicator: "blue",
-								message: __("Add the stages here, tick the one the material "
-									+ "is bought at, then approve and regenerate {0}.",
-									[frm.doc.name]),
-							}, 12);
-						};
-						land();
-					});
-				},
-			});
-			blocked.show();
-			return;
-		}
-
-		// A plan already sourcing this one is not a problem and not a warning. It is
-		// the document about to be revised, so it is named and left at that. Only
-		// the one case that is actually refused -- the order has gone out -- is red.
-		const had = s.existing;
-		const blocked = had && had.docstatus === 1 && had.order_date_passed;
-		const verdict =
-			(had
-				? (blocked
-					? `<p style="color:var(--red-600,#c0392b)">${
-						frappe.utils.escape_html(had.why_not)}</p>`
-					: `<p class="text-muted">${frappe.utils.escape_html(
-						__("Revising {0} ({1} {2}). Its lines are worked out again "
-						   + "from the choices below; it keeps its number and history.",
-							[had.name, format_number(had.units || 0, null, 0),
-							 had.entry_stage || __("units")]))}</p>`)
-				: "") +
-			(dec.reason
-				? `<p class="text-muted small">${frappe.utils.escape_html(dec.reason)}</p>`
-				: "");
-
-		const d = new frappe.ui.Dialog({
-			title: __("How is the plant material got?"),
-			fields: [
-				{ fieldname: "verdict", fieldtype: "HTML", options: verdict },
-				{ fieldname: "method", label: __("Method"), fieldtype: "Select", reqd: 1,
-				  options: ["Purchase", "Propagate"], default: dec.method || "Purchase",
-				  read_only: 1,
-				  description: __("Read off the material route on {0}. Change it there, not here.",
-					[s.protocol]) },
-				{ fieldname: "propagation_note", fieldtype: "HTML",
-				  options: dec.propagates
-					? `<p class="text-muted small">${frappe.utils.escape_html(
-						__("A propagation plan will be raised as well: {0} is raised here through {1}.",
-							[s.variety, (dec.in_house || []).join(", ")]))}</p>`
-					: "" },
-				{ fieldname: "entry_stage", label: __("Bought as"), fieldtype: "Select",
-				  options: buyable, default: dec.entry_stage || buyable[0],
-				  depends_on: "eval:doc.method=='Purchase'",
-				  description: buyable.length > 1
-					? __("The protocol marks more than one stage as bought, so this is the one thing left to choose.")
-					: "" },
-				{ fieldname: "stage_note", fieldtype: "HTML" },
-				{ fieldname: "supplier", label: __("Supplier"), fieldtype: "Link",
-				  options: "Supplier", depends_on: "eval:doc.method=='Purchase'" },
-				// Only a route through a pool has any of this to decide. A crop
-				// bought as rooted plants buys one per plant and there is nothing
-				// to choose.
-				{ fieldname: "tc_break", fieldtype: "Section Break",
-				  label: __("Propagation"), hidden: 1 },
-				{ fieldname: "tc_working", fieldtype: "HTML" },
-				{ fieldname: "tc_divert", label: __("Multiply"),
-				  fieldtype: "Int",
-				  description: __("Times. Worked out from the peak week and the "
-					+ "line's life, not chosen: each multiplication halves, thirds "
-					+ "or quarters the order, and costs one establishment off the "
-					+ "weeks the pool has left to cut. Change it to see what it "
-					+ "does.") },
-				{ fieldname: "tc_qty", label: __("Plantlets to order"),
-				  fieldtype: "Int",
-				  description: __("What the peak week asks for at that "
-					+ "multiplication, rounded up to a whole planting area. Type "
-					+ "another figure to override it.") },
-				{ fieldname: "tc_table", fieldtype: "HTML" },
-				{ fieldname: "space_break", fieldtype: "Section Break", label: __("Ground") },
-				{ fieldname: "space_note", fieldtype: "HTML",
-				  options: `<p class="text-muted">${frappe.utils.escape_html(space)}</p>` },
-				{ fieldname: "fit_to_space", label: __("Only order what the ground can take"),
-				  fieldtype: "Check", default: s.beds_available ? 1 : 0,
-				  read_only: s.beds_available ? 0 : 1,
-				  description: __("The demand is not reduced by this. It says what can be planted, not what is wanted.") },
-			],
-			// "Update", not "Replace": the existing plan is revised in place rather
-			// than deleted and rewritten, so there is nothing to confirm losing. The
-			// confirmation that used to sit here cost the reader a second decision
-			// to get to the only thing they came for.
-			primary_action_label: s.existing
-				? __("Update {0}", [s.existing.name]) : __("Generate"),
-			primary_action(values) {
-				// The dialog used to hide itself before the call. A server refusal --
-				// "SFPROC-… already sources this plan" is the common one -- then had
-				// no dialog to appear over and went nowhere at all: the button did
-				// nothing, said nothing, and the reader pressed it again. It stays up
-				// until there is something to show for it.
-				if (s.existing && s.existing.docstatus === 1
-					&& s.existing.order_date_passed) {
-					frappe.msgprint({ title: __("The order has already gone out"),
-						indicator: "red", message: s.existing.why_not });
-					return;
-				}
-				d.get_primary_btn().prop("disabled", true);
-				frappe.call({ method: M + "build", freeze: true,
-					freeze_message: __("Working out the orders..."),
-					args: { production_plan: frm.doc.name, method: values.method,
-						entry_stage: values.entry_stage, supplier: values.supplier,
-						fit_to_space: values.fit_to_space ? 1 : 0,
-						cycles: d.get_value("tc_divert"),
-						tc_qty: d.get_value("tc_qty") || null,
-						replace: 1 } })
-					.then((res) => {
-						if (!res || !res.message) return;
-						d.hide();
-						frappe.set_route("Form", "Summer Flower Procurement Plan",
-							res.message);
-					})
-					.catch(() => {
-						// Frappe has already shown the server's own message, and the
-						// one collision that used to land here is now settled before
-						// the form is drawn.
-					})
-					.always(() => d.get_primary_btn().prop("disabled", false));
-			},
-		});
-		const note = () => d.fields_dict.stage_note.$wrapper.html(
-			`<p class="text-muted small">${frappe.utils.escape_html(describe(d.get_value("entry_stage")))}</p>`);
-		d.fields_dict.entry_stage.df.onchange = note;
-		d.show();
-		note();
-		sf_propagation_section(d, frm);
-		// The no-route case never reaches here: it is refused above, before a form
-		// the reader cannot use is put in front of them.
-		if (s.stale_version) {
-			d.set_df_property("entry_stage", "description",
-				__("Dated from {0}. {1} is now the current version; regenerate the plan to use it.",
-					[s.stale_version.plan_version, s.stale_version.current_version]));
-		}
-	});
-}
-
-
 // ------------------------------------------------------------- allocation
 // Which block a planting goes in is a decision. The planner ranks what fits and
 // what nearly fits; the grower knows which house suits the crop.
@@ -830,280 +590,6 @@ const SF_ALLOC_CSS = `<style>
 </style>`;
 
 
-// ---------------------------------------------------------- tissue culture
-// Tissue culture is bought ONCE, multiplied if the farm wants to, and cut from
-// until the line expires. So the quantity is not "one per plant" -- it is the
-// pool the busiest week needs, divided by what the multiplication turns one
-// plantlet into. That division is the whole decision, and it was happening
-// invisibly inside build(): the reader saw a number and no way to move it.
-// ------------------------------------------------------- propagation decision
-// Two knobs, and they trade against each other: how many plantlets to buy, and
-// how many weeks to send the whole cut back before any of it goes to the field.
-// Buy fewer and you divert longer, which means ordering earlier. Everything else
-// on this panel is a consequence of those two and the protocol, so none of it is
-// editable.
-//
-// It used to ask for "multiplication cycles", which is not a thing anyone can
-// choose: a mother cuts every week, so generations overlap week by week rather
-// than queueing up one establishment apart. The number that replaced it is the
-// one the propagation unit actually acts on.
-function sf_propagation_section(d, frm) {
-	const M = "upande_summer_flowers.summer_flowers.propagation_solver.";
-	const int = (n) => format_number(n || 0, null, 0);
-	const esc = frappe.utils.escape_html;
-	const day = (x) => (x ? esc(frappe.datetime.str_to_user(x)) : "—");
-	let busy = false;
-	let last = { tc: null, divert: null };
-
-	// An Int box showing nothing is worse than one showing a figure you disagree
-	// with, and zero multiplications is a real answer, not an empty one -- so the
-	// value goes at the model and at the input, and 0 is written as "0".
-	const seed = (field, value) => {
-		const f = d.fields_dict[field];
-		if (!f) return;
-		const n = cint(value);
-		f.set_value(n);
-		if (f.$input) f.$input.val(String(n));
-	};
-
-	const line = (k, v, note) =>
-		`<tr><td class="text-muted" style="padding:2px 12px 2px 0;white-space:nowrap">${esc(k)}</td>` +
-		`<td style="padding:2px 0"><b>${v}</b>${
-			note ? ` <span class="text-muted">${esc(note)}</span>` : ""}</td></tr>`;
-
-	// A generation is not a date. A mother cuts every week, so its cuttings are
-	// stuck week after week and come online a week apart -- "gen 2 arrives" is a
-	// run of weeks, and the arrivals column is how many.
-	const gen_table = (c) => {
-		const g = (c && c.generations) || [];
-		if (!g.length) return "";
-		return `<div style="margin-top:12px"><div class="text-muted small" ` +
-			`style="text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px">` +
-			`${__("Generations")}</div>` +
-			`<table class="table table-bordered" style="font-size:.78rem;margin:0">` +
-			`<thead><tr><th>${__("Gen")}</th><th class="text-right">${__("Mothers")}</th>` +
-			`<th class="text-right">${__("Arrivals")}</th><th>${__("Starts cutting")}</th>` +
-			`<th class="text-right">${__("Cutting weeks")}</th><th>${__("Cleared")}</th>` +
-			`</tr></thead><tbody>` +
-			g.map((r) => `<tr><td>G${r.generation}</td>` +
-				`<td class="text-right">${int(r.mothers)}</td>` +
-				`<td class="text-right">${int(r.arrivals)}</td>` +
-				`<td>${day(r.first_cut_date)}</td>` +
-				`<td class="text-right">${int(r.cutting_weeks)}</td>` +
-				`<td>${day(r.expiry_date)}</td></tr>`).join("") +
-			`</tbody></table>` +
-			`<p class="text-muted small">${esc(__(
-				"Every generation is cleared on the same day, so one raised late gets "
-				+ "fewer cutting weeks rather than a life of its own."))}</p></div>`;
-	};
-
-	// The whole line, week by week. This is the thing to read: a quantity is a
-	// by-product of it, not the other way round.
-	const week_table = (c) => {
-		const t = (c && c.weeks_table) || [];
-		if (!t.length) return "";
-		const row = (r) => {
-			const hot = r.shortfall > 0;
-			return `<tr${r.event ? ' style="font-weight:600"' : ""}>` +
-				`<td>${r.week_no}</td><td>${day(r.week_start)}</td>` +
-				`<td>${esc(r.generations_live || "")}</td>` +
-				`<td class="text-right">${int(r.mothers_standing)}</td>` +
-				`<td class="text-right">${int(r.cuttings_cut)}</td>` +
-				`<td class="text-right">${r.to_multiplication ? int(r.to_multiplication) : ""}</td>` +
-				`<td class="text-right">${r.to_field ? int(r.to_field) : ""}</td>` +
-				`<td class="text-right">${r.demand ? int(r.demand) : ""}</td>` +
-				`<td class="text-right"${hot ? ' style="color:var(--red-600,#c0392b)"' : ""}>` +
-				`${hot ? int(r.shortfall) : ""}</td>` +
-				`<td>${esc(r.event || "")}</td></tr>`;
-		};
-		return `<div style="margin-top:12px"><div class="text-muted small" ` +
-			`style="text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px">` +
-			`${__("Week by week")} <span style="text-transform:none">(${t.length} ${__("weeks")})</span></div>` +
-			`<div style="max-height:320px;overflow:auto;border:1px solid var(--border-color,#e2e4e9);border-radius:6px">` +
-			`<table class="table table-bordered" style="font-size:.74rem;margin:0">` +
-			`<thead style="position:sticky;top:0;background:var(--card-bg,#fff);z-index:1">` +
-			`<tr><th>${__("Wk")}</th><th>${__("Week of")}</th><th>${__("Standing")}</th>` +
-			`<th class="text-right">${__("Mothers")}</th><th class="text-right">${__("Cut")}</th>` +
-			`<th class="text-right">${__("To mult.")}</th><th class="text-right">${__("To field")}</th>` +
-			`<th class="text-right">${__("Needs")}</th><th class="text-right">${__("Short")}</th>` +
-			`<th>${__("Event")}</th></tr></thead><tbody>` +
-			t.map(row).join("") + `</tbody></table></div></div>`;
-	};
-
-	const show = (o) => {
-		const on = !!(o && o.propagates);
-		d.set_df_property("tc_break", "hidden", on ? 0 : 1);
-		["tc_working", "tc_qty", "tc_divert", "tc_table"].forEach((f) =>
-			d.set_df_property(f, "hidden", on ? 0 : 1));
-		if (!on) return;
-		const gens = d.fields_dict.tc_table.$wrapper;
-		if (!o.solvable) {
-			d.fields_dict.tc_working.$wrapper.html(
-				`<p class="small" style="color:var(--red-600,#c0392b)">${
-					esc(o.reason || __("No order covers this plan."))}</p>`);
-			gens.html("");
-			return;
-		}
-
-		const z = o.sizing, c = o.schedule, need = o.need || {};
-		const qty = d.fields_dict.tc_qty, mult = d.fields_dict.tc_divert;
-		if (qty && document.activeElement !== qty.$input?.[0]) qty.$input?.val(c.tc);
-		if (mult && document.activeElement !== mult.$input?.[0]) {
-			mult.$input?.val(c.cycles);
-		}
-
-		// The peak week is the whole argument: the pool is bought once and cut from
-		// every week, so the busiest week sizes it and the rest lend it nothing.
-		d.fields_dict.tc_working.$wrapper.html(
-			`<p class="small" style="margin-bottom:6px">` +
-			`<b>${int(need.plants)}</b> ${__("plants")} · ` +
-			`<b>${int(need.cuttings)}</b> ${__("cuttings")} · ` +
-			`${__("sticking")} <b>${day(z.first_sticking)}</b> ${__("to")} ` +
-			`<b>${day(z.last_sticking)}</b></p>` +
-			`<p class="small" style="margin-bottom:2px">` +
-			__("The busiest week is {0} at {1} cuttings. That is what the pool is "
-			   + "sized for — cuttings cannot be banked, so the weeks either side "
-			   + "lend it nothing.",
-				[z.peak_week_label, int(z.peak_cuttings)]) + `</p>` +
-			`<p class="small">` +
-			__("Multiplying {0} time(s) is suggested: {1} plantlets.",
-				[z.suggested, int((z.options[z.suggested] || {}).buy)]) + `</p>`);
-
-		const line = (k, v, note) =>
-			`<tr><td class="text-muted" style="padding:2px 12px 2px 0;white-space:nowrap">${esc(k)}</td>` +
-			`<td style="padding:2px 0"><b>${v}</b>${
-				note ? ` <span class="text-muted">${esc(note)}</span>` : ""}</td></tr>`;
-
-		let rows = "";
-		rows += line(__("Peak week"), `${esc(z.peak_week_label)}`,
-			__("{0} cuttings", [int(z.peak_cuttings)]));
-		rows += line(__("Mother plants needed"),
-			int(Math.round(z.peak_cuttings / z.cuttings_per_mother_per_week)),
-			__("at {0} a mother a week", [z.cuttings_per_mother_per_week]));
-		rows += line(__("Generations standing"), c.pick.generations,
-			__("the plantlets, plus one a multiplication"));
-		rows += line(__("Plantlets to order"), int(c.tc),
-			__("rounded up to a planting area of {0}", [int(z.min_planting_area)]));
-		rows += line(__("Order by"), day(c.order_by));
-		rows += line(__("First cutting"), day(c.first_cut_date));
-		rows += line(__("Pool it becomes"), int(c.peak_pool), __("mother plants"));
-		rows += line(__("Block cleared"), day(c.line_end_date),
-			__("{0} cutting weeks left", [c.pick.cutting_weeks]));
-		rows += line(__("Planting weeks met"), `${c.weeks_met} / ${c.weeks}`,
-			c.shortfall ? __("{0} cuttings short", [int(c.shortfall)]) : "");
-		rows += line(__("Standing motherstock"), int((o.standing || {}).plants),
-			__("shown, not taken off the order"));
-
-		const opts = (z.options || []).map((x) =>
-			`<tr${x.cycles === c.cycles ? ' style="font-weight:600;background:var(--control-bg,#f4f5f6)"' : ""}` +
-			` data-mult="${x.cycles}" style="cursor:pointer">` +
-			`<td>${x.cycles}${x.cycles === z.suggested ? " ★" : ""}</td>` +
-			`<td class="text-right">${x.generations}</td>` +
-			`<td class="text-right">${int(x.buy)}</td>` +
-			`<td class="small text-muted">${(x.batches || []).map(int).join(" + ")
-				|| "—"}</td>` +
-			`<td>${day(x.order_by)}</td>` +
-			`<td class="text-right"` +
-			`${x.idle_weeks > 8 ? ' style="color:var(--red-600,#c0392b)"' : ""}>` +
-			`${x.idle_weeks}</td>` +
-			`<td class="text-right"` +
-			`${x.covers_season ? "" : ' style="color:var(--red-600,#c0392b)"' +
-				` title="${esc(__("the line is cleared before the season ends"))}"`}>` +
-			`${x.cutting_weeks}${x.covers_season ? "" : " !"}</td></tr>`).join("");
-
-		gens.html(
-			`<table style="font-size:.85rem;margin:0 0 12px 0">${rows}</table>` +
-			`<div class="text-muted small" style="text-transform:uppercase;` +
-			`letter-spacing:.05em;margin-bottom:4px">${__("What each multiplication costs")}</div>` +
-			`<table class="table table-bordered" style="font-size:.78rem;margin:0">` +
-			`<thead><tr><th>${__("Multiply")}</th><th class="text-right">${__("Gens")}</th>` +
-			`<th class="text-right">${__("Plantlets")}</th>` +
-			`<th title="${esc(__(
-				"cuttings taken off the order, each sized to the step in demand it "
-				+ "is raised for"))}">${__("Batches off it")}</th>` +
-			`<th>${__("Order by")}</th>` +
-			`<th class="text-right" title="${esc(__(
-				"weeks the pool is cut into nothing before the field opens — and "
-				+ "every one of them also comes off the end, because the block is "
-				+ "cleared one life after its FIRST cut"))}">${__("Idle")}</th>` +
-			`<th class="text-right">${__("Cutting weeks")}</th>` +
-			`</tr></thead><tbody>${opts}</tbody></table>` +
-			`<p class="text-muted small">★ ${esc(__(
-				"what the arithmetic suggests. Each multiplication is one "
-				+ "establishment spent reaching the full pool, taken out of the "
-				+ "line's life rather than added to it — the block is cleared one "
-				+ "life after its FIRST cut. The line starts as late as its "
-				+ "coverage allows, because generation one goes to the farm while "
-				+ "generation two is still rooting."))}</p>` +
-			gen_table(c) + week_table(c) +
-			((o.assumed || []).length
-				? `<p class="small" style="color:var(--orange-700,#b45309)">` +
-				  (o.assumed || []).map(esc).join("<br>") + `</p>`
-				: ""));
-
-		gens.find("tr[data-mult]").on("click", function () {
-			const n = parseInt(this.dataset.mult, 10);
-			seed("tc_divert", n);
-			load({ cycles: n });
-		});
-	};
-
-	const load = (args) => {
-		if (busy) return Promise.resolve();
-		busy = true;
-		return frappe.call({ method: M + "peak_options",
-			args: Object.assign({ production_plan: frm.doc.name }, args || {}) })
-			.then((r) => {
-				const o = r.message;
-				const c = o && o.schedule;
-				if (c) {
-					last = { tc: c.tc, divert: c.cycles };
-					// Straight at the input as well as the model: set_value alone
-					// leaves the box showing whatever it held before. Seeded before
-					// the draw, because a throw inside show() used to abort the
-					// whole .then and leave both boxes blank.
-					seed("tc_qty", c.tc);
-					seed("tc_divert", c.cycles);
-				}
-				show(o);
-			})
-			.always(() => { busy = false; });
-	};
-
-	// Which box was touched decides what is asked of the server. Moving the weeks
-	// re-solves the quantity, because the cheapest order that covers is a
-	// different number at a different diversion and keeping the old one reports a
-	// shortfall against a figure nobody chose. Typing a quantity keeps it, because
-	// that is the whole point of typing it.
-	//
-	// Frappe fires df.onchange for a user edit and not for a programmatic set, so
-	// this listens to the browser's own change event; a reload writing the box back
-	// over the reader's typing looked like the field refusing to take a value.
-	const val = (f) => {
-		const $i = d.fields_dict[f].$input;
-		const n = parseInt($i ? $i.val() : "", 10);
-		return isNaN(n) ? null : n;
-	};
-	const pick = (edited) => {
-		if (busy) return;
-		const tc = val("tc_qty");
-		const dv = val("tc_divert");
-		if (tc === last.tc && dv === last.divert) return;
-		// Changing the multiplication re-sizes the order; typing a quantity keeps it.
-		load(edited === "tc_divert"
-			? { cycles: dv }
-			: { tc: tc || null, cycles: dv });
-	};
-
-	load().then(() => {
-		["tc_qty", "tc_divert"].forEach((f) => {
-			const $i = d.fields_dict[f].$input;
-			if ($i) { $i.on("change", () => pick(f)); }
-		});
-	});
-}
-
-
 // Plan the line on the dashboard, not on the document. The peak week, the weekly
 // split and the shortfall are visible side by side there, which is what deciding
 // the line actually needs; the Motherstock Plan stores what gets agreed and can
@@ -1121,15 +607,32 @@ const motherstock_url = (frm) => {
 
 const plan_motherstock = (frm) => window.open(motherstock_url(frm), "_blank");
 
+// The buttons that depend on what has already been decided: the line, and the
+// order that follows from it. Neither is made here any more, so both read "View"
+// once they exist.
+//
 // Revising is only offered while there is still time to act on it. An order that
 // had to be placed last month cannot be re-sized by changing a document, and
 // offering the button anyway is how somebody comes to believe they have changed
 // something they have not.
-const motherstock_button = (frm) => {
-	frappe.db.get_value("Summer Flower Motherstock Plan",
-		{ production_plan: frm.doc.name },
-		["name", "tc_to_order", "multiplications", "order_by_date"])
-		.then((r) => {
+const decided_buttons = (frm) => {
+	Promise.all([
+		frappe.db.get_value("Summer Flower Motherstock Plan",
+			{ production_plan: frm.doc.name },
+			["name", "tc_to_order", "multiplications", "order_by_date"]),
+		// The order, if one has been written. Only ever shown, never made from
+		// here: it is built from the agreed line at the moment that is agreed.
+		frappe.db.get_value("Summer Flower Procurement Plan",
+			{ production_plan: frm.doc.name, docstatus: ["<", 2] },
+			["name", "total_units_to_order", "first_order_by"]),
+	])
+		.then(([r, pr]) => {
+			const proc = pr && pr.message && pr.message.name ? pr.message : null;
+			if (proc) {
+				frm.add_custom_button(__("View Procurement"), () =>
+					frappe.set_route("Form", "Summer Flower Procurement Plan",
+						proc.name), ACTIONS);
+			}
 			const ms = r && r.message && r.message.name ? r.message : null;
 			if (!ms) {
 				frm.add_custom_button(__("Plan Motherstock"),
