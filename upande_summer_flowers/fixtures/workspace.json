@@ -412,7 +412,7 @@
     "type": "Link"
    }
   ],
-  "modified": "2026-10-02 09:45:34.670771",
+  "modified": "2026-10-02 11:48:54.767168",
   "module": null,
   "name": "Summer Flowers Planning",
   "number_cards": [],
@@ -504,6 +504,20 @@
     "report_ref_doctype": null,
     "restrict_to_domain": null,
     "stats_filter": "{\"custom_is_summer_flower_cycle\":1,\"custom_sf_cycle_status\":\"Active\"}",
+    "type": "DocType",
+    "url": null
+   },
+   {
+    "color": "Blue",
+    "doc_view": "",
+    "format": null,
+    "icon": null,
+    "kanban_board": null,
+    "label": "Motherstock lines agreed",
+    "link_to": "Summer Flower Motherstock Plan",
+    "report_ref_doctype": null,
+    "restrict_to_domain": null,
+    "stats_filter": "{\"covers\":1}",
     "type": "DocType",
     "url": null
    },

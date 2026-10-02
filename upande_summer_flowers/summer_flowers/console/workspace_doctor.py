@@ -25,6 +25,8 @@ Administrator bypasses all of it and sees the sidebar, which is what makes this
 so confusing to diagnose: it works for whoever deployed it and for nobody else.
 """
 
+import os
+
 import frappe
 from frappe import _
 
@@ -36,6 +38,7 @@ def report(user=None):
 	"""Say what is on this site and, for one user, what they would actually see."""
 	user = user or frappe.session.user
 	print("site: %s   checking as: %s" % (frappe.local.site, user))
+	print("app:  %s" % deployed_commit())
 
 	# Every candidate, however it is named or moduled. filters AND or_filters are
 	# combined with AND, so pairing a name match with a module match quietly
@@ -95,6 +98,31 @@ def _what_user_sees(user):
 		      "survives, so this user sees no Summer Flowers entry at all and no "
 		      "error. Give them read on the doctypes above, or add a role to the "
 		      "workspace they already have.")
+
+
+def deployed_commit():
+	"""Which commit of this app the site is actually running.
+
+	"Deployed" and "running the code you pushed" are not the same claim, and
+	there was no way to tell them apart from inside the site. A button that is
+	missing because the deploy predates its fix looks exactly like a button that
+	is missing because it was never built.
+	"""
+	import subprocess
+
+	try:
+		import upande_summer_flowers
+
+		root = os.path.dirname(os.path.dirname(upande_summer_flowers.__file__))
+		out = subprocess.run(
+			["git", "-C", root, "log", "-1", "--format=%h %cs %s"],
+			capture_output=True, text=True, timeout=10)
+		line = (out.stdout or out.stderr or "").strip()
+		dirty = subprocess.run(["git", "-C", root, "status", "--porcelain"],
+		                       capture_output=True, text=True, timeout=10).stdout
+		return line + ("   (UNCOMMITTED CHANGES PRESENT)" if dirty.strip() else "")
+	except Exception as e:
+		return "could not read the git commit: %s" % e
 
 
 def _takes_user():
