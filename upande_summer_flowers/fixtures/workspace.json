@@ -16,7 +16,7 @@
   "hide_custom": 0,
   "icon": "leaf",
   "indicator_color": "green",
-  "is_hidden": 0,
+  "is_hidden": 1,
   "label": "Summer Flowers Planning",
   "link_to": null,
   "link_type": "DocType",
@@ -412,7 +412,7 @@
     "type": "Link"
    }
   ],
-  "modified": "2026-10-02 11:48:54.767168",
+  "modified": "2026-10-02 13:26:05.228025",
   "module": null,
   "name": "Summer Flowers Planning",
   "number_cards": [],

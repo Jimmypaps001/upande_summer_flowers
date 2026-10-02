@@ -69,35 +69,57 @@ def report(user=None):
 
 
 def _what_user_sees(user):
-	"""Run boot.py's own two rules against one user, and name what fails."""
+	"""Run boot.py's own two rules against one user, and name what fails.
+
+	It has to BE that user. DeskViews takes no user argument and
+	is_item_allowed returns True outright for Administrator before any check
+	runs, so asking "what would shadrack see?" while still signed in as
+	Administrator answered "everything" every time -- a pass that means nothing,
+	for the one question this tool exists to settle.
+	"""
 	from frappe.desk.desk_views import DeskViews
 
-	doc = frappe.get_doc("Workspace Sidebar", SIDEBAR)
-	views = DeskViews(user=user) if _takes_user() else DeskViews()
-	allowed = _allowed_workspaces(user)
+	was = frappe.session.user
+	try:
+		frappe.set_user(user)
+		frappe.clear_cache(user=user)
 
-	print("\nPer-item filter for %s" % user)
-	kept = 0
-	for item in doc.items:
-		if item.type == "Section Break":
-			print("   %-26s (heading, never counts)" % item.label)
-			continue
-		try:
-			ok = views.is_item_allowed(item.link_to, item.link_type, allowed)
-		except Exception as e:
-			ok = "error: %s" % e
-		if ok is True:
-			kept += 1
-		print("   %-26s %-12s %-34r %s"
-		      % (item.label, item.link_type, item.link_to,
-		         "shown" if ok is True else "HIDDEN (%s)" % ok))
+		# The same two things boot.py builds before it filters: the workspaces
+		# this user may open, and the sidebar document itself.
+		views = DeskViews()
+		views.build_entities()
+		allowed = [d.name for d in (views.workspaces.get("pages") or [])]
+		doc = frappe.get_doc("Workspace Sidebar", SIDEBAR)
 
-	print("\n%d item(s) survive." % kept)
-	if not kept:
-		print("*** boot.py drops the whole sidebar when nothing but headings "
-		      "survives, so this user sees no Summer Flowers entry at all and no "
-		      "error. Give them read on the doctypes above, or add a role to the "
-		      "workspace they already have.")
+		print("\nWorkspaces this user may open: %s"
+		      % (", ".join(sorted(allowed)) or "NONE"))
+		print("\nPer-item filter for %s" % user)
+		kept = 0
+		for item in doc.items:
+			if item.type == "Section Break":
+				print("   %-26s (heading, never counts)" % item.label)
+				continue
+			try:
+				ok = doc.is_item_allowed(item.link_to, item.link_type, allowed)
+			except Exception as e:
+				ok = "error: %s" % e
+			if ok is True:
+				kept += 1
+			print("   %-26s %-12s %-34r %s"
+			      % (item.label, item.link_type, item.link_to,
+			         "shown" if ok is True else "HIDDEN (%s)" % ok))
+
+		print("\n%d item(s) survive." % kept)
+		if not kept:
+			print("*** boot.py drops the whole sidebar when nothing but headings "
+			      "survives, so this user sees no Summer Flowers entry at all and "
+			      "no error. Give them read on the doctypes above, or a role that "
+			      "reaches the workspace.")
+		elif user == "Administrator":
+			print("*** Administrator passes every check before it runs. Re-run as "
+			      "the person who cannot see it; this result proves nothing.")
+	finally:
+		frappe.set_user(was)
 
 
 def deployed_commit():
@@ -123,17 +145,3 @@ def deployed_commit():
 		return line + ("   (UNCOMMITTED CHANGES PRESENT)" if dirty.strip() else "")
 	except Exception as e:
 		return "could not read the git commit: %s" % e
-
-
-def _takes_user():
-	import inspect
-	from frappe.desk.desk_views import DeskViews
-	return "user" in inspect.signature(DeskViews.__init__).parameters
-
-
-def _allowed_workspaces(user):
-	try:
-		from frappe.desk.desk_views import get_allowed_workspaces
-		return get_allowed_workspaces(user=user)
-	except Exception:
-		return frappe.get_all("Workspace", filters={"public": 1}, pluck="name")
