@@ -708,11 +708,16 @@ def _walk_line(demand, buy, c, regen, per_week, life, ramp, per_area, first_cut,
 	# Each multiplication is its own size: the step in demand it was raised for.
 	# Without this every generation was a copy of the order, which is only right
 	# when the season arrives in equal instalments.
-	batches = [cint(b) for b in (batches or []) if cint(b) > 0]
-	if not batches:
-		batches = [cint(buy)] * min(cint(c), MAX_MULTIPLICATIONS)
+	given = [cint(b) for b in (batches or []) if cint(b) > 0]
+	batches = given or [cint(buy)] * min(cint(c), MAX_MULTIPLICATIONS)
 	if sends_allowed is None:
-		sends_allowed = min(len(batches), MAX_MULTIPLICATIONS)
+		# The farm's four is the DEFAULT, not a law. A caller that hands over an
+		# explicit list of batches has already decided how many rounds it wants
+		# -- that is the whole point of asking "what must I do to a small order"
+		# -- and capping it here answered a different question and labelled the
+		# result "4 of 4".
+		sends_allowed = len(batches) if given else min(len(batches),
+		                                              MAX_MULTIPLICATIONS)
 
 	gens = [{"generation": 1, "mothers": buy, "live": buy, "arrivals": 1,
 	         "first_cut_date": str(first_cut),
@@ -951,6 +956,110 @@ def peak_schedule(plan, sizing, cycles=None, tc=None, first_cut=None):
 	out["weeks_idle_before_demand"] = max(
 		0, (getdate(sizing["first_sticking"]) - started).days // 7)
 	return out
+
+
+def multiplications_for_tc(plan, tc, max_search=24):
+	"""How many times a given order has to be multiplied to still cover the season.
+
+	The other direction. peak_sizing answers "I will multiply n times, what do I
+	buy"; this answers "I can afford this many plantlets, what must I do to them"
+	-- which is the question somebody with a budget actually has.
+
+	A smaller order is not refused, it is costed: fewer plantlets means more
+	rounds of multiplication, an earlier order date, and more of the early cut
+	going back as mothers instead of to the field. It is allowed to exceed
+	MAX_MULTIPLICATIONS, because the farm's four is a habit rather than a law and
+	a small order may simply need more; the answer says when it has.
+
+	Returns the fewest rounds that cover the season, or the best it could reach.
+	"""
+	v = frappe.get_cached_doc("Crop Protocol Version", plan.protocol)
+	demand = demand_by_sticking_week(plan)
+	if not demand or cint(tc) <= 0:
+		return None
+	tc = cint(tc)
+	per_week = flt(v.cuttings_per_plant_per_week) or 1.0
+	per_area = cint(v.plants_per_bed) or cint(v.min_planting_area_sqm) or 1
+	regen = cint(v.weeks_on_tray) + cint(v.weeks_on_pot)
+	life = cint(v.motherstock_life_weeks)
+	ramp = v.ramp_ratios() or [1.0]
+	ramp_lead = max(0, len(ramp) - 1)
+	first_stick = min(demand)
+	peak_mothers = max(demand.values()) / per_week
+
+	# The arithmetic floor: generations of the order's own size, enough of them
+	# to stand up the peak week. Below that no schedule can cover, whatever the
+	# timing, so the search starts there instead of grinding up from zero.
+	floor = max(0, int(math.ceil(peak_mothers / float(tc))) - 1)
+
+	def batches_for(c):
+		"""Rounds of at most one order each, the last trimmed to what is left.
+
+		A full order every round overshoots: five rounds of 25,000 stand up
+		125,000 mothers for a peak that wants 37,000, which is not a plan
+		anybody would carry out.
+		"""
+		out, running = [], float(tc)
+		for _i in range(c):
+			if running >= peak_mothers:
+				break
+			take = min(float(tc), peak_mothers - running)
+			out.append(max(1, round_up_to_area(take, per_area)))
+			running += out[-1]
+		return out
+
+	tried, best = [], None
+	for c in range(floor, min(floor + cint(max_search), 60) + 1):
+		earliest = add_days(getdate(first_stick), -7 * (c * regen + ramp_lead))
+		latest = add_days(getdate(first_stick), -7 * ramp_lead)
+		started, walk = best_start(
+			demand, tc, c, regen, per_week, life, ramp, per_area,
+			earliest=earliest, latest=latest, batches=batches_for(c))
+		row = {
+			"cycles": c,
+			"weeks_met": cint(walk["weeks_met"]),
+			"weeks": cint(walk["weeks"]),
+			"shortfall": cint(walk["shortfall"]),
+			"covers": bool(walk["covers"]),
+			"first_cut": str(started),
+			"order_by": str(add_days(started, -7 * (
+				cint(v.supplier_lead_weeks) + cint(v.weeks_tc_to_first_cut())))),
+			"peak_pool": cint(walk["peak_pool"]),
+			"sends_made": cint(walk["sends_made"]),
+		}
+		tried.append(row)
+		if best is None or (row["weeks_met"], -row["shortfall"]) > (
+				best[0]["weeks_met"], -best[0]["shortfall"]):
+			best = (row, walk, started)
+		if row["covers"]:
+			best = (row, walk, started)
+			break
+
+	if not best:
+		return None
+	row, walk, started = best
+	walk["pick"] = {"cycles": row["cycles"], "buy": tc,
+	                "cutting_weeks": max(0, life - max(
+		                0, (getdate(first_stick) - started).days // 7))}
+	walk["order_by"] = row["order_by"]
+	walk["weeks_idle_before_demand"] = max(
+		0, (getdate(first_stick) - started).days // 7)
+	return {
+		"tc": tc,
+		"needed": row["cycles"],
+		"beyond_protocol": row["cycles"] > MAX_MULTIPLICATIONS,
+		"max_usual": MAX_MULTIPLICATIONS,
+		"covers": row["covers"],
+		"tried": tried,
+		"schedule": walk,
+		# Which weeks the cuttings go back rather than to the field, and how
+		# many -- the thing somebody has to actually do.
+		"to_propagation": [
+			{"week_no": r["week_no"], "week_start": r["week_start"],
+			 "cuttings": cint(r["to_multiplication"]), "event": r["event"]}
+			for r in walk["weeks_table"] if cint(r["to_multiplication"])
+		],
+	}
 
 
 @frappe.whitelist()

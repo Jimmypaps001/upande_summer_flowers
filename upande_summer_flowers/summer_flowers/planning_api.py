@@ -2829,8 +2829,29 @@ def motherstock_line(plan=None, variety=None, farm=None, tc=None,
 		multiplications = cint(saved.multiplications)
 		tc = cint(saved.tc_to_order)
 
+	# A quantity on its own is a question, not an override: "I can afford this
+	# many plantlets -- what must I do to them?" So it decides the rounds, the
+	# way the rounds decide the quantity when it is the rounds that were typed.
+	# Multiplying more than the farm's usual four is allowed here, because a
+	# small order may simply need it, and the answer says when it has.
+	derived = None
+	if cint(tc) and multiplications in (None, ""):
+		plan_doc = frappe.get_doc("Summer Flower Production Plan", name)
+		derived = ps.multiplications_for_tc(plan_doc, cint(tc))
+		if derived:
+			multiplications = cint(derived["needed"])
+
 	out = ps.peak_options(name, cycles=multiplications, tc=tc)
 	out["plan"] = name
+	if derived:
+		out["from_quantity"] = {
+			"tc": derived["tc"],
+			"needed": derived["needed"],
+			"beyond_protocol": derived["beyond_protocol"],
+			"max_usual": derived["max_usual"],
+			"covers": derived["covers"],
+			"to_propagation": derived["to_propagation"],
+		}
 	out["scope"] = scope_of(variety=variety, farm=farm, plan=plan)
 
 	sizing, sch = out.get("sizing"), out.get("schedule")

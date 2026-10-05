@@ -520,7 +520,7 @@
       <div class="pl-card">
         <div class="pl-card-head">
           <div><h2>{{ _("The motherstock line") }}</h2>
-               <p class="pl-note">{{ _("Sized by the busiest sticking week: that week's cuttings divided by the generations standing, rounded up to a whole planting area. Cuttings cannot be banked, so the weeks either side lend the peak nothing. Each multiplication divides what you buy and costs one establishment off the weeks the line has left to cut — four at the most. The field is served first from the very first cut, ramp and all; only the surplus goes back as mothers. Change either box and the line is worked out again — that costs nothing and saves nothing. Agree this line is the only thing that writes, and what it writes is what procurement orders.") }}</p></div>
+               <p class="pl-note">{{ _("Sized by the busiest sticking week: that week's cuttings divided by the generations standing, rounded up to a whole planting area. Cuttings cannot be banked, so the weeks either side lend the peak nothing. Each multiplication divides what you buy and costs one establishment off the weeks the line has left to cut — four at the most. The field is served first from the very first cut, ramp and all; only the surplus goes back as mothers. Type a plantlet figure and it works out how many multiplications that order needs — more than four if a small order calls for it — and which weeks the cuttings are held back. Type a multiplication count instead and it works out the order. Either way the dates follow. Changing either box costs nothing and saves nothing. Agree this line is the only thing that writes, and what it writes is what procurement orders.") }}</p></div>
           <span class="pl-actions">
             <label class="pl-inline">{{ _("Plantlets") }}
               <input type="number" id="tc-qty" min="0" step="50"></label>
@@ -3822,6 +3822,20 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
         `generation is a batch of cuttings taken off it, sized to the step it ` +
         `is raised for, not to an equal share of the peak.`);
     }
+    if (q && (q.to_propagation || []).length) {
+      notes.push(`<b>Buying ${num(q.tc)} means multiplying ${q.needed} time` +
+        `${q.needed === 1 ? "" : "s"}.</b> ` +
+        (q.beyond_protocol
+          ? `That is more than the ${q.max_usual} the farm usually does — a
+             smaller order has to be built up further. `.replace(/\s+/g, " ")
+          : "") +
+        `Cuttings held back, week by week: ` +
+        q.to_propagation.map((x) =>
+          `<b>wk ${x.week_no}</b> (${fdate(x.week_start)}) ${num(x.cuttings)}`)
+          .join(", ") + `. Everything else that week goes to the field.` +
+        (q.covers ? "" : ` It still does not cover the season — ` +
+          `${num(c.weeks_met)} of ${num(c.weeks)} planting weeks.`));
+    }
     const steps = (c.pool_steps || []).filter((x) => x.mothers);
     if (steps.length > 1) {
       notes.push(`<b>The pool is thinned as demand falls.</b> ` +
@@ -4332,6 +4346,7 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
     const qty = $("tc-qty"), dv = $("tc-divert");
     if (qty && document.activeElement !== qty) qty.value = c.tc || "";
     if (dv && document.activeElement !== dv) dv.value = c.multiplications ?? "";
+    const q = t.from_quantity;
 
     const met = c.weeks_met || 0, all = c.weeks || 0;
     $("tc-tiles").innerHTML = [
@@ -4340,9 +4355,14 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
           ? `plantlets; ${(c.batches || []).map(num).join(" + ")} more come off them`
           : `plantlets for week ${(t.peak || {}).week_label || "—"}` },
       { k: "Multiply", v: `${c.multiplications}`,
-        m: c.sends_made === c.multiplications
-          ? `times, of ${(t.peak || {}).max ?? 4} allowed`
-          : `asked; only ${c.sends_made} could be sent` },
+        m: q
+          ? (q.beyond_protocol
+              ? `needed for ${num(q.tc)} plantlets — more than the usual ${q.max_usual}`
+              : `needed for ${num(q.tc)} plantlets`)
+          : (c.sends_made === c.multiplications
+              ? `times, of ${(t.peak || {}).max ?? 4} allowed`
+              : `asked; only ${c.sends_made} could be sent`),
+        c: q && q.beyond_protocol ? "--warning" : "" },
       { k: "Order by", v: fdate(c.order_by), m: c.order_late ? "already passed" : "" },
       // The cost nobody sees until they read the table: weeks of cutting a pool
       // into nothing because the field has not opened yet. Every one of them is
@@ -6404,7 +6424,12 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
       // Multiplication guides how many plantlets to buy, so moving it re-solves
       // the quantity instead of leaving the previous one pinned. Typing a
       // quantity afterwards still overrides it.
+      // Each box clears the other, because each one ANSWERS the other. Typing a
+      // quantity asks what must be done to it; typing a multiplication count
+      // asks what to buy. Sending both would have pinned the stale half and the
+      // card would have reported an order nobody had worked out.
       $("tc-qty").addEventListener("change", () => {
+        $("tc-divert").value = "";
         loadTc($("tc-qty").value || null);
       });
       $("tc-divert").addEventListener("change", () => {
