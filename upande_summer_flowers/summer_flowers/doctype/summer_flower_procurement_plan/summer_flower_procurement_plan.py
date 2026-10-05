@@ -115,8 +115,10 @@ class SummerFlowerProcurementPlan(Document):
 			mr.schedule_date = max(wanted, today)
 			if mr.meta.get_field("custom_farm"):
 				mr.custom_farm = self.farm
+			if mr.meta.get_field("custom_purpose"):
+				mr.custom_purpose = "Production"
 			for r in rows:
-				mr.append("items", {
+				row = {
 					"item_code": item,
 					"qty": cint(r.qty_to_order),
 					"schedule_date": mr.schedule_date,
@@ -126,7 +128,18 @@ class SummerFlowerProcurementPlan(Document):
 					"description": _("{0} as {1} for planting {2}").format(
 						self.variety, self.entry_stage or _("plants"),
 						r.planting_week or ""),
-				})
+				}
+				# A site field, but one this chain cannot skip: custom_purpose is
+				# mandatory on BOTH Material Request Item and Purchase Order Item
+				# here, and the mapping carries it from one to the other. Leaving
+				# it empty let the request be raised and then stopped the order
+				# dead -- 64,477 of the site's 64,486 request lines carry it, and
+				# the ones this module raised were among the nine that did not.
+				if mr.meta.get_field("items").options and frappe.get_meta(
+						"Material Request Item").get_field("custom_purpose"):
+					row["custom_purpose"] = _("{0} planting material, {1}").format(
+						self.variety, self.get("season") or self.name)
+				mr.append("items", row)
 			if supplier and mr.meta.get_field("supplier"):
 				mr.supplier = supplier
 			mr.flags.ignore_permissions = True
