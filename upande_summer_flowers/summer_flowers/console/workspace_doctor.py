@@ -83,6 +83,9 @@ def _app_tile(user):
 
 	hooks = frappe.get_hooks("add_to_apps_screen", app_name=APP) or []
 	print("\nDesk app tile")
+	print("   NOTE: the /apps screen and the desk rail are different surfaces.")
+	print("   The screen reads the add_to_apps_screen hook; the rail reads")
+	print("   Desktop Icon records. Having one is not having the other.")
 	if not hooks:
 		print("   *** %s declares no add_to_apps_screen hook, so it can never "
 		      "appear on the desk however good its workspaces are." % APP)
@@ -102,12 +105,50 @@ def _app_tile(user):
 	else:
 		print("   opens      : %r (visible)" % target.name)
 
+	# The rail. This is the one people mean by "on the desk".
+	icons = frappe.get_all(
+		"Desktop Icon", filters={"app": APP},
+		fields=["name", "label", "icon_type", "link_type", "link", "link_to",
+		        "standard", "hidden"])
+	print("\n   Desktop Icon records for %s: %d" % (APP, len(icons)))
+	for i in icons:
+		print("      %-22r type=%-7s link=%-32r std=%s hidden=%s"
+		      % (i.label, i.icon_type, i.link, i.standard, i.hidden))
+		if i.link:
+			s2 = i.link.rstrip("/").rsplit("/", 1)[-1]
+			w = next((w for w in frappe.get_all(
+				"Workspace", fields=["name", "is_hidden"])
+				if w.name.lower().replace(" ", "-") == s2), None)
+			if not w:
+				print("         *** that link matches no workspace on this site")
+			elif w.is_hidden:
+				print("         *** %r is HIDDEN, so the icon opens nothing useful"
+				      % w.name)
+			else:
+				print("         opens %r (visible)" % w.name)
+	if not icons:
+		print("      *** none. get_desktop_icons() builds the rail from these, so")
+		print("      the app cannot be on the desk however good the hook and the")
+		print("      workspace are. Create one: Label 'Summer Flowers', App")
+		print("      '%s', Icon Type 'App', Link Type" % APP)
+		print("      'External', Link the route above, Standard yes.")
+
 	was = frappe.session.user
 	try:
 		frappe.set_user(user)
 		frappe.clear_cache(user=user)
 		shown = APP in [a["name"] for a in get_apps()]
-		print("   on the desk for %s: %s" % (user, shown))
+		print("\n   on the /apps SCREEN for %s: %s" % (user, shown))
+		try:
+			from frappe.boot import get_bootinfo
+			bi = get_bootinfo()
+			rail = [i for i in (bi.get("desktop_icons") or [])
+			        if (i.get("app") or "") == APP]
+			print("   on the desk RAIL for %s:   %s%s"
+			      % (user, bool(rail),
+			         "  -> %s" % rail[0].get("link") if rail else ""))
+		except Exception as e:
+			print("   could not build boot for the rail check: %s" % e)
 		if not shown:
 			print("   *** get_apps() also drops an app when the user is not a "
 			      "System Manager and the app is in neither the setup-wizard "
