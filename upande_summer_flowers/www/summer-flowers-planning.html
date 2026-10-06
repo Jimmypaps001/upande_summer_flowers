@@ -338,12 +338,13 @@
       <div class="pl-card">
         <div class="pl-card-head">
           <div><h2>{{ _("Propagation plan") }}</h2>
-               <p class="pl-note" id="pg-sub">{{ _("How the plan's cuttings get sourced: what standing motherstock already covers, and what has to be bought as tissue culture.") }}</p></div>
+               <p class="pl-note" id="pg-sub"></p></div>
           <span id="pg-actions" class="pl-actions"></span>
         </div>
         <div class="pl-tiles pl-tiles-sm" id="pg-tiles"></div>
         <div id="pg-warn"></div>
-        <div id="pg-body"></div>
+        <div id="pg-steps"></div>
+        <div id="pg-body" class="pl-scroll"></div>
       </div>
     </section>
 
@@ -2832,13 +2833,97 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
 
   // ══════════════════════════ PROPAGATION ══════════════════════════
   function loadPropagation() {
+    callRl("propagation_overview", { production_plan: S.plan })
+      .then((o) => { S.pgo = o; renderOverview(); })
+      .catch((e) => { S.pgo = { error: e.message }; renderOverview(); });
     return call("propagation_detail", { plan: S.plan || null,
                                         variety: S.variety, farm: S.farm })
       .then((r) => { S.pg = r; renderPropagation(); })
       .catch((e) => { S.pg = { error: e.message }; renderPropagation(); });
   }
 
+  // Dates and quantities, in the order they happen. No explanation: somebody
+  // standing in the propagation unit wants to know when the tissue culture
+  // lands, when to multiply, when roots arrive and how many plants go out in
+  // which week -- not why any of it is so.
+  function renderOverview() {
+    const o = S.pgo;
+    const steps = $("pg-steps"), body = $("pg-body"), tiles = $("pg-tiles");
+    if (!o || o.error) {
+      if (steps) steps.innerHTML = "";
+      return;
+    }
+    const tc = o.tc || {}, rt = o.roots;
+    const dt = (d, i) => d ? `${fdate(d)}${i ? ` <span class="text-muted">${esc(i)}</span>` : ""}` : "—";
+
+    tiles.innerHTML = [
+      { k: "TC to order", v: num(tc.qty), m: dt(tc.order, tc.order_iso) },
+      { k: "TC on farm", v: tc.arrive ? fdate(tc.arrive) : "—",
+        m: tc.arrive_iso || "" },
+      rt ? { k: "Roots to order", v: num(rt.qty),
+             m: `${dt(rt.order, rt.order_iso)} · ×${rt.per_plant} plants each` }
+         : { k: "Multiplications", v: `${(o.multiply || []).length}`,
+             m: (o.multiply || []).length ? "sent back as mothers" : "none" },
+      rt ? { k: "Roots on farm", v: rt.arrive ? fdate(rt.arrive) : "—",
+             m: rt.arrive_iso || "" }
+         : { k: "First cut", v: o.first_cut ? fdate(o.first_cut) : "—",
+             m: o.first_cut_iso || "" },
+      { k: "Plants to farm", v: num(o.plants_total),
+        m: `${dt(o.first_planting, o.first_planting_iso)} → ` +
+           `${dt(o.last_planting, o.last_planting_iso)}` },
+    ].map((x) => `<div class="pl-tile"><div class="k">${esc(x.k)}</div>` +
+      `<div class="v">${esc(String(x.v))}</div>` +
+      `<div class="m">${x.m || ""}</div></div>`).join("");
+
+    const track = [["Order TC", tc.order, tc.order_iso],
+                   ["TC on farm", tc.arrive, tc.arrive_iso]];
+    if (rt) {
+      track.unshift(["Order roots", rt.order, rt.order_iso]);
+      track.push(["Roots on farm", rt.arrive, rt.arrive_iso]);
+    }
+    (o.multiply || []).forEach((m) =>
+      track.push([`Multiply ${m.n}`, m.sent, m.sent_iso]));
+    if (o.first_cut) track.push(["First cut", o.first_cut, o.first_cut_iso]);
+    track.push(["First planting", o.first_planting, o.first_planting_iso]);
+    if (o.block_cleared) track.push(["Block cleared", o.block_cleared, o.block_cleared_iso]);
+
+    const ordered = track.filter((x) => x[1]).sort((a, b) => a[1] < b[1] ? -1 : 1);
+    steps.innerHTML = `<div class="pg-track">` + ordered.map(([k, d, i], n, all) =>
+      `<div class="pg-stop"><div class="pg-k">${esc(k)}</div>` +
+      `<div class="pg-v">${fdate(d)}</div>` +
+      `<div class="pg-k text-muted">${esc(i || "")}</div></div>` +
+      (n < all.length - 1 ? '<div class="pg-arrow">→</div>' : "")).join("") +
+      `</div>`;
+
+    const rows = o.farm_weeks || [];
+    const hasSplit = rows.some((r) => r.from_tc != null);
+    body.innerHTML = !rows.length ? "" :
+      `<table class="pl-t"><thead><tr><th>Week</th><th>ISO</th>` +
+      `<th class="n">To farm</th>` +
+      (hasSplit ? `<th class="n">From TC</th><th class="n">From roots</th>` : "") +
+      `<th class="n">Needed</th><th class="n">Short</th>` +
+      `</tr></thead><tbody>` +
+      rows.map((r) => `<tr${r.short ? ' class="ls-arrive"' : ""}>` +
+        `<td>${fdate(r.week)}</td>` +
+        `<td class="text-muted">${esc(r.week_iso || "")}</td>` +
+        `<td class="n">${num(r.to_farm)}</td>` +
+        (hasSplit ? `<td class="n">${r.from_tc ? num(r.from_tc) : ""}</td>` +
+                    `<td class="n">${r.from_roots ? num(r.from_roots) : ""}</td>` : "") +
+        `<td class="n">${num(r.needed)}</td>` +
+        `<td class="n"${r.short ? ' style="color:var(--critical)"' : ""}>` +
+        `${r.short ? num(r.short) : ""}</td></tr>`).join("") +
+      `</tbody></table>`;
+
+    $("pg-sub").textContent = `${o.variety} at ${o.farm}` +
+      (o.propagation_plan ? ` · ${o.propagation_plan}` : "");
+    $("pg-warn").innerHTML = o.blocked
+      ? `<div class="pl-callout">${esc(o.blocked)}</div>` : "";
+  }
+
   function renderPropagation() {
+    // The overview owns the tiles, the track and the table now. This keeps the
+    // actions and the empty state, which are still its own.
+    if (S.pgo && !S.pgo.error) return;
     const r = S.pg;
     if (!r || r.error || !r.propagation_plan) {
       $("pg-tiles").innerHTML = ""; $("pg-warn").innerHTML = "";

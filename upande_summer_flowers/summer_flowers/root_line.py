@@ -584,6 +584,123 @@ def _after_material_agreement(production_plan, tc):
 
 
 @frappe.whitelist()
+def propagation_overview(production_plan):
+	"""The propagation plan as dates and quantities, and nothing else.
+
+	Six questions, whichever way the crop is raised: when the tissue culture is
+	ordered, when it lands, when roots are ordered and land, when the block is
+	multiplied, and how many plants reach the farm in which week. Both engines
+	already know all of it; this puts them behind one shape so the screen does
+	not have to ask which kind of crop it is looking at.
+	"""
+	if frappe.session.user == "Guest":
+		frappe.throw(_("Please sign in."), frappe.PermissionError)
+	plan = frappe.get_doc("Summer Flower Production Plan", production_plan)
+	ms = frappe.db.get_value(
+		"Summer Flower Motherstock Plan", {"production_plan": plan.name}, "name")
+	prop = frappe.db.get_value(
+		"Summer Flower Propagation Plan",
+		{"variety": plan.variety,
+		 "season_start_year": cint(plan.season_start_year),
+		 "status": ["!=", "Rejected"]}, "name")
+
+	out = {
+		"plan": plan.name, "variety": plan.variety, "farm": plan.farm,
+		"propagation_plan": prop,
+		"kind": "motherstock" if ms else "bought",
+		"tc": None, "roots": None, "multiply": [], "farm_weeks": [],
+		"plants_total": 0, "first_planting": None, "last_planting": None,
+	}
+	out.update(_ms_overview(ms) if ms else _bought_overview(plan))
+
+	for b in plan.plan_blocks:
+		if not cint(b.is_new_planting) or not b.get("planting_date"):
+			continue
+		d = _monday(b.planting_date)
+		out["plants_total"] += cint(b.plants)
+		if not out["first_planting"] or d < getdate(out["first_planting"]):
+			out["first_planting"] = str(d)
+		if not out["last_planting"] or d > getdate(out["last_planting"]):
+			out["last_planting"] = str(d)
+	out["first_planting_iso"] = iso(out["first_planting"])
+	out["last_planting_iso"] = iso(out["last_planting"])
+	return out
+
+
+def _ms_overview(ms_name):
+	"""Dates and quantities off an agreed motherstock line."""
+	d = frappe.get_doc("Summer Flower Motherstock Plan", ms_name)
+	mult = []
+	for g in d.get("generation_table") or []:
+		if cint(g.generation) <= 1:
+			continue
+		mult.append({
+			"n": cint(g.generation) - 1,
+			"sent": str(g.get("stuck_date") or ""),
+			"sent_iso": iso(g.get("stuck_date")),
+			"lands": str(g.first_cut_date or ""),
+			"lands_iso": iso(g.first_cut_date),
+			"plants": cint(g.mothers),
+		})
+	farm_weeks = [{
+		"week": str(w.week_start), "week_iso": iso(w.week_start),
+		"to_farm": cint(w.to_field), "needed": cint(w.demand),
+		"short": cint(w.shortfall),
+	} for w in (d.get("schedule") or []) if cint(w.to_field) or cint(w.demand)]
+	return {
+		"motherstock_plan": d.name,
+		"tc": {"qty": cint(d.tc_to_order), "order": str(d.order_by_date or ""),
+		       "order_iso": iso(d.order_by_date),
+		       "arrive": str(d.tc_arrival_date or ""),
+		       "arrive_iso": iso(d.tc_arrival_date)},
+		"first_cut": str(d.first_cut_date or ""),
+		"first_cut_iso": iso(d.first_cut_date),
+		"block_cleared": str(d.line_end_date or ""),
+		"block_cleared_iso": iso(d.line_end_date),
+		"multiply": mult,
+		"farm_weeks": farm_weeks,
+		"weeks_met": cint(d.weeks_met), "weeks_required": cint(d.weeks_required),
+	}
+
+
+def _bought_overview(plan):
+	"""Dates and quantities for a crop that is bought, not cut from a pool."""
+	m = arrival_plan(plan)
+	if not m:
+		return {}
+	tc_first = (m.get("tc_order_schedule") or [{}])[0]
+	root_first = (m.get("root_order_schedule") or [{}])[0]
+	tc_qty = sum(r["tc"] for r in (m.get("tc_order_schedule") or []))
+	root_qty = sum(r["roots"] for r in (m.get("root_order_schedule") or []))
+	return {
+		"tc": {"qty": cint(tc_qty), "order": tc_first.get("week") or "",
+		       "order_iso": tc_first.get("week_iso"),
+		       "arrive": str(add_days(getdate(tc_first["week"]),
+		                              7 * cint(m["tc_lead_weeks"])))
+		       if tc_first.get("week") else "",
+		       "arrive_iso": iso(add_days(getdate(tc_first["week"]),
+		                                  7 * cint(m["tc_lead_weeks"])))
+		       if tc_first.get("week") else None},
+		"roots": {"qty": cint(root_qty), "order": root_first.get("week") or "",
+		          "order_iso": root_first.get("week_iso"),
+		          "per_plant": flt(m.get("returns_per_plant")),
+		          "arrive": str(add_days(getdate(root_first["week"]),
+		                                 7 * cint(m["root_lead_weeks"])))
+		          if root_first.get("week") else "",
+		          "arrive_iso": iso(add_days(getdate(root_first["week"]),
+		                                     7 * cint(m["root_lead_weeks"])))
+		          if root_first.get("week") else None} if root_qty else None,
+		"farm_weeks": [{
+			"week": w["week"], "week_iso": w["week_iso"],
+			"to_farm": cint(w["plants"]), "from_tc": cint(w["by_tc"]),
+			"from_roots": cint(w["by_roots"]), "needed": cint(w["plants"]),
+			"short": 0,
+		} for w in (m.get("weeks") or [])],
+		"blocked": m.get("blocked"),
+	}
+
+
+@frappe.whitelist()
 def how_it_is_raised(production_plan):
 	"""Whether this crop has a motherstock, for the form to offer the right thing.
 
