@@ -271,6 +271,127 @@ def _plants_per_unit_from(rows, stage):
 	return out
 
 
+def arrival_plan(plan, tc_share=None, returns_per_plant=None):
+	"""Both ways in, landing plants in the week the field wants them.
+
+	The two ways are not alternatives running side by side at the same speed.
+	Tissue culture is a few months. Roots are a year or more, because the block
+	has to be grown before anything can be lifted off it. If both are to put
+	plants in the ground in the SAME week -- and they must, because the demand
+	does not care how a plant was raised -- then the root order goes in long
+	before the tissue culture order. That is the whole scheduling problem rather
+	than a detail of it, and nothing in the planner said it before.
+
+	`tc_share` is the fraction of each week taken the short way, 0 to 1. The
+	rest is grown through roots, where one root becomes `returns_per_plant`
+	plants.
+	"""
+	from upande_summer_flowers.summer_flowers import crop_protocol as cp
+
+	v = frappe.get_cached_doc("Crop Protocol Version", plan.protocol)
+	rows = cp.route_rows(v) or []
+	per_root = flt(returns_per_plant if returns_per_plant not in (None, "")
+	               else _lift_return(rows) or 0)
+	share = flt(tc_share if tc_share not in (None, "") else _tc_share(rows))
+
+	tc_weeks = _weeks_for(rows, "TC")
+	root_weeks = _weeks_for(rows, LIFT_STAGE)
+	tc_lead = _lead_for(rows, "TC")
+	root_lead = _lead_for(rows, LIFT_STAGE)
+
+	weeks, tc_orders, root_orders = {}, {}, {}
+	for b in plan.plan_blocks:
+		if not cint(b.is_new_planting) or not b.get("planting_date"):
+			continue
+		land = _monday(b.planting_date)
+		w = weeks.setdefault(land, {"plants": 0})
+		w["plants"] += cint(b.plants)
+
+	for land, w in weeks.items():
+		by_tc = int(round(w["plants"] * share))
+		by_root = w["plants"] - by_tc
+		roots = int(math.ceil(by_root / per_root)) if per_root > 0 else None
+		w.update({"by_tc": by_tc, "by_roots": by_root, "roots_needed": roots})
+		# Each way counted back from the SAME landing week.
+		w["tc_order_week"] = str(add_days(land, -7 * (tc_lead + tc_weeks)))
+		w["root_order_week"] = (str(add_days(land, -7 * (root_lead + root_weeks)))
+		                        if roots else None)
+		if by_tc:
+			tc_orders[w["tc_order_week"]] = tc_orders.get(w["tc_order_week"], 0) + by_tc
+		if roots:
+			root_orders[w["root_order_week"]] = root_orders.get(
+				w["root_order_week"], 0) + roots
+
+	ordered = sorted(weeks)
+	return {
+		"variety": plan.variety, "farm": plan.farm,
+		"tc_share_pct": round(share * 100, 1),
+		"returns_per_plant": per_root,
+		"tc_weeks_to_ground": tc_weeks, "tc_lead_weeks": tc_lead,
+		"root_weeks_to_ground": root_weeks, "root_lead_weeks": root_lead,
+		"root_head_start_weeks": (root_lead + root_weeks) - (tc_lead + tc_weeks),
+		"plants_total": sum(weeks[k]["plants"] for k in ordered),
+		"tc_total": sum(weeks[k]["by_tc"] for k in ordered),
+		"roots_total": sum(cint(weeks[k]["roots_needed"]) for k in ordered),
+		"weeks": [dict(week=str(k), **weeks[k]) for k in ordered],
+		"tc_order_schedule": [{"week": k, "plantlets": v}
+		                      for k, v in sorted(tc_orders.items())],
+		"root_order_schedule": [{"week": k, "roots": v}
+		                        for k, v in sorted(root_orders.items())],
+		# What the propagation unit is being asked to hand over, and when. This
+		# is the thing the unit actually works to: not an order, a delivery.
+		"propagation_request": [
+			{"week": str(k), "plants": weeks[k]["plants"],
+			 "from_tc": weeks[k]["by_tc"], "from_roots": weeks[k]["by_roots"]}
+			for k in ordered if weeks[k]["plants"]
+		],
+		"roots_in_store": root_stock(plan),
+	}
+
+
+def _monday(d):
+	d = getdate(d)
+	return add_days(d, -d.weekday())
+
+
+def _lift_return(rows):
+	for r in rows:
+		if (r.get("stage") or "") == LIFT_STAGE:
+			return flt(r.get("returns_per_plant") or 0)
+	return 0
+
+
+def _tc_share(rows):
+	"""The split the protocol already states, as a fraction."""
+	tc = sum(flt(r.get("share_pct") or 0) for r in rows
+	         if (r.get("stage") or "") == "TC")
+	root = sum(flt(r.get("share_pct") or 0) for r in rows
+	           if (r.get("stage") or "") == LIFT_STAGE)
+	return (tc / (tc + root)) if (tc + root) else 1.0
+
+
+def _weeks_for(rows, stage):
+	"""Weeks from that stage arriving to a plant standing in the field."""
+	seen, weeks = False, 0
+	for r in rows:
+		st = r.get("stage") or ""
+		if st == stage and not seen:
+			seen = True
+		if not seen:
+			continue
+		if st == "Plants":
+			break
+		weeks += cint(r.get("weeks"))
+	return weeks
+
+
+def _lead_for(rows, stage):
+	for r in rows:
+		if (r.get("stage") or "") == stage:
+			return cint(r.get("lead_weeks"))
+	return 0
+
+
 @frappe.whitelist()
 def ways_for(production_plan, returns_per_plant=None, split=None):
 	"""What the dashboard draws for a crop that has no motherstock."""
@@ -278,6 +399,16 @@ def ways_for(production_plan, returns_per_plant=None, split=None):
 		frappe.throw(_("Please sign in."), frappe.PermissionError)
 	plan = frappe.get_doc("Summer Flower Production Plan", production_plan)
 	return compare_ways(plan, returns_per_plant=returns_per_plant, split=split)
+
+
+@frappe.whitelist()
+def arrivals_for(production_plan, tc_share=None, returns_per_plant=None):
+	"""Both ways landing in the same week, for the dashboard."""
+	if frappe.session.user == "Guest":
+		frappe.throw(_("Please sign in."), frappe.PermissionError)
+	plan = frappe.get_doc("Summer Flower Production Plan", production_plan)
+	return arrival_plan(plan, tc_share=tc_share,
+	                    returns_per_plant=returns_per_plant)
 
 
 @frappe.whitelist()
