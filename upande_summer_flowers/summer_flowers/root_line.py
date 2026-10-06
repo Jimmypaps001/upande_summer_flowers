@@ -191,6 +191,95 @@ def root_stock(plan, item=None):
 	}
 
 
+def compare_ways(plan, returns_per_plant=None, split=None):
+	"""The ways this crop can be got, costed against each other.
+
+	Eryngium has no motherstock and the planner is right to refuse it one -- a
+	motherstock stands and is cut weekly, and nothing here does. What it has
+	instead is a choice of ways in, and the farm plans for TC, for roots, or for
+	both at once. This says what each would cost for the season in hand.
+
+	`split` is a dict of stage to percentage, so "both" is a real answer rather
+	than a choice between two: {"TC": 80, "Roots": 20}.
+	"""
+	from upande_summer_flowers.summer_flowers import crop_protocol as cp, sourcing
+
+	v = frappe.get_cached_doc("Crop Protocol Version", plan.protocol)
+	need = _plants_needed(plan)
+	if not need["plants"]:
+		return None
+	rows = cp.route_rows(v) or []
+	store = root_stock(plan)
+
+	ways = []
+	for w in sourcing.entry_ways(v) or []:
+		per_unit = flt(w.get("plants_per_unit") or 0)
+		if per_unit <= 0:
+			per_unit = _plants_per_unit_from(rows, w.get("stage"))
+		units = (int(math.ceil(need["plants"] / per_unit)) if per_unit > 0 else None)
+		ways.append({
+			"stage": w.get("stage"),
+			"share_pct": flt(w.get("share_pct")),
+			"plants_per_unit": per_unit,
+			"units_for_whole_plan": units,
+			"lead_weeks": cint(w.get("lead_weeks")),
+			"weeks_to_ground": cint(w.get("weeks_to_ground")),
+			"item": w.get("item"),
+			"rate": flt(w.get("rate")),
+			"cost": (units * flt(w.get("rate"))) if units and w.get("rate") else None,
+		})
+
+	# And the way that is not a purchase at all: grow the roots here.
+	own = lift_plan(plan, returns_per_plant=returns_per_plant)
+
+	if split:
+		if isinstance(split, str):
+			split = frappe.parse_json(split)
+		for way in ways:
+			pct = flt(split.get(way["stage"], way["share_pct"]))
+			way["share_pct"] = pct
+			way["units_at_share"] = (
+				int(math.ceil(way["units_for_whole_plan"] * pct / 100.0))
+				if way["units_for_whole_plan"] else None)
+
+	return {
+		"variety": plan.variety, "farm": plan.farm,
+		"plants_needed": need["plants"],
+		"first_planting": str(need["first_planting"] or ""),
+		"roots_in_store": store,
+		"ways": ways,
+		"grow_your_own_roots": own,
+		"has_motherstock": bool(sourcing.standing_stage(
+			v, (sourcing.route_plan(v) or {}).get("entry_stage"))),
+	}
+
+
+def _plants_per_unit_from(rows, stage):
+	"""Plants one bought unit becomes, walking the rows after it."""
+	seen, out = False, 1.0
+	for r in rows:
+		st = r.get("stage") or ""
+		if st == stage and not seen:
+			seen = True
+		if not seen:
+			continue
+		if st == "Plants":
+			break
+		lift = flt(r.get("returns_per_plant") or 0)
+		out *= lift if lift > 0 else flt(r.get("yields_per_unit") or 1)
+		out *= 1.0 - flt(r.get("loss_pct") or 0) / 100.0
+	return out
+
+
+@frappe.whitelist()
+def ways_for(production_plan, returns_per_plant=None, split=None):
+	"""What the dashboard draws for a crop that has no motherstock."""
+	if frappe.session.user == "Guest":
+		frappe.throw(_("Please sign in."), frappe.PermissionError)
+	plan = frappe.get_doc("Summer Flower Production Plan", production_plan)
+	return compare_ways(plan, returns_per_plant=returns_per_plant, split=split)
+
+
 @frappe.whitelist()
 def plan_for(production_plan, returns_per_plant=None, tc=None):
 	"""What the dashboard draws for a crop raised through its own roots."""
