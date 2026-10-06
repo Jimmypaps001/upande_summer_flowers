@@ -73,13 +73,26 @@ def journey(version, from_stage):
 			# plants_per_unit would say one plantlet becomes four plants, when what it
 			# becomes is four mothers that give cuttings every week for a year. The
 			# number is right in requirement(); here it would only mislead.
+			#
+			# A lifted block is the other case: it is cut once, not weekly, and
+			# the thing it hands on is roots rather than a season of cuttings. It
+			# is deliberately NOT marked standing, so it falls through to the
+			# multiplication below.
 			standing = stage.stage
 		plants_per_unit *= _survival([stage])
 		# A stage's yield is what it hands on when material LEAVES it, so it applies
 		# to the stage bought as well: buying mother plants still gives you that
 		# mother's cuttings. Plants is the end of the road and multiplies nothing.
 		if stage.stage != ROUTE_END:
-			plants_per_unit *= flt(stage.yields_per_unit or 1)
+			# A one-off lift IS a conveyor, which is why the exclusion above does
+			# not reach it. A block of Eryngium stands for a year, is uprooted
+			# once and returns about fifteen roots a plant, and then it is gone --
+			# so one plantlet really does become fifteen plants, and saying so is
+			# the difference between buying 10,000 plantlets and buying 667.
+			# returns_per_plant has existed on every route row since the model was
+			# written and nothing has ever read it.
+			lift = flt(stage.get("returns_per_plant") or 0)
+			plants_per_unit *= lift if lift > 0 else flt(stage.yields_per_unit or 1)
 			plants_per_unit *= _survival(steps)
 			weeks += sum(cint(s.weeks) for s in steps) if steps else cint(stage.weeks)
 	return {
