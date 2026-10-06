@@ -300,6 +300,13 @@ def arrival_plan(plan, tc_share=None, returns_per_plant=None,
 	# buys. Ordering 300,000 plantlets and 40,000 roots is two orders placed at
 	# two different times, and the share between them is a CONSEQUENCE of those
 	# two figures rather than the thing that has to be chosen first.
+	# An agreed pair is what the card should open on, the way an agreed
+	# motherstock line is. Nothing typed and something committed means show what
+	# was committed, not a fresh suggestion beside it.
+	if not (cint(tc_qty) or cint(roots_qty)) and cint(plan.get("tc_choice_committed")):
+		tc_qty = cint(plan.get("tc_plants_committed"))
+		roots_qty = cint(plan.get("roots_committed"))
+
 	asked = {}
 	if cint(tc_qty) or cint(roots_qty):
 		from_tc = cint(tc_qty)
@@ -408,7 +415,34 @@ def arrival_plan(plan, tc_share=None, returns_per_plant=None,
 			          ).format(round(share * 100, 1)),
 		},
 		"roots_in_store": root_stock(plan),
+		# What the whole exercise is for. Ordering material is a means; the
+		# question is whether the season's stems arrive when the market wants
+		# them, and the plan already knows both figures week by week.
+		"demand_vs_production": _demand_vs_production(plan),
 	}
+
+
+def _demand_vs_production(plan):
+	"""Demand against what the plan grows, week by week, as the plan has it.
+
+	Read from the plan's own weekly rows rather than recomputed. A second
+	opinion on a figure the plan already states is how two numbers for one
+	thing get into a room.
+	"""
+	out, running = [], 0
+	for w in plan.get("plan_weeks") or []:
+		demand = cint(w.demand_stems)
+		grown = cint(w.production_stems)
+		running += grown - demand
+		out.append({
+			"year": cint(w.year), "week_no": cint(w.week_no),
+			"week_iso": "%d-W%02d" % (cint(w.year), cint(w.week_no)),
+			"week_start": str(w.week_start_date or ""),
+			"demand": demand, "production": grown,
+			"variance": grown - demand, "cumulative": running,
+			"short": grown < demand,
+		})
+	return out
 
 
 def _newer_version_with_lift(v):
@@ -478,6 +512,75 @@ def _lead_for(rows, stage):
 		if (r.get("stage") or "") == stage:
 			return cint(r.get("lead_weeks"))
 	return 0
+
+
+@frappe.whitelist()
+def agree_material_plan(production_plan, tc_qty=None, roots_qty=None):
+	"""Write the chosen split down, then build what follows from it.
+
+	The card could work the whole thing out and had nowhere to put it. A
+	motherstock crop has Agree this line; a bought crop had nothing, so the
+	figures lived on screen until the tab was closed.
+
+	What it writes is the pair -- tissue culture and roots -- onto the
+	production plan's committed fields, which already existed for the TC half.
+	Then the two documents that follow: the Procurement Plan that orders it and
+	the Propagation Plan that receives it. Each step is reported and each may
+	fail on its own, because the decision is the thing that must survive.
+	"""
+	if frappe.session.user == "Guest":
+		frappe.throw(_("Please sign in."), frappe.PermissionError)
+	plan = frappe.get_doc("Summer Flower Production Plan", production_plan)
+	m = arrival_plan(plan, tc_qty=tc_qty, roots_qty=roots_qty)
+	if not m:
+		frappe.throw(_("There is nothing to agree: this plan has no new plantings."))
+
+	asked = m.get("asked") or m.get("suggested") or {}
+	tc = cint(asked.get("tc_qty") or asked.get("tc"))
+	roots = cint(asked.get("roots_qty") or asked.get("roots"))
+	first = (m.get("tc_order_schedule") or [{}])[0].get("week")
+
+	plan.db_set({
+		"tc_choice_committed": 1,
+		"tc_plants_committed": tc,
+		"roots_committed": roots,
+		"tc_order_date_committed": first,
+	}, update_modified=False)
+	frappe.clear_document_cache("Summer Flower Production Plan", plan.name)
+	frappe.db.commit()
+
+	out = {"production_plan": plan.name, "tc": tc, "roots": roots,
+	       "order_by": first, "steps": []}
+	for label, fn in _after_material_agreement(plan.name, tc):
+		try:
+			out["steps"].append({"step": label, "ok": True, "result": fn()})
+			frappe.db.commit()
+		except Exception as e:
+			frappe.db.rollback()
+			frappe.log_error(frappe.get_traceback(),
+			                 "Material plan for %s: %s" % (plan.name, label))
+			out["steps"].append({"step": label, "ok": False,
+			                     "error": frappe.utils.strip_html(str(e))[:200]})
+	return out
+
+
+def _after_material_agreement(production_plan, tc):
+	from upande_summer_flowers.summer_flowers.doctype \
+		.summer_flower_procurement_plan.summer_flower_procurement_plan import build
+	from upande_summer_flowers.summer_flowers.doctype \
+		.summer_flower_propagation_plan.summer_flower_propagation_plan import (
+			build_from_plan,
+		)
+
+	def procurement():
+		return {"name": build(production_plan, replace=1, tc_qty=tc or None)}
+
+	def propagation():
+		r = build_from_plan(production_plan, as_dict=True)
+		return r if isinstance(r, dict) else {"name": r}
+
+	return [(_("Procurement Plan"), procurement),
+	        (_("Propagation Plan"), propagation)]
 
 
 @frappe.whitelist()

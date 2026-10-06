@@ -528,6 +528,10 @@
               <input type="number" id="tc-divert" min="0" max="4" step="1"></label>
             <label class="pl-inline" id="tc-roots-l" style="display:none">{{ _("Roots") }}
               <input type="number" id="tc-roots" min="0" step="100"></label>
+            <button type="button" class="pl-btn primary" data-tc="agreemat"
+                    style="display:none"
+                    title="{{ _('Writes the TC and roots figures to the plan, then builds the procurement plan that orders them and the propagation plan that receives them.') }}"
+            >{{ _("Save this plan") }}</button>
             <button type="button" class="pl-btn primary" data-tc="agree"
                     title="{{ _('Writes these figures to the Motherstock Plan. Until you press this, nothing is saved and the procurement plan still orders the old line.') }}"
             >{{ _("Agree this line") }}</button>
@@ -540,6 +544,7 @@
         <div id="tc-note"></div>
         <div id="tc-gens"></div>
         <div id="tc-weeks" class="pl-scroll"></div>
+        <div id="tc-dvp" class="pl-scroll"></div>
       </div>
       <!-- The TC lifecycle card stood here: build-up cycles, a standing
            "% diverted to propagation", a Prop-MS column and weeks counted
@@ -4366,6 +4371,8 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
     if (rl) rl.style.display = mother ? "none" : "";
     const agree = head.querySelector('[data-tc="agree"]');
     if (agree) agree.style.display = mother ? "" : "none";
+    const agreeMat = head.querySelector('[data-tc="agreemat"]');
+    if (agreeMat) agreeMat.style.display = mother ? "none" : "";
   }
 
   function renderMaterial(t) {
@@ -4472,6 +4479,68 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
         `<td>${w.root_order_week ? fdate(w.root_order_week) : ""}` +
         `${w.root_order_iso ? ` <span class="text-muted">${esc(w.root_order_iso)}</span>` : ""}</td></tr>`)
         .join("") + `</tbody></table>`;
+  }
+
+  // What the ordering is FOR. Material is a means; the question is whether the
+  // stems arrive in the weeks the market wants them.
+  function renderDemandVsProduction(m) {
+    const box = $("tc-dvp");
+    if (!box) return;
+    const rows = m.demand_vs_production || [];
+    if (!rows.length) { box.innerHTML = ""; return; }
+    const dem = rows.reduce((a, r) => a + r.demand, 0);
+    const got = rows.reduce((a, r) => a + r.production, 0);
+    const short = rows.filter((r) => r.short);
+    box.innerHTML =
+      `<div class="text-muted small" style="text-transform:uppercase;` +
+      `letter-spacing:.05em;margin:10px 0 4px">Demand against what this plan ` +
+      `grows</div>` +
+      `<p class="pl-note">Season: ${num(dem)} stems wanted, ${num(got)} grown` +
+      `${dem ? ` — ${Math.round(got / dem * 100)}%` : ""}. ` +
+      (short.length
+        ? `<b style="color:var(--critical)">${short.length} week` +
+          `${short.length === 1 ? "" : "s"} short of demand.</b>`
+        : `No week falls short.`) + `</p>` +
+      `<table class="pl-t"><thead><tr><th>Week</th><th>ISO</th>` +
+      `<th class="n">Demand</th><th class="n">Grown</th>` +
+      `<th class="n">Variance</th><th class="n">Cumulative</th>` +
+      `</tr></thead><tbody>` +
+      rows.map((r) => `<tr${r.short ? ' class="ls-arrive"' : ""}>` +
+        `<td>${fdate(r.week_start)}</td>` +
+        `<td class="text-muted">${esc(r.week_iso)}</td>` +
+        `<td class="n">${num(r.demand)}</td>` +
+        `<td class="n">${num(r.production)}</td>` +
+        `<td class="n"${r.variance < 0 ? ' style="color:var(--critical)"' : ""}>` +
+        `${r.variance > 0 ? "+" : ""}${num(r.variance)}</td>` +
+        `<td class="n">${r.cumulative > 0 ? "+" : ""}${num(r.cumulative)}</td>` +
+        `</tr>`).join("") + `</tbody></table>`;
+  }
+
+  function agreeMaterial() {
+    const m = S.mat, t = S.tc;
+    if (!(m && t && t.plan)) { toast("Nothing to save yet.", true); return; }
+    const tc = parseInt(($("tc-qty") || {}).value, 10) || 0;
+    const roots = parseInt(($("tc-roots") || {}).value, 10) || 0;
+    const a = m.asked || {};
+    const warn = a.short_by
+      ? `\n\nIt does not cover the plan: short by ${num(a.short_by)} plants.` : "";
+    if (!window.confirm(`Save ${num(tc)} TC and ${num(roots)} roots as the plan ` +
+        `for ${esc(m.variety)} at ${esc(m.farm)}?${warn}\n\nThis writes the ` +
+        `figures to the production plan, then builds the procurement plan that ` +
+        `orders them and the propagation plan that receives them.`)) return;
+    callRl("agree_material_plan", {
+      production_plan: t.plan, tc_qty: tc, roots_qty: roots,
+    }).then((r) => {
+      const bad = (r.steps || []).filter((x) => !x.ok);
+      toast(`Saved: ${num(r.tc)} TC and ${num(r.roots)} roots` +
+        (bad.length ? ` — ${bad.length} step(s) did not run` : ", documents built"),
+        bad.length > 0);
+      (r.steps || []).forEach((x) => {
+        if (x.ok && x.result && x.result.name) toast(`${x.step}: ${x.result.name}`);
+        if (!x.ok) toast(`${x.step}: ${x.error}`, true);
+      });
+      return loadTc(null);
+    }).catch((e) => toast(esc(e.message || String(e)), true));
   }
 
   function mergeOrders(m) {
@@ -6599,6 +6668,7 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
           loadTc(null); return;
         }
         if (b.dataset.tc === "agree") agreeTc();
+        if (b.dataset.tc === "agreemat") agreeMaterial();
       });
       $("ag-dlg").addEventListener("click", (e) => {
         const b = e.target.closest("[data-ag]");

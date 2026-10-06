@@ -71,6 +71,7 @@
   "tc_plants_committed",
   "tc_order_date_committed",
   "tc_cycles_committed",
+  "roots_committed",
   "cb_tc_choice",
   "supplied_production_stems",
   "supplied_coverage_pct",
@@ -527,6 +528,14 @@
    "label": "Confirmed Build-up Cycles",
    "read_only": 1,
    "depends_on": "tc_choice_committed"
+  },
+  {
+   "fieldname": "roots_committed",
+   "fieldtype": "Int",
+   "label": "Confirmed Roots",
+   "description": "Roots to buy alongside the tissue culture, for a crop raised both ways. One root becomes several plants, so this is the smaller number and the far earlier order — roots are a year in the making.",
+   "depends_on": "eval:doc.tc_choice_committed",
+   "non_negative": 1
   },
   {
    "fieldname": "cb_tc_choice",
