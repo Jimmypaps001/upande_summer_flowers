@@ -204,12 +204,27 @@ def _lookup():
 	return seen, clash
 
 
+#: How far ahead each bought stage has to be ordered. Unlike the weeks and the
+#: losses -- which are per farm and per crop and have to be typed by somebody who
+#: knows them -- these two are a property of the material itself and the same
+#: wherever it is grown, so they are seeded rather than left at zero.
+#:
+#: Roots are a year: by the time a root reaches a farm it has been grown and
+#: lifted already, whether at a supplier or in our own block. Tissue culture is
+#: fifteen weeks in the lab.
+LEAD_WEEKS = {
+	"Roots": 52,
+	"TC": 15,
+}
+
+
 def stages_for(route):
 	"""The ordered stage rows for a route, ready to append to a protocol."""
 	bought = PURCHASED_AT.get(route)
 	return [
 		{"stage": stage, "weeks": 0, "loss_pct": 0, "yields_per_unit": 1,
-		 "is_purchase": 1 if stage == bought else 0}
+		 "is_purchase": 1 if stage == bought else 0,
+		 "lead_weeks": LEAD_WEEKS.get(stage, 0)}
 		for stage in ROUTES[route]
 	]
 
