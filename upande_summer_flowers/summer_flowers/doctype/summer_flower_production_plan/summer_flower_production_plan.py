@@ -445,6 +445,10 @@ class SummerFlowerProductionPlan(Document):
 		v = getattr(self, "_version", None)
 		sqm_per_bed = bed_sqm(v) if v else 0
 		self.space_required_ha = (self.beds_required_peak * sqm_per_bed) / 10_000
+		# No bed size, no land answer. Reporting hectares from a bed nobody has
+		# measured is worse than reporting none, because a plan that says it fits
+		# gets approved.
+		self._bed_size_unknown = not sqm_per_bed
 
 		blocks = frappe.get_all(
 			"Block", filters={"farm": self.farm, "custom_is_summer_flower_block": 1},
@@ -505,6 +509,18 @@ class SummerFlowerProductionPlan(Document):
 		self.space_unblocked_ha = flt(unblocked.sqm) / 10_000
 
 		notes = []
+		# Said first and on its own, because everything after it is arithmetic on
+		# a bed size nobody has given. A plan that reports hectares it cannot know
+		# gets approved on the strength of them.
+		if getattr(self, "_bed_size_unknown", False):
+			notes.append(_(
+				"The land figures below cannot be trusted: {0} does not say how big "
+				"a bed is, so this plan has no way to turn {1} plants into beds or "
+				"hectares. Set the net area per bed on the protocol -- the farm's "
+				"beds are 50 m2 -- and regenerate. Until then the plan may be far "
+				"larger than the farm, and nothing here will say so."
+			).format(self.protocol, "{:,}".format(cint(self.new_plants_required))))
+
 		if not blocks and self.beds_unblocked:
 			notes.append(_(
 				"{0} has no summer flower blocks, so nothing can be placed there -- but "
@@ -524,7 +540,8 @@ class SummerFlowerProductionPlan(Document):
 				"block and some of them will not get one until the farm has more land."
 			).format(round(self.space_required_ha, 3), self.farm,
 			         round(self.space_stated_ha, 3), cint(self.plantings_not_placed)))
-		elif cint(self.plantings_not_placed):
+		elif cint(self.plantings_not_placed) and not getattr(
+				self, "_bed_size_unknown", False):
 			notes.append(_(
 				"There is enough land in total ({0} ha needed of {1} ha) but {2} "
 				"plantings are still waiting on a block: a block is held for a whole "
@@ -532,6 +549,14 @@ class SummerFlowerProductionPlan(Document):
 				"Moving a planting a week or two either way often finds one."
 			).format(round(self.space_required_ha, 3),
 			         round(self.space_stated_ha, 3), cint(self.plantings_not_placed)))
+		elif cint(self.plantings_not_placed):
+			# Same fact, without the claim about land. Saying the figures cannot
+			# be trusted and then "there is enough land in total" in the next
+			# breath is worse than either line alone.
+			notes.append(_(
+				"{0} plantings are waiting on a block. Whether the farm has room "
+				"for them cannot be said until the bed size is set."
+			).format(cint(self.plantings_not_placed)))
 		# Its own note, not part of the chain above. Land the plan cannot reach is
 		# worth saying, but never at the price of suppressing the reason plantings
 		# failed -- that line is the one a planner acts on.
@@ -1041,15 +1066,33 @@ def autoassign_blocks(plan):
 	        "placeable_coverage_pct": flt(p.placeable_coverage_pct)}
 
 
-def bed_sqm(v):
-	"""How big a bed is, for a version that may not have been told.
+#: Below this, a "minimum planting area" is a field nobody filled in rather than
+#: a statement about the ground. The farm's beds are 50 m2 -- 4,789 of them in
+#: the register say so, and 17 of the 19 protocols that state a bed agree -- so
+#: a one-metre bed is not a small bed, it is an absent one.
+MIN_CREDIBLE_BED_SQM = 5.0
 
-	A farm that has not recorded its bed size has still stated the smallest planting
-	it will make, and that is an area too. Without the fallback every bed-based
-	figure divides by zero's worth of ground: the hectares came out as 0.0 for a
-	crop that plainly needs some.
+
+def bed_sqm(v):
+	"""How big a bed is, or zero when nobody has said.
+
+	The fallback to the minimum planting area was reasonable and was wrong. A
+	farm that has not recorded its bed size has usually not recorded its minimum
+	planting either, and that field defaults to 1.0 -- so the fallback did not
+	rescue the arithmetic, it furnished a one-square-metre bed and let every
+	figure downstream read as if the ground were known. SFPP-2026-00064 asked for
+	1,688,336 plants and reported six beds on 0.0006 hectares, with a verdict
+	saying there was enough land. At the protocol's own 16 plants a square metre
+	it needs 2,111 beds and 15.8 hectares, on a farm that states 0.4.
+
+	Zero means it genuinely cannot be worked out, and the caller must say so
+	rather than put a number on it.
 	"""
-	return flt(getattr(v, "sqm_net_per_bed", 0)) or flt(getattr(v, "min_planting_area_sqm", 0))
+	stated = flt(getattr(v, "sqm_net_per_bed", 0))
+	if stated > 0:
+		return stated
+	fallback = flt(getattr(v, "min_planting_area_sqm", 0))
+	return fallback if fallback >= MIN_CREDIBLE_BED_SQM else 0.0
 
 
 def plants_per_bed_for(v):
