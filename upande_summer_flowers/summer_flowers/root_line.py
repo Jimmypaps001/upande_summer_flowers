@@ -393,6 +393,31 @@ def _lead_for(rows, stage):
 
 
 @frappe.whitelist()
+def how_it_is_raised(production_plan):
+	"""Whether this crop has a motherstock, for the form to offer the right thing.
+
+	Cheap on purpose: the form asks it on every refresh, and all it needs is
+	which of two worlds the variety lives in.
+	"""
+	if frappe.session.user == "Guest":
+		frappe.throw(_("Please sign in."), frappe.PermissionError)
+	from upande_summer_flowers.summer_flowers import sourcing
+
+	protocol = frappe.db.get_value("Summer Flower Production Plan",
+	                               production_plan, "protocol")
+	if not protocol:
+		return {"motherstock": False, "reason": None}
+	v = frappe.get_cached_doc("Crop Protocol Version", protocol)
+	decided = sourcing.route_plan(v) or {}
+	stage = decided.get("entry_stage")
+	return {
+		"motherstock": bool(stage and sourcing.standing_stage(v, stage)),
+		"entry_stage": stage,
+		"reason": decided.get("reason"),
+	}
+
+
+@frappe.whitelist()
 def ways_for(production_plan, returns_per_plant=None, split=None):
 	"""What the dashboard draws for a crop that has no motherstock."""
 	if frappe.session.user == "Guest":

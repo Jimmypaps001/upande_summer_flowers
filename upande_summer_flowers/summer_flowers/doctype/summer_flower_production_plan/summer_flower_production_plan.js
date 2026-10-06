@@ -621,6 +621,16 @@ const plan_motherstock = (frm) => window.open(motherstock_url(frm), "_blank");
 // error, nothing in the console to say the lookup had even run.
 const decided_buttons = (frm, group) => {
 	Promise.all([
+		// Not every crop HAS a motherstock, and offering to plan one for a crop
+		// that does not is worse than offering nothing: Eryngium is bought as
+		// plantlets or as roots and never stands as a cut-from pool, yet the
+		// form invited somebody to plan one because this only ever asked whether
+		// a Motherstock Plan record existed.
+		frappe.call({
+			method: "upande_summer_flowers.summer_flowers.root_line"
+				+ ".how_it_is_raised",
+			args: { production_plan: frm.doc.name },
+		}),
 		frappe.db.get_value("Summer Flower Motherstock Plan",
 			{ production_plan: frm.doc.name },
 			["name", "tc_to_order", "multiplications", "order_by_date"]),
@@ -630,7 +640,8 @@ const decided_buttons = (frm, group) => {
 			{ production_plan: frm.doc.name, docstatus: ["<", 2] },
 			["name", "total_units_to_order", "first_order_by"]),
 	])
-		.then(([r, pr]) => {
+		.then(([how, r, pr]) => {
+			const raised = (how && how.message) || {};
 			const proc = pr && pr.message && pr.message.name ? pr.message : null;
 			if (proc) {
 				frm.add_custom_button(__("View Procurement"), () =>
@@ -638,7 +649,15 @@ const decided_buttons = (frm, group) => {
 						proc.name), group);
 			}
 			const ms = r && r.message && r.message.name ? r.message : null;
-			if (!ms) {
+			if (!raised.motherstock) {
+				// A crop raised from bought material still has a decision to
+				// make -- how much as plantlets, how much as roots, and when
+				// each has to be ordered to land in the same week -- and the
+				// dashboard is where that is made.
+				frm.add_custom_button(__("Plan Material"),
+					() => plan_motherstock(frm), group);
+				if (!ms) return;
+			} else if (!ms) {
 				frm.add_custom_button(__("Plan Motherstock"),
 					() => plan_motherstock(frm), group);
 				return;
