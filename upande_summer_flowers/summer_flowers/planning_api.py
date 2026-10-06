@@ -509,7 +509,7 @@ def tc_derivation(plan=None, variety=None, farm=None):
 			        "the requirement / %.2f" % (1 - flt(v.tc_order_loss_pct) / 100),
 		})
 	steps.append({
-		"step": "TC plantlets to order", "value": tc["tc_plants"], "unit": "plantlets",
+		"step": "TC to order", "value": tc["tc_plants"], "unit": "TC",
 		"note": ("order by %s, on farm %s, first cut %s"
 		         % (tc["tc_order_date"] or "?", tc["tc_on_farm_date"] or "?",
 		            tc["first_sticking_date"] or "?")) if tc["tc_plants"]

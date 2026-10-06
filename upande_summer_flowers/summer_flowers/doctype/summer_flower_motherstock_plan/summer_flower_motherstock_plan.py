@@ -60,6 +60,23 @@ class SummerFlowerMotherstockPlan(Document):
 		self.pull_from_plan()
 		plan = frappe.get_doc("Summer Flower Production Plan", self.production_plan)
 
+		# Not every crop has a motherstock, and peak_sizing will happily size one
+		# for a crop that has not got one -- it only divides a peak week. The old
+		# divert-model rebuild asked this first and the rewrite onto the peak
+		# model dropped it, so a propagation plan for Eryngium quietly minted a
+		# motherstock line of 1,280,720 plantlets for a crop that is bought as
+		# tissue culture or as roots and never stands as a cut-from pool.
+		from upande_summer_flowers.summer_flowers import sourcing
+
+		v = frappe.get_cached_doc("Crop Protocol Version", self.protocol)
+		decided = sourcing.route_plan(v) or {}
+		entry = decided.get("entry_stage")
+		if not entry or not sourcing.standing_stage(v, entry):
+			frappe.throw(decided.get("reason") or _(
+				"{0} is not raised through a motherstock, so there is no line to "
+				"plan. It is bought and propagated, and the material plan on the "
+				"dashboard is where that is decided.").format(self.variety))
+
 		sizing = ps.peak_sizing(
 			plan, cycles=(self.multiplications
 			              if self.multiplications not in (None, "") else None))

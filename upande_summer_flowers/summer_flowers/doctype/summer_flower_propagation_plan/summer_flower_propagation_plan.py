@@ -53,7 +53,7 @@ class SummerFlowerPropagationPlan(Document):
 		("total_cuttings_required", "Cuttings required"),
 		("peak_weekly_cuttings", "Peak weekly cuttings"),
 		("mother_plants_required", "Mother plants"),
-		("tc_plants_required", "TC plantlets to order"),
+		("tc_plants_required", "TC to order"),
 		("cuttings_uncovered", "Cuttings not covered"),
 		("weeks_sticking", "Sticking weeks"),
 		("tc_order_date", "Order TC by"),
@@ -328,8 +328,11 @@ class SummerFlowerPropagationPlan(Document):
 
 		ms = self._ms_line = self.motherstock_line()
 		if not ms:
-			# No line and something still short: say so rather than silently
-			# leaving the weeks uncovered with no reason given.
+			# Nothing standing to cut from, which for a bought crop is the normal
+			# case rather than a failure. Everything motherstock-shaped goes to
+			# zero and the material bought takes its place: these plants arrive
+			# as tissue culture or as roots, and the propagation unit hardens
+			# them rather than raising them from a pool.
 			self.mother_plants_required = 0
 			self.peak_bench_sqm = 0
 			self.full_capacity_date = None
@@ -338,6 +341,7 @@ class SummerFlowerPropagationPlan(Document):
 			self.mother_plants_to_cover_ramp = 0
 			self.new_pool_expiry = None
 			self.new_pool_cutting_weeks = 0
+			self.apply_bought_material()
 			return
 
 		v = self._version
@@ -411,6 +415,59 @@ class SummerFlowerPropagationPlan(Document):
 					g.stuck_date or g.first_cut_date, cint(g.cutting_weeks),
 					g.expiry_date, ms.name),
 			})
+
+	def apply_bought_material(self):
+		"""Source a crop that has no motherstock from what is bought for it.
+
+		Leaving the sources empty said the propagation unit had nothing to work
+		with, when in fact it has everything -- it is simply handed material
+		rather than cutting it. One row per way in, so the unit can see what is
+		arriving, how much, and from when.
+		"""
+		from upande_summer_flowers.summer_flowers import root_line as rl
+
+		if not self.production_plan:
+			return
+		try:
+			plan = frappe.get_doc("Summer Flower Production Plan",
+			                      self.production_plan)
+			m = rl.arrival_plan(plan)
+		except Exception:
+			frappe.clear_last_message()
+			return
+		if not m:
+			return
+
+		self.set("sources", [])
+		sg = m.get("suggested") or {}
+		if cint(sg.get("tc")):
+			first = (m.get("tc_order_schedule") or [{}])[0].get("week")
+			self.append("sources", {
+				"source_type": "New Motherstock (TC)",
+				"mother_plants": 0,
+				"total_cuttings": cint(sg["tc"]),
+				"available_from": first,
+				"notes": _("Tissue culture, {0} weeks of lead and {1} in "
+				           "propagation before it is plantable.").format(
+					cint(m.get("tc_lead_weeks")), cint(m.get("tc_weeks_to_ground"))),
+			})
+		if cint(sg.get("roots")):
+			first = (m.get("root_order_schedule") or [{}])[0].get("week")
+			self.append("sources", {
+				"source_type": "Bought-in Rooted Cuttings",
+				"mother_plants": 0,
+				"total_cuttings": cint(sg["roots"]),
+				"available_from": first,
+				"notes": _("Roots, {0} weeks of lead and {1} in propagation. One "
+				           "root becomes {2} plants, so this is the smaller "
+				           "number and the earlier order.").format(
+					cint(m.get("root_lead_weeks")),
+					cint(m.get("root_weeks_to_ground")),
+					flt(m.get("returns_per_plant"))),
+			})
+		self.tc_plants_required = cint(sg.get("tc"))
+		if m.get("tc_order_schedule"):
+			self.tc_order_date = m["tc_order_schedule"][0]["week"]
 
 	def motherstock_line(self):
 		"""The Motherstock Plan behind this season, built if it is not there yet."""
@@ -487,10 +544,15 @@ class SummerFlowerPropagationPlan(Document):
 				if c.tc_order_date_committed:
 					self.tc_order_date = c.tc_order_date_committed
 		else:
-			self.tc_plants_required = 0
-			self.tc_cost = 0
-			self.total_cost = 0
-			self.tc_order_date = None
+			# No motherstock line is not no order. A bought crop still has tissue
+			# culture to buy and a date to buy it by -- apply_bought_material has
+			# already worked both out -- and zeroing them here threw that away
+			# and left the plan reading as though nothing had to be ordered.
+			if not cint(self.tc_plants_required):
+				self.tc_order_date = None
+			self.tc_cost = flt(lookup_tc_rate(cint(self.tc_plants_required))) * \
+				cint(self.tc_plants_required)
+			self.total_cost = flt(self.tc_cost)
 			self.tc_on_farm_date = None
 			self.first_sticking_date = None
 		self.check_schedule()

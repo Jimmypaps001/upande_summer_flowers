@@ -4359,7 +4359,7 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
     const labels = head.querySelectorAll("label.pl-inline");
     if (labels.length >= 2) {
       // Quantities, not a percentage: a percentage is not what anybody buys.
-      labels[0].childNodes[0].nodeValue = mother ? "Plantlets" : "Plantlets (TC)";
+      labels[0].childNodes[0].nodeValue = mother ? "Plantlets" : "TC";
       labels[1].style.display = mother ? "" : "none";
     }
     const rl = $("tc-roots-l");
@@ -4385,10 +4385,20 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
       note.innerHTML = `<div class="pl-callout">${esc(m.error)}</div>`;
       gens.innerHTML = ""; wk.innerHTML = ""; return;
     }
+    // An empty box asks somebody to invent a number. The demand and the
+    // protocol's own split already imply one, so the boxes open on it.
+    const sg = m.suggested || {};
+    const qb = $("tc-qty"), rb = $("tc-roots");
+    if (qb && document.activeElement !== qb && qb.value === "" && sg.tc != null) {
+      qb.value = sg.tc;
+    }
+    if (rb && document.activeElement !== rb && rb.value === "" && sg.roots != null) {
+      rb.value = sg.roots;
+    }
     const tcPct = m.tc_share_pct, rootPct = Math.round((100 - tcPct) * 10) / 10;
     box.innerHTML = [
       { k: "Plants needed", v: num(m.plants_total), m: "for the whole season" },
-      { k: "As plantlets", v: `${tcPct}%`,
+      { k: "As TC", v: `${tcPct}%`,
         m: `${num(m.tc_total)} TC · ${m.tc_lead_weeks} wk lead + ` +
            `${m.tc_weeks_to_ground} wk to ground` },
       { k: "As roots", v: `${rootPct}%`,
@@ -4405,10 +4415,14 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
       `${esc(String(x.v))}</div><div class="m">${esc(x.m || "")}</div></div>`).join("");
 
     const notes = [`<b>${esc(t.reason || "This crop has no motherstock.")}</b>`];
+    if (sg.tc != null && !m.asked) {
+      notes.unshift(`<b>Suggested: ${num(sg.tc)} TC and ${num(sg.roots)} roots</b>` +
+        ` — from ${esc(sg.from || "the plan")}. Change either box to try another.`);
+    }
     const a = m.asked;
     if (a) {
       notes.unshift(`<b>Two orders, placed at different times.</b> ` +
-        `${num(a.tc_qty)} plantlets become ${num(a.plants_from_tc)} plants; ` +
+        `${num(a.tc_qty)} TC become ${num(a.plants_from_tc)} plants; ` +
         `${num(a.roots_qty)} roots become ${num(a.plants_from_roots)}. ` +
         `That is ${num(a.plants_covered)} against ${num(m.plants_total)} wanted` +
         (a.short_by ? ` — <b style="color:var(--critical)">short by ` +
@@ -4430,9 +4444,10 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
     gens.innerHTML =
       `<div class="text-muted small" style="text-transform:uppercase;` +
       `letter-spacing:.05em;margin:4px 0">When each way has to be ordered</div>` +
-      `<table class="pl-t"><thead><tr><th>Order week</th>` +
-      `<th class="n">Plantlets</th><th class="n">Roots</th></tr></thead><tbody>` +
+      `<table class="pl-t"><thead><tr><th>Order week</th><th>ISO</th>` +
+      `<th class="n">TC</th><th class="n">Roots</th></tr></thead><tbody>` +
       mergeOrders(m).map((r) => `<tr><td>${fdate(r.week)}</td>` +
+        `<td class="text-muted">${esc(r.week_iso || "")}</td>` +
         `<td class="n">${r.tc ? num(r.tc) : ""}</td>` +
         `<td class="n">${r.roots ? num(r.roots) : ""}</td></tr>`).join("") +
       `</tbody></table>`;
@@ -4441,17 +4456,21 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
       `<div class="text-muted small" style="text-transform:uppercase;` +
       `letter-spacing:.05em;margin:10px 0 4px">What propagation hands over, ` +
       `and what each week was ordered from</div>` +
-      `<table class="pl-t"><thead><tr><th>Lands</th><th class="n">Plants</th>` +
+      `<table class="pl-t"><thead><tr><th>Lands</th><th>ISO</th>` +
+      `<th class="n">Plants</th>` +
       `<th class="n">From TC</th><th>TC ordered</th>` +
       `<th class="n">From roots</th><th class="n">Roots</th>` +
       `<th>Roots ordered</th></tr></thead><tbody>` +
       (m.weeks || []).map((w) => `<tr><td>${fdate(w.week)}</td>` +
+        `<td class="text-muted">${esc(w.week_iso || "")}</td>` +
         `<td class="n">${num(w.plants)}</td>` +
         `<td class="n">${w.by_tc ? num(w.by_tc) : ""}</td>` +
-        `<td>${w.tc_order_week ? fdate(w.tc_order_week) : ""}</td>` +
+        `<td>${w.tc_order_week ? fdate(w.tc_order_week) : ""}` +
+        `${w.tc_order_iso ? ` <span class="text-muted">${esc(w.tc_order_iso)}</span>` : ""}</td>` +
         `<td class="n">${w.by_roots ? num(w.by_roots) : ""}</td>` +
         `<td class="n">${w.roots_needed ? num(w.roots_needed) : ""}</td>` +
-        `<td>${w.root_order_week ? fdate(w.root_order_week) : ""}</td></tr>`)
+        `<td>${w.root_order_week ? fdate(w.root_order_week) : ""}` +
+        `${w.root_order_iso ? ` <span class="text-muted">${esc(w.root_order_iso)}</span>` : ""}</td></tr>`)
         .join("") + `</tbody></table>`;
   }
 

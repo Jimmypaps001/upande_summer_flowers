@@ -339,6 +339,9 @@ def arrival_plan(plan, tc_share=None, returns_per_plant=None,
 		w["tc_order_week"] = str(add_days(land, -7 * (tc_lead + tc_weeks)))
 		w["root_order_week"] = (str(add_days(land, -7 * (root_lead + root_weeks)))
 		                        if roots else None)
+		w["week_iso"] = iso(land)
+		w["tc_order_iso"] = iso(w["tc_order_week"])
+		w["root_order_iso"] = iso(w["root_order_week"])
 		if by_tc:
 			tc_orders[w["tc_order_week"]] = tc_orders.get(w["tc_order_week"], 0) + by_tc
 		if roots:
@@ -383,17 +386,27 @@ def arrival_plan(plan, tc_share=None, returns_per_plant=None,
 		"tc_total": sum(weeks[k]["by_tc"] for k in ordered),
 		"roots_total": sum(cint(weeks[k]["roots_needed"]) for k in ordered),
 		"weeks": [dict(week=str(k), **weeks[k]) for k in ordered],
-		"tc_order_schedule": [{"week": k, "plantlets": v}
+		# "tc" not "plantlets": the farm buys tissue culture, and calling it
+		# something else on a purchase line is how a figure gets queried.
+		"tc_order_schedule": [{"week": k, "week_iso": iso(k), "tc": v}
 		                      for k, v in sorted(tc_orders.items())],
-		"root_order_schedule": [{"week": k, "roots": v}
+		"root_order_schedule": [{"week": k, "week_iso": iso(k), "roots": v}
 		                        for k, v in sorted(root_orders.items())],
 		# What the propagation unit is being asked to hand over, and when. This
 		# is the thing the unit actually works to: not an order, a delivery.
 		"propagation_request": [
-			{"week": str(k), "plants": weeks[k]["plants"],
+			{"week": str(k), "week_iso": iso(k), "plants": weeks[k]["plants"],
 			 "from_tc": weeks[k]["by_tc"], "from_roots": weeks[k]["by_roots"]}
 			for k in ordered if weeks[k]["plants"]
 		],
+		# What the boxes should open on. An empty box asks somebody to invent a
+		# number; the demand and the protocol's own split already imply one.
+		"suggested": {
+			"tc": sum(weeks[k]["by_tc"] for k in ordered),
+			"roots": sum(cint(weeks[k]["roots_needed"]) for k in ordered),
+			"from": _("the protocol's own split, {0}% tissue culture"
+			          ).format(round(share * 100, 1)),
+		},
 		"roots_in_store": root_stock(plan),
 	}
 
@@ -418,6 +431,15 @@ def _newer_version_with_lift(v):
 def _monday(d):
 	d = getdate(d)
 	return add_days(d, -d.weekday())
+
+
+def iso(d):
+	"""2027-W06. The farm plans in weeks and reads dates back into them, so the
+	label is carried beside every date rather than worked out by eye."""
+	if not d:
+		return None
+	y, w, _dow = getdate(d).isocalendar()
+	return "%d-W%02d" % (y, w)
 
 
 def _lift_return(rows):
