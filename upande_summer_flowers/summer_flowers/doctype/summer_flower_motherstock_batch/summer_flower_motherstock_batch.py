@@ -53,14 +53,11 @@ class SummerFlowerMotherstockBatch(Document):
 	def size_tc_order(self):
 		p = self.protocol_doc
 		cycles = self.build_up_cycles or 0
-		if cycles > (p.max_multiplication_cycles or 0):
-			frappe.msgprint(
-				_("Protocol {0} caps build-up at {1} cycles; you have set {2}.").format(
-					p.name, p.max_multiplication_cycles, cycles
-				),
-				indicator="orange",
-				title=_("Above protocol cap"),
-			)
+		# No warning when this runs past max_multiplication_cycles. That figure is
+		# zero on almost every protocol because nobody has ever filled it in, so
+		# the warning fired on ordinary use and said nothing anybody could act on
+		# -- least of all on a crop with no motherstock, where the honest answer
+		# is not "you exceeded the cap" but "this crop has no build-up at all".
 
 		self.multiplication_factor = p.multiplication_factor(cycles)
 		self.lead_time_weeks = p.lead_time_for_cycles(cycles)

@@ -520,12 +520,14 @@
       <div class="pl-card">
         <div class="pl-card-head">
           <div><h2>{{ _("The motherstock line") }}</h2>
-               <p class="pl-note">{{ _("Sized by the busiest sticking week: that week's cuttings divided by the generations standing, rounded up to a whole planting area. Cuttings cannot be banked, so the weeks either side lend the peak nothing. Each multiplication divides what you buy and costs one establishment off the weeks the line has left to cut — four at the most. The field is served first from the very first cut, ramp and all; only the surplus goes back as mothers. Type a plantlet figure and it works out how many multiplications that order needs — more than four if a small order calls for it — and which weeks the cuttings are held back. Type a multiplication count instead and it works out the order. Either way the dates follow. Changing either box costs nothing and saves nothing. Agree this line is the only thing that writes, and what it writes is what procurement orders.") }}</p></div>
+               <p class="pl-note">{{ _("Sized by the busiest sticking week, because cuttings cannot be banked. Type plantlets and it works out the multiplications; type multiplications and it works out the order. Only Agree this line writes anything.") }}</p></div>
           <span class="pl-actions">
             <label class="pl-inline">{{ _("Plantlets") }}
               <input type="number" id="tc-qty" min="0" step="50"></label>
             <label class="pl-inline">{{ _("Multiply") }}
               <input type="number" id="tc-divert" min="0" max="4" step="1"></label>
+            <label class="pl-inline" id="tc-roots-l" style="display:none">{{ _("Roots") }}
+              <input type="number" id="tc-roots" min="0" step="100"></label>
             <button type="button" class="pl-btn primary" data-tc="agree"
                     title="{{ _('Writes these figures to the Motherstock Plan. Until you press this, nothing is saved and the procurement plan still orders the old line.') }}"
             >{{ _("Agree this line") }}</button>
@@ -4257,12 +4259,12 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
         if (r && r.propagates === false) {
           // Ask the other engine instead. The share box is the lever here, the
           // way the plantlet and multiplication boxes are for a motherstock.
-          const sh = $("tc-qty");
-          const pct = (sh && sh.value !== "") ? parseFloat(sh.value) : null;
+          const q = $("tc-qty"), rt = $("tc-roots");
           S.mat = null; renderTc();
           return callRl("arrivals_for", {
             production_plan: r.plan,
-            tc_share: pct === null ? null : Math.max(0, Math.min(100, pct)) / 100,
+            tc_qty: (q && q.value !== "") ? q.value : null,
+            roots_qty: (rt && rt.value !== "") ? rt.value : null,
           }).then((m) => { S.mat = m; renderTc(); })
             .catch((e) => { S.mat = { error: e.message }; renderTc(); });
         }
@@ -4356,9 +4358,12 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
     }
     const labels = head.querySelectorAll("label.pl-inline");
     if (labels.length >= 2) {
-      labels[0].childNodes[0].nodeValue = mother ? "Plantlets" : "TC share %";
+      // Quantities, not a percentage: a percentage is not what anybody buys.
+      labels[0].childNodes[0].nodeValue = mother ? "Plantlets" : "Plantlets (TC)";
       labels[1].style.display = mother ? "" : "none";
     }
+    const rl = $("tc-roots-l");
+    if (rl) rl.style.display = mother ? "none" : "";
     const agree = head.querySelector('[data-tc="agree"]');
     if (agree) agree.style.display = mother ? "" : "none";
   }
@@ -4400,6 +4405,16 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
       `${esc(String(x.v))}</div><div class="m">${esc(x.m || "")}</div></div>`).join("");
 
     const notes = [`<b>${esc(t.reason || "This crop has no motherstock.")}</b>`];
+    const a = m.asked;
+    if (a) {
+      notes.unshift(`<b>Two orders, placed at different times.</b> ` +
+        `${num(a.tc_qty)} plantlets become ${num(a.plants_from_tc)} plants; ` +
+        `${num(a.roots_qty)} roots become ${num(a.plants_from_roots)}. ` +
+        `That is ${num(a.plants_covered)} against ${num(m.plants_total)} wanted` +
+        (a.short_by ? ` — <b style="color:var(--critical)">short by ` +
+          `${num(a.short_by)}</b>.`
+         : a.over_by ? ` — ${num(a.over_by)} over.` : `, exactly covered.`));
+    }
     if (m.blocked) {
       notes.unshift(`<b style="color:var(--critical)">${esc(m.blocked)}</b>`);
     }
@@ -6573,7 +6588,13 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
       // asks what to buy. Sending both would have pinned the stale half and the
       // card would have reported an order nobody had worked out.
       $("tc-qty").addEventListener("change", () => {
-        $("tc-divert").value = "";
+        // Only a motherstock crop re-solves the other box. Where the two boxes
+        // are two orders -- plantlets AND roots -- clearing one would throw
+        // away half of what was just asked for.
+        if (!(S.tc && S.tc.propagates === false)) $("tc-divert").value = "";
+        loadTc($("tc-qty").value || null);
+      });
+      $("tc-roots").addEventListener("change", () => {
         loadTc($("tc-qty").value || null);
       });
       $("tc-divert").addEventListener("change", () => {

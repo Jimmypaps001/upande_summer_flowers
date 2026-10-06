@@ -271,7 +271,8 @@ def _plants_per_unit_from(rows, stage):
 	return out
 
 
-def arrival_plan(plan, tc_share=None, returns_per_plant=None):
+def arrival_plan(plan, tc_share=None, returns_per_plant=None,
+                 tc_qty=None, roots_qty=None):
 	"""Both ways in, landing plants in the week the field wants them.
 
 	The two ways are not alternatives running side by side at the same speed.
@@ -292,7 +293,29 @@ def arrival_plan(plan, tc_share=None, returns_per_plant=None):
 	rows = cp.route_rows(v) or []
 	per_root = flt(returns_per_plant if returns_per_plant not in (None, "")
 	               else _lift_return(rows) or 0)
-	share = flt(tc_share if tc_share not in (None, "") else _tc_share(rows))
+
+	wanted = sum(cint(b.plants) for b in plan.plan_blocks
+	             if cint(b.is_new_planting))
+	# Quantities beat a percentage, because a percentage is not what anybody
+	# buys. Ordering 300,000 plantlets and 40,000 roots is two orders placed at
+	# two different times, and the share between them is a CONSEQUENCE of those
+	# two figures rather than the thing that has to be chosen first.
+	asked = {}
+	if cint(tc_qty) or cint(roots_qty):
+		from_tc = cint(tc_qty)
+		from_roots = int(cint(roots_qty) * per_root) if per_root > 0 else 0
+		covered = from_tc + from_roots
+		share = (float(from_tc) / wanted) if wanted else 1.0
+		share = max(0.0, min(1.0, share))
+		asked = {
+			"tc_qty": from_tc, "roots_qty": cint(roots_qty),
+			"plants_from_tc": from_tc, "plants_from_roots": from_roots,
+			"plants_covered": covered,
+			"short_by": max(0, wanted - covered),
+			"over_by": max(0, covered - wanted),
+		}
+	else:
+		share = flt(tc_share if tc_share not in (None, "") else _tc_share(rows))
 
 	tc_weeks = _weeks_for(rows, "TC")
 	root_weeks = _weeks_for(rows, LIFT_STAGE)
@@ -335,6 +358,7 @@ def arrival_plan(plan, tc_share=None, returns_per_plant=None):
 		            ).format(round((1 - share) * 100, 1))
 	return {
 		"blocked": blocked,
+		"asked": asked or None,
 		"variety": plan.variety, "farm": plan.farm,
 		"tc_share_pct": round(share * 100, 1),
 		"returns_per_plant": per_root,
@@ -438,13 +462,15 @@ def ways_for(production_plan, returns_per_plant=None, split=None):
 
 
 @frappe.whitelist()
-def arrivals_for(production_plan, tc_share=None, returns_per_plant=None):
+def arrivals_for(production_plan, tc_share=None, returns_per_plant=None,
+                 tc_qty=None, roots_qty=None):
 	"""Both ways landing in the same week, for the dashboard."""
 	if frappe.session.user == "Guest":
 		frappe.throw(_("Please sign in."), frappe.PermissionError)
 	plan = frappe.get_doc("Summer Flower Production Plan", production_plan)
 	return arrival_plan(plan, tc_share=tc_share,
-	                    returns_per_plant=returns_per_plant)
+	                    returns_per_plant=returns_per_plant,
+	                    tc_qty=tc_qty, roots_qty=roots_qty)
 
 
 @frappe.whitelist()
