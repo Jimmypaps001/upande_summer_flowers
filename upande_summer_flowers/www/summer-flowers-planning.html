@@ -1229,6 +1229,18 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
   // Where the material comes from and when it has to be ordered. Its own module
   // because it answers a different question from the plan: not what to grow, but
   // what to buy to be able to grow it.
+  const RL = "upande_summer_flowers.summer_flowers.root_line.";
+  const callRl = (m, a) => new Promise((res, rej) => {
+    let done = false; const fin = (f, v) => { if (!done) { done = true; f(v); } };
+    setTimeout(() => fin(rej, new Error("Timed out: " + m)), 45000);
+    try {
+      frappe.call({ method: RL + m, args: a || {},
+        callback: (r) => fin(res, r && r.message),
+        error: (r) => fin(rej, new Error(m + ": " + ((r && r.responseJSON &&
+          (r.responseJSON.exc_type || r.responseJSON.message)) || "failed"))) });
+    } catch (e) { fin(rej, e); }
+  });
+
   const SRC = "upande_summer_flowers.summer_flowers.sourcing.";
   const callSrc = (m, a) => new Promise((res, rej) => {
     let done = false; const fin = (f, v) => { if (!done) { done = true; f(v); } };
@@ -4240,7 +4252,23 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
       tc: qty || null,
       multiplications: (c && c.value !== "") ? c.value : null,
     })
-      .then((r) => { S.tc = r; renderTc(); })
+      .then((r) => {
+        S.tc = r;
+        if (r && r.propagates === false) {
+          // Ask the other engine instead. The share box is the lever here, the
+          // way the plantlet and multiplication boxes are for a motherstock.
+          const sh = $("tc-qty");
+          const pct = (sh && sh.value !== "") ? parseFloat(sh.value) : null;
+          S.mat = null; renderTc();
+          return callRl("arrivals_for", {
+            production_plan: r.plan,
+            tc_share: pct === null ? null : Math.max(0, Math.min(100, pct)) / 100,
+          }).then((m) => { S.mat = m; renderTc(); })
+            .catch((e) => { S.mat = { error: e.message }; renderTc(); });
+        }
+        S.mat = null;
+        renderTc();
+      })
       .catch((e) => { S.tc = { error: e.message }; renderTc(); });
   }
 
@@ -4307,6 +4335,120 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
 
   const cintish = (x) => parseInt(x, 10) || 0;
 
+  // ── Crops with no motherstock: the share between the ways in, and the dates
+  //    that follow from it. The two ways are nothing like the same length, so
+  //    the whole point of the card is that they must still LAND together.
+  // One card, two crops. Leaving the motherstock wording up for a crop that has
+  // none is how somebody comes to believe the page is broken rather than that
+  // their crop is simply raised another way.
+  function labelCard(t) {
+    const mother = t.propagates !== false;
+    const head = document.querySelector('[data-pane="motherstock"] .pl-card-head');
+    if (!head) return;
+    const h2 = head.querySelector("h2"), note = head.querySelector(".pl-note");
+    const qty = head.querySelector('label[for], .pl-inline');
+    if (h2) h2.textContent = mother ? "The motherstock line" : "The material plan";
+    if (note && !mother) {
+      note.textContent = "This crop has no motherstock. It is bought as "
+        + "plantlets, as roots, or as both — and the two are nothing like the "
+        + "same length, so the share you choose decides when each has to be "
+        + "ordered for them to land in the same week. Roots are a year ahead.";
+    }
+    const labels = head.querySelectorAll("label.pl-inline");
+    if (labels.length >= 2) {
+      labels[0].childNodes[0].nodeValue = mother ? "Plantlets" : "TC share %";
+      labels[1].style.display = mother ? "" : "none";
+    }
+    const agree = head.querySelector('[data-tc="agree"]');
+    if (agree) agree.style.display = mother ? "" : "none";
+  }
+
+  function renderMaterial(t) {
+    const m = S.mat;
+    const box = $("tc-tiles"), note = $("tc-note");
+    const gens = $("tc-gens"), wk = $("tc-weeks");
+    if (!m) {
+      box.innerHTML = "";
+      note.innerHTML = `<div class="pl-callout">${esc(
+        t.reason || "This variety is not raised through a motherstock.")}</div>` +
+        `<div class="pl-callout">Working out the material plan…</div>`;
+      gens.innerHTML = ""; wk.innerHTML = "";
+      return;
+    }
+    if (m.error) {
+      box.innerHTML = "";
+      note.innerHTML = `<div class="pl-callout">${esc(m.error)}</div>`;
+      gens.innerHTML = ""; wk.innerHTML = ""; return;
+    }
+    const tcPct = m.tc_share_pct, rootPct = Math.round((100 - tcPct) * 10) / 10;
+    box.innerHTML = [
+      { k: "Plants needed", v: num(m.plants_total), m: "for the whole season" },
+      { k: "As plantlets", v: `${tcPct}%`,
+        m: `${num(m.tc_total)} TC · ${m.tc_lead_weeks} wk lead + ` +
+           `${m.tc_weeks_to_ground} wk to ground` },
+      { k: "As roots", v: `${rootPct}%`,
+        m: m.returns_per_plant > 0
+          ? `${num(m.roots_total)} roots × ${m.returns_per_plant} · ` +
+            `${m.root_lead_weeks} wk lead + ${m.root_weeks_to_ground} wk to ground`
+          : "the protocol does not say what a root becomes",
+        c: m.returns_per_plant > 0 ? "" : "--critical" },
+      { k: "Roots go in first by", v: `${m.root_head_start_weeks} wk`,
+        m: "ahead of the plantlets, for the same landing week",
+        c: m.root_head_start_weeks > 0 ? "--series-2" : "--critical" },
+    ].map((x) => `<div class="pl-tile"><div class="k">${esc(x.k)}</div>` +
+      `<div class="v"${x.c ? ` style="color:var(${x.c})"` : ""}>` +
+      `${esc(String(x.v))}</div><div class="m">${esc(x.m || "")}</div></div>`).join("");
+
+    const notes = [`<b>${esc(t.reason || "This crop has no motherstock.")}</b>`];
+    if (m.blocked) {
+      notes.unshift(`<b style="color:var(--critical)">${esc(m.blocked)}</b>`);
+    }
+    if ((m.roots_in_store || {}).qty) {
+      notes.push(`${num(m.roots_in_store.qty)} roots of ` +
+        `${esc(m.roots_in_store.item)} are already in store and have been ` +
+        `netted off before anything was ordered.`);
+    } else if ((m.roots_in_store || {}).note) {
+      notes.push(esc(m.roots_in_store.note));
+    }
+    note.innerHTML = notes.map((n) => `<div class="pl-callout">${n}</div>`).join("");
+
+    gens.innerHTML =
+      `<div class="text-muted small" style="text-transform:uppercase;` +
+      `letter-spacing:.05em;margin:4px 0">When each way has to be ordered</div>` +
+      `<table class="pl-t"><thead><tr><th>Order week</th>` +
+      `<th class="n">Plantlets</th><th class="n">Roots</th></tr></thead><tbody>` +
+      mergeOrders(m).map((r) => `<tr><td>${fdate(r.week)}</td>` +
+        `<td class="n">${r.tc ? num(r.tc) : ""}</td>` +
+        `<td class="n">${r.roots ? num(r.roots) : ""}</td></tr>`).join("") +
+      `</tbody></table>`;
+
+    wk.innerHTML =
+      `<div class="text-muted small" style="text-transform:uppercase;` +
+      `letter-spacing:.05em;margin:10px 0 4px">What propagation hands over, ` +
+      `and what each week was ordered from</div>` +
+      `<table class="pl-t"><thead><tr><th>Lands</th><th class="n">Plants</th>` +
+      `<th class="n">From TC</th><th>TC ordered</th>` +
+      `<th class="n">From roots</th><th class="n">Roots</th>` +
+      `<th>Roots ordered</th></tr></thead><tbody>` +
+      (m.weeks || []).map((w) => `<tr><td>${fdate(w.week)}</td>` +
+        `<td class="n">${num(w.plants)}</td>` +
+        `<td class="n">${w.by_tc ? num(w.by_tc) : ""}</td>` +
+        `<td>${w.tc_order_week ? fdate(w.tc_order_week) : ""}</td>` +
+        `<td class="n">${w.by_roots ? num(w.by_roots) : ""}</td>` +
+        `<td class="n">${w.roots_needed ? num(w.roots_needed) : ""}</td>` +
+        `<td>${w.root_order_week ? fdate(w.root_order_week) : ""}</td></tr>`)
+        .join("") + `</tbody></table>`;
+  }
+
+  function mergeOrders(m) {
+    const by = {};
+    (m.tc_order_schedule || []).forEach((r) => {
+      by[r.week] = by[r.week] || { week: r.week }; by[r.week].tc = r.plantlets; });
+    (m.root_order_schedule || []).forEach((r) => {
+      by[r.week] = by[r.week] || { week: r.week }; by[r.week].roots = r.roots; });
+    return Object.values(by).sort((a, b) => a.week < b.week ? -1 : 1);
+  }
+
   function runAgree() {
     const t = S.tc, c = (t || {}).chosen || {};
     const go = document.querySelector('[data-ag="go"]');
@@ -4335,13 +4477,15 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
       return;
     }
     if (!t.propagates || !t.solvable) {
-      $("tc-tiles").innerHTML = "";
-      $("tc-note").innerHTML = `<div class="pl-callout">${esc(
-        t.reason || "This variety is not raised through a motherstock.")}</div>`;
-      gens.innerHTML = ""; wk.innerHTML = "";
+      // No motherstock is not nothing to plan. This crop is bought as plantlets
+      // or as roots or as both, and the decision -- what share each way, and
+      // therefore when each has to be ordered to land in the same week -- is
+      // every bit as real as a motherstock line.
+      renderMaterial(t);
       return;
     }
 
+    labelCard(t);
     const c = t.chosen || {}, rec = t.recommended || {}, need = t.need || {};
     const qty = $("tc-qty"), dv = $("tc-divert");
     if (qty && document.activeElement !== qty) qty.value = c.tc || "";

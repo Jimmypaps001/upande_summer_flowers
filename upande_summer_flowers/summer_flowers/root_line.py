@@ -323,7 +323,18 @@ def arrival_plan(plan, tc_share=None, returns_per_plant=None):
 				w["root_order_week"], 0) + roots
 
 	ordered = sorted(weeks)
+	# A share of the plan sent down a way that cannot say what a unit becomes is
+	# not a plan, it is a blank. Say so, rather than printing a confident zero
+	# beside "50% as roots".
+	blocked = None
+	if share < 1.0 and per_root <= 0:
+		blocked = _("{0}% of this plan is set to come through roots, but the "
+		            "protocol does not say what a root becomes. Set 'Returns per "
+		            "plant at lift' on the Roots row of the material route — "
+		            "until then only the tissue culture half can be ordered."
+		            ).format(round((1 - share) * 100, 1))
 	return {
+		"blocked": blocked,
 		"variety": plan.variety, "farm": plan.farm,
 		"tc_share_pct": round(share * 100, 1),
 		"returns_per_plant": per_root,
