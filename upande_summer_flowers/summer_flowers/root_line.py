@@ -351,11 +351,25 @@ def arrival_plan(plan, tc_share=None, returns_per_plant=None,
 	# beside "50% as roots".
 	blocked = None
 	if share < 1.0 and per_root <= 0:
-		blocked = _("{0}% of this plan is set to come through roots, but the "
-		            "protocol does not say what a root becomes. Set 'Returns per "
-		            "plant at lift' on the Roots row of the material route — "
-		            "until then only the tissue culture half can be ordered."
-		            ).format(round((1 - share) * 100, 1))
+		pct = round((1 - share) * 100, 1)
+		# "Set the field" is the wrong instruction once the field IS set and the
+		# plan is simply reading an older snapshot of it. A plan keeps the version
+		# it was built on, which is the point of a snapshot -- so the fix is to
+		# regenerate, and saying so saves somebody editing a protocol that is
+		# already right and watching nothing change.
+		newer = _newer_version_with_lift(v)
+		if newer:
+			blocked = _("{0}% of this plan is set to come through roots. The "
+			            "protocol now says one root becomes {1} plants, but this "
+			            "plan was built on {2} and keeps it. Regenerate the plan "
+			            "against {3} to order the roots half."
+			            ).format(pct, newer["returns"], v.name, newer["name"])
+		else:
+			blocked = _("{0}% of this plan is set to come through roots, but the "
+			            "protocol does not say what a root becomes. Set 'Returns "
+			            "per plant at lift' on the Roots row of the material "
+			            "route and approve it — until then only the tissue "
+			            "culture half can be ordered.").format(pct)
 	return {
 		"blocked": blocked,
 		"asked": asked or None,
@@ -382,6 +396,23 @@ def arrival_plan(plan, tc_share=None, returns_per_plant=None,
 		],
 		"roots_in_store": root_stock(plan),
 	}
+
+
+def _newer_version_with_lift(v):
+	"""A later version of the same protocol that does carry a lift return."""
+	rows = frappe.get_all(
+		"Crop Protocol Version",
+		filters={"variety": v.get("variety"), "farm": v.get("farm"),
+		         "version": [">", cint(v.get("version"))]},
+		fields=["name", "version"], order_by="version desc")
+	for r in rows:
+		got = frappe.db.get_value(
+			"Crop Material Stage",
+			{"parent": r.name, "stage": LIFT_STAGE,
+			 "returns_per_plant": [">", 0]}, "returns_per_plant")
+		if got:
+			return {"name": r.name, "version": r.version, "returns": flt(got)}
+	return None
 
 
 def _monday(d):
