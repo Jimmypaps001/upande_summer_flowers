@@ -543,10 +543,10 @@
         </div>
         <div class="pl-tiles pl-tiles-sm" id="tc-tiles"></div>
         <div id="tc-note"></div>
-        <div id="tc-gens"></div>
-        <div id="tc-weeks" class="pl-scroll"></div>
         <div id="tc-sup"></div>
         <div id="tc-batches" class="pl-scroll"></div>
+        <div id="tc-gens"></div>
+        <div id="tc-weeks" class="pl-scroll"></div>
         <div id="tc-dvp" class="pl-scroll"></div>
       </div>
       <!-- The TC lifecycle card stood here: build-up cycles, a standing
@@ -4468,6 +4468,8 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
     }
     const rl = $("tc-roots-l");
     if (rl) rl.style.display = mother ? "none" : "";
+    const tab = document.querySelector('[role="tab"][data-tab="motherstock"]');
+    if (tab) tab.textContent = mother ? "Motherstock" : "Material";
     const agree = head.querySelector('[data-tc="agree"]');
     if (agree) agree.style.display = mother ? "" : "none";
     const agreeMat = head.querySelector('[data-tc="agreemat"]');
