@@ -4541,6 +4541,20 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
           `${num(a.short_by)}</b>.`
          : a.over_by ? ` — ${num(a.over_by)} over.` : `, exactly covered.`));
     }
+    const cm = m.committed;
+    if (cm) {
+      const dl = (dt, n) => `<a href="/app/${dt}/${encodeURIComponent(n)}">` +
+        `${esc(n)}</a>`;
+      notes.unshift(`<b>This plan is saved.</b> ${num(cm.tc)} TC and ` +
+        `${num(cm.roots)} roots agreed` +
+        (cm.order_by ? `, first order ${fdate(cm.order_by)}` : "") + `.` +
+        (cm.procurement_plan
+          ? ` Procurement ${dl("summer-flower-procurement-plan", cm.procurement_plan)}.`
+          : "") +
+        (cm.propagation_plan
+          ? ` Propagation ${dl("summer-flower-propagation-plan", cm.propagation_plan)}.`
+          : ""));
+    }
     if (m.blocked) {
       notes.unshift(`<b style="color:var(--critical)">${esc(m.blocked)}</b>`);
     }
@@ -4585,6 +4599,7 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
         `${w.root_order_iso ? ` <span class="text-muted">${esc(w.root_order_iso)}</span>` : ""}</td></tr>`)
         .join("") + `</tbody></table>`;
 
+    adoptCommitted(t, m);
     renderSuppliers(m);
     refreshSupplierList("");
     renderBatches();
@@ -4656,6 +4671,30 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
 
   // Who sends how much, on what cycle. A lab does not send a year in one crate.
   S.alloc = S.alloc || null;
+
+  // A saved plan opens on what was saved. Everything else on this card comes
+  // back after a refresh -- the quantities, the dates, the deliveries -- and
+  // the one thing that did not was the allocation, so the card read as though
+  // the agreement with the labs had never been made.
+  // The table belongs to ONE production plan. Keying it to the plan is also
+  // what stops the last plan's labs being carried across the picker.
+  function adoptCommitted(t, m) {
+    const plan = (t && t.plan) || "";
+    if (S.allocFor === plan) return;
+    S.allocFor = plan;
+    S.alloc = null;
+    S.allocOpen = false;
+    S.batches = null;
+    const rows = ((m || {}).committed || {}).allocations || [];
+    if (!rows.length) return;
+    S.alloc = rows.map((r) => ({
+      supplier: r.supplier || "",
+      tc: cintish(r.tc),
+      cycle_weeks: cintish(r.cycle_weeks) || 4,
+    }));
+    S.allocOpen = true;
+    loadBatches();
+  }
 
   function supplierRows(m) {
     if (S.alloc) return S.alloc;

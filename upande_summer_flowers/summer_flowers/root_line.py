@@ -383,6 +383,10 @@ def arrival_plan(plan, tc_share=None, returns_per_plant=None,
 	return {
 		"blocked": blocked,
 		"asked": asked or None,
+		# What was agreed, if anything was. A saved plan that opens as a blank
+		# card reads as a plan that was never saved, and the next thing somebody
+		# does is save it again -- so the agreement comes back with the figures.
+		"committed": _committed(plan),
 		"variety": plan.variety, "farm": plan.farm,
 		"tc_share_pct": round(share * 100, 1),
 		"returns_per_plant": per_root,
@@ -419,6 +423,42 @@ def arrival_plan(plan, tc_share=None, returns_per_plant=None,
 		# question is whether the season's stems arrive when the market wants
 		# them, and the plan already knows both figures week by week.
 		"demand_vs_production": _demand_vs_production(plan),
+	}
+
+
+def _committed(plan):
+	"""The agreement already written to this plan, or nothing.
+
+	The pair of quantities, who was to send the tissue culture, and the two
+	documents the agreement built. All of it was on screen the moment it was
+	saved and none of it survived a refresh, which is the one moment a planner
+	most wants to see it again.
+	"""
+	if not cint(plan.get("tc_choice_committed")):
+		return None
+	raw = plan.get("tc_supplier_allocations")
+	rows = []
+	if raw:
+		try:
+			rows = frappe.parse_json(raw) or []
+		except Exception:
+			# A hand-edited field should not take the whole card down with it.
+			rows = []
+		if not isinstance(rows, list):
+			rows = []
+	return {
+		"tc": cint(plan.get("tc_plants_committed")),
+		"roots": cint(plan.get("roots_committed")),
+		"order_by": str(plan.get("tc_order_date_committed") or ""),
+		"allocations": rows,
+		"procurement_plan": frappe.db.get_value(
+			"Summer Flower Procurement Plan", {"production_plan": plan.name},
+			"name", order_by="creation desc"),
+		"propagation_plan": frappe.db.get_value(
+			"Summer Flower Propagation Plan",
+			{"variety": plan.variety,
+			 "season_start_year": cint(plan.season_start_year),
+			 "status": ["!=", "Rejected"]}, "name", order_by="creation desc"),
 	}
 
 
