@@ -4548,6 +4548,14 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
       notes.unshift(`<b>This plan is saved.</b> ${num(cm.tc)} TC and ` +
         `${num(cm.roots)} roots agreed` +
         (cm.order_by ? `, first order ${fdate(cm.order_by)}` : "") + `.` +
+        // An agreement is a figure written down, not one recomputed. If the plan
+        // has been rebuilt since, the order on file is for a season that has
+        // changed under it, and only saying both numbers makes that visible.
+        (cm.stale
+          ? ` <b style="color:var(--critical)">It covers ${num(cm.plants_agreed)} ` +
+            `plants and the plan now needs ${num(cm.plants_now)} — save it again ` +
+            `to bring the documents across.</b>`
+          : "") +
         (cm.procurement_plan
           ? ` Procurement ${dl("summer-flower-procurement-plan", cm.procurement_plan)}.`
           : "") +
@@ -4615,28 +4623,38 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
     if (!rows.length) { box.innerHTML = ""; return; }
     const dem = rows.reduce((a, r) => a + r.demand, 0);
     const got = rows.reduce((a, r) => a + r.production, 0);
-    const short = rows.filter((r) => r.short);
+    // The band the planting programme was solved against. A week is judged
+    // against it rather than against its demand exactly, because a crop cut over
+    // many weeks cannot hit a weekly figure on the nose and pretending otherwise
+    // is what used to have the planner buying twice the plants it needed.
+    const band = m.variance_band_pct || 10;
+    const out = rows.filter((r) => r.demand &&
+      Math.abs(r.variance) > r.demand * band / 100 + 1);
+    const inBand = (r) => !r.demand ||
+      Math.abs(r.variance) <= r.demand * band / 100 + 1;
     box.innerHTML =
       `<div class="text-muted small" style="text-transform:uppercase;` +
       `letter-spacing:.05em;margin:10px 0 4px">Demand against what this plan ` +
       `grows</div>` +
       `<p class="pl-note">Season: ${num(dem)} stems wanted, ${num(got)} grown` +
       `${dem ? ` — ${Math.round(got / dem * 100)}%` : ""}. ` +
-      (short.length
-        ? `<b style="color:var(--critical)">${short.length} week` +
-          `${short.length === 1 ? "" : "s"} short of demand.</b>`
-        : `No week falls short.`) + `</p>` +
+      (out.length
+        ? `<b style="color:var(--critical)">${out.length} of ${rows.length} ` +
+          `weeks outside ±${band}%.</b>`
+        : `Every week inside ±${band}%.`) + `</p>` +
       `<table class="pl-t"><thead><tr><th>Week</th><th>ISO</th>` +
       `<th class="n">Demand</th><th class="n">Grown</th>` +
       `<th class="n">Variance</th><th class="n">Cumulative</th>` +
       `</tr></thead><tbody>` +
-      rows.map((r) => `<tr${r.short ? ' class="ls-arrive"' : ""}>` +
+      rows.map((r) => `<tr${inBand(r) ? "" : ' class="ls-arrive"'}>` +
         `<td>${fdate(r.week_start)}</td>` +
         `<td class="text-muted">${esc(r.week_iso)}</td>` +
         `<td class="n">${num(r.demand)}</td>` +
         `<td class="n">${num(r.production)}</td>` +
-        `<td class="n"${r.variance < 0 ? ' style="color:var(--critical)"' : ""}>` +
-        `${r.variance > 0 ? "+" : ""}${num(r.variance)}</td>` +
+        `<td class="n"${inBand(r) ? "" : ' style="color:var(--critical)"'}>` +
+        `${r.variance > 0 ? "+" : ""}${num(r.variance)}` +
+        `${r.demand ? ` <span class="text-muted">` +
+          `${(r.variance / r.demand * 100).toFixed(1)}%</span>` : ""}</td>` +
         `<td class="n">${r.cumulative > 0 ? "+" : ""}${num(r.cumulative)}</td>` +
         `</tr>`).join("") + `</tbody></table>`;
   }

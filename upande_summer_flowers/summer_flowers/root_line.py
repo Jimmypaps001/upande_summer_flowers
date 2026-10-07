@@ -423,6 +423,11 @@ def arrival_plan(plan, tc_share=None, returns_per_plant=None,
 		# question is whether the season's stems arrive when the market wants
 		# them, and the plan already knows both figures week by week.
 		"demand_vs_production": _demand_vs_production(plan),
+		# The tolerance the planting programme was solved against, so the table
+		# judges a week by the same rule the plan was built on rather than by
+		# whether it hit the demand exactly.
+		"variance_band_pct": flt(plan.get("weekly_variance_band_pct")) or 10.0,
+		"weeks_outside_band": cint(plan.get("weeks_outside_band")),
 	}
 
 
@@ -446,10 +451,24 @@ def _committed(plan):
 			rows = []
 		if not isinstance(rows, list):
 			rows = []
+	# What was agreed covered the plan as it stood. A plan can be rebuilt after
+	# that -- on a new protocol, or against a tolerance that changes how much is
+	# planted -- and then the order on file is for a season that no longer
+	# exists. The card can only say so if it is told both numbers.
+	wanted = sum(cint(b.plants) for b in plan.plan_blocks
+	             if cint(b.is_new_planting))
+	from upande_summer_flowers.summer_flowers import crop_protocol as cp
+	per_root = flt(_lift_return(cp.route_rows(
+		frappe.get_cached_doc("Crop Protocol Version", plan.protocol)) or []) or 0)
+	agreed = cint(plan.get("tc_plants_committed")) + int(
+		cint(plan.get("roots_committed")) * per_root)
 	return {
 		"tc": cint(plan.get("tc_plants_committed")),
 		"roots": cint(plan.get("roots_committed")),
 		"order_by": str(plan.get("tc_order_date_committed") or ""),
+		"plants_agreed": agreed,
+		"plants_now": wanted,
+		"stale": bool(wanted and agreed and abs(wanted - agreed) > max(1, wanted * 0.01)),
 		"allocations": rows,
 		"procurement_plan": frappe.db.get_value(
 			"Summer Flower Procurement Plan", {"production_plan": plan.name},

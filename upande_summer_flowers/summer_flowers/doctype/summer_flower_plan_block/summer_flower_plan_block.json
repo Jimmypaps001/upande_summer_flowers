@@ -27,6 +27,7 @@
   "below_minimum",
   "not_placed",
   "planting_in_past",
+  "cuts_before_window",
   "notes"
  ],
  "fields": [
@@ -69,11 +70,11 @@
    "read_only": 1
   },
   {
+   "description": "The week's shortfall divided by what one plant gives in its first flush -- what the demand implies before anything is rounded. Plants is this rounded up to a whole minimum planting area, so the gap between the two is what the bed grid costs.",
    "fieldname": "plants_required",
    "fieldtype": "Int",
    "label": "Plants the flush asks for",
-   "read_only": 1,
-   "description": "The week's shortfall divided by what one plant gives in its first flush -- what the demand implies before anything is rounded. Plants is this rounded up to a whole minimum planting area, so the gap between the two is what the bed grid costs."
+   "read_only": 1
   },
   {
    "columns": 1,
@@ -137,12 +138,12 @@
    "read_only": 1
   },
   {
+   "description": "Net bed area — the ground the crop occupies, and the only area this app carries.",
    "fieldname": "net_area_ha",
    "fieldtype": "Float",
    "label": "Net Area (ha)",
    "precision": "5",
-   "read_only": 1,
-   "description": "Net bed area \u2014 the ground the crop occupies, and the only area this app carries."
+   "read_only": 1
   },
   {
    "fieldname": "lifetime_stems",
@@ -164,6 +165,13 @@
    "fieldname": "planting_in_past",
    "fieldtype": "Check",
    "label": "Planting Week Passed",
+   "read_only": 1
+  },
+  {
+   "description": "This planting is already cutting when the plan's window opens. The stems it gives before then belong to the preceding season; the plan counts only what lands inside its own weeks.",
+   "fieldname": "cuts_before_window",
+   "fieldtype": "Check",
+   "label": "Cuts Before Window",
    "read_only": 1
   },
   {

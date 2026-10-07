@@ -20,6 +20,7 @@ from upande_summer_flowers.summer_flowers.doctype.planting_calendar.planting_cal
 	refresh_coverage,
 	standing_plantings,
 )
+from upande_summer_flowers.summer_flowers.cohort_solver import plan_cohorts
 from upande_summer_flowers.summer_flowers.planning import (
 	week_family_label,
 	MONTH_NAMES,
@@ -808,6 +809,29 @@ class SummerFlowerProductionPlan(Document):
 		return {"created": created, "skipped": skipped}
 
 	@frappe.whitelist()
+	def _warn_if_agreement_stale(self, before):
+		"""Say so when a rebuild has moved the ground under an agreed order.
+
+		The material figures are committed to the plan, not recomputed from it, so
+		a rebuild that changes how many plants the season needs leaves an order
+		standing for a season that no longer exists. Nothing downstream would have
+		noticed: the procurement plan was already built and the card opens on what
+		was agreed.
+		"""
+		if not cint(self.get("tc_choice_committed")):
+			return
+		now = _plants_in(self)
+		if not now or not before or abs(now - before) <= max(1, before * 0.01):
+			return
+		frappe.msgprint(
+			_("This plan had {0} plants agreed as material and now needs {1}. "
+			  "The procurement and propagation plans still carry the old figure "
+			  "— open Materials Planning and save it again to bring them across."
+			  ).format(frappe.bold("{:,}".format(before)),
+			           frappe.bold("{:,}".format(now))),
+			title=_("The agreed material no longer matches the plan"),
+			indicator="orange")
+
 	def regenerate(self, adopt_current_protocol=1):
 		"""Rebuild the weekly grid and planting proposals against the current protocol.
 
@@ -831,8 +855,10 @@ class SummerFlowerProductionPlan(Document):
 			current = current_version(self.variety, self.farm)
 			if current:
 				self.protocol = current
+		before = _plants_in(self)
 		_populate(self)
 		self.save()
+		self._warn_if_agreement_stale(before)
 		if was and was != self.protocol:
 			frappe.msgprint(
 				_("Rebuilt on {0}, which is the version in force. It was built on {1}."
@@ -851,6 +877,12 @@ class SummerFlowerProductionPlan(Document):
 # ---------------------------------------------------------------------------
 # Protocol freshness
 # ---------------------------------------------------------------------------
+
+def _plants_in(plan):
+	"""Plants this plan's new plantings call for."""
+	return sum(cint(b.plants) for b in (plan.get("plan_blocks") or [])
+	           if cint(b.is_new_planting))
+
 
 def protocol_freshness(plan):
 	"""Whether a plan's stored numbers still match the protocol they cite.
@@ -1684,10 +1716,19 @@ def build_from_demand(market_demand, farm=None, season_start_year=None,
 def _populate(plan):
 	"""Fill plan_weeks and plan_blocks.
 
-	Production comes first from plantings already standing, then new plantings are
-	proposed week by week to close whatever deficit remains. Each proposed planting
-	is immediately folded into the grid, so its later flushes (13, 26, 39 weeks on)
-	count towards those weeks and we do not plant for them twice.
+	Production comes first from plantings already standing. What the season is
+	still short of is then put to the cohort solver as one problem: how many
+	plants to start in which week so that every week lands inside the tolerance
+	band of its demand, the season still covers the season, and the fewest plants
+	are bought.
+
+	It used to be answered week by week -- take the first week that is short,
+	divide the shortfall by what a plant gives in its FIRST productive week,
+	plant that many, fold the result in and move on. For a crop cut once those
+	are the same number. For a crop cut for a year they are not: the first
+	productive week is the weakest point of the curve, so a cohort sized on it
+	delivers several times over for every week after. Four plantings were doing
+	the work of twenty-nine, and the plans came out at nearly twice their demand.
 	"""
 	demand = frappe.get_doc("Summer Flower Market Demand", plan.market_demand)
 	if not plan.protocol:
@@ -1786,13 +1827,14 @@ def _populate(plan):
 			  "projected.").format(frappe.bold(protocol.name), cycle, need),
 			title=_("Nothing to project"))
 
-	stems_f1 = offsets[0][1]
-	first_offset = protocol.first_harvest_offset_weeks or offsets[0][0]
-	# The same derivation the preview uses. `or 1` here meant a bed held one plant,
-	# so ten thousand plants asked for ten thousand beds against a farm that has
-	# 1,872 -- and the verdict then said the land was there, which was true only
-	# because the real figure is twenty.
-	plants_per_bed = plants_per_bed_for(protocol)
+	# The curve as a run of weeks from the first productive one, which is the
+	# shape the solver works in. A crop with distinct flushes has zeros between
+	# them; a crop cut once has a single entry.
+	curve = sorted(offsets, key=lambda o: o[0])
+	anchor = cint(curve[0][0])
+	rates = [0.0] * (cint(curve[-1][0]) - anchor + 1)
+	for off, spp in curve:
+		rates[cint(off) - anchor] = flt(spp)
 	life_weeks = protocol.total_weeks_in_ground or 0
 	stick_weeks = protocol.sticking_to_planting_weeks or 0
 	turnaround = cint(protocol.turnaround_weeks)
@@ -1802,38 +1844,44 @@ def _populate(plan):
 	min_beds = cint(protocol.min_planting_beds_derived) or 1
 	calendar = BlockCalendar(plan.farm, plan.variety)
 	block_capacity = calendar.capacity()
-	not_placed = unmet = 0
+	not_placed = 0
 
-	proposed = 0
-	for (year, week, monday) in grid:
-		# Against the plan. Every proposal counts towards it, so a week is proposed for
-		# once and the loop converges on the plantings the demand needs rather than
-		# retrying weeks whose blocks were full.
-		deficit = demand_map.get((year, week), 0) - production[(year, week)]
-		if deficit <= 0:
-			continue
-		if proposed >= MAX_NEW_PLANTINGS:
-			break
-		if not stems_f1 or not plants_per_bed:
-			break
+	# ---- the planting programme
+	# Sized as one problem rather than week by week. A cohort is not a week's
+	# answer: it is cut for as long as the protocol says it is cut, and sizing it
+	# on the shortfall of its first productive week -- the weakest point of its
+	# own curve -- is what made plans come out at nearly twice their demand.
+	#
+	# The band is the tolerance a week may sit inside, either side of its demand.
+	# It is what makes the problem answerable at all: a continuous crop cannot be
+	# made to meet every week exactly, and insisting on it is how the planner
+	# ended up planting for the worst week of the curve over and over.
+	tolerance = flt(frappe.db.get_single_value(
+		"Summer Flower Settings", "weekly_variance_tolerance_pct"))
+	band = (tolerance if tolerance > 0 else 10.0) / 100.0
+	week_demand = [demand_map.get((y, w), 0) for (y, w, _m) in grid]
+	week_standing = [production[(y, w)] for (y, w, _m) in grid]
+	# A cohort is not planted to the plant: it is rounded up to the protocol's
+	# minimum planting area, or to a whole bed. The solver is told how much that
+	# rounding can add so the band holds for the plan that is written down.
+	_b, step, _a = size_planting(protocol, 1, min_beds)
+	cohorts, _solved = plan_cohorts(rates, week_demand, week_standing, band=band,
+	                                rounding_plants=max(1, cint(step)))
+	plan.weekly_variance_band_pct = tolerance if tolerance > 0 else 10.0
 
-		# What the flush actually asks for, before any rounding: the week's shortfall
-		# divided by what one plant gives in its first flush. This is the number the
-		# demand implies, and it is kept so the rounding that follows can be seen
-		# rather than having to be inferred from a coverage percentage.
-		plants_required = int(math.ceil(deficit / stems_f1))
-		# A planting smaller than the protocol's minimum is not a planting anyone
-		# would make. Rounding up over-supplies this week, but the surplus lands in
-		# this planting's own flush weeks and the greedy loop then proposes fewer
-		# plantings overall, which is the point.
-		beds, plants, _area = size_planting(protocol, plants_required, min_beds)
-		# What the market needs is not trimmed to fit the ground. A planting larger
-		# than any single block is a real requirement that will be split across
-		# blocks when it is allocated; capping it here made the plan quietly answer
-		# a smaller question than the one it was asked.
-		oversize = bool(block_capacity and beds > block_capacity)
-		planting_date = monday - datetime.timedelta(weeks=first_offset)
+	window_start = grid[0][2]
+	for idx, (start, wanted_plants) in enumerate(sorted(cohorts.items())):
+		if idx >= MAX_NEW_PLANTINGS:
+			break
+		# `start` is the window week this cohort first cuts in, and it may be
+		# negative: a planting that is already cutting when the window opens, so
+		# that the strong part of its curve lands on the demand being planned
+		# rather than its first and weakest week. The stems it gives before the
+		# window are the preceding season's to sell.
+		first_cut = window_start + datetime.timedelta(weeks=start)
+		planting_date = first_cut - datetime.timedelta(weeks=anchor)
 		p_year, p_week = iso_year_week(planting_date)
+		fh_year, fh_week = iso_year_week(first_cut)
 		sticking_date = planting_date - datetime.timedelta(weeks=stick_weeks)
 		s_year, s_week = iso_year_week(sticking_date)
 		uproot = planting_date + datetime.timedelta(weeks=life_weeks)
@@ -1842,6 +1890,15 @@ def _populate(plan):
 		# gap is the difference between a workable rotation and a double-booked bed.
 		released = uproot + datetime.timedelta(weeks=turnaround)
 
+		beds, plants, _area = size_planting(protocol, wanted_plants, min_beds)
+		if not plants:
+			plants = wanted_plants
+		# What the market needs is not trimmed to fit the ground. A planting larger
+		# than any single block is a real requirement that will be split across
+		# blocks when it is allocated; capping it here made the plan quietly answer
+		# a smaller question than the one it was asked.
+		oversize = bool(block_capacity and beds > block_capacity)
+
 		# Which block a planting goes in is a decision, not an arithmetic result: a
 		# grower knows which house suits a crop, which is due for a rest, which is
 		# nearest the packhouse. The plan proposes the planting and leaves the block
@@ -1849,25 +1906,20 @@ def _populate(plan):
 		#
 		# What the plan still does is ask whether the ground exists at all, so a
 		# plan that cannot be placed says so before anyone allocates it by hand.
-		# Reserve, so that each cohort is tested against the ground the ones before
-		# it took -- but do not record which block: that is the grower's call. The
-		# reservation is the feasibility question, not the allocation.
 		block = None
 		if not calendar.place(beds, planting_date, released, reserve=True):
 			not_placed += 1
-			unmet += deficit
 
-		# Fold every flush of this proposed planting into the grid.
 		family = set()
 		mine = defaultdict(int)
-		for off, spp in offsets:
-			hd = planting_date + datetime.timedelta(weeks=off)
+		for off, spp in curve:
+			hd = planting_date + datetime.timedelta(weeks=cint(off))
 			if hd > uproot:
 				break
 			hy, hw = iso_year_week(hd)
 			family.add(hw)
 			if (hy, hw) in index:
-				stems = int(round(spp * plants))
+				stems = int(round(flt(spp) * plants))
 				production[(hy, hw)] += stems
 				mine[(hy, hw)] += stems
 				if block:
@@ -1887,7 +1939,7 @@ def _populate(plan):
 			"block": block or None,
 			"beds": beds,
 			"plants": plants,
-			"plants_required": plants_required,
+			"plants_required": wanted_plants,
 			"sticking_year": s_year,
 			"sticking_week": s_week,
 			"planting_year": p_year,
@@ -1896,8 +1948,8 @@ def _populate(plan):
 			"pinch_date": planting_date + datetime.timedelta(
 				weeks=protocol.weeks_to_pinch or 0
 			),
-			"first_harvest_year": year,
-			"first_harvest_week": week,
+			"first_harvest_year": fh_year,
+			"first_harvest_week": fh_week,
 			"harvest_week_family": week_family_label(family),
 			"net_area_ha": net_ha,
 			"lifetime_stems": int(round(
@@ -1906,6 +1958,7 @@ def _populate(plan):
 			"below_minimum": 1 if beds < min_beds else 0,
 			"not_placed": 0 if block else 1,
 			"planting_in_past": 1 if planting_date < today else 0,
+			"cuts_before_window": 1 if start < 0 else 0,
 			"notes": note if block else (
 				_("No block assigned yet. {0} has no summer flower blocks at all."
 				  ).format(plan.farm) if not calendar.block_count() else
@@ -1916,7 +1969,12 @@ def _populate(plan):
 			),
 		})
 		per_row.append({"weeks": dict(mine), "uproot": str(uproot)})
-		proposed += 1
+
+	# What the season is still short of, after everything the programme plants.
+	# It used to be the deficits of the weeks no block could be found for, which
+	# was a different question wearing the same name.
+	unmet = sum(max(0, demand_map.get((y, w), 0) - production[(y, w)])
+	            for (y, w, _m) in grid)
 
 	# ---- weekly grid
 	plan.plantings_not_placed = not_placed
@@ -1964,10 +2022,17 @@ def _populate(plan):
 
 	plan.plan_weeks = []
 	running = 0
+	outside = 0
 	for (year, week, monday) in grid:
 		prod = production[(year, week)]
 		dem = demand_map.get((year, week), 0)
 		running += prod - dem
+		# Counted from the plan's own rows rather than taken from the solver.
+		# The solver can only report on what it chose; a week can still finish
+		# outside the band because the crop standing there already exceeds it,
+		# and no amount of planting -- or not planting -- changes that.
+		if dem and abs(prod - dem) > dem * band + 1:
+			outside += 1
 		plan.append("plan_weeks", {
 			"year": year,
 			"week_no": week,
@@ -1981,6 +2046,8 @@ def _populate(plan):
 			"area_ha": sum(a for s, e, a in footprints if s <= monday <= e),
 			"contributing_plantings": "\n".join(contributors[(year, week)]) or None,
 		})
+	plan.weeks_outside_band = outside
+	plan.variance_band_held = 0 if outside else 1
 
 
 class BlockCalendar:

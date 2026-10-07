@@ -7,6 +7,8 @@
  "editable_grid": 1,
  "engine": "InnoDB",
  "field_order": [
+  "planning_section",
+  "weekly_variance_tolerance_pct",
   "defaults_section",
   "default_price_per_stem",
   "pot_holding_rate_per_month",
@@ -29,6 +31,18 @@
   "propagation_warehouse"
  ],
  "fields": [
+  {
+   "fieldname": "planning_section",
+   "fieldtype": "Section Break",
+   "label": "Planning"
+  },
+  {
+   "default": "10",
+   "description": "How far a week's production may sit either side of its demand. The planting programme is solved to stay inside this band while the season as a whole still covers the season. Tighter costs more plants; 0 means meet every week exactly, which a crop cut over many weeks cannot do and which falls back to covering the demand.",
+   "fieldname": "weekly_variance_tolerance_pct",
+   "fieldtype": "Percent",
+   "label": "Weekly Variance Tolerance"
+  },
   {
    "fieldname": "defaults_section",
    "fieldtype": "Section Break",
@@ -82,7 +96,7 @@
    "description": "Physical ceiling on the motherstock pool. Without it, diverting cuttings every week compounds without bound.",
    "fieldname": "max_bench_sqm",
    "fieldtype": "Float",
-   "label": "Available Bench (m\u00b2)",
+   "label": "Available Bench (m²)",
    "precision": "1"
   },
   {
@@ -189,11 +203,11 @@
    "label": "Season curve: tail-off weights"
   },
   {
+   "description": "Where the propagation unit holds the plants it has raised. Sending them to a block is a transfer out of this warehouse into the block's own -- without it nothing can be moved, and the unit goes on holding plants it has already sent out.",
    "fieldname": "propagation_warehouse",
    "fieldtype": "Link",
-   "options": "Warehouse",
    "label": "Propagation Unit Warehouse",
-   "description": "Where the propagation unit holds the plants it has raised. Sending them to a block is a transfer out of this warehouse into the block's own -- without it nothing can be moved, and the unit goes on holding plants it has already sent out."
+   "options": "Warehouse"
   }
  ],
  "grid_page_length": 50,
