@@ -68,12 +68,13 @@ def batch_plan(plan, allocations, lead_weeks=None, to_ground_weeks=None,
 	# unit whose largest intake ever recorded is 185,000.
 	keep = survival()
 	limits = capacity_limits()
-	if not limits["hold_weeks"]:
-		# Material occupies the unit until the LAST lift comes off it, which is
-		# longer than the first lift's hardening whenever a consignment is
-		# lifted more than once.
-		limits["hold_weeks"] = max(
-			[ground] + [w for run in out for w, _s in run["_waves"]])
+	# Material occupies the unit until the LAST lift comes off it. A unit that
+	# states six weeks of hardening is stating when the first lift is ready, not
+	# when the bench is clear, so the longer of the two is what the space is
+	# actually committed for.
+	limits["hold_weeks"] = max(
+		[cint(limits.get("hold_weeks")), ground]
+		+ [w for run in out for w, _s in run["_waves"]])
 	fitted = _fit_intake(out, limits["weekly_intake"], lead)
 	for run in out:
 		_renumber(run)
@@ -82,6 +83,8 @@ def batch_plan(plan, allocations, lead_weeks=None, to_ground_weeks=None,
 	handovers = _cover(out, need)
 	grand = sum(run["tc_total"] for run in out)
 	capacity = capacity_view(out, limits, lead)
+	for k in ("units", "from", "intake_is_observed", "silent", "unstated_hold"):
+		capacity[k] = limits.get(k)
 	capacity["reshaped"] = fitted
 
 	wanted = sum(need.values())
@@ -275,16 +278,77 @@ def batches_for(production_plan, allocations=None, lead_weeks=None,
 # What the propagation unit can actually take
 # ---------------------------------------------------------------------------
 
-def capacity_limits():
-	"""The unit's ceilings, as the settings state them. Zero means unknown."""
-	hold = cint(frappe.db.get_single_value(
-		"Summer Flower Settings", "propagation_hold_weeks"))
+def propagation_units(form="Tissue Culture"):
+	"""The warehouses plants are raised in, with what each one can take.
+
+	A propagation unit holds stock, so it is a warehouse, and its capacity
+	belongs on it rather than in one global figure: Kudenga holds 756,000 and
+	takes both forms, Bondet holds 192,500 and has only ever taken roots, and
+	Plantech is an outside propagator that has never stated a figure at all.
+
+	Every farm's material goes through more than one of them and the split is by
+	form, so there is no unit to pick for a plan. They are a pool, and a delivery
+	programme is measured against the pool.
+	"""
+	takes = ("custom_sf_takes_roots" if form == "Roots" else "custom_sf_takes_tc")
+	rows = frappe.get_all(
+		"Warehouse",
+		filters={"custom_sf_is_propagation_unit": 1, "disabled": 0, takes: 1},
+		fields=["name", "custom_sf_capacity_plants", "custom_sf_tc_capacity_plants",
+		        "custom_sf_roots_capacity_plants", "custom_sf_weekly_intake_plants",
+		        "custom_sf_observed_peak_intake", "custom_sf_hold_weeks_tc",
+		        "custom_sf_hold_weeks_roots"])
+	out = []
+	for r in rows:
+		per_form = cint(r.custom_sf_roots_capacity_plants if form == "Roots"
+		                else r.custom_sf_tc_capacity_plants)
+		# A stated limit on a week's intake, or what the unit has actually taken
+		# in its heaviest week. The second is evidence rather than a promise, so
+		# which one is being used is reported and never quietly mixed in.
+		out.append({
+			"warehouse": r.name,
+			"holds": per_form or cint(r.custom_sf_capacity_plants),
+			"holds_is_per_form": bool(per_form),
+			"weekly_intake": cint(r.custom_sf_weekly_intake_plants),
+			"observed_peak": cint(r.custom_sf_observed_peak_intake),
+			"hold_weeks": cint(r.custom_sf_hold_weeks_roots if form == "Roots"
+			                   else r.custom_sf_hold_weeks_tc),
+		})
+	return out
+
+
+def capacity_limits(form="Tissue Culture"):
+	"""The pool's ceilings. Zero means nobody has said, and nothing is applied.
+
+	Read from the propagation warehouses where there are any, and from the
+	settings where there are none -- the settings figures were the first way of
+	saying this and a site that has not drawn its units yet still has them.
+	"""
+	units = propagation_units(form)
+	stated = [u for u in units if u["weekly_intake"]]
+	observed = [u for u in units if not u["weekly_intake"] and u["observed_peak"]]
+	if units:
+		return {
+			"hold_plants": sum(u["holds"] for u in units),
+			"weekly_intake": (sum(u["weekly_intake"] for u in stated)
+			                  + sum(u["observed_peak"] for u in observed)),
+			"hold_weeks": max([u["hold_weeks"] for u in units] + [0]),
+			"units": units,
+			"from": "warehouses",
+			"intake_is_observed": bool(observed and not stated),
+			"silent": [u["warehouse"] for u in units
+			           if not u["weekly_intake"] and not u["observed_peak"]],
+			"unstated_hold": [u["warehouse"] for u in units if not u["holds"]],
+		}
 	return {
 		"hold_plants": cint(frappe.db.get_single_value(
 			"Summer Flower Settings", "propagation_capacity_plants")),
 		"weekly_intake": cint(frappe.db.get_single_value(
 			"Summer Flower Settings", "max_weekly_intake_plants")),
-		"hold_weeks": hold,
+		"hold_weeks": cint(frappe.db.get_single_value(
+			"Summer Flower Settings", "propagation_hold_weeks")),
+		"units": [], "from": "settings", "intake_is_observed": False,
+		"silent": [], "unstated_hold": [],
 	}
 
 

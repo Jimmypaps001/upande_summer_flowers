@@ -4931,9 +4931,11 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
   function capacityStrip(cap, reshaped) {
     if (!cap || (!cap.intake_cap && !cap.hold_cap)) {
       return `<p class="pl-note">No propagation capacity is on file, so ` +
-        `nothing here has been checked against what the unit can take. ` +
-        `Summer Flower Settings holds the two ceilings.</p>`;
+        `nothing here has been checked against what the units can take. ` +
+        `Tick Propagation Unit on the warehouses where plants are raised and ` +
+        `put their figures there.</p>`;
     }
+    const units = cap.units || [];
     const tiles = [];
     if (cap.intake_cap) {
       tiles.push({ k: "Biggest week in", v: num(cap.peak_intake),
@@ -4950,6 +4952,21 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
         `<div class="v"${t.bad ? ' style="color:var(--critical)"' : ""}>` +
         `${esc(t.v)}</div><div class="m">${esc(t.m)}</div></div>`).join("") +
       `</div>` +
+      // Which units, and on whose figures. A ceiling taken from what a unit has
+      // once managed is not the same claim as one somebody has stated, and the
+      // two should never read alike.
+      (units.length
+        ? `<p class="pl-note">Measured against ` +
+          units.map((u) => esc(u.warehouse)).join(", ") +
+          (cap.intake_is_observed
+            ? `. No weekly limit is stated, so the biggest week on record ` +
+              `stands in for one.`
+            : ``) +
+          ((cap.unstated_hold || []).length
+            ? ` <b>${(cap.unstated_hold || []).map(esc).join(", ")}</b> ` +
+              `state no capacity at all, so nothing they could take is counted.`
+            : ``) + `</p>`
+        : "") +
       (reshaped
         ? `<p class="pl-note">${num(reshaped)} TC was brought forward to ` +
           `weeks with room, so no week asks the unit for more than it can set ` +

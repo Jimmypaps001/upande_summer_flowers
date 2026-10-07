@@ -188,6 +188,12 @@ after_migrate = [
 	# they cannot ship in a fixture without a fixture force-overwriting thresholds
 	# a farm has since corrected. This creates what is missing and leaves the rest.
 	"upande_summer_flowers.summer_flowers.setup.plant_quality.install",
+	# The propagation units' capacity fields are schema; the figures on them are
+	# a site's own. Shipping the fields through a Warehouse customisation export
+	# would have taken sixteen other apps' fields and seven property setters with
+	# them, so our app would own -- and overwrite -- customisations it did not
+	# make.
+	"upande_summer_flowers.summer_flowers.setup.propagation_units.install",
 ]
 
 # include js, css files in header of web template
