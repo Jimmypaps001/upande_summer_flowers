@@ -57,6 +57,8 @@ def batch_plan(plan, allocations, lead_weeks=None, to_ground_weeks=None,
 	for a in allocations:
 		run = _one_supplier(a, need, land_lag, lead=lead)
 		run["_cycle"] = max(1, cint(a.get("cycle_weeks")) or 4)
+		run["_waves"] = handover_waves("Tissue Culture", a.get("supplier"), ground)
+		run["lifts_per_consignment"] = len(run["_waves"])
 		grand += run["tc_total"]
 		out.append(run)
 
@@ -64,21 +66,36 @@ def batch_plan(plan, allocations, lead_weeks=None, to_ground_weeks=None,
 	# lab can promise. Lead times were respected and capacity was not, so four
 	# deliveries of a season put half a million plants into one week against a
 	# unit whose largest intake ever recorded is 185,000.
+	keep = survival()
 	limits = capacity_limits()
 	if not limits["hold_weeks"]:
-		limits["hold_weeks"] = ground
+		# Material occupies the unit until the LAST lift comes off it, which is
+		# longer than the first lift's hardening whenever a consignment is
+		# lifted more than once.
+		limits["hold_weeks"] = max(
+			[ground] + [w for run in out for w, _s in run["_waves"]])
 	fitted = _fit_intake(out, limits["weekly_intake"], lead)
 	for run in out:
 		_renumber(run)
-		_respan(run, need, land_lag)
+		for b in run["batches"]:
+			b["lifts"] = _lift_batch(b, run["_waves"], keep)
+	handovers = _cover(out, need)
 	grand = sum(run["tc_total"] for run in out)
 	capacity = capacity_view(out, limits, lead)
 	capacity["reshaped"] = fitted
 
 	wanted = sum(need.values())
 	target = cint(tc_target) if cint(tc_target) else wanted
+	for run in out:
+		run.pop("_waves", None)
+		run.pop("_cycle", None)
 	return {
 		"capacity": capacity,
+		"survival_pct": round(keep * 100, 2),
+		"plants_from_allocation": sum(cint(w["plants"]) for w in handovers),
+		# Every lift of every consignment on one timeline: what the propagation
+		# unit actually hands the farm, and when.
+		"handovers": handovers,
 		"variety": plan.variety, "farm": plan.farm,
 		"lead_weeks": lead, "to_ground_weeks": ground,
 		"plants_needed": wanted,
@@ -368,42 +385,61 @@ def _add_to(run, arrives, qty, cycle, lead):
 	})
 
 
-def _respan(run, need, land_lag):
-	"""What each batch covers, counted cumulatively rather than by its span.
+def _cover(out, need):
+	"""How far into the season each lift takes us, counted cumulatively.
 
 	A batch used to be credited with the planting weeks between its own landing
-	and the next batch's. That reads well while every batch is sized for the
-	weeks right after it, and it stops being true the moment capacity moves one
-	earlier: a consignment brought forward to get it through the door still buys
-	the weeks it was always for, and the span model showed it feeding the
-	handful of plants that happened to sit beside its new landing week.
+	and the next batch's. That reads well while every batch sits beside the
+	weeks it was sized for, and it stops being true the moment capacity moves
+	one earlier -- a consignment brought forward still buys the weeks it was
+	always for. It also could not survive a consignment arriving as two lifts
+	weeks apart.
 
-	So supply and demand are both run as totals. A batch covers the planting
-	weeks that its arrival takes the running supply past, which is the question
-	a buyer is really asking: how far into the season am I covered once this one
-	has landed.
+	So supply and demand are both run as totals, across every supplier and every
+	lift in the order the plants actually appear. A lift covers the planting
+	weeks its arrival takes the running supply past, which is the question a
+	buyer is asking: how far am I covered once this one is off.
 	"""
-	batches = sorted(run["batches"], key=lambda b: (b["week"], b["batch"]))
-	if not batches:
-		return
+	lifts = []
+	for run in out:
+		for b in run["batches"]:
+			for w in b.get("lifts") or []:
+				lifts.append((w["ready"], run["supplier"], b, w))
+	lifts.sort(key=lambda x: (x[0], str(x[1] or "")))
+
 	wanted = sorted(need.items())
-	supply = 0
-	seen = 0          # plants already covered by earlier batches
+	supply = seen = 0
 	idx = 0
-	for b in batches:
-		start = add_days(getdate(b["week"]), 7 * land_lag)
-		b["lands"] = str(start)
-		b["lands_iso"] = iso(start)
-		supply += cint(b["tc"])
-		# Walk the planting weeks this batch's arrival now pays for. A week is
-		# only covered once the supply standing before it reaches it.
+	timeline = []
+	for ready, supplier, b, w in lifts:
+		supply += cint(w["plants"])
 		covered = seen
 		while idx < len(wanted) and covered + wanted[idx][1] <= supply:
 			covered += wanted[idx][1]
 			idx += 1
-		b["plants_served"] = cint(covered - seen)
-		b["serves_to"] = str(wanted[idx - 1][0]) if idx else None
+		w["plants_served"] = cint(covered - seen)
+		w["serves_to"] = str(wanted[idx - 1][0]) if idx else None
 		seen = covered
+		timeline.append({
+			"supplier": supplier, "batch": b["batch"], "lift": w["lift"],
+			"week": w["ready"], "week_iso": w["ready_iso"],
+			"plants": w["plants"], "share_pct": w["share_pct"],
+			"weeks_after_arrival": w["weeks_after_arrival"],
+			"plants_served": w["plants_served"], "serves_to": w["serves_to"],
+		})
+
+	# Roll the lifts back up so a batch row still says what it bought.
+	for run in out:
+		for b in run["batches"]:
+			ls = b.get("lifts") or []
+			b["plants_served"] = sum(cint(w.get("plants_served")) for w in ls)
+			b["serves_to"] = next((w["serves_to"] for w in reversed(ls)
+			                       if w.get("serves_to")), None)
+			b["lands"] = ls[0]["ready"] if ls else b.get("lands")
+			b["lands_iso"] = ls[0]["ready_iso"] if ls else b.get("lands_iso")
+			b["last_lift"] = ls[-1]["ready"] if ls else None
+			b["last_lift_iso"] = ls[-1]["ready_iso"] if ls else None
+	return timeline
 
 
 def _renumber(run):
@@ -457,3 +493,68 @@ def capacity_view(suppliers, limits, lead):
 		"hold_headroom": (limits["hold_plants"] - peak_held
 		                  if limits["hold_plants"] else None),
 	}
+
+
+# ---------------------------------------------------------------------------
+# A consignment does not become plants all at once
+# ---------------------------------------------------------------------------
+
+def handover_waves(form="Tissue Culture", supplier=None, default_weeks=0):
+	"""[(weeks after it arrives, share of the consignment), ...].
+
+	Grade 1 and Grade 2 in the planning workbook are not qualities. They are the
+	first batch of plants off a consignment and the second: Iribov hands over
+	87.7% of a shipment seven weeks after it arrives and the rest two weeks
+	later, roots 71.5% at seventeen weeks and 28.5% at twenty. The planner used
+	to treat a consignment as becoming plants in one week, which is why a
+	delivery that fed a fortnight of planting looked like it fed one.
+
+	A supplier's own rules win. Where it has none the blank-supplier rules apply,
+	and where there are none of those at all the old behaviour stands: everything
+	in one lift, at the protocol's weeks to ground.
+	"""
+	rows = frappe.get_all(
+		"Summer Flower Handover Wave",
+		filters={"parent": "Summer Flower Settings", "form": form},
+		fields=["source", "lift_no", "weeks_after_arrival", "share_pct"],
+		order_by="lift_no asc")
+	mine = [r for r in rows if supplier and r.source == supplier]
+	if not mine:
+		mine = [r for r in rows if not r.source]
+	if not mine:
+		return [(cint(default_weeks), 1.0)]
+	total = sum(flt(r.share_pct) for r in mine) or 1.0
+	return [(cint(r.weeks_after_arrival), flt(r.share_pct) / total) for r in mine]
+
+
+def survival():
+	"""The share of a consignment expected to reach the field.
+
+	A provision, not a measurement, and it sits at zero until somebody sets it.
+	The Eryngium book puts the real figure between nine and twelve per cent lost;
+	allowing nothing for it is a decision rather than an oversight, so it is a
+	field with a stated default rather than an assumption buried in arithmetic.
+	"""
+	loss = flt(frappe.db.get_single_value(
+		"Summer Flower Settings", "propagation_loss_pct")) / 100.0
+	return max(0.0, min(1.0, 1.0 - loss)) or 1.0
+
+
+def _lift_batch(batch, waves, keep=1.0):
+	"""Split one consignment into the lifts of plants it hands over."""
+	qty = int(cint(batch["tc"]) * flt(keep or 1.0))
+	out, running = [], 0
+	for i, (weeks, share) in enumerate(waves):
+		# The last lift takes the remainder, so the lifts add to the consignment
+		# rather than to the nearest rounding error.
+		plants = (qty - running if i == len(waves) - 1
+		          else int(round(qty * share)))
+		running += plants
+		ready = add_days(getdate(batch["arrives"]), 7 * cint(weeks))
+		out.append({
+			"lift": i + 1, "weeks_after_arrival": cint(weeks),
+			"share_pct": round(share * 100, 1),
+			"plants": max(0, plants),
+			"ready": str(ready), "ready_iso": iso(ready),
+		})
+	return [w for w in out if w["plants"]]

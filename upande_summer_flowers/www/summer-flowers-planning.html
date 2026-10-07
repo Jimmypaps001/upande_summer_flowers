@@ -4853,6 +4853,12 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
        : b.over_by ? ` — ${num(b.over_by)} over` : `, exact`) +
       `. TC lead ${b.lead_weeks} wk to the unit, ${b.to_ground_weeks} wk more ` +
       `to plants.` +
+      // An allowance for losses changes what an order is worth, so the two
+      // numbers belong beside each other rather than one of them alone.
+      ((b.survival_pct != null && b.survival_pct < 100)
+        ? ` After the ${(100 - b.survival_pct).toFixed(1)}% allowed for losses ` +
+          `that is ${num(b.plants_from_allocation)} plants.`
+        : "") +
       // What each lab is actually sending. Somebody who asked for four and
       // counted six is owed the reason, not a count.
       (b.suppliers || []).map((sp) =>
@@ -4870,7 +4876,7 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
       `<th>Ordered</th><th>Week</th>` +
       `<th class="n">TC</th>` +
       `<th>At the unit</th><th>Week</th>` +
-      `<th>Plants ready</th><th>Week</th>` +
+      `<th>First lift</th><th>Last lift</th>` +
       `<th class="n">Covers plants</th><th>To</th>` +
       `</tr></thead><tbody>` +
       (b.calendar || []).map((x) =>
@@ -4882,12 +4888,42 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
         `<td class="n">${num(x.tc)}</td>` +
         `<td>${fdate(x.arrives)}</td>` +
         `<td class="text-muted">${esc(x.arrives_iso || "")}</td>` +
-        `<td>${fdate(x.lands)}</td>` +
-        `<td class="text-muted">${esc(x.lands_iso)}</td>` +
+        `<td>${esc(x.lands_iso || "")}</td>` +
+        `<td class="text-muted">${esc(x.last_lift_iso || x.lands_iso || "")}</td>` +
         `<td class="n">${num(x.plants_served)}</td>` +
         `<td class="text-muted">${x.serves_to ? fdate(x.serves_to) : ""}</td>` +
         `</tr>`).join("") +
-      `</tbody></table>`;
+      `</tbody></table>` +
+      liftsTable(b);
+  }
+
+  // Grade 1 and Grade 2 in the planning book are not qualities: they are the
+  // first batch of plants off a consignment and the second. A consignment that
+  // hands over twice cannot be shown as one week, and the week the farm can
+  // plant is the week of the lift, not the week the crate arrived.
+  function liftsTable(b) {
+    const rows = b.handovers || [];
+    if (!rows.length || (b.suppliers || []).every((s) =>
+        (s.lifts_per_consignment || 1) < 2)) {
+      return "";
+    }
+    return `<div class="text-muted small" style="text-transform:uppercase;` +
+      `letter-spacing:.05em;margin:10px 0 4px">Lifts — what comes off each ` +
+      `consignment, and when</div>` +
+      `<table class="pl-t"><thead><tr><th>Ready</th><th>Week</th>` +
+      `<th>Supplier</th><th class="n">Batch</th><th class="n">Lift</th>` +
+      `<th class="n">Share</th><th class="n">Plants</th>` +
+      `<th class="n">Covers plants</th><th>To</th></tr></thead><tbody>` +
+      rows.map((r) => `<tr><td>${fdate(r.week)}</td>` +
+        `<td class="text-muted">${esc(r.week_iso)}</td>` +
+        `<td>${esc(r.supplier || "—")}</td>` +
+        `<td class="n">${r.batch}</td>` +
+        `<td class="n">${r.lift}</td>` +
+        `<td class="n text-muted">${r.share_pct}%</td>` +
+        `<td class="n">${num(r.plants)}</td>` +
+        `<td class="n">${num(r.plants_served)}</td>` +
+        `<td class="text-muted">${r.serves_to ? fdate(r.serves_to) : ""}</td>` +
+        `</tr>`).join("") + `</tbody></table>`;
   }
 
   // The propagation unit is a harder constraint than anything a lab promises:

@@ -17,10 +17,13 @@
   "lab_turnaround_weeks",
   "bands_section",
   "tc_price_bands",
+  "handover_section",
+  "handover_waves",
   "propagation_capacity_section",
   "propagation_capacity_plants",
   "max_weekly_intake_plants",
   "cb_prop_cap",
+  "propagation_loss_pct",
   "propagation_hold_weeks",
   "bench_section",
   "max_bench_sqm",
@@ -93,6 +96,18 @@
    "options": "Summer Flower TC Price Band"
   },
   {
+   "fieldname": "handover_section",
+   "fieldtype": "Section Break",
+   "label": "What A Consignment Hands Over"
+  },
+  {
+   "description": "A consignment does not become plants all at once. It is lifted more than once: a first batch of plants, then a second, each a different number of weeks after the material arrived. Leave this empty and the planner assumes one lift of everything at the protocol's weeks to ground, which is what it did before anybody measured.",
+   "fieldname": "handover_waves",
+   "fieldtype": "Table",
+   "label": "Lifts",
+   "options": "Summer Flower Handover Wave"
+  },
+  {
    "fieldname": "propagation_capacity_section",
    "fieldtype": "Section Break",
    "label": "Propagation Capacity"
@@ -114,6 +129,13 @@
   {
    "fieldname": "cb_prop_cap",
    "fieldtype": "Column Break"
+  },
+  {
+   "default": "0",
+   "description": "What is expected to be lost between a consignment arriving and plants reaching the field, as a percentage of the consignment. Orders are grossed up by it, so 10% means ordering 1,000 to plant 900. Zero allows for nothing, which is what the planner did before this field existed. The Eryngium delivery book puts the real figure at nine to twelve per cent.",
+   "fieldname": "propagation_loss_pct",
+   "fieldtype": "Percent",
+   "label": "Allowance For Losses"
   },
   {
    "default": "0",

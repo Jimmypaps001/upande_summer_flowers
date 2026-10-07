@@ -1,0 +1,79 @@
+{
+ "actions": [],
+ "allow_rename": 1,
+ "creation": "2026-10-08 09:00:00.000000",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "source",
+  "form",
+  "lift_no",
+  "weeks_after_arrival",
+  "share_pct"
+ ],
+ "fields": [
+  {
+   "columns": 2,
+   "description": "Leave blank for the rule that applies to any supplier with no rule of its own.",
+   "fieldname": "source",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "label": "Supplier",
+   "options": "Supplier"
+  },
+  {
+   "columns": 2,
+   "default": "Tissue Culture",
+   "fieldname": "form",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "label": "Form",
+   "options": "Tissue Culture\nRoots",
+   "reqd": 1
+  },
+  {
+   "columns": 1,
+   "description": "1 is the first batch of plants off this material, 2 the second, and so on.",
+   "fieldname": "lift_no",
+   "fieldtype": "Int",
+   "in_list_view": 1,
+   "label": "Lift",
+   "reqd": 1
+  },
+  {
+   "columns": 2,
+   "description": "Counted from the week the material reaches the propagation unit, not from the week it was ordered.",
+   "fieldname": "weeks_after_arrival",
+   "fieldtype": "Int",
+   "in_list_view": 1,
+   "label": "Weeks After It Arrives",
+   "reqd": 1
+  },
+  {
+   "columns": 2,
+   "description": "How much of the consignment comes off in this lift. The shares for one supplier and form are scaled to total 100%, so they can be entered as observed.",
+   "fieldname": "share_pct",
+   "fieldtype": "Percent",
+   "in_list_view": 1,
+   "label": "Share",
+   "reqd": 1
+  }
+ ],
+ "grid_page_length": 50,
+ "index_web_pages_for_search": 1,
+ "istable": 1,
+ "links": [],
+ "modified": "2026-10-08 09:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Summer Flowers",
+ "name": "Summer Flower Handover Wave",
+ "owner": "Administrator",
+ "permissions": [],
+ "row_format": "Dynamic",
+ "rows_threshold_for_grid_search": 20,
+ "sort_field": "creation",
+ "sort_order": "DESC",
+ "states": [],
+ "track_changes": 1
+}

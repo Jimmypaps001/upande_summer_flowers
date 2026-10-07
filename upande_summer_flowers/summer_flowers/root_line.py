@@ -315,10 +315,15 @@ def arrival_plan(plan, tc_share=None, returns_per_plant=None,
 		tc_qty = cint(plan.get("tc_plants_committed"))
 		roots_qty = cint(plan.get("roots_committed"))
 
+	# What is expected to reach the field out of what is ordered. A provision,
+	# sitting at zero until somebody sets it: ordering a plant for every plant
+	# wanted is a decision about losses, not the absence of one.
+	keep = _survival()
+
 	asked = {}
 	if cint(tc_qty) or cint(roots_qty):
-		from_tc = cint(tc_qty)
-		from_roots = int(cint(roots_qty) * per_root) if per_root > 0 else 0
+		from_tc = int(cint(tc_qty) * keep)
+		from_roots = int(cint(roots_qty) * per_root * keep) if per_root > 0 else 0
 		covered = from_tc + from_roots
 		share = (float(from_tc) / wanted) if wanted else 1.0
 		share = max(0.0, min(1.0, share))
@@ -433,11 +438,18 @@ def arrival_plan(plan, tc_share=None, returns_per_plant=None,
 		# What the boxes should open on. An empty box asks somebody to invent a
 		# number; the demand and the protocol's own split already imply one.
 		"suggested": {
-			"tc": sum(weeks[k]["by_tc"] for k in ordered),
-			"roots": sum(cint(weeks[k]["roots_needed"]) for k in ordered),
+			# Grossed up by the loss provision: what has to be ORDERED for that
+			# many plants to arrive, which is not the same number the moment the
+			# provision is anything but zero.
+			"tc": int(math.ceil(sum(weeks[k]["by_tc"] for k in ordered) / keep)),
+			"roots": int(math.ceil(
+				sum(cint(weeks[k]["roots_needed"]) for k in ordered) / keep)),
 			"from": _("the protocol's own split, {0}% tissue culture"
-			          ).format(round(share * 100, 1)),
+			          ).format(round(share * 100, 1))
+			+ (_(", grossed up for {0}% losses").format(
+				round((1 - keep) * 100, 1)) if keep < 1 else ""),
 		},
+		"survival_pct": round(keep * 100, 2),
 		"roots_in_store": root_stock(plan),
 		# What the whole exercise is for. Ordering material is a means; the
 		# question is whether the season's stems arrive when the market wants
@@ -515,6 +527,13 @@ def _committed(plan):
 			 "season_start_year": cint(plan.season_start_year),
 			 "status": ["!=", "Rejected"]}, "name", order_by="creation desc"),
 	}
+
+
+def _survival():
+	"""The share of what is ordered that is expected to reach the field."""
+	loss = flt(frappe.db.get_single_value(
+		"Summer Flower Settings", "propagation_loss_pct")) / 100.0
+	return max(0.01, min(1.0, 1.0 - loss))
 
 
 def _root_order(pulls, lead_weeks):
