@@ -170,6 +170,31 @@ def _timing(plan, lead_weeks, to_ground_weeks):
 
 
 @frappe.whitelist()
+def tc_suppliers(search=None):
+	"""The labs this site can actually order from.
+
+	A free-text supplier field turns a typo into a supplier nobody can raise an
+	order against, so the card offers what exists.
+	"""
+	if frappe.session.user == "Guest":
+		frappe.throw(_("Please sign in."), frappe.PermissionError)
+	f = {"disabled": 0}
+	if search:
+		f["name"] = ["like", "%%%s%%" % search]
+	rows = frappe.get_all("Supplier", filters=f, pluck="name",
+	                      order_by="name", limit=40)
+	# With nothing typed, the labs that actually send tissue culture come first
+	# rather than whatever sorts to the top of 1,707 suppliers.
+	if not search:
+		known = [n for n in frappe.get_all(
+			"Supplier",
+			filters={"disabled": 0, "default_currency": "EUR"},
+			pluck="name", order_by="name", limit=40)]
+		rows = list(dict.fromkeys(known + rows))[:40]
+	return rows
+
+
+@frappe.whitelist()
 def batches_for(production_plan, allocations=None, lead_weeks=None,
                 to_ground_weeks=None):
 	"""What the dashboard draws for a multi-supplier tissue culture order."""

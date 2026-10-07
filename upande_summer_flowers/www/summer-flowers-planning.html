@@ -4654,6 +4654,25 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
     return S.alloc;
   }
 
+  // Searched, not listed. There are 1,707 suppliers on this site; a datalist of
+  // the first 500 alphabetically is both unusable and missed the three labs
+  // this card exists for.
+  function loadSuppliers(search) {
+    return callRl2("tc_suppliers", { search: search || null })
+      .then((r) => { S.suppliers = r || []; return S.suppliers; })
+      .catch(() => { S.suppliers = S.suppliers || []; return S.suppliers; });
+  }
+
+  function refreshSupplierList(search) {
+    loadSuppliers(search).then(() => {
+      const dl = document.getElementById("tc-sup-list");
+      if (dl) {
+        dl.innerHTML = (S.suppliers || [])
+          .map((n) => `<option value="${esc(n)}">`).join("");
+      }
+    });
+  }
+
   function renderSuppliers(m) {
     const box = $("tc-sup");
     if (!box) return;
@@ -4665,8 +4684,9 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
       `<th class="n">TC</th><th class="n">Every (weeks)</th><th></th>` +
       `</tr></thead><tbody>` +
       rows.map((r, i) =>
-        `<tr><td><input data-al="supplier" data-i="${i}" value="${esc(r.supplier || "")}"` +
-        ` style="width:14rem" placeholder="supplier name"></td>` +
+        `<tr><td><input data-al="supplier" data-i="${i}" list="tc-sup-list"` +
+        ` value="${esc(r.supplier || "")}" style="width:14rem"` +
+        ` placeholder="pick a lab"></td>` +
         `<td class="n"><input type="number" data-al="tc" data-i="${i}" ` +
         `value="${cintish(r.tc)}" style="width:9rem"></td>` +
         `<td class="n"><input type="number" min="1" data-al="cycle_weeks" ` +
@@ -4674,6 +4694,9 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
         `<td><button type="button" class="pl-btn quiet" data-al="drop" ` +
         `data-i="${i}">Remove</button></td></tr>`).join("") +
       `</tbody></table>` +
+      `<datalist id="tc-sup-list">` +
+      (S.suppliers || []).map((n) => `<option value="${esc(n)}">`).join("") +
+      `</datalist>` +
       `<button type="button" class="pl-btn quiet" data-al="add">Add a supplier</button>`;
   }
 
@@ -6872,6 +6895,10 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
         }
         renderSuppliers(S.mat || {});
         loadBatches();
+      });
+      $("tc-sup").addEventListener("input", (e) => {
+        const f = e.target.closest('input[data-al="supplier"]');
+        if (f) refreshSupplierList(f.value);
       });
       $("tc-sup").addEventListener("change", (e) => {
         const f = e.target.closest("input[data-al]");
