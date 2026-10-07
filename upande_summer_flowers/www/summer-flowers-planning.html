@@ -529,6 +529,10 @@
               <input type="number" id="tc-divert" min="0" max="4" step="1"></label>
             <label class="pl-inline" id="tc-roots-l" style="display:none">{{ _("Roots") }}
               <input type="number" id="tc-roots" min="0" step="100"></label>
+            <button type="button" class="pl-btn" data-tc="allocate"
+                    style="display:none"
+                    title="{{ _('Split the order between labs. Each sends on its own cycle, and the system sizes every batch from the weeks it feeds.') }}"
+            >{{ _("Allocate to suppliers") }}</button>
             <button type="button" class="pl-btn primary" data-tc="agreemat"
                     style="display:none"
                     title="{{ _('Writes the TC and roots figures to the plan, then builds the procurement plan that orders them and the propagation plan that receives them.') }}"
@@ -4472,6 +4476,8 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
     if (agree) agree.style.display = mother ? "" : "none";
     const agreeMat = head.querySelector('[data-tc="agreemat"]');
     if (agreeMat) agreeMat.style.display = mother ? "none" : "";
+    const alloc = head.querySelector('[data-tc="allocate"]');
+    if (alloc) alloc.style.display = mother ? "none" : "";
   }
 
   function renderMaterial(t) {
@@ -4578,6 +4584,11 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
         `<td>${w.root_order_week ? fdate(w.root_order_week) : ""}` +
         `${w.root_order_iso ? ` <span class="text-muted">${esc(w.root_order_iso)}</span>` : ""}</td></tr>`)
         .join("") + `</tbody></table>`;
+
+    renderSuppliers(m);
+    refreshSupplierList("");
+    renderBatches();
+    renderDemandVsProduction(m);
   }
 
   // What the ordering is FOR. Material is a means; the question is whether the
@@ -4676,6 +4687,7 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
   function renderSuppliers(m) {
     const box = $("tc-sup");
     if (!box) return;
+    if (!S.allocOpen) { box.innerHTML = ""; return; }
     const rows = supplierRows(m);
     box.innerHTML =
       `<div class="text-muted small" style="text-transform:uppercase;` +
@@ -4707,22 +4719,28 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
     if (!b || b.error || !(b.suppliers || []).length) { box.innerHTML = ""; return; }
     box.innerHTML =
       `<div class="text-muted small" style="text-transform:uppercase;` +
-      `letter-spacing:.05em;margin:10px 0 4px">Batches, sized by the weeks each ` +
-      `one feeds</div>` +
+      `letter-spacing:.05em;margin:10px 0 4px">Deliveries — every batch, when ` +
+      `it is ordered and when it lands</div>` +
       `<p class="pl-note">${num(b.plants_needed)} plants wanted, ` +
       `${num(b.tc_allocated)} TC allocated` +
       (b.short_by ? ` — <b style="color:var(--critical)">short by ${num(b.short_by)}</b>`
        : b.over_by ? ` — ${num(b.over_by)} over` : `, exact`) +
       `. TC lead ${b.lead_weeks} wk + ${b.to_ground_weeks} wk to ground.</p>` +
       `<table class="pl-t"><thead><tr><th>Supplier</th><th class="n">Batch</th>` +
-      `<th>Send</th><th>ISO</th><th class="n">TC</th><th>Lands</th>` +
-      `<th class="n">Feeds plants</th></tr></thead><tbody>` +
+      `<th>Order placed</th><th>Week</th>` +
+      `<th class="n">TC</th>` +
+      `<th>Delivered</th><th>Week</th>` +
+      `<th class="n">Feeds plants</th><th>Covers to</th>` +
+      `</tr></thead><tbody>` +
       (b.calendar || []).map((x) => `<tr><td>${esc(x.supplier || "—")}</td>` +
-        `<td class="n">${x.batch}</td><td>${fdate(x.week)}</td>` +
+        `<td class="n">${x.batch}</td>` +
+        `<td>${fdate(x.week)}</td>` +
         `<td class="text-muted">${esc(x.week_iso)}</td>` +
         `<td class="n">${num(x.tc)}</td>` +
-        `<td>${esc(x.lands_iso)}</td>` +
-        `<td class="n">${num(x.plants_served)}</td></tr>`).join("") +
+        `<td>${fdate(x.lands)}</td>` +
+        `<td class="text-muted">${esc(x.lands_iso)}</td>` +
+        `<td class="n">${num(x.plants_served)}</td>` +
+        `<td class="text-muted">${fdate(x.serves_to)}</td></tr>`).join("") +
       `</tbody></table>`;
   }
 
@@ -4740,7 +4758,7 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
   function mergeOrders(m) {
     const by = {};
     (m.tc_order_schedule || []).forEach((r) => {
-      by[r.week] = by[r.week] || { week: r.week }; by[r.week].tc = r.plantlets; });
+      by[r.week] = by[r.week] || { week: r.week }; by[r.week].tc = r.tc; });
     (m.root_order_schedule || []).forEach((r) => {
       by[r.week] = by[r.week] || { week: r.week }; by[r.week].roots = r.roots; });
     return Object.values(by).sort((a, b) => a.week < b.week ? -1 : 1);
@@ -6863,6 +6881,14 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
         }
         if (b.dataset.tc === "agree") agreeTc();
         if (b.dataset.tc === "agreemat") agreeMaterial();
+        if (b.dataset.tc === "allocate") {
+          S.allocOpen = true;
+          renderSuppliers(S.mat || {});
+          refreshSupplierList("");
+          loadBatches();
+          const el = $("tc-sup");
+          if (el && el.scrollIntoView) el.scrollIntoView({ behavior: "smooth" });
+        }
       });
       $("ag-dlg").addEventListener("click", (e) => {
         const b = e.target.closest("[data-ag]");
