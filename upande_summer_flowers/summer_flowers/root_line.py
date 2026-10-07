@@ -303,7 +303,15 @@ def arrival_plan(plan, tc_share=None, returns_per_plant=None,
 	# An agreed pair is what the card should open on, the way an agreed
 	# motherstock line is. Nothing typed and something committed means show what
 	# was committed, not a fresh suggestion beside it.
-	if not (cint(tc_qty) or cint(roots_qty)) and cint(plan.get("tc_choice_committed")):
+	#
+	# Unless the plan has been rebuilt since it was agreed and no longer needs
+	# that many plants. Opening on the old pair would then have the card suggest
+	# an order already known to be wrong -- and worse, derive the split from it,
+	# so a plan needing fewer plants than were agreed as tissue culture reads as
+	# 100% tissue culture and no roots at all. What was agreed is still returned,
+	# so the card can say what it was.
+	if not (cint(tc_qty) or cint(roots_qty)) and cint(plan.get("tc_choice_committed")) \
+			and not _agreement_stale(plan, wanted, per_root):
 		tc_qty = cint(plan.get("tc_plants_committed"))
 		roots_qty = cint(plan.get("roots_committed"))
 
@@ -431,6 +439,24 @@ def arrival_plan(plan, tc_share=None, returns_per_plant=None,
 	}
 
 
+def _agreed_plants(plan, per_root):
+	"""Plants the committed pair covers: the tissue culture plus what roots give."""
+	return cint(plan.get("tc_plants_committed")) + int(
+		cint(plan.get("roots_committed")) * flt(per_root))
+
+
+def _agreement_stale(plan, wanted, per_root):
+	"""Has the plan moved away from what was agreed as its material?
+
+	One rule, in one place: the card opens on an agreement only while it still
+	covers the plan, and says so when it does not.
+	"""
+	agreed = _agreed_plants(plan, per_root)
+	if not agreed or not wanted:
+		return False
+	return abs(agreed - wanted) > max(1, wanted * 0.01)
+
+
 def _committed(plan):
 	"""The agreement already written to this plan, or nothing.
 
@@ -460,15 +486,13 @@ def _committed(plan):
 	from upande_summer_flowers.summer_flowers import crop_protocol as cp
 	per_root = flt(_lift_return(cp.route_rows(
 		frappe.get_cached_doc("Crop Protocol Version", plan.protocol)) or []) or 0)
-	agreed = cint(plan.get("tc_plants_committed")) + int(
-		cint(plan.get("roots_committed")) * per_root)
 	return {
 		"tc": cint(plan.get("tc_plants_committed")),
 		"roots": cint(plan.get("roots_committed")),
 		"order_by": str(plan.get("tc_order_date_committed") or ""),
-		"plants_agreed": agreed,
+		"plants_agreed": _agreed_plants(plan, per_root),
 		"plants_now": wanted,
-		"stale": bool(wanted and agreed and abs(wanted - agreed) > max(1, wanted * 0.01)),
+		"stale": _agreement_stale(plan, wanted, per_root),
 		"allocations": rows,
 		"procurement_plan": frappe.db.get_value(
 			"Summer Flower Procurement Plan", {"production_plan": plan.name},
