@@ -515,7 +515,8 @@ def _lead_for(rows, stage):
 
 
 @frappe.whitelist()
-def agree_material_plan(production_plan, tc_qty=None, roots_qty=None):
+def agree_material_plan(production_plan, tc_qty=None, roots_qty=None,
+                        allocations=None):
 	"""Write the chosen split down, then build what follows from it.
 
 	The card could work the whole thing out and had nowhere to put it. A
@@ -540,12 +541,20 @@ def agree_material_plan(production_plan, tc_qty=None, roots_qty=None):
 	roots = cint(asked.get("roots_qty") or asked.get("roots"))
 	first = (m.get("tc_order_schedule") or [{}])[0].get("week")
 
-	plan.db_set({
+	fields = {
 		"tc_choice_committed": 1,
 		"tc_plants_committed": tc,
 		"roots_committed": roots,
 		"tc_order_date_committed": first,
-	}, update_modified=False)
+	}
+	if allocations not in (None, ""):
+		# Kept as written rather than normalised: who sends how much on what
+		# cycle is an agreement with a supplier, and rounding it to fit a model
+		# would quietly change what was agreed.
+		fields["tc_supplier_allocations"] = (
+			allocations if isinstance(allocations, str)
+			else frappe.as_json(allocations))
+	plan.db_set(fields, update_modified=False)
 	frappe.clear_document_cache("Summer Flower Production Plan", plan.name)
 	frappe.db.commit()
 

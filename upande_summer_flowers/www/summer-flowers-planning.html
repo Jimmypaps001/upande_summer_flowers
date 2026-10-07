@@ -545,6 +545,8 @@
         <div id="tc-note"></div>
         <div id="tc-gens"></div>
         <div id="tc-weeks" class="pl-scroll"></div>
+        <div id="tc-sup"></div>
+        <div id="tc-batches" class="pl-scroll"></div>
         <div id="tc-dvp" class="pl-scroll"></div>
       </div>
       <!-- The TC lifecycle card stood here: build-up cycles, a standing
@@ -1237,6 +1239,18 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
   // Where the material comes from and when it has to be ordered. Its own module
   // because it answers a different question from the plan: not what to grow, but
   // what to buy to be able to grow it.
+  const TS = "upande_summer_flowers.summer_flowers.tc_supply.";
+  const callRl2 = (m, a) => new Promise((res, rej) => {
+    let done = false; const fin = (f, v) => { if (!done) { done = true; f(v); } };
+    setTimeout(() => fin(rej, new Error("Timed out: " + m)), 45000);
+    try {
+      frappe.call({ method: TS + m, args: a || {},
+        callback: (r) => fin(res, r && r.message),
+        error: (r) => fin(rej, new Error(m + ": " + ((r && r.responseJSON &&
+          (r.responseJSON.exc_type || r.responseJSON.message)) || "failed"))) });
+    } catch (e) { fin(rej, e); }
+  });
+
   const RL = "upande_summer_flowers.summer_flowers.root_line.";
   const callRl = (m, a) => new Promise((res, rej) => {
     let done = false; const fin = (f, v) => { if (!done) { done = true; f(v); } };
@@ -4615,6 +4629,7 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
         `orders them and the propagation plan that receives them.`)) return;
     callRl("agree_material_plan", {
       production_plan: t.plan, tc_qty: tc, roots_qty: roots,
+      allocations: JSON.stringify((S.alloc || []).filter((x) => cintish(x.tc) > 0)),
     }).then((r) => {
       const bad = (r.steps || []).filter((x) => !x.ok);
       toast(`Saved: ${num(r.tc)} TC and ${num(r.roots)} roots` +
@@ -4626,6 +4641,77 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
       });
       return loadTc(null);
     }).catch((e) => toast(esc(e.message || String(e)), true));
+  }
+
+  // Who sends how much, on what cycle. A lab does not send a year in one crate.
+  S.alloc = S.alloc || null;
+
+  function supplierRows(m) {
+    if (S.alloc) return S.alloc;
+    // Opens on one row carrying the whole order, which is the simplest true
+    // answer; splitting it between labs is the thing the planner then does.
+    S.alloc = [{ supplier: "", tc: (m.suggested || {}).tc || 0, cycle_weeks: 4 }];
+    return S.alloc;
+  }
+
+  function renderSuppliers(m) {
+    const box = $("tc-sup");
+    if (!box) return;
+    const rows = supplierRows(m);
+    box.innerHTML =
+      `<div class="text-muted small" style="text-transform:uppercase;` +
+      `letter-spacing:.05em;margin:10px 0 4px">Who sends the TC</div>` +
+      `<table class="pl-t"><thead><tr><th>Supplier</th>` +
+      `<th class="n">TC</th><th class="n">Every (weeks)</th><th></th>` +
+      `</tr></thead><tbody>` +
+      rows.map((r, i) =>
+        `<tr><td><input data-al="supplier" data-i="${i}" value="${esc(r.supplier || "")}"` +
+        ` style="width:14rem" placeholder="supplier name"></td>` +
+        `<td class="n"><input type="number" data-al="tc" data-i="${i}" ` +
+        `value="${cintish(r.tc)}" style="width:9rem"></td>` +
+        `<td class="n"><input type="number" min="1" data-al="cycle_weeks" ` +
+        `data-i="${i}" value="${cintish(r.cycle_weeks) || 4}" style="width:6rem"></td>` +
+        `<td><button type="button" class="pl-btn quiet" data-al="drop" ` +
+        `data-i="${i}">Remove</button></td></tr>`).join("") +
+      `</tbody></table>` +
+      `<button type="button" class="pl-btn quiet" data-al="add">Add a supplier</button>`;
+  }
+
+  function renderBatches() {
+    const box = $("tc-batches");
+    if (!box) return;
+    const b = S.batches;
+    if (!b || b.error || !(b.suppliers || []).length) { box.innerHTML = ""; return; }
+    box.innerHTML =
+      `<div class="text-muted small" style="text-transform:uppercase;` +
+      `letter-spacing:.05em;margin:10px 0 4px">Batches, sized by the weeks each ` +
+      `one feeds</div>` +
+      `<p class="pl-note">${num(b.plants_needed)} plants wanted, ` +
+      `${num(b.tc_allocated)} TC allocated` +
+      (b.short_by ? ` — <b style="color:var(--critical)">short by ${num(b.short_by)}</b>`
+       : b.over_by ? ` — ${num(b.over_by)} over` : `, exact`) +
+      `. TC lead ${b.lead_weeks} wk + ${b.to_ground_weeks} wk to ground.</p>` +
+      `<table class="pl-t"><thead><tr><th>Supplier</th><th class="n">Batch</th>` +
+      `<th>Send</th><th>ISO</th><th class="n">TC</th><th>Lands</th>` +
+      `<th class="n">Feeds plants</th></tr></thead><tbody>` +
+      (b.calendar || []).map((x) => `<tr><td>${esc(x.supplier || "—")}</td>` +
+        `<td class="n">${x.batch}</td><td>${fdate(x.week)}</td>` +
+        `<td class="text-muted">${esc(x.week_iso)}</td>` +
+        `<td class="n">${num(x.tc)}</td>` +
+        `<td>${esc(x.lands_iso)}</td>` +
+        `<td class="n">${num(x.plants_served)}</td></tr>`).join("") +
+      `</tbody></table>`;
+  }
+
+  function loadBatches() {
+    const t = S.tc;
+    if (!(t && t.plan && S.alloc)) { S.batches = null; renderBatches(); return; }
+    const live = S.alloc.filter((r) => cintish(r.tc) > 0);
+    if (!live.length) { S.batches = null; renderBatches(); return; }
+    callRl2("batches_for", {
+      production_plan: t.plan, allocations: JSON.stringify(live),
+    }).then((r) => { S.batches = r; renderBatches(); })
+      .catch((e) => { S.batches = { error: e.message }; renderBatches(); });
   }
 
   function mergeOrders(m) {
@@ -6774,6 +6860,27 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
         // away half of what was just asked for.
         if (!(S.tc && S.tc.propagates === false)) $("tc-divert").value = "";
         loadTc($("tc-qty").value || null);
+      });
+      $("tc-sup").addEventListener("click", (e) => {
+        const b = e.target.closest("[data-al]");
+        if (!b || b.tagName === "INPUT") return;
+        if (b.dataset.al === "add") {
+          S.alloc.push({ supplier: "", tc: 0, cycle_weeks: 4 });
+        } else if (b.dataset.al === "drop") {
+          S.alloc.splice(parseInt(b.dataset.i, 10), 1);
+          if (!S.alloc.length) S.alloc.push({ supplier: "", tc: 0, cycle_weeks: 4 });
+        }
+        renderSuppliers(S.mat || {});
+        loadBatches();
+      });
+      $("tc-sup").addEventListener("change", (e) => {
+        const f = e.target.closest("input[data-al]");
+        if (!f) return;
+        const i = parseInt(f.dataset.i, 10);
+        if (!S.alloc[i]) return;
+        S.alloc[i][f.dataset.al] = f.dataset.al === "supplier"
+          ? f.value : (parseInt(f.value, 10) || 0);
+        loadBatches();
       });
       $("tc-roots").addEventListener("change", () => {
         loadTc($("tc-qty").value || null);
