@@ -58,10 +58,10 @@ frappe.ui.form.on("Summer Flower Production Plan", {
 			// lead time, and the lead time sets the order date. Asked once, here.
 			frm.add_custom_button(__("Allocate Blocks"), () => allocate_blocks(frm),
 				ACTIONS);
-			// Plan it, or look at what was agreed. Which of the two depends on
-			// whether a line exists, and that is worth saying on the button: a
-			// plan that says "Plan Motherstock" after somebody has already agreed
-			// one invites a second answer to a settled question.
+			// One destination, one name. Both kinds of crop plan their material
+			// on the same tab -- a motherstock is one way of getting it, not a
+			// different exercise -- so the button says Plan Materials either way,
+			// and only what has already been decided changes it to View.
 			//
 			// Plan Procurement used to sit here with a dialog of its own that
 			// sized the order a second time. The order follows from the agreed
@@ -654,11 +654,11 @@ const decided_buttons = (frm, group) => {
 				// make -- how much as plantlets, how much as roots, and when
 				// each has to be ordered to land in the same week -- and the
 				// dashboard is where that is made.
-				frm.add_custom_button(__("Plan Material"),
+				frm.add_custom_button(__("Plan Materials"),
 					() => plan_motherstock(frm), group);
 				if (!ms) return;
 			} else if (!ms) {
-				frm.add_custom_button(__("Plan Motherstock"),
+				frm.add_custom_button(__("Plan Materials"),
 					() => plan_motherstock(frm), group);
 				return;
 			}
@@ -671,7 +671,7 @@ const decided_buttons = (frm, group) => {
 					frappe.datetime.get_today())
 				: null;
 			if (days === null || days > 0) {
-				frm.add_custom_button(__("Revise Motherstock"),
+				frm.add_custom_button(__("Revise Materials"),
 					() => plan_motherstock(frm), group);
 			}
 			// Said once, where the decision is read, rather than left for somebody
