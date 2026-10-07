@@ -4668,19 +4668,20 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
   // Searched, not listed. There are 1,707 suppliers on this site; a datalist of
   // the first 500 alphabetically is both unusable and missed the three labs
   // this card exists for.
-  function loadSuppliers(search) {
-    return callRl2("tc_suppliers", { search: search || null })
-      .then((r) => { S.suppliers = r || []; return S.suppliers; })
-      .catch(() => { S.suppliers = S.suppliers || []; return S.suppliers; });
+  function loadSuppliers() {
+    if (S.suppliers) return Promise.resolve(S.suppliers);
+    return callRl2("tc_suppliers", { all: 1 })
+      .then((r) => {
+        S.suppliers = (r && r.names) || [];
+        S.supPending = new Set((r && r.pending) || []);
+        return S.suppliers;
+      })
+      .catch(() => { S.suppliers = []; S.supPending = new Set(); return S.suppliers; });
   }
 
-  function refreshSupplierList(search) {
-    loadSuppliers(search).then(() => {
-      const dl = document.getElementById("tc-sup-list");
-      if (dl) {
-        dl.innerHTML = (S.suppliers || [])
-          .map((n) => `<option value="${esc(n)}">`).join("");
-      }
+  function refreshSupplierList() {
+    loadSuppliers().then(() => {
+      if (S.allocOpen) renderSuppliers(S.mat || {});
     });
   }
 
@@ -4696,20 +4697,30 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
       `<th class="n">TC</th><th class="n">Every (weeks)</th><th></th>` +
       `</tr></thead><tbody>` +
       rows.map((r, i) =>
-        `<tr><td><input data-al="supplier" data-i="${i}" list="tc-sup-list"` +
+        `<tr><td><span class="pl-combo">` +
+        `<input data-al="supplier" data-i="${i}" autocomplete="off"` +
+        ` spellcheck="false" role="combobox" aria-autocomplete="list"` +
+        ` aria-expanded="false" aria-controls="tc-sup-ac-${i}"` +
         ` value="${esc(r.supplier || "")}" style="width:14rem"` +
-        ` placeholder="pick a lab"></td>` +
+        ` placeholder="pick a lab">` +
+        `<ul id="tc-sup-ac-${i}" class="pl-ac" role="listbox" hidden></ul>` +
+        `</span></td>` +
         `<td class="n"><input type="number" data-al="tc" data-i="${i}" ` +
         `value="${cintish(r.tc)}" style="width:9rem"></td>` +
         `<td class="n"><input type="number" min="1" data-al="cycle_weeks" ` +
         `data-i="${i}" value="${cintish(r.cycle_weeks) || 4}" style="width:6rem"></td>` +
         `<td><button type="button" class="pl-btn quiet" data-al="drop" ` +
-        `data-i="${i}">Remove</button></td></tr>`).join("") +
+        `data-i="${i}">Remove</button>` +
+        ((S.supPending && S.supPending.has(r.supplier))
+          ? ` <span class="text-muted small" style="color:var(--critical)">` +
+            `awaiting approval — no order can be raised yet</span>` : "") +
+        `</td></tr>`).join("") +
       `</tbody></table>` +
-      `<datalist id="tc-sup-list">` +
-      (S.suppliers || []).map((n) => `<option value="${esc(n)}">`).join("") +
-      `</datalist>` +
       `<button type="button" class="pl-btn quiet" data-al="add">Add a supplier</button>`;
+    box.querySelectorAll('input[data-al="supplier"]').forEach((inp) => {
+      const ul = document.getElementById("tc-sup-ac-" + inp.dataset.i);
+      if (ul) attachCombo(inp, ul, () => S.suppliers || []);
+    });
   }
 
   function renderBatches() {
@@ -6922,10 +6933,6 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
         renderSuppliers(S.mat || {});
         loadBatches();
       });
-      $("tc-sup").addEventListener("input", (e) => {
-        const f = e.target.closest('input[data-al="supplier"]');
-        if (f) refreshSupplierList(f.value);
-      });
       $("tc-sup").addEventListener("change", (e) => {
         const f = e.target.closest("input[data-al]");
         if (!f) return;
@@ -6933,7 +6940,7 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
         if (!S.alloc[i]) return;
         S.alloc[i][f.dataset.al] = f.dataset.al === "supplier"
           ? f.value : (parseInt(f.value, 10) || 0);
-        loadBatches();
+        loadBatches();   // the model only; redrawing here would steal the cursor
       });
       $("tc-roots").addEventListener("change", () => {
         loadTc($("tc-qty").value || null);

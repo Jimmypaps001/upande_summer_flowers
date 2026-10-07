@@ -170,7 +170,7 @@ def _timing(plan, lead_weeks, to_ground_weeks):
 
 
 @frappe.whitelist()
-def tc_suppliers(search=None):
+def tc_suppliers(search=None, all=0):
 	"""The labs this site can actually order from.
 
 	A free-text supplier field turns a typo into a supplier nobody can raise an
@@ -178,20 +178,23 @@ def tc_suppliers(search=None):
 	"""
 	if frappe.session.user == "Guest":
 		frappe.throw(_("Please sign in."), frappe.PermissionError)
-	f = {"disabled": 0}
+	f = {}
 	if search:
 		f["name"] = ["like", "%%%s%%" % search]
-	rows = frappe.get_all("Supplier", filters=f, pluck="name",
-	                      order_by="name", limit=40)
-	# With nothing typed, the labs that actually send tissue culture come first
-	# rather than whatever sorts to the top of 1,707 suppliers.
-	if not search:
-		known = [n for n in frappe.get_all(
-			"Supplier",
-			filters={"disabled": 0, "default_currency": "EUR"},
-			pluck="name", order_by="name", limit=40)]
-		rows = list(dict.fromkeys(known + rows))[:40]
-	return rows
+	# Suppliers awaiting approval are offered too, and named as pending. This
+	# site auto-disables a supplier until its workflow reaches Approved, so
+	# filtering them out meant somebody could create a lab and then not find it,
+	# with nothing on screen saying why. Hiding it does not stop the order; it
+	# stops the explanation.
+	rows = frappe.get_all(
+		"Supplier", filters=f,
+		fields=["name", "disabled", "workflow_state"],
+		order_by="disabled asc, name asc",
+		limit=0 if cint(all) else 40)
+	return {
+		"names": [r.name for r in rows],
+		"pending": [r.name for r in rows if cint(r.disabled)],
+	}
 
 
 @frappe.whitelist()
