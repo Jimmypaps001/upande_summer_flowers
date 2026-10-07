@@ -4693,6 +4693,7 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
     box.innerHTML =
       `<div class="text-muted small" style="text-transform:uppercase;` +
       `letter-spacing:.05em;margin:10px 0 4px">Who sends the TC</div>` +
+      `<div class="pl-two"><div>` +
       `<table class="pl-t"><thead><tr><th>Supplier</th>` +
       `<th class="n">TC</th><th class="n">Every (weeks)</th><th></th>` +
       `</tr></thead><tbody>` +
@@ -4716,11 +4717,44 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
             `awaiting approval — no order can be raised yet</span>` : "") +
         `</td></tr>`).join("") +
       `</tbody></table>` +
-      `<button type="button" class="pl-btn quiet" data-al="add">Add a supplier</button>`;
+      `<button type="button" class="pl-btn quiet" data-al="add">Add a supplier</button>` +
+      `</div><div id="tc-bal"></div></div>`;
     box.querySelectorAll('input[data-al="supplier"]').forEach((inp) => {
       const ul = document.getElementById("tc-sup-ac-" + inp.dataset.i);
       if (ul) attachCombo(inp, ul, () => S.suppliers || []);
     });
+    renderBalance();
+  }
+
+  // What is left to give out. Worked in the browser so it answers on the
+  // keystroke -- waiting for a round trip to learn you have over-allocated by
+  // 400 is how somebody ends up typing past the figure they meant.
+  function renderBalance() {
+    const el = $("tc-bal");
+    if (!el) return;
+    const target = cintish(($("tc-qty") || {}).value) ||
+                   ((S.mat || {}).suggested || {}).tc || 0;
+    const rows = (S.alloc || []);
+    const given = rows.reduce((a, r) => a + cintish(r.tc), 0);
+    const left = target - given;
+    const named = rows.filter((r) => (r.supplier || "").trim() && cintish(r.tc) > 0);
+    el.innerHTML =
+      `<table class="pl-t" style="margin-top:22px">` +
+      `<tbody>` +
+      `<tr><td>TC to buy</td><td class="n"><b>${num(target)}</b></td></tr>` +
+      named.map((r) => `<tr><td class="text-muted">${esc(r.supplier)}` +
+        `<span class="text-muted small"> every ${cintish(r.cycle_weeks) || 4} wk` +
+        `</span></td><td class="n">−${num(cintish(r.tc))}</td></tr>`).join("") +
+      `<tr><td><b>Allocated</b></td><td class="n"><b>${num(given)}</b></td></tr>` +
+      `<tr><td><b>${left > 0 ? "Still to allocate" : left < 0 ? "Over-allocated"
+                   : "Balance"}</b></td>` +
+      `<td class="n"><b${left ? ` style="color:var(${left < 0 ? "--critical"
+                                 : "--warning"})"` : ""}>` +
+      `${num(Math.abs(left))}</b></td></tr>` +
+      `</tbody></table>` +
+      (left === 0 && named.length
+        ? `<p class="pl-note">Fully allocated across ${named.length} ` +
+          `supplier${named.length === 1 ? "" : "s"}.</p>` : "");
   }
 
   function renderBatches() {
@@ -4762,6 +4796,7 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
     if (!live.length) { S.batches = null; renderBatches(); return; }
     callRl2("batches_for", {
       production_plan: t.plan, allocations: JSON.stringify(live),
+      tc_target: cintish(($("tc-qty") || {}).value) || null,
     }).then((r) => { S.batches = r; renderBatches(); })
       .catch((e) => { S.batches = { error: e.message }; renderBatches(); });
   }
@@ -6933,6 +6968,15 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
         renderSuppliers(S.mat || {});
         loadBatches();
       });
+      $("tc-sup").addEventListener("input", (e) => {
+        const f = e.target.closest('input[data-al="tc"]');
+        if (!f) return;
+        const i = parseInt(f.dataset.i, 10);
+        if (S.alloc && S.alloc[i]) {
+          S.alloc[i].tc = parseInt(f.value, 10) || 0;
+          renderBalance();
+        }
+      });
       $("tc-sup").addEventListener("change", (e) => {
         const f = e.target.closest("input[data-al]");
         if (!f) return;
@@ -6940,7 +6984,8 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
         if (!S.alloc[i]) return;
         S.alloc[i][f.dataset.al] = f.dataset.al === "supplier"
           ? f.value : (parseInt(f.value, 10) || 0);
-        loadBatches();   // the model only; redrawing here would steal the cursor
+        renderBalance();  // the balance only; redrawing the rows would steal the cursor
+        loadBatches();
       });
       $("tc-roots").addEventListener("change", () => {
         loadTc($("tc-qty").value || null);

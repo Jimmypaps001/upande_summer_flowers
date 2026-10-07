@@ -32,8 +32,15 @@ from frappe.utils import add_days, cint, flt, getdate
 from upande_summer_flowers.summer_flowers.root_line import _monday, iso
 
 
-def batch_plan(plan, allocations, lead_weeks=None, to_ground_weeks=None):
-	"""Every supplier's batches, sized by the demand each one serves."""
+def batch_plan(plan, allocations, lead_weeks=None, to_ground_weeks=None,
+               tc_target=None):
+	"""Every supplier's batches, sized by the demand each one serves.
+
+	`tc_target` is what the labs are between them meant to send. It is not the
+	plant count: roots cover part of the plan, so measuring a tissue culture
+	allocation against plants wanted reports a shortfall that is simply the
+	roots doing their job.
+	"""
 	if isinstance(allocations, str):
 		allocations = frappe.parse_json(allocations or "[]")
 	allocations = [a for a in (allocations or []) if cint(a.get("tc"))]
@@ -53,13 +60,16 @@ def batch_plan(plan, allocations, lead_weeks=None, to_ground_weeks=None):
 		out.append(run)
 
 	wanted = sum(need.values())
+	target = cint(tc_target) if cint(tc_target) else wanted
 	return {
 		"variety": plan.variety, "farm": plan.farm,
 		"lead_weeks": lead, "to_ground_weeks": ground,
 		"plants_needed": wanted,
+		"tc_target": target,
+		"measured_against": "the TC order" if cint(tc_target) else "plants wanted",
 		"tc_allocated": grand,
-		"short_by": max(0, wanted - grand),
-		"over_by": max(0, grand - wanted),
+		"short_by": max(0, target - grand),
+		"over_by": max(0, grand - target),
 		"suppliers": out,
 		# Every batch from every supplier on one timeline, which is the thing a
 		# buyer reads: what is due to whom in which week.
@@ -199,10 +209,10 @@ def tc_suppliers(search=None, all=0):
 
 @frappe.whitelist()
 def batches_for(production_plan, allocations=None, lead_weeks=None,
-                to_ground_weeks=None):
+                to_ground_weeks=None, tc_target=None):
 	"""What the dashboard draws for a multi-supplier tissue culture order."""
 	if frappe.session.user == "Guest":
 		frappe.throw(_("Please sign in."), frappe.PermissionError)
 	plan = frappe.get_doc("Summer Flower Production Plan", production_plan)
 	return batch_plan(plan, allocations, lead_weeks=lead_weeks,
-	                  to_ground_weeks=to_ground_weeks)
+	                  to_ground_weeks=to_ground_weeks, tc_target=tc_target)
