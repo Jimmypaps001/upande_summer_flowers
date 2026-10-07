@@ -55,13 +55,30 @@ def batch_plan(plan, allocations, lead_weeks=None, to_ground_weeks=None,
 
 	out, grand = [], 0
 	for a in allocations:
-		run = _one_supplier(a, need, land_lag)
+		run = _one_supplier(a, need, land_lag, lead=lead)
+		run["_cycle"] = max(1, cint(a.get("cycle_weeks")) or 4)
 		grand += run["tc_total"]
 		out.append(run)
+
+	# What the propagation unit can take is a harder constraint than anything a
+	# lab can promise. Lead times were respected and capacity was not, so four
+	# deliveries of a season put half a million plants into one week against a
+	# unit whose largest intake ever recorded is 185,000.
+	limits = capacity_limits()
+	if not limits["hold_weeks"]:
+		limits["hold_weeks"] = ground
+	fitted = _fit_intake(out, limits["weekly_intake"], lead)
+	for run in out:
+		_renumber(run)
+		_respan(run, need, land_lag)
+	grand = sum(run["tc_total"] for run in out)
+	capacity = capacity_view(out, limits, lead)
+	capacity["reshaped"] = fitted
 
 	wanted = sum(need.values())
 	target = cint(tc_target) if cint(tc_target) else wanted
 	return {
+		"capacity": capacity,
 		"variety": plan.variety, "farm": plan.farm,
 		"lead_weeks": lead, "to_ground_weeks": ground,
 		"plants_needed": wanted,
@@ -79,7 +96,7 @@ def batch_plan(plan, allocations, lead_weeks=None, to_ground_weeks=None,
 	}
 
 
-def _one_supplier(alloc, need, land_lag):
+def _one_supplier(alloc, need, land_lag, lead=None):
 	"""One supplier's run of batches, weighted by what each one feeds."""
 	tc = cint(alloc.get("tc"))
 	cycle = max(1, cint(alloc.get("cycle_weeks")) or 4)
@@ -131,8 +148,15 @@ def _one_supplier(alloc, need, land_lag):
 		       else int(round(tc * served[i] / float(total_served))))
 		qty = max(0, qty)
 		running += qty
+		# Two different weeks, which were one: the material ARRIVES at the
+		# propagation unit a lead time after it is sent, and becomes plants a
+		# hardening time after that. Capacity is about the first; the planting
+		# week is about the second. Reporting only the second hid every question
+		# about whether the unit could take what was coming.
+		arrives = add_days(sw, 7 * cint(lead if lead is not None else 0))
 		batches.append({
 			"batch": i + 1, "week": str(sw), "week_iso": iso(sw),
+			"arrives": str(arrives), "arrives_iso": iso(arrives),
 			"tc": qty,
 			"lands": str(spans[i][0]), "lands_iso": iso(spans[i][0]),
 			"serves_to": str(add_days(spans[i][1], -7)),
@@ -228,3 +252,208 @@ def batches_for(production_plan, allocations=None, lead_weeks=None,
 	plan = frappe.get_doc("Summer Flower Production Plan", production_plan)
 	return batch_plan(plan, allocations, lead_weeks=lead_weeks,
 	                  to_ground_weeks=to_ground_weeks, tc_target=tc_target)
+
+
+# ---------------------------------------------------------------------------
+# What the propagation unit can actually take
+# ---------------------------------------------------------------------------
+
+def capacity_limits():
+	"""The unit's ceilings, as the settings state them. Zero means unknown."""
+	hold = cint(frappe.db.get_single_value(
+		"Summer Flower Settings", "propagation_hold_weeks"))
+	return {
+		"hold_plants": cint(frappe.db.get_single_value(
+			"Summer Flower Settings", "propagation_capacity_plants")),
+		"weekly_intake": cint(frappe.db.get_single_value(
+			"Summer Flower Settings", "max_weekly_intake_plants")),
+		"hold_weeks": hold,
+	}
+
+
+def _intake(suppliers):
+	"""Everything arriving at the unit in a week, whoever sent it."""
+	by = {}
+	for s in suppliers:
+		for b in s["batches"]:
+			by[b["arrives"]] = by.get(b["arrives"], 0) + cint(b["tc"])
+	return by
+
+
+def _fit_intake(suppliers, cap, lead):
+	"""Nothing arrives in a week the unit cannot set down.
+
+	What will not fit moves EARLIER, never later. A batch exists to be ready for
+	a planting week, so a batch that slips arrives after the week it was for;
+	one that comes early only costs holding time. It goes back onto the
+	supplier's own cycle, which is the only week that supplier can send in.
+
+	Returns what had to be moved, because a plan quietly reshaped is a plan
+	nobody checked.
+	"""
+	report = {"moved": 0, "unplaceable": 0, "weeks": 0}
+	if not cap:
+		return report
+	for _ in range(500):
+		intake = _intake(suppliers)
+		over = [w for w in sorted(intake) if intake[w] > cap]
+		if not over:
+			break
+		# Latest first: moving a late week's excess back opens nothing behind
+		# it, but moving an early one can overflow the week it lands on, and
+		# that week is then still ahead of the loop.
+		week = over[-1]
+		excess = intake[week] - cap
+		report["weeks"] += 1
+		for s in sorted(suppliers,
+		                key=lambda s: -sum(b["tc"] for b in s["batches"]
+		                                   if b["arrives"] == week)):
+			if excess <= 0:
+				break
+			excess -= _push_back(s, suppliers, week, excess, cap, lead)
+		if excess > 0:
+			report["unplaceable"] += excess
+			break
+		report["moved"] += intake[week] - cap
+	return report
+
+
+def _push_back(run, suppliers, week, excess, cap, lead):
+	"""Move up to `excess` out of this supplier's batch in `week`, earlier."""
+	here = [b for b in run["batches"] if b["arrives"] == week]
+	if not here:
+		return 0
+	cycle = cint(run.get("_cycle")) or 4
+	shifted = 0
+	for b in here:
+		if excess - shifted <= 0:
+			break
+		take = min(b["tc"], excess - shifted)
+		# Earlier slots on this supplier's own cycle, nearest first. A slot the
+		# supplier already uses is preferred; a new one is minted behind the
+		# first only when the used ones are full.
+		slot = add_days(getdate(b["arrives"]), -7 * cycle)
+		placed = 0
+		for _ in range(60):
+			if placed >= take:
+				break
+			room = cap - _intake(suppliers).get(str(slot), 0)
+			if room > 0:
+				put = min(room, take - placed)
+				_add_to(run, slot, put, cycle, lead)
+				placed += put
+			slot = add_days(slot, -7 * cycle)
+		b["tc"] -= placed
+		shifted += placed
+	run["batches"] = [b for b in run["batches"] if b["tc"] > 0]
+	_renumber(run)
+	return shifted
+
+
+def _add_to(run, arrives, qty, cycle, lead):
+	"""Put `qty` into this supplier's batch arriving that week, or open one."""
+	key = str(arrives)
+	for b in run["batches"]:
+		if b["arrives"] == key:
+			b["tc"] += qty
+			return
+	send = add_days(getdate(arrives), -7 * cint(lead or 0))
+	run["batches"].append({
+		"batch": 0, "week": str(send), "week_iso": iso(send),
+		"arrives": key, "arrives_iso": iso(arrives),
+		"tc": qty,
+		"lands": None, "lands_iso": None,
+		"serves_to": None, "plants_served": 0,
+		"added_for_capacity": 1,
+	})
+
+
+def _respan(run, need, land_lag):
+	"""What each batch covers, counted cumulatively rather than by its span.
+
+	A batch used to be credited with the planting weeks between its own landing
+	and the next batch's. That reads well while every batch is sized for the
+	weeks right after it, and it stops being true the moment capacity moves one
+	earlier: a consignment brought forward to get it through the door still buys
+	the weeks it was always for, and the span model showed it feeding the
+	handful of plants that happened to sit beside its new landing week.
+
+	So supply and demand are both run as totals. A batch covers the planting
+	weeks that its arrival takes the running supply past, which is the question
+	a buyer is really asking: how far into the season am I covered once this one
+	has landed.
+	"""
+	batches = sorted(run["batches"], key=lambda b: (b["week"], b["batch"]))
+	if not batches:
+		return
+	wanted = sorted(need.items())
+	supply = 0
+	seen = 0          # plants already covered by earlier batches
+	idx = 0
+	for b in batches:
+		start = add_days(getdate(b["week"]), 7 * land_lag)
+		b["lands"] = str(start)
+		b["lands_iso"] = iso(start)
+		supply += cint(b["tc"])
+		# Walk the planting weeks this batch's arrival now pays for. A week is
+		# only covered once the supply standing before it reaches it.
+		covered = seen
+		while idx < len(wanted) and covered + wanted[idx][1] <= supply:
+			covered += wanted[idx][1]
+			idx += 1
+		b["plants_served"] = cint(covered - seen)
+		b["serves_to"] = str(wanted[idx - 1][0]) if idx else None
+		seen = covered
+
+
+def _renumber(run):
+	run["batches"].sort(key=lambda b: b["week"])
+	for i, b in enumerate(run["batches"], start=1):
+		b["batch"] = i
+	run["batch_count"] = len(run["batches"])
+	run["tc_total"] = sum(b["tc"] for b in run["batches"])
+
+
+def capacity_view(suppliers, limits, lead):
+	"""Week by week: what comes in, what is being held, and what will not fit."""
+	intake = _intake(suppliers)
+	hold = cint(limits.get("hold_weeks"))
+	rows, running = [], []
+	weeks = sorted(intake)
+	if not weeks:
+		return {"weeks": [], "peak_intake": 0, "peak_held": 0, "breaches": 0}
+	first, last = getdate(weeks[0]), getdate(weeks[-1])
+	span = last
+	if hold:
+		span = add_days(last, 7 * hold)
+	d = first
+	peak_in = peak_held = 0
+	breaches = 0
+	while d <= span:
+		got = intake.get(str(d), 0)
+		running.append((d, got))
+		held = sum(q for wk, q in running
+		           if not hold or (d - wk).days < 7 * hold)
+		over_in = bool(limits["weekly_intake"] and got > limits["weekly_intake"])
+		over_hold = bool(limits["hold_plants"] and held > limits["hold_plants"])
+		if over_in or over_hold:
+			breaches += 1
+		peak_in = max(peak_in, got)
+		peak_held = max(peak_held, held)
+		if got or over_hold:
+			rows.append({
+				"week": str(d), "week_iso": iso(d), "intake": got, "held": held,
+				"over_intake": 1 if over_in else 0,
+				"over_hold": 1 if over_hold else 0,
+			})
+		d = add_days(d, 7)
+	return {
+		"weeks": rows, "peak_intake": peak_in, "peak_held": peak_held,
+		"breaches": breaches,
+		"intake_cap": limits["weekly_intake"], "hold_cap": limits["hold_plants"],
+		"hold_weeks": hold,
+		"intake_headroom": (limits["weekly_intake"] - peak_in
+		                    if limits["weekly_intake"] else None),
+		"hold_headroom": (limits["hold_plants"] - peak_held
+		                  if limits["hold_plants"] else None),
+	}

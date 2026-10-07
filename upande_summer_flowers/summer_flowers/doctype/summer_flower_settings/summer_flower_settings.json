@@ -17,6 +17,11 @@
   "lab_turnaround_weeks",
   "bands_section",
   "tc_price_bands",
+  "propagation_capacity_section",
+  "propagation_capacity_plants",
+  "max_weekly_intake_plants",
+  "cb_prop_cap",
+  "propagation_hold_weeks",
   "bench_section",
   "max_bench_sqm",
   "procurement_section",
@@ -86,6 +91,36 @@
    "fieldtype": "Table",
    "label": "Tc Price Bands",
    "options": "Summer Flower TC Price Band"
+  },
+  {
+   "fieldname": "propagation_capacity_section",
+   "fieldtype": "Section Break",
+   "label": "Propagation Capacity"
+  },
+  {
+   "default": "0",
+   "description": "The most plants that can be in propagation at any one moment, across every supplier and every variety. A batch occupies its share for as long as it is hardening, so the ceiling is on the running total and not on a week's intake. Zero means no ceiling is known, and none is applied.",
+   "fieldname": "propagation_capacity_plants",
+   "fieldtype": "Int",
+   "label": "Plants The Unit Can Hold"
+  },
+  {
+   "default": "0",
+   "description": "The largest consignment the unit can receive and set down in one week. Zero means no ceiling is known. A delivery plan that breaches this is not a plan the unit can work to, however well the lead times are respected.",
+   "fieldname": "max_weekly_intake_plants",
+   "fieldtype": "Int",
+   "label": "Most That Can Be Taken In A Week"
+  },
+  {
+   "fieldname": "cb_prop_cap",
+   "fieldtype": "Column Break"
+  },
+  {
+   "default": "0",
+   "description": "How long material sits in propagation before the space comes free. Blank or zero uses the protocol's own weeks to ground.",
+   "fieldname": "propagation_hold_weeks",
+   "fieldtype": "Int",
+   "label": "Weeks A Batch Occupies The Unit"
   },
   {
    "fieldname": "bench_section",

@@ -4841,40 +4841,90 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
     if (!box) return;
     const b = S.batches;
     if (!b || b.error || !(b.suppliers || []).length) { box.innerHTML = ""; return; }
+    const cap = b.capacity || {};
+    const reshaped = (cap.reshaped || {}).moved || 0;
     box.innerHTML =
       `<div class="text-muted small" style="text-transform:uppercase;` +
       `letter-spacing:.05em;margin:10px 0 4px">Deliveries — every batch, when ` +
-      `it is ordered and when it lands</div>` +
+      `it is ordered, when the unit takes it in and when it is plants</div>` +
       `<p class="pl-note">${num(b.plants_needed)} plants wanted, ` +
       `${num(b.tc_allocated)} TC allocated` +
       (b.short_by ? ` — <b style="color:var(--critical)">short by ${num(b.short_by)}</b>`
        : b.over_by ? ` — ${num(b.over_by)} over` : `, exact`) +
-      `. TC lead ${b.lead_weeks} wk + ${b.to_ground_weeks} wk to ground.` +
-      // What each lab is actually sending, which is the thing somebody who
-      // asked for four deliveries and counted eleven wanted to read.
+      `. TC lead ${b.lead_weeks} wk to the unit, ${b.to_ground_weeks} wk more ` +
+      `to plants.` +
+      // What each lab is actually sending. Somebody who asked for four and
+      // counted six is owed the reason, not a count.
       (b.suppliers || []).map((sp) =>
         ` ${esc(sp.supplier || "—")}: ${sp.batch_count} ` +
         `deliver${sp.batch_count === 1 ? "y" : "ies"}` +
-        (sp.batches_asked
-          ? ` as asked`
-          : ` — every ${sp.cycle_weeks} wk, as often as it can`) + `.`).join("") +
+        (!sp.batches_asked
+          ? ` — every ${sp.cycle_weeks} wk, as often as it can`
+          : sp.batch_count === sp.batches_asked
+            ? ` as asked`
+            : `, not the ${sp.batches_asked} asked — the rest would not fit ` +
+              `through the propagation unit in one week`) + `.`).join("") +
       `</p>` +
+      capacityStrip(cap, reshaped) +
       `<table class="pl-t"><thead><tr><th>Supplier</th><th class="n">Batch</th>` +
-      `<th>Order placed</th><th>Week</th>` +
+      `<th>Ordered</th><th>Week</th>` +
       `<th class="n">TC</th>` +
-      `<th>Delivered</th><th>Week</th>` +
-      `<th class="n">Feeds plants</th><th>Covers to</th>` +
+      `<th>At the unit</th><th>Week</th>` +
+      `<th>Plants ready</th><th>Week</th>` +
+      `<th class="n">Covers plants</th><th>To</th>` +
       `</tr></thead><tbody>` +
-      (b.calendar || []).map((x) => `<tr><td>${esc(x.supplier || "—")}</td>` +
+      (b.calendar || []).map((x) =>
+        `<tr${x.added_for_capacity ? ' class="ls-arrive"' : ""}>` +
+        `<td>${esc(x.supplier || "—")}</td>` +
         `<td class="n">${x.batch}</td>` +
         `<td>${fdate(x.week)}</td>` +
         `<td class="text-muted">${esc(x.week_iso)}</td>` +
         `<td class="n">${num(x.tc)}</td>` +
+        `<td>${fdate(x.arrives)}</td>` +
+        `<td class="text-muted">${esc(x.arrives_iso || "")}</td>` +
         `<td>${fdate(x.lands)}</td>` +
         `<td class="text-muted">${esc(x.lands_iso)}</td>` +
         `<td class="n">${num(x.plants_served)}</td>` +
-        `<td class="text-muted">${fdate(x.serves_to)}</td></tr>`).join("") +
+        `<td class="text-muted">${x.serves_to ? fdate(x.serves_to) : ""}</td>` +
+        `</tr>`).join("") +
       `</tbody></table>`;
+  }
+
+  // The propagation unit is a harder constraint than anything a lab promises:
+  // it can only set down so much in a week and only hold so much at once.
+  function capacityStrip(cap, reshaped) {
+    if (!cap || (!cap.intake_cap && !cap.hold_cap)) {
+      return `<p class="pl-note">No propagation capacity is on file, so ` +
+        `nothing here has been checked against what the unit can take. ` +
+        `Summer Flower Settings holds the two ceilings.</p>`;
+    }
+    const tiles = [];
+    if (cap.intake_cap) {
+      tiles.push({ k: "Biggest week in", v: num(cap.peak_intake),
+        m: `of ${num(cap.intake_cap)} the unit can take in a week`,
+        bad: cap.peak_intake > cap.intake_cap });
+    }
+    if (cap.hold_cap) {
+      tiles.push({ k: "Most held at once", v: num(cap.peak_held),
+        m: `of ${num(cap.hold_cap)}, over ${cap.hold_weeks} wk in propagation`,
+        bad: cap.peak_held > cap.hold_cap });
+    }
+    return `<div class="pl-tiles" style="margin:6px 0">` +
+      tiles.map((t) => `<div class="pl-tile"><div class="k">${esc(t.k)}</div>` +
+        `<div class="v"${t.bad ? ' style="color:var(--critical)"' : ""}>` +
+        `${esc(t.v)}</div><div class="m">${esc(t.m)}</div></div>`).join("") +
+      `</div>` +
+      (reshaped
+        ? `<p class="pl-note">${num(reshaped)} TC was brought forward to ` +
+          `weeks with room, so no week asks the unit for more than it can set ` +
+          `down. Those batches are marked.</p>`
+        : "") +
+      ((cap.reshaped || {}).unplaceable
+        ? `<p class="pl-note"><b style="color:var(--critical)">` +
+          `${num(cap.reshaped.unplaceable)} TC could not be placed at all</b> — ` +
+          `there is no earlier week with room. Either the order is too big for ` +
+          `this unit or it needs a longer run-up.</p>`
+        : "");
   }
 
   function loadBatches() {
