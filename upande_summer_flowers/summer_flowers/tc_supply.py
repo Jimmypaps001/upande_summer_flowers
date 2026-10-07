@@ -100,6 +100,17 @@ def _one_supplier(alloc, need, land_lag):
 	if not weeks:
 		weeks = [first]
 
+	# How many consignments the lab is to send, if the planner has said. The
+	# cycle says how OFTEN it can send; it does not say how many times, and a
+	# four-week cycle across a season is eleven sends, not four. Somebody who
+	# wants four deliveries has to be able to ask for four deliveries.
+	# They are spread across the run rather than taken from the front, so the
+	# last one still reaches the last planting week.
+	cap = cint(alloc.get("batches"))
+	if cap and cap < len(weeks):
+		step = (len(weeks) - 1) / float(cap - 1) if cap > 1 else 0
+		weeks = [weeks[int(round(i * step))] for i in range(cap)]
+
 	# What each batch feeds: the planting weeks from its landing until the next
 	# batch lands. A batch is for the weeks only it can reach.
 	spans, served = [], []
@@ -136,6 +147,7 @@ def _one_supplier(alloc, need, land_lag):
 	return {
 		"supplier": alloc.get("supplier"),
 		"cycle_weeks": cycle,
+		"batches_asked": cap or None,
 		"batch_count": len(batches),
 		"tc_total": sum(b["tc"] for b in batches),
 		"tc_allocated": tc,

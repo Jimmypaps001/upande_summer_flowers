@@ -452,15 +452,20 @@ class SummerFlowerPropagationPlan(Document):
 					cint(m.get("tc_lead_weeks")), cint(m.get("tc_weeks_to_ground"))),
 			})
 		if cint(sg.get("roots")):
-			first = (m.get("root_order_schedule") or [{}])[0].get("week")
+			# When the unit can be worked with, not when it was ordered. Roots
+			# are one consignment a year ahead of use, so the order week is no
+			# use to a propagation unit; the week they are in store is.
+			ro = (m.get("root_order_schedule") or [{}])[0]
+			first = ro.get("arrives") or ro.get("week")
 			self.append("sources", {
 				"source_type": "Bought-in Rooted Cuttings",
 				"mother_plants": 0,
 				"total_cuttings": cint(sg["roots"]),
 				"available_from": first,
 				"notes": _("Roots, {0} weeks of lead and {1} in propagation. One "
-				           "root becomes {2} plants, so this is the smaller "
-				           "number and the earlier order.").format(
+				           "root becomes {2} plants. They come in once and are "
+				           "held in the coldroom, then drawn out week by week as "
+				           "the plantings need them.").format(
 					cint(m.get("root_lead_weeks")),
 					cint(m.get("root_weeks_to_ground")),
 					flt(m.get("returns_per_plant"))),

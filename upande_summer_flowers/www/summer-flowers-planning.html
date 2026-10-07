@@ -4516,7 +4516,8 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
       { k: "As roots", v: `${rootPct}%`,
         m: m.returns_per_plant > 0
           ? `${num(m.roots_total)} roots × ${m.returns_per_plant} · ` +
-            `${m.root_lead_weeks} wk lead + ${m.root_weeks_to_ground} wk to ground`
+            `${m.root_lead_weeks} wk lead, one delivery, then drawn from store ` +
+            `${m.root_weeks_to_ground} wk before each landing`
           : "the protocol does not say what a root becomes",
         c: m.returns_per_plant > 0 ? "" : "--critical" },
       { k: "Roots go in first by", v: `${m.root_head_start_weeks} wk`,
@@ -4575,9 +4576,20 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
     }
     note.innerHTML = notes.map((n) => `<div class="pl-callout">${n}</div>`).join("");
 
+    // Roots are one consignment into a coldroom, not a run of orders. Saying so
+    // above the table stops the single line reading as a missing forty-nine.
+    const ro = (m.root_order_schedule || [])[0];
     gens.innerHTML =
       `<div class="text-muted small" style="text-transform:uppercase;` +
       `letter-spacing:.05em;margin:4px 0">When each way has to be ordered</div>` +
+      (ro
+        ? `<p class="pl-note">Roots come in once: ${num(ro.roots)} ordered ` +
+          `${fdate(ro.week)}, in store by ${fdate(ro.arrives)}, then taken out ` +
+          `over ${ro.withdrawals} week${ro.withdrawals === 1 ? "" : "s"} ` +
+          `between ${fdate(ro.drawn_from)} and ${fdate(ro.drawn_to)} — each ` +
+          `withdrawal ${m.root_weeks_to_ground} weeks before the plants are ` +
+          `wanted, so they land with the tissue culture.</p>`
+        : "") +
       `<table class="pl-t"><thead><tr><th>Order week</th><th>ISO</th>` +
       `<th class="n">TC</th><th class="n">Roots</th></tr></thead><tbody>` +
       mergeOrders(m).map((r) => `<tr><td>${fdate(r.week)}</td>` +
@@ -4594,7 +4606,7 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
       `<th class="n">Plants</th>` +
       `<th class="n">From TC</th><th>TC ordered</th>` +
       `<th class="n">From roots</th><th class="n">Roots</th>` +
-      `<th>Roots ordered</th></tr></thead><tbody>` +
+      `<th>Roots out of store</th></tr></thead><tbody>` +
       (m.weeks || []).map((w) => `<tr><td>${fdate(w.week)}</td>` +
         `<td class="text-muted">${esc(w.week_iso || "")}</td>` +
         `<td class="n">${num(w.plants)}</td>` +
@@ -4603,8 +4615,8 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
         `${w.tc_order_iso ? ` <span class="text-muted">${esc(w.tc_order_iso)}</span>` : ""}</td>` +
         `<td class="n">${w.by_roots ? num(w.by_roots) : ""}</td>` +
         `<td class="n">${w.roots_needed ? num(w.roots_needed) : ""}</td>` +
-        `<td>${w.root_order_week ? fdate(w.root_order_week) : ""}` +
-        `${w.root_order_iso ? ` <span class="text-muted">${esc(w.root_order_iso)}</span>` : ""}</td></tr>`)
+        `<td>${w.root_out_week ? fdate(w.root_out_week) : ""}` +
+        `${w.root_out_iso ? ` <span class="text-muted">${esc(w.root_out_iso)}</span>` : ""}</td></tr>`)
         .join("") + `</tbody></table>`;
 
     adoptCommitted(t, m);
@@ -4709,6 +4721,7 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
       supplier: r.supplier || "",
       tc: cintish(r.tc),
       cycle_weeks: cintish(r.cycle_weeks) || 4,
+      batches: cintish(r.batches),
     }));
     S.allocOpen = true;
     loadBatches();
@@ -4718,7 +4731,8 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
     if (S.alloc) return S.alloc;
     // Opens on one row carrying the whole order, which is the simplest true
     // answer; splitting it between labs is the thing the planner then does.
-    S.alloc = [{ supplier: "", tc: (m.suggested || {}).tc || 0, cycle_weeks: 4 }];
+    S.alloc = [{ supplier: "", tc: (m.suggested || {}).tc || 0, cycle_weeks: 4,
+                 batches: 0 }];
     return S.alloc;
   }
 
@@ -4752,7 +4766,9 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
       `letter-spacing:.05em;margin:10px 0 4px">Who sends the TC</div>` +
       `<div class="pl-two"><div>` +
       `<table class="pl-t"><thead><tr><th>Supplier</th>` +
-      `<th class="n">TC</th><th class="n">Every (weeks)</th><th></th>` +
+      `<th class="n">TC</th><th class="n">Sends every<br><span class="text-muted">` +
+      `weeks</span></th><th class="n">Deliveries<br><span class="text-muted">` +
+      `blank = as often as it can</span></th><th></th>` +
       `</tr></thead><tbody>` +
       rows.map((r, i) =>
         `<tr><td><span class="pl-combo">` +
@@ -4767,6 +4783,12 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
         `value="${cintish(r.tc)}" style="width:9rem"></td>` +
         `<td class="n"><input type="number" min="1" data-al="cycle_weeks" ` +
         `data-i="${i}" value="${cintish(r.cycle_weeks) || 4}" style="width:6rem"></td>` +
+        // How often a lab CAN send is not how many times it will. A four-week
+        // cycle across this season is eleven consignments, and somebody who
+        // wants four has to be able to say four.
+        `<td class="n"><input type="number" min="1" data-al="batches" ` +
+        `data-i="${i}" value="${cintish(r.batches) || ""}" style="width:6rem" ` +
+        `placeholder="all"></td>` +
         `<td><button type="button" class="pl-btn quiet" data-al="drop" ` +
         `data-i="${i}">Remove</button>` +
         ((S.supPending && S.supPending.has(r.supplier))
@@ -4827,7 +4849,16 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
       `${num(b.tc_allocated)} TC allocated` +
       (b.short_by ? ` — <b style="color:var(--critical)">short by ${num(b.short_by)}</b>`
        : b.over_by ? ` — ${num(b.over_by)} over` : `, exact`) +
-      `. TC lead ${b.lead_weeks} wk + ${b.to_ground_weeks} wk to ground.</p>` +
+      `. TC lead ${b.lead_weeks} wk + ${b.to_ground_weeks} wk to ground.` +
+      // What each lab is actually sending, which is the thing somebody who
+      // asked for four deliveries and counted eleven wanted to read.
+      (b.suppliers || []).map((sp) =>
+        ` ${esc(sp.supplier || "—")}: ${sp.batch_count} ` +
+        `deliver${sp.batch_count === 1 ? "y" : "ies"}` +
+        (sp.batches_asked
+          ? ` as asked`
+          : ` — every ${sp.cycle_weeks} wk, as often as it can`) + `.`).join("") +
+      `</p>` +
       `<table class="pl-t"><thead><tr><th>Supplier</th><th class="n">Batch</th>` +
       `<th>Order placed</th><th>Week</th>` +
       `<th class="n">TC</th>` +
@@ -7017,10 +7048,12 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
         const b = e.target.closest("[data-al]");
         if (!b || b.tagName === "INPUT") return;
         if (b.dataset.al === "add") {
-          S.alloc.push({ supplier: "", tc: 0, cycle_weeks: 4 });
+          S.alloc.push({ supplier: "", tc: 0, cycle_weeks: 4, batches: 0 });
         } else if (b.dataset.al === "drop") {
           S.alloc.splice(parseInt(b.dataset.i, 10), 1);
-          if (!S.alloc.length) S.alloc.push({ supplier: "", tc: 0, cycle_weeks: 4 });
+          if (!S.alloc.length) {
+            S.alloc.push({ supplier: "", tc: 0, cycle_weeks: 4, batches: 0 });
+          }
         }
         renderSuppliers(S.mat || {});
         loadBatches();

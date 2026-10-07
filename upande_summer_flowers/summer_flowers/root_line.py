@@ -337,7 +337,7 @@ def arrival_plan(plan, tc_share=None, returns_per_plant=None,
 	tc_lead = _lead_for(rows, "TC")
 	root_lead = _lead_for(rows, LIFT_STAGE)
 
-	weeks, tc_orders, root_orders = {}, {}, {}
+	weeks, tc_orders, root_pulls = {}, {}, {}
 	for b in plan.plan_blocks:
 		if not cint(b.is_new_planting) or not b.get("planting_date"):
 			continue
@@ -351,17 +351,23 @@ def arrival_plan(plan, tc_share=None, returns_per_plant=None,
 		roots = int(math.ceil(by_root / per_root)) if per_root > 0 else None
 		w.update({"by_tc": by_tc, "by_roots": by_root, "roots_needed": roots})
 		# Each way counted back from the SAME landing week.
+		#
+		# Tissue culture is ordered for the week it feeds: a lab sends batch
+		# after batch. Roots are not. Roots come in ONCE, go into the coldroom,
+		# and are taken out week by week as the plantings need them -- early
+		# enough that what they become lands with the tissue culture. So what a
+		# week has against it is not an order, it is a withdrawal from store.
 		w["tc_order_week"] = str(add_days(land, -7 * (tc_lead + tc_weeks)))
-		w["root_order_week"] = (str(add_days(land, -7 * (root_lead + root_weeks)))
-		                        if roots else None)
+		w["root_out_week"] = (str(add_days(land, -7 * root_weeks))
+		                      if roots else None)
 		w["week_iso"] = iso(land)
 		w["tc_order_iso"] = iso(w["tc_order_week"])
-		w["root_order_iso"] = iso(w["root_order_week"])
+		w["root_out_iso"] = iso(w["root_out_week"])
 		if by_tc:
 			tc_orders[w["tc_order_week"]] = tc_orders.get(w["tc_order_week"], 0) + by_tc
 		if roots:
-			root_orders[w["root_order_week"]] = root_orders.get(
-				w["root_order_week"], 0) + roots
+			root_pulls[w["root_out_week"]] = root_pulls.get(
+				w["root_out_week"], 0) + roots
 
 	ordered = sorted(weeks)
 	# A share of the plan sent down a way that cannot say what a unit becomes is
@@ -409,8 +415,14 @@ def arrival_plan(plan, tc_share=None, returns_per_plant=None,
 		# something else on a purchase line is how a figure gets queried.
 		"tc_order_schedule": [{"week": k, "week_iso": iso(k), "tc": v}
 		                      for k, v in sorted(tc_orders.items())],
-		"root_order_schedule": [{"week": k, "week_iso": iso(k), "roots": v}
-		                        for k, v in sorted(root_orders.items())],
+		# One line, not fifty. The whole season's roots are bought in one
+		# consignment, placed a lead time before the first week any of them has
+		# to come out of store.
+		"root_order_schedule": _root_order(root_pulls, root_lead),
+		# And what comes back out of the coldroom, week by week.
+		"root_withdrawals": [{"week": k, "week_iso": iso(k), "roots": v}
+		                     for k, v in sorted(root_pulls.items())],
+		"roots_stored": sum(root_pulls.values()),
 		# What the propagation unit is being asked to hand over, and when. This
 		# is the thing the unit actually works to: not an order, a delivery.
 		"propagation_request": [
@@ -503,6 +515,27 @@ def _committed(plan):
 			 "season_start_year": cint(plan.season_start_year),
 			 "status": ["!=", "Rejected"]}, "name", order_by="creation desc"),
 	}
+
+
+def _root_order(pulls, lead_weeks):
+	"""The single root order behind a season of withdrawals.
+
+	Roots are lifted once, from a block that was grown for it, and they keep in
+	a coldroom. Ordering them week by week the way tissue culture is ordered
+	described a trade that does not exist -- fifty-six consignments of a few
+	hundred roots each, a year apart from the weeks they serve.
+	"""
+	if not pulls:
+		return []
+	first = min(pulls)
+	placed = add_days(getdate(first), -7 * cint(lead_weeks))
+	return [{
+		"week": str(placed), "week_iso": iso(placed),
+		"roots": sum(pulls.values()),
+		"arrives": str(first), "arrives_iso": iso(first),
+		"drawn_from": str(first), "drawn_to": str(max(pulls)),
+		"withdrawals": len(pulls),
+	}]
 
 
 def _demand_vs_production(plan):

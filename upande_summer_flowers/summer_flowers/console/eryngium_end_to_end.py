@@ -83,12 +83,12 @@ def _run(variety, farm):
 		      "same landing week" % a["root_head_start_weeks"])
 		for w in a["weeks"][:4]:
 			print("      land %s  %7s plants = %7s from TC (order %s)  "
-			      "+ %7s from roots (%s roots, order %s)"
+			      "+ %7s from roots (%s roots, out of store %s)"
 			      % (w["week"], "{:,}".format(w["plants"]),
 			         "{:,}".format(w["by_tc"]), w["tc_order_week"],
 			         "{:,}".format(w["by_roots"]),
 			         "{:,}".format(cint(w["roots_needed"])),
-			         w["root_order_week"] or "—"))
+			         w.get("root_out_week") or "—"))
 		if a["propagation_request"]:
 			print("    propagation unit is asked to hand over:")
 			for r in a["propagation_request"][:3]:
