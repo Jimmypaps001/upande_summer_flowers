@@ -14,6 +14,7 @@
   "cuttings_required",
   "from_existing_ms",
   "from_new_ms",
+  "from_bought",
   "capacity_available",
   "ramp_pct",
   "shortfall",
@@ -45,11 +46,11 @@
   },
   {
    "columns": 1,
+   "description": "Plants this week's sticking supplies, for the planting week beside it. This is what the propagation unit hands the field.",
    "fieldname": "plants_to_stick",
    "fieldtype": "Int",
    "in_list_view": 1,
-   "label": "Plants Supplied",
-   "description": "Plants this week's sticking supplies, for the planting week beside it. This is what the propagation unit hands the field."
+   "label": "Plants Supplied"
   },
   {
    "columns": 1,
@@ -74,19 +75,28 @@
    "label": "From New MS"
   },
   {
+   "columns": 1,
+   "description": "Plants covered by tissue culture and roots bought in for this season. A crop with no motherstock is covered entirely from here.",
+   "fieldname": "from_bought",
+   "fieldtype": "Int",
+   "in_list_view": 1,
+   "label": "From Bought Material",
+   "read_only": 1
+  },
+  {
+   "description": "Cuttings every live pool can actually take this week, after the build-up to full capacity.",
    "fieldname": "capacity_available",
    "fieldtype": "Int",
-   "label": "Capacity Available",
    "in_list_view": 0,
-   "read_only": 1,
-   "description": "Cuttings every live pool can actually take this week, after the build-up to full capacity."
+   "label": "Capacity Available",
+   "read_only": 1
   },
   {
    "fieldname": "ramp_pct",
    "fieldtype": "Percent",
+   "in_list_view": 0,
    "label": "Of Full Capacity",
-   "read_only": 1,
-   "in_list_view": 0
+   "read_only": 1
   },
   {
    "columns": 1,
@@ -96,24 +106,24 @@
    "label": "Short By"
   },
   {
+   "description": "The day this week's plants are wanted in the field. The plants are stuck weeks earlier; this is when they leave the propagation unit for the block.",
    "fieldname": "deliver_on",
    "fieldtype": "Date",
-   "label": "Deliver To Farm",
-   "read_only": 1,
    "in_list_view": 1,
-   "description": "The day this week's plants are wanted in the field. The plants are stuck weeks earlier; this is when they leave the propagation unit for the block."
+   "label": "Deliver To Farm",
+   "read_only": 1
   },
   {
    "fieldname": "plant_week",
    "fieldtype": "Data",
-   "label": "Planting Weeks",
-   "in_list_view": 0
+   "in_list_view": 0,
+   "label": "Planting Weeks"
   },
   {
    "fieldname": "notes",
    "fieldtype": "Small Text",
-   "label": "Notes",
-   "in_list_view": 0
+   "in_list_view": 0,
+   "label": "Notes"
   }
  ],
  "grid_page_length": 50,

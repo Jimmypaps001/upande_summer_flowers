@@ -1,0 +1,119 @@
+{
+ "actions": [],
+ "allow_rename": 1,
+ "creation": "2026-10-08 10:00:00.000000",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "week_start_date",
+  "week_iso",
+  "form",
+  "source",
+  "reference",
+  "units",
+  "plants",
+  "ready_on",
+  "ready_week",
+  "deliver_on",
+  "plant_week"
+ ],
+ "fields": [
+  {
+   "columns": 1,
+   "description": "The week the material reaches the propagation unit.",
+   "fieldname": "week_start_date",
+   "fieldtype": "Date",
+   "in_list_view": 1,
+   "label": "Arrives",
+   "reqd": 1
+  },
+  {
+   "columns": 1,
+   "fieldname": "week_iso",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Week"
+  },
+  {
+   "columns": 1,
+   "fieldname": "form",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "label": "Form",
+   "options": "Tissue Culture\nRoots",
+   "reqd": 1
+  },
+  {
+   "columns": 2,
+   "description": "The lab that sends it, or the cold store it is drawn from.",
+   "fieldname": "source",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "From"
+  },
+  {
+   "description": "Which of that supplier's batches this is.",
+   "fieldname": "reference",
+   "fieldtype": "Data",
+   "label": "Consignment"
+  },
+  {
+   "columns": 1,
+   "description": "Tissue culture plantlets, or roots. Not plants: a root becomes many.",
+   "fieldname": "units",
+   "fieldtype": "Int",
+   "in_list_view": 1,
+   "label": "Units In"
+  },
+  {
+   "columns": 1,
+   "description": "What this consignment hands over, after the lift it belongs to.",
+   "fieldname": "plants",
+   "fieldtype": "Int",
+   "in_list_view": 1,
+   "label": "Plants Out"
+  },
+  {
+   "columns": 1,
+   "fieldname": "ready_on",
+   "fieldtype": "Date",
+   "in_list_view": 1,
+   "label": "Plants Ready"
+  },
+  {
+   "fieldname": "ready_week",
+   "fieldtype": "Data",
+   "label": "Ready Week"
+  },
+  {
+   "columns": 1,
+   "description": "The week the field wants them in the ground.",
+   "fieldname": "deliver_on",
+   "fieldtype": "Date",
+   "in_list_view": 1,
+   "label": "To The Farm"
+  },
+  {
+   "fieldname": "plant_week",
+   "fieldtype": "Data",
+   "label": "Planting Week"
+  }
+ ],
+ "grid_page_length": 50,
+ "index_web_pages_for_search": 1,
+ "istable": 1,
+ "links": [],
+ "modified": "2026-10-08 10:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Summer Flowers",
+ "name": "Summer Flower Propagation Intake",
+ "owner": "Administrator",
+ "permissions": [],
+ "row_format": "Dynamic",
+ "rows_threshold_for_grid_search": 20,
+ "sort_field": "creation",
+ "sort_order": "DESC",
+ "states": [],
+ "track_changes": 1
+}

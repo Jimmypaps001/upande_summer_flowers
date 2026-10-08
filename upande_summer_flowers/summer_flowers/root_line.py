@@ -350,8 +350,14 @@ def arrival_plan(plan, tc_share=None, returns_per_plant=None,
 		w = weeks.setdefault(land, {"plants": 0})
 		w["plants"] += cint(b.plants)
 
+	# Where a quantity has been asked for, the weeks must add up to exactly that
+	# quantity. Rounding each week on its own lost two plantlets out of 851,961
+	# and the card then carried two different figures for one order -- the box
+	# said what was agreed and the tile said what the weeks came to.
+	share_by_week = _apportion(weeks, share, cint(tc_qty) if asked else None)
+
 	for land, w in weeks.items():
-		by_tc = int(round(w["plants"] * share))
+		by_tc = share_by_week[land]
 		by_root = w["plants"] - by_tc
 		roots = int(math.ceil(by_root / per_root)) if per_root > 0 else None
 		w.update({"by_tc": by_tc, "by_roots": by_root, "roots_needed": roots})
@@ -527,6 +533,31 @@ def _committed(plan):
 			 "season_start_year": cint(plan.season_start_year),
 			 "status": ["!=", "Rejected"]}, "name", order_by="creation desc"),
 	}
+
+
+def _apportion(weeks, share, exact=None):
+	"""Tissue culture per week: proportional, and adding to the total exactly.
+
+	Largest remainder. Each week takes its whole share, then the plants left over
+	by the rounding go to the weeks with the largest fractions -- so the parts
+	sum to the whole instead of to the whole give or take a rounding error.
+	"""
+	keys = sorted(weeks)
+	if exact is None:
+		return {k: int(round(weeks[k]["plants"] * share)) for k in keys}
+	total = sum(weeks[k]["plants"] for k in keys)
+	if not total:
+		return {k: 0 for k in keys}
+	want = min(cint(exact), total)
+	out, rema = {}, []
+	for k in keys:
+		raw = weeks[k]["plants"] * want / float(total)
+		out[k] = int(raw)
+		rema.append((raw - out[k], k))
+	left = want - sum(out.values())
+	for _frac, k in sorted(rema, reverse=True)[:max(0, left)]:
+		out[k] += 1
+	return out
 
 
 def _survival():

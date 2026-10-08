@@ -27,6 +27,18 @@ from upande_summer_flowers.summer_flowers.doctype \
 from upande_summer_flowers.summer_flowers.lifecycle_sim import ramp_ratio
 from upande_summer_flowers.summer_flowers.planning import iso_monday
 
+
+def _back(week, weeks):
+	"""The week material had to be set down to be plants by `week`."""
+	if not week:
+		return None
+	return add_days(getdate(week), -7 * cint(weeks))
+
+
+def _iso(d):
+	y, w, _dow = getdate(d).isocalendar()
+	return "%d-W%02d" % (y, w)
+
 APPROVER_ROLES = ("Farm Manager", "Agriculture Manager", "System Manager")
 
 
@@ -341,9 +353,16 @@ class SummerFlowerPropagationPlan(Document):
 			self.mother_plants_to_cover_ramp = 0
 			self.new_pool_expiry = None
 			self.new_pool_cutting_weeks = 0
+			# Said here, in the branch that knows, rather than inferred later from
+			# a missing line. A motherstock line can be missing because the crop
+			# has none, or because building it failed; only this branch can tell
+			# the two apart, and labelling the second as bought-in would silence
+			# warnings a motherstock crop needs.
+			self.raised_from = "Bought In"
 			self.apply_bought_material()
 			return
 
+		self.raised_from = "Motherstock"
 		v = self._version
 		per_week = flt(v.cuttings_per_plant_per_week) or 1.0
 		by_date = {getdate(w.week_start): w for w in ms.schedule}
@@ -421,8 +440,15 @@ class SummerFlowerPropagationPlan(Document):
 
 		Leaving the sources empty said the propagation unit had nothing to work
 		with, when in fact it has everything -- it is simply handed material
-		rather than cutting it. One row per way in, so the unit can see what is
-		arriving, how much, and from when.
+		rather than cutting it.
+
+		It said worse than that. Every week came out uncovered, because cover
+		meant cuttings off a mother plant and there are none, so the plan read
+		1,036,704 cuttings short and 7,319,130 stems at risk for a season whose
+		material is bought and scheduled. The weeks are covered here from what is
+		actually coming, and the consignments behind that cover are written down
+		so the unit has a list to work to: what arrives, from whom, in which
+		week, and the week the field wants the plants.
 		"""
 		from upande_summer_flowers.summer_flowers import root_line as rl
 
@@ -473,6 +499,109 @@ class SummerFlowerPropagationPlan(Document):
 		self.tc_plants_required = cint(sg.get("tc"))
 		if m.get("tc_order_schedule"):
 			self.tc_order_date = m["tc_order_schedule"][0]["week"]
+		# The agreed order is the order. A suggestion is what to buy if nobody
+		# has decided; once somebody has, the two must not differ by so much as
+		# a plantlet or the card and this document quote different figures for
+		# the same purchase.
+		c = self._committed_choice()
+		if c and cint(c.get("tc_plants_committed")):
+			self.tc_plants_required = cint(c["tc_plants_committed"])
+			if c.get("tc_order_date_committed"):
+				self.tc_order_date = c["tc_order_date_committed"]
+		self._cover_from_bought(m)
+
+	def _cover_from_bought(self, m):
+		"""Cover each week from the material arriving for it, and list it.
+
+		The plan's own weekly rows already say how many plants each landing week
+		takes from tissue culture and how many from roots. That IS the cover for
+		a bought crop, so it is written against the week rather than left to read
+		as a shortfall.
+		"""
+		from upande_summer_flowers.summer_flowers import tc_supply as ts
+
+		by_plant_week = {}
+		for w in (m.get("weeks") or []):
+			by_plant_week[str(w.get("week"))] = w
+
+		for r in self.weeks:
+			w = by_plant_week.get(str(r.deliver_on))
+			if not w:
+				continue
+			r.from_bought = cint(w.get("plants"))
+			r.shortfall = max(0, cint(r.cuttings_required)
+			                  - cint(r.from_existing_ms) - cint(r.from_new_ms)
+			                  - cint(r.from_bought))
+
+		self.set("intake", [])
+		# Roots first: they are in store a year before any of it, and the unit
+		# draws them out week by week.
+		for pull in (m.get("root_withdrawals") or []):
+			w = next((x for x in (m.get("weeks") or [])
+			          if str(x.get("root_out_week")) == str(pull["week"])), None)
+			self.append("intake", {
+				"week_start_date": pull["week"], "week_iso": pull["week_iso"],
+				"form": "Roots", "source": _("Cold store"),
+				"reference": _("One consignment, drawn down"),
+				"units": cint(pull["roots"]),
+				"plants": cint((w or {}).get("by_roots")),
+				"ready_on": (w or {}).get("week"),
+				"ready_week": (w or {}).get("week_iso"),
+				"deliver_on": (w or {}).get("week"),
+				"plant_week": (w or {}).get("week_iso"),
+			})
+
+		# Then the tissue culture, consignment by consignment and lift by lift,
+		# which is the only form in which a lab's deliveries are workable.
+		# The week the field wants a lift is not the week it is ready: capacity
+		# can bring a consignment forward, and a lift that is ready in a week
+		# nobody is planting waits for the next one that is.
+		planting = sorted(str(w.get("week")) for w in (m.get("weeks") or []))
+
+		def wanted_on(ready):
+			return next((d for d in planting if d >= str(ready)), None)
+
+		plan = self._plan
+		allocs = plan.get("tc_supplier_allocations")
+		if allocs:
+			try:
+				batched = ts.batch_plan(plan, allocs,
+				                        tc_target=cint(self.tc_plants_required))
+			except Exception:
+				frappe.clear_last_message()
+				batched = None
+			for h in ((batched or {}).get("handovers") or []):
+				self.append("intake", {
+					"week_start_date": _back(h["week"], m.get("tc_weeks_to_ground")),
+					"week_iso": "", "form": "Tissue Culture",
+					"source": h.get("supplier"),
+					"reference": _("Batch {0}, lift {1} of {2}%").format(
+						h.get("batch"), h.get("lift"), h.get("share_pct")),
+					"units": cint(h["plants"]),
+					"plants": cint(h["plants"]),
+					"ready_on": h["week"], "ready_week": h["week_iso"],
+					"deliver_on": wanted_on(h["week"]),
+					"plant_week": _iso(wanted_on(h["week"]))
+					if wanted_on(h["week"]) else None,
+				})
+		elif cint(self.tc_plants_required):
+			# Nothing allocated to a lab yet, so the best that can be said is the
+			# week each landing takes its tissue culture from.
+			for w in (m.get("weeks") or []):
+				if not cint(w.get("by_tc")):
+					continue
+				self.append("intake", {
+					"week_start_date": _back(w.get("week"),
+					                         m.get("tc_weeks_to_ground")),
+					"week_iso": "", "form": "Tissue Culture",
+					"source": _("Not allocated to a lab yet"),
+					"units": cint(w["by_tc"]), "plants": cint(w["by_tc"]),
+					"ready_on": w.get("week"), "ready_week": w.get("week_iso"),
+					"deliver_on": w.get("week"), "plant_week": w.get("week_iso"),
+				})
+		for row in self.intake:
+			if row.week_start_date and not row.week_iso:
+				row.week_iso = _iso(row.week_start_date)
 
 	def motherstock_line(self):
 		"""The Motherstock Plan behind this season, built if it is not there yet."""
@@ -506,8 +635,11 @@ class SummerFlowerPropagationPlan(Document):
 		self.total_cuttings_required = sum(cint(r.cuttings_required) for r in self.weeks)
 		self.cuttings_from_existing = sum(cint(r.from_existing_ms) for r in self.weeks)
 		self.cuttings_from_new = sum(cint(r.from_new_ms) for r in self.weeks)
+		self.cuttings_from_bought = sum(cint(r.get("from_bought")) for r in self.weeks)
 		self.cuttings_uncovered = sum(cint(r.shortfall) for r in self.weeks)
 		self.weeks_sticking = len(self.weeks)
+		if not self.raised_from:
+			self.raised_from = "Motherstock" if self._ms_line else "Bought In"
 
 		# Cuttings that cannot be taken are plants that cannot be stuck, and those
 		# are stems the production plan is still counting. Reported here because the
@@ -519,6 +651,19 @@ class SummerFlowerPropagationPlan(Document):
 		self.existing_cover_pct = (
 			self.cuttings_from_existing * 100.0 / self.total_cuttings_required
 			if self.total_cuttings_required else 0)
+		if self.raised_from == "Bought In":
+			# A pool that does not exist has no mother plants, no build-up and no
+			# bench. Carrying zeroes for them is harmless; carrying a shortfall
+			# for them was not, because it read as a season that could not be
+			# grown when the material for it is bought and scheduled.
+			for f in ("mother_plants_required", "new_pool_cutting_weeks",
+			          "peak_bench_sqm", "cuttings_lost_to_ramp",
+			          "ramp_short_weeks", "mother_plants_to_cover_ramp",
+			          "existing_cover_pct"):
+				self.set(f, 0)
+			self.motherstock_ignored_note = None
+			self.new_pool_expiry = None
+			self.full_capacity_date = None
 		peak_row = max(self.weeks, key=lambda r: cint(r.cuttings_required),
 		               default=None)
 		self.peak_weekly_cuttings = cint(peak_row.cuttings_required) if peak_row else 0
@@ -577,7 +722,7 @@ class SummerFlowerPropagationPlan(Document):
 		# plantlets is a commitment to finding the blocks, so the number of plants
 		# waiting on one belongs next to the order rather than three tabs away.
 		without = cint(getattr(self, "_plants_without_block", 0))
-		if without:
+		if without and self.raised_from != "Bought In":
 			notes.append(_(
 				"{0} of the {1} plants this plan raises cuttings for have no block free "
 				"for their whole life yet. They are included because the TC order has "
@@ -598,7 +743,7 @@ class SummerFlowerPropagationPlan(Document):
 				"ago. Order now and first sticking moves to about {2}."
 			).format(self.tc_order_date, (today - getdate(self.tc_order_date)).days,
 			         self._earliest_feasible_sticking()))
-		if cint(self.cuttings_lost_to_ramp):
+		if cint(self.cuttings_lost_to_ramp) and self.raised_from != "Bought In":
 			notes.append(_(
 				"Motherstock reaches full cutting capacity {1} weeks after its first "
 				"cut, not on it -- the new pool gets there on {0}. {2} cuttings "
@@ -610,7 +755,7 @@ class SummerFlowerPropagationPlan(Document):
 			         cint(self.cuttings_lost_to_ramp), cint(self.ramp_short_weeks),
 			         cint(self.mother_plants_to_cover_ramp),
 			         cint(self.mother_plants_required)))
-		if cint(self.cuttings_uncovered):
+		if cint(self.cuttings_uncovered) and self.raised_from != "Bought In":
 			notes.append(_(
 				"{0} cuttings are not covered by any source. That is {1} plants that "
 				"cannot be stuck, and about {2} stems over their life that the "
