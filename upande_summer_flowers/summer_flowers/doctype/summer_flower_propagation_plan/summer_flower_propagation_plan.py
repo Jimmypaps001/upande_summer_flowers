@@ -553,14 +553,6 @@ class SummerFlowerPropagationPlan(Document):
 
 		# Then the tissue culture, consignment by consignment and lift by lift,
 		# which is the only form in which a lab's deliveries are workable.
-		# The week the field wants a lift is not the week it is ready: capacity
-		# can bring a consignment forward, and a lift that is ready in a week
-		# nobody is planting waits for the next one that is.
-		planting = sorted(str(w.get("week")) for w in (m.get("weeks") or []))
-
-		def wanted_on(ready):
-			return next((d for d in planting if d >= str(ready)), None)
-
 		plan = self._plan
 		allocs = plan.get("tc_supplier_allocations")
 		if allocs:
@@ -580,9 +572,11 @@ class SummerFlowerPropagationPlan(Document):
 					"units": cint(h["plants"]),
 					"plants": cint(h["plants"]),
 					"ready_on": h["week"], "ready_week": h["week_iso"],
-					"deliver_on": wanted_on(h["week"]),
-					"plant_week": _iso(wanted_on(h["week"]))
-					if wanted_on(h["week"]) else None,
+					# The batcher has already worked out which planting week this
+					# lift is for; recomputing it here is how two documents come
+					# to disagree about one date.
+					"deliver_on": h.get("to_farm"),
+					"plant_week": h.get("to_farm_iso"),
 				})
 		elif cint(self.tc_plants_required):
 			# Nothing allocated to a lab yet, so the best that can be said is the

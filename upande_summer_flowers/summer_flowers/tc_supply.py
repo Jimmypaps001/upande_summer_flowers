@@ -484,12 +484,25 @@ def _cover(out, need):
 		w["plants_served"] = cint(covered - seen)
 		w["serves_to"] = str(wanted[idx - 1][0]) if idx else None
 		seen = covered
+		# The week the field wants this lift is not the week it is ready:
+		# capacity can bring a consignment forward, and a lift ready in a week
+		# nobody is planting waits for the next week somebody is. Worked out
+		# once, here, so the card and the propagation plan cannot differ on it.
+		to_farm = next((str(d) for d, _q in wanted if str(d) >= str(ready)), None)
+		w["to_farm"] = to_farm
 		timeline.append({
 			"supplier": supplier, "batch": b["batch"], "lift": w["lift"],
 			"week": w["ready"], "week_iso": w["ready_iso"],
 			"plants": w["plants"], "share_pct": w["share_pct"],
 			"weeks_after_arrival": w["weeks_after_arrival"],
 			"plants_served": w["plants_served"], "serves_to": w["serves_to"],
+			# Where this lift came from, so the whole life of a consignment reads
+			# on one line: ordered, taken in, hardened, handed over.
+			"ordered": b["week"], "ordered_iso": b["week_iso"],
+			"arrives": b["arrives"], "arrives_iso": b["arrives_iso"],
+			"consignment_tc": b["tc"],
+			"to_farm": to_farm,
+			"to_farm_iso": iso(to_farm) if to_farm else None,
 		})
 
 	# Roll the lifts back up so a batch row still says what it bought.

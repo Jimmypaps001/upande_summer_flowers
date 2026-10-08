@@ -549,6 +549,10 @@
         <div id="tc-note"></div>
         <div id="tc-sup"></div>
         <div id="tc-batches" class="pl-scroll"></div>
+        <div id="tc-root-plan" class="pl-scroll"></div>
+        <!-- Motherstock generations. The bought-material path no longer writes
+             here, but a crop that IS cut from a pool still does, and taking the
+             element away took that table with it. -->
         <div id="tc-gens"></div>
         <div id="tc-weeks" class="pl-scroll"></div>
         <div id="tc-dvp" class="pl-scroll"></div>
@@ -4576,54 +4580,87 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
     }
     note.innerHTML = notes.map((n) => `<div class="pl-callout">${n}</div>`).join("");
 
-    // Roots are one consignment into a coldroom, not a run of orders. Saying so
-    // above the table stops the single line reading as a missing forty-nine.
-    const ro = (m.root_order_schedule || [])[0];
-    gens.innerHTML =
-      `<div class="text-muted small" style="text-transform:uppercase;` +
-      `letter-spacing:.05em;margin:4px 0">When each way has to be ordered</div>` +
-      (ro
-        ? `<p class="pl-note">Roots come in once: ${num(ro.roots)} ordered ` +
-          `${fdate(ro.week)}, in store by ${fdate(ro.arrives)}, then taken out ` +
-          `over ${ro.withdrawals} week${ro.withdrawals === 1 ? "" : "s"} ` +
-          `between ${fdate(ro.drawn_from)} and ${fdate(ro.drawn_to)} — each ` +
-          `withdrawal ${m.root_weeks_to_ground} weeks before the plants are ` +
-          `wanted, so they land with the tissue culture.</p>`
-        : "") +
-      `<table class="pl-t"><thead><tr><th>Order week</th><th>ISO</th>` +
-      `<th class="n">TC</th><th class="n">Roots</th></tr></thead><tbody>` +
-      mergeOrders(m).map((r) => `<tr><td>${fdate(r.week)}</td>` +
-        `<td class="text-muted">${esc(r.week_iso || "")}</td>` +
-        `<td class="n">${r.tc ? num(r.tc) : ""}</td>` +
-        `<td class="n">${r.roots ? num(r.roots) : ""}</td></tr>`).join("") +
-      `</tbody></table>`;
+    // The two ways in are two different jobs, and showing them interleaved by
+    // order week made neither of them followable. Tissue culture is a run of
+    // consignments that are hardened and lifted; roots are one delivery into a
+    // coldroom that is drawn down. Each gets its own block, in the order the
+    // work happens, and the plants they both produce meet in the third.
+    renderRoots(m);
 
     wk.innerHTML =
       `<div class="text-muted small" style="text-transform:uppercase;` +
-      `letter-spacing:.05em;margin:10px 0 4px">What propagation hands over, ` +
-      `and what each week was ordered from</div>` +
-      `<table class="pl-t"><thead><tr><th>Lands</th><th>ISO</th>` +
-      `<th class="n">Plants</th>` +
-      `<th class="n">From TC</th><th>TC ordered</th>` +
-      `<th class="n">From roots</th><th class="n">Roots</th>` +
-      `<th>Roots out of store</th></tr></thead><tbody>` +
-      (m.weeks || []).map((w) => `<tr><td>${fdate(w.week)}</td>` +
-        `<td class="text-muted">${esc(w.week_iso || "")}</td>` +
-        `<td class="n">${num(w.plants)}</td>` +
-        `<td class="n">${w.by_tc ? num(w.by_tc) : ""}</td>` +
-        `<td>${w.tc_order_week ? fdate(w.tc_order_week) : ""}` +
-        `${w.tc_order_iso ? ` <span class="text-muted">${esc(w.tc_order_iso)}</span>` : ""}</td>` +
-        `<td class="n">${w.by_roots ? num(w.by_roots) : ""}</td>` +
-        `<td class="n">${w.roots_needed ? num(w.roots_needed) : ""}</td>` +
-        `<td>${w.root_out_week ? fdate(w.root_out_week) : ""}` +
-        `${w.root_out_iso ? ` <span class="text-muted">${esc(w.root_out_iso)}</span>` : ""}</td></tr>`)
-        .join("") + `</tbody></table>`;
+      `letter-spacing:.05em;margin:10px 0 4px">Plants to the farm — both ways ` +
+      `in, against what each week needs</div>` +
+      `<table class="pl-t"><thead><tr><th>Wanted</th><th>Week</th>` +
+      `<th class="n">Plants needed</th>` +
+      `<th class="n">From TC</th><th class="n">From roots</th>` +
+      `<th class="n">Total</th><th class="n">Variance</th>` +
+      `</tr></thead><tbody>` +
+      (m.weeks || []).map((w) => {
+        const got = cintish(w.by_tc) + cintish(w.by_roots);
+        const v = got - cintish(w.plants);
+        return `<tr><td>${fdate(w.week)}</td>` +
+          `<td class="text-muted">${esc(w.week_iso || "")}</td>` +
+          `<td class="n">${num(w.plants)}</td>` +
+          `<td class="n">${w.by_tc ? num(w.by_tc) : ""}</td>` +
+          `<td class="n">${w.by_roots ? num(w.by_roots) : ""}</td>` +
+          `<td class="n">${num(got)}</td>` +
+          `<td class="n"${v < 0 ? ' style="color:var(--critical)"' : ""}>` +
+          `${v > 0 ? "+" : ""}${v ? num(v) : "—"}</td></tr>`;
+      }).join("") + `</tbody></table>`;
 
     adoptCommitted(t, m);
     renderSuppliers(m);
     refreshSupplierList("");
     renderBatches();
     renderDemandVsProduction(m);
+  }
+
+  // Roots are not ordered the way tissue culture is ordered. They are lifted
+  // once from a block grown for it, they keep in a coldroom, and they come out
+  // as the plantings need them. So the block reads: one order, one arrival,
+  // then a withdrawal for every week that wants plants.
+  function renderRoots(m) {
+    // NOT "tc-roots": that id is the Roots quantity box at the top of the card,
+    // and writing a table into it would have replaced the input somebody types
+    // the order into.
+    const box = $("tc-root-plan");
+    if (!box) return;
+    const ro = (m.root_order_schedule || [])[0];
+    const pulls = m.root_withdrawals || [];
+    if (!ro || !pulls.length) { box.innerHTML = ""; return; }
+    const byWeek = {};
+    (m.weeks || []).forEach((w) => {
+      if (w.root_out_week) byWeek[w.root_out_week] = w;
+    });
+    box.innerHTML =
+      `<div class="text-muted small" style="text-transform:uppercase;` +
+      `letter-spacing:.05em;margin:14px 0 4px">Roots — receive once, root in ` +
+      `batches, deliver</div>` +
+      `<p class="pl-note"><b>${num(ro.roots)} roots, one order.</b> Placed ` +
+      `${fdate(ro.week)} (${esc(ro.week_iso)}), in store by ` +
+      `${fdate(ro.arrives)} (${esc(ro.arrives_iso)}) — ` +
+      `${m.root_lead_weeks} weeks of lead. Then drawn out over ` +
+      `${ro.withdrawals} week${ro.withdrawals === 1 ? "" : "s"}, each ` +
+      `withdrawal ${m.root_weeks_to_ground} weeks before its plants are ` +
+      `wanted, so they reach the field with the tissue culture. One root ` +
+      `becomes ${m.returns_per_plant} plants.</p>` +
+      `<table class="pl-t"><thead><tr>` +
+      `<th class="n">#</th><th>Out of store</th><th>Week</th>` +
+      `<th class="n">Roots</th><th class="n">Rooting</th>` +
+      `<th>Plants ready</th><th>Week</th><th class="n">Plants</th>` +
+      `</tr></thead><tbody>` +
+      pulls.map((r, i) => {
+        const w = byWeek[r.week] || {};
+        return `<tr><td class="n text-muted">${i + 1}</td>` +
+          `<td>${fdate(r.week)}</td>` +
+          `<td class="text-muted">${esc(r.week_iso)}</td>` +
+          `<td class="n">${num(r.roots)}</td>` +
+          `<td class="n text-muted">${m.root_weeks_to_ground} wk</td>` +
+          `<td>${fdate(w.week)}</td>` +
+          `<td class="text-muted">${esc(w.week_iso || "")}</td>` +
+          `<td class="n">${num(w.by_roots)}</td></tr>`;
+      }).join("") + `</tbody></table>`;
   }
 
   // What the ordering is FOR. Material is a means; the question is whether the
@@ -4845,8 +4882,8 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
     const reshaped = (cap.reshaped || {}).moved || 0;
     box.innerHTML =
       `<div class="text-muted small" style="text-transform:uppercase;` +
-      `letter-spacing:.05em;margin:10px 0 4px">Deliveries — every batch, when ` +
-      `it is ordered, when the unit takes it in and when it is plants</div>` +
+      `letter-spacing:.05em;margin:10px 0 4px">Tissue culture — order, take ` +
+      `in, harden, deliver</div>` +
       `<p class="pl-note">${num(b.plants_needed)} plants wanted, ` +
       `${num(b.tc_allocated)} TC allocated` +
       (b.short_by ? ` — <b style="color:var(--critical)">short by ${num(b.short_by)}</b>`
@@ -4883,6 +4920,7 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
       `<th class="n">TC units<br><span class="text-muted">bought, not ` +
       `plants</span></th>` +
       `<th>At the unit</th>` +
+      `<th class="n">Hardening</th>` +
       `<th>First lift</th><th>Last lift</th>` +
       `<th class="n">Plants covered<br><span class="text-muted">running ` +
       `total</span></th><th>Season covered to</th>` +
@@ -4896,6 +4934,7 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
         `<td class="n">${num(x.tc)}</td>` +
         `<td>${fdate(x.arrives)}<br><span class="text-muted">` +
         `${esc(x.arrives_iso || "")}</span></td>` +
+        `<td class="n text-muted">${hardening(x)}</td>` +
         `<td>${esc(x.lands_iso || "")}</td>` +
         `<td class="text-muted">${esc(x.last_lift_iso || x.lands_iso || "")}</td>` +
         `<td class="n">${num(x.plants_served)}</td>` +
@@ -4922,6 +4961,7 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
       `<th>Supplier</th><th class="n">Consignment</th><th class="n">Lift</th>` +
       `<th class="n">Share</th><th class="n">Plants<br>` +
       `<span class="text-muted">off this lift</span></th>` +
+      `<th>To the farm</th>` +
       `<th class="n">Plants covered<br><span class="text-muted">running ` +
       `total</span></th><th>Season covered to</th></tr></thead><tbody>` +
       rows.map((r) => `<tr><td>${fdate(r.week)}<br><span class="text-muted">` +
@@ -4931,9 +4971,27 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
         `<td class="n">${r.lift}</td>` +
         `<td class="n text-muted">${r.share_pct}%</td>` +
         `<td class="n">${num(r.plants)}</td>` +
+        `<td>${r.to_farm ? fdate(r.to_farm) : ""}` +
+        `${r.to_farm_iso ? `<br><span class="text-muted">` +
+          `${esc(r.to_farm_iso)}</span>` : ""}</td>` +
         `<td class="n">${num(r.plants_served)}</td>` +
         `<td class="text-muted">${r.serves_to ? fdate(r.serves_to) : ""}</td>` +
         `</tr>`).join("") + `</tbody></table>`;
+  }
+
+  // How long the bench is committed: from the week it comes in to the week the
+  // last of it comes off, which is not the same as the week the first lift is
+  // ready.
+  function weeksApart(a, b) {
+    if (!a || !b) return null;
+    return Math.round((new Date(b) - new Date(a)) / 6048e5);
+  }
+
+  function hardening(x) {
+    const first = weeksApart(x.arrives, x.lands);
+    const last = weeksApart(x.arrives, x.last_lift || x.lands);
+    if (first == null) return "";
+    return first === last ? `${first} wk` : `${first}–${last} wk`;
   }
 
   // The propagation unit is a harder constraint than anything a lab promises:
@@ -5002,14 +5060,6 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
       .catch((e) => { S.batches = { error: e.message }; renderBatches(); });
   }
 
-  function mergeOrders(m) {
-    const by = {};
-    (m.tc_order_schedule || []).forEach((r) => {
-      by[r.week] = by[r.week] || { week: r.week }; by[r.week].tc = r.tc; });
-    (m.root_order_schedule || []).forEach((r) => {
-      by[r.week] = by[r.week] || { week: r.week }; by[r.week].roots = r.roots; });
-    return Object.values(by).sort((a, b) => a.week < b.week ? -1 : 1);
-  }
 
   function runAgree() {
     const t = S.tc, c = (t || {}).chosen || {};
