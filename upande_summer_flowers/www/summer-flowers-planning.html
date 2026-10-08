@@ -4872,22 +4872,30 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
               `through the propagation unit in one week`) + `.`).join("") +
       `</p>` +
       capacityStrip(cap, reshaped) +
-      `<table class="pl-t"><thead><tr><th>Supplier</th><th class="n">Batch</th>` +
-      `<th>Ordered</th><th>Week</th>` +
-      `<th class="n">TC</th>` +
-      `<th>At the unit</th><th>Week</th>` +
+      // Date and week in one cell, because two columns both headed Week, one
+      // for the order and one for the arrival, is a table that has to be
+      // explained. And a count that runs across every supplier should not be
+      // headed as though it were this consignment's own output.
+      `<table class="pl-t"><thead><tr><th>Supplier</th>` +
+      `<th class="n">Consignment<br><span class="text-muted">nth from this ` +
+      `lab</span></th>` +
+      `<th>Order by</th>` +
+      `<th class="n">TC units<br><span class="text-muted">bought, not ` +
+      `plants</span></th>` +
+      `<th>At the unit</th>` +
       `<th>First lift</th><th>Last lift</th>` +
-      `<th class="n">Covers plants</th><th>To</th>` +
+      `<th class="n">Plants covered<br><span class="text-muted">running ` +
+      `total</span></th><th>Season covered to</th>` +
       `</tr></thead><tbody>` +
       (b.calendar || []).map((x) =>
         `<tr${x.added_for_capacity ? ' class="ls-arrive"' : ""}>` +
         `<td>${esc(x.supplier || "—")}</td>` +
         `<td class="n">${x.batch}</td>` +
-        `<td>${fdate(x.week)}</td>` +
-        `<td class="text-muted">${esc(x.week_iso)}</td>` +
+        `<td>${fdate(x.week)}<br><span class="text-muted">` +
+        `${esc(x.week_iso)}</span></td>` +
         `<td class="n">${num(x.tc)}</td>` +
-        `<td>${fdate(x.arrives)}</td>` +
-        `<td class="text-muted">${esc(x.arrives_iso || "")}</td>` +
+        `<td>${fdate(x.arrives)}<br><span class="text-muted">` +
+        `${esc(x.arrives_iso || "")}</span></td>` +
         `<td>${esc(x.lands_iso || "")}</td>` +
         `<td class="text-muted">${esc(x.last_lift_iso || x.lands_iso || "")}</td>` +
         `<td class="n">${num(x.plants_served)}</td>` +
@@ -4910,12 +4918,14 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
     return `<div class="text-muted small" style="text-transform:uppercase;` +
       `letter-spacing:.05em;margin:10px 0 4px">Lifts — what comes off each ` +
       `consignment, and when</div>` +
-      `<table class="pl-t"><thead><tr><th>Ready</th><th>Week</th>` +
-      `<th>Supplier</th><th class="n">Batch</th><th class="n">Lift</th>` +
-      `<th class="n">Share</th><th class="n">Plants</th>` +
-      `<th class="n">Covers plants</th><th>To</th></tr></thead><tbody>` +
-      rows.map((r) => `<tr><td>${fdate(r.week)}</td>` +
-        `<td class="text-muted">${esc(r.week_iso)}</td>` +
+      `<table class="pl-t"><thead><tr><th>Plants ready</th>` +
+      `<th>Supplier</th><th class="n">Consignment</th><th class="n">Lift</th>` +
+      `<th class="n">Share</th><th class="n">Plants<br>` +
+      `<span class="text-muted">off this lift</span></th>` +
+      `<th class="n">Plants covered<br><span class="text-muted">running ` +
+      `total</span></th><th>Season covered to</th></tr></thead><tbody>` +
+      rows.map((r) => `<tr><td>${fdate(r.week)}<br><span class="text-muted">` +
+        `${esc(r.week_iso)}</span></td>` +
         `<td>${esc(r.supplier || "—")}</td>` +
         `<td class="n">${r.batch}</td>` +
         `<td class="n">${r.lift}</td>` +
