@@ -4,6 +4,7 @@
 frappe.ui.form.on("Summer Flower Propagation Plan", {
 	refresh(frm) {
 		draw_calendar(frm);
+		actual_buttons(frm);
 	},
 });
 
@@ -46,4 +47,43 @@ function draw_calendar(frm) {
 			{ label: __("shading: heavier sticking weeks are darker") }],
 		empty: __("No sticking weeks yet."),
 	});
+}
+
+
+function actual_buttons(frm) {
+	if (frm.is_new()) return;
+	const group = __("Actuals");
+
+	frm.add_custom_button(__("Record What Happened"), () => {
+		frappe.new_doc("Summer Flower Propagation Actual", {
+			propagation_plan: frm.doc.name,
+		});
+	}, group);
+
+	frm.add_custom_button(__("See What Was Recorded"), () => {
+		frappe.set_route("List", "Summer Flower Propagation Actual", {
+			variety: frm.doc.variety,
+			season_start_year: frm.doc.season_start_year,
+		});
+	}, group);
+
+	// Only where there is something to accept. A button that always throws is
+	// a button that teaches people to ignore buttons.
+	if (cint(frm.doc.replan_cover) > 0) {
+		frm.add_custom_button(__("Accept The Re-plan"), () => {
+			frappe.confirm(
+				__("Add {0} plants across the weeks still to come, to cover the {1} the closed weeks are short? Nothing already delivered changes.",
+					[format_number(frm.doc.replan_cover),
+						format_number(frm.doc.carried_short)]),
+				() => frm.call("accept_replan").then((r) => {
+					if (!r || !r.message) return;
+					frappe.show_alert({
+						message: __("{0} weeks took in {1} plants.",
+							[r.message.accepted, format_number(r.message.plants)]),
+						indicator: "green",
+					});
+					frm.reload_doc();
+				}));
+		}, group).addClass("btn-primary");
+	}
 }

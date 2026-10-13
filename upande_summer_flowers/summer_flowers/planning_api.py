@@ -2571,7 +2571,50 @@ def propagation_detail(plan=None, propagation_plan=None, variety=None, farm=None
 			"capacity": cint(r.capacity_available),
 			"ramp_pct": flt(r.ramp_pct),
 			"plant_week": r.plant_week,
+			"deliver_on": str(r.deliver_on or ""),
+			"promised": cint(r.baseline_plants),
+			"delivered": cint(r.actual_plants),
+			"delivered_on": str(r.actual_on or ""),
+			"variance": cint(r.variance_plants),
+			"state": r.state,
+			"uplift": cint(r.uplift_plants),
+			"recorded_from": r.recorded_from,
 		} for r in d.weeks],
+		# What the unit was sent and what it did with it. Separate from the
+		# weeks because a consignment and a hand-over are different events --
+		# fifteen weeks apart for a root -- and putting them in one row is how
+		# a cohort gets divided by the wrong cohort.
+		"consignments": [{
+			"week": str(r.week_start_date or ""), "week_iso": r.week_iso,
+			"form": r.form, "source": r.source, "reference": r.reference,
+			"units": cint(r.units), "plants": cint(r.plants),
+			"ready_on": str(r.ready_on or ""),
+			"deliver_on": str(r.deliver_on or ""),
+			"actual_units": cint(r.actual_units),
+			"variance_units": cint(r.variance_units),
+			"actual_on": str(r.actual_on or ""),
+			"days_late": cint(r.days_late),
+			"state": r.state, "recorded_from": r.recorded_from,
+		} for r in d.intake],
+		"actuals": {
+			"recorded": cint(d.actuals_recorded),
+			"reported_to": str(d.reported_to or ""),
+			"weeks_closed": cint(d.weeks_closed),
+			"tc_received": cint(d.tc_received),
+			"roots_withdrawn": cint(d.roots_withdrawn),
+			"plants_to_farm": cint(d.plants_to_farm),
+			"plants_lost": cint(d.plants_lost),
+			"short": cint(d.delivered_short),
+			"ahead": cint(d.delivered_ahead),
+			"carried_short": cint(d.carried_short),
+			"survival_pct": flt(d.actual_survival_pct),
+			"survival_basis": d.survival_basis,
+			"note": d.actuals_note,
+			"baseline_on": str(d.baseline_taken_on or ""),
+			"replan_cover": cint(d.replan_cover),
+			"replan_still_short": cint(d.replan_still_short),
+			"replan_note": d.replan_note,
+		},
 		"sources": [{
 			"source_type": r.source_type, "batch": r.motherstock_batch,
 			"mother_plants": cint(r.mother_plants),
@@ -2896,3 +2939,41 @@ def motherstock_line(plan=None, variety=None, farm=None, tc=None,
 
 	out["saved"] = saved
 	return out
+
+
+@frappe.whitelist()
+def record_propagation_actual(propagation_plan, event, actual_date, units=0,
+                              plants=0, against_week=None, reference=None,
+                              supplier=None, warehouse=None, reason=None,
+                              remarks=None):
+	"""Record one thing that happened at the unit, from the planning page.
+
+	The same document the desk raises, submitted the same way. There is no
+	second, lighter record for things typed on a web page: one event has one
+	record or the farm has two sets of books.
+	"""
+	_guard()
+	a = frappe.new_doc("Summer Flower Propagation Actual")
+	a.propagation_plan = propagation_plan
+	a.event = event
+	a.actual_date = actual_date
+	a.against_week = against_week or None
+	a.units = cint(units)
+	a.plants = cint(plants)
+	a.reference = reference or None
+	a.supplier = supplier or None
+	a.warehouse = warehouse or None
+	a.reason = reason or None
+	a.remarks = remarks or None
+	a.insert()
+	a.submit()
+	return {"name": a.name, "event": a.event, "date": str(a.actual_date)}
+
+
+@frappe.whitelist()
+def accept_propagation_replan(propagation_plan):
+	"""Take the re-plan in, from the planning page."""
+	from upande_summer_flowers.summer_flowers import propagation_actuals as pa
+
+	_guard()
+	return pa.accept(propagation_plan)

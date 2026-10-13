@@ -13,6 +13,7 @@ banked -- it is stuck the week it is taken. A pool big enough for the year but
 not for its busiest week fails in that week.
 """
 
+import json
 import math
 
 import frappe
@@ -55,7 +56,9 @@ class SummerFlowerPropagationPlan(Document):
 		self.build_requirement()
 		self.apply_existing_motherstock()
 		self.apply_motherstock_plan()
+		self.apply_uplifts()
 		self.roll_up()
+		self.apply_actuals()
 
 	# --------------------------------------------------------------- header
 	# The figures a rebuild is judged on. Not everything -- dates and warnings follow
@@ -809,6 +812,49 @@ class SummerFlowerPropagationPlan(Document):
 
 	# -------------------------------------------------------------- actions
 	@frappe.whitelist()
+	# -------------------------------------------------------------- actuals
+	def apply_uplifts(self):
+		"""Take in cover an accepted re-plan has already added to a forward week.
+
+		Before the roll-up, because an uplift is material the week now has: it
+		closes a shortfall, and a shortfall counted after it has been covered is
+		a shortfall that reads as real.
+		"""
+		from upande_summer_flowers.summer_flowers import propagation_actuals as pa
+
+		try:
+			extra = pa.uplifts(self)
+		except Exception:
+			frappe.clear_last_message()
+			return
+		for r in self.weeks:
+			got = extra.get(getdate(r.deliver_on)) if r.deliver_on else None
+			r.uplift_plants = cint(got["plants"]) if got else 0
+			if not r.uplift_plants:
+				continue
+			r.from_bought = cint(r.from_bought) + r.uplift_plants
+			r.shortfall = max(0, cint(r.cuttings_required)
+			                  - cint(r.from_existing_ms) - cint(r.from_new_ms)
+			                  - cint(r.from_bought))
+
+	def apply_actuals(self):
+		"""Set the plan against what the unit actually did, and offer the gap forward.
+
+		Last, because it judges the rebuild that has just happened. Never fatal:
+		a plan that cannot read its actuals is still a plan, and refusing to
+		save it would mean one bad record stops the season being planned.
+		"""
+		from upande_summer_flowers.summer_flowers import propagation_actuals as pa
+
+		try:
+			pa.apply_to(self)
+		except Exception:
+			frappe.clear_last_message()
+			self.actuals_note = _(
+				"The actuals could not be read for this rebuild, so every "
+				"figure below is the plan rather than what happened:\n{0}"
+			).format(frappe.get_traceback(with_context=False)[-400:])
+
 	def submit_for_approval(self):
 		if not self.weeks:
 			frappe.throw(_("There is nothing to propagate on this plan."))
@@ -826,6 +872,10 @@ class SummerFlowerPropagationPlan(Document):
 		self.status = "Approved"
 		self.approved_by = frappe.session.user
 		self.approved_on = now_datetime()
+		# What the unit is held to, frozen here and never touched again. Without
+		# it a week would be judged against a plan that moves every time the
+		# production plan does, which is not a comparison at all.
+		self.freeze_baseline()
 		self.save()
 		# Approving the sourcing is what authorises the buying, so the batch is raised
 		# here rather than waiting for a third button. Never fatal: an approved plan
@@ -843,6 +893,24 @@ class SummerFlowerPropagationPlan(Document):
 			                  ).format(frappe.utils.strip_html(str(e))[:160]),
 			                indicator="orange")
 		return self.status
+
+	def freeze_baseline(self):
+		"""The approved figures, kept as they were approved."""
+		from upande_summer_flowers.summer_flowers import propagation_actuals as pa
+
+		if self.baseline_json:
+			return
+		self.baseline_json = json.dumps(pa.snapshot(self))
+		self.baseline_taken_on = now_datetime()
+
+	@frappe.whitelist()
+	def accept_replan(self):
+		"""Take the proposal in: the forward weeks carry the gap from here on."""
+		from upande_summer_flowers.summer_flowers import propagation_actuals as pa
+
+		if not _has_role():
+			frappe.throw(_("Only a Farm Manager can accept a re-plan."))
+		return pa.accept(self.name)
 
 	@frappe.whitelist()
 	def reject(self, reason=None):

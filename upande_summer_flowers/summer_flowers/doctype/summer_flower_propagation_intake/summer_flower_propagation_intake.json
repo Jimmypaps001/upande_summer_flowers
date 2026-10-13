@@ -16,7 +16,14 @@
   "ready_on",
   "ready_week",
   "deliver_on",
-  "plant_week"
+  "plant_week",
+  "sec_actual",
+  "actual_units",
+  "variance_units",
+  "actual_on",
+  "days_late",
+  "state",
+  "recorded_from"
  ],
  "fields": [
   {
@@ -98,6 +105,56 @@
    "fieldname": "plant_week",
    "fieldtype": "Data",
    "label": "Planting Week"
+  },
+  {
+   "fieldname": "sec_actual",
+   "fieldtype": "Section Break",
+   "label": "What Actually Arrived"
+  },
+  {
+   "fieldname": "actual_units",
+   "fieldtype": "Int",
+   "label": "Actually In",
+   "read_only": 1,
+   "in_list_view": 1,
+   "columns": 1,
+   "description": "Read from the stock ledger where the material is stock, typed in where it is not."
+  },
+  {
+   "fieldname": "variance_units",
+   "fieldtype": "Int",
+   "label": "Short By",
+   "read_only": 1,
+   "in_list_view": 1,
+   "columns": 1,
+   "description": "Negative is short of the consignment, positive is over it."
+  },
+  {
+   "fieldname": "actual_on",
+   "fieldtype": "Date",
+   "label": "Arrived On",
+   "read_only": 1
+  },
+  {
+   "fieldname": "days_late",
+   "fieldtype": "Int",
+   "label": "Days Late",
+   "read_only": 1
+  },
+  {
+   "fieldname": "state",
+   "fieldtype": "Select",
+   "label": "State",
+   "read_only": 1,
+   "in_list_view": 1,
+   "columns": 1,
+   "options": "\nAwaited\nArrived\nShort\nOver\nMissed\nNot Reported"
+  },
+  {
+   "fieldname": "recorded_from",
+   "fieldtype": "Data",
+   "label": "Recorded From",
+   "read_only": 1
   }
  ],
  "grid_page_length": 50,

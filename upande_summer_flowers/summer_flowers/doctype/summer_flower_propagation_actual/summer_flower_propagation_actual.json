@@ -1,0 +1,250 @@
+{
+ "actions": [],
+ "allow_rename": 0,
+ "autoname": "naming_series:",
+ "creation": "2026-10-13 09:00:00.000000",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "is_submittable": 1,
+ "field_order": [
+  "naming_series",
+  "propagation_plan",
+  "variety",
+  "farm",
+  "cb0",
+  "event",
+  "actual_date",
+  "week_iso",
+  "against_week",
+  "sec_what",
+  "units",
+  "plants",
+  "supplier",
+  "reference",
+  "cb1",
+  "form",
+  "warehouse",
+  "reason",
+  "sec_prov",
+  "recorded_from",
+  "voucher_type",
+  "cb2",
+  "voucher_no",
+  "remarks",
+  "season_start_year",
+  "season",
+  "amended_from"
+ ],
+ "fields": [
+  {
+   "fieldname": "naming_series",
+   "fieldtype": "Select",
+   "label": "Series",
+   "options": "SFPA-.YYYY.-.#####",
+   "reqd": 1,
+   "set_only_once": 1
+  },
+  {
+   "description": "The plan this answers. The record is kept against the variety and season, so it survives the plan being rebuilt.",
+   "fieldname": "propagation_plan",
+   "fieldtype": "Link",
+   "in_standard_filter": 1,
+   "label": "Propagation Plan",
+   "options": "Summer Flower Propagation Plan",
+   "reqd": 1
+  },
+  {
+   "fetch_from": "propagation_plan.variety",
+   "fieldname": "variety",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Variety",
+   "options": "Item",
+   "read_only": 1
+  },
+  {
+   "fetch_from": "propagation_plan.farm",
+   "fieldname": "farm",
+   "fieldtype": "Link",
+   "label": "Farm",
+   "options": "Farm",
+   "read_only": 1
+  },
+  {
+   "fieldname": "cb0",
+   "fieldtype": "Column Break"
+  },
+  {
+   "description": "Material in, plants out, or what died on the way.",
+   "fieldname": "event",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "What Happened",
+   "options": "TC Received\nRoots Withdrawn\nPlants To Farm\nLoss\nReplan Uplift",
+   "reqd": 1
+  },
+  {
+   "default": "Today",
+   "fieldname": "actual_date",
+   "fieldtype": "Date",
+   "in_list_view": 1,
+   "label": "On",
+   "reqd": 1
+  },
+  {
+   "fieldname": "week_iso",
+   "fieldtype": "Data",
+   "label": "Week",
+   "read_only": 1
+  },
+  {
+   "description": "The planned week this answers. Left blank it is matched to the nearest planned week of the same form.",
+   "fieldname": "against_week",
+   "fieldtype": "Date",
+   "label": "Against Planned Week"
+  },
+  {
+   "fieldname": "sec_what",
+   "fieldtype": "Section Break",
+   "label": "How Much"
+  },
+  {
+   "description": "Plantlets or roots that came in. Not plants: a root becomes many.",
+   "fieldname": "units",
+   "fieldtype": "Int",
+   "in_list_view": 1,
+   "label": "Units In"
+  },
+  {
+   "description": "Plants that went out, or were lost.",
+   "fieldname": "plants",
+   "fieldtype": "Int",
+   "in_list_view": 1,
+   "label": "Plants"
+  },
+  {
+   "fieldname": "supplier",
+   "fieldtype": "Link",
+   "label": "Supplier",
+   "options": "Supplier"
+  },
+  {
+   "description": "Which consignment, batch or lift this is.",
+   "fieldname": "reference",
+   "fieldtype": "Data",
+   "label": "Consignment"
+  },
+  {
+   "fieldname": "cb1",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "form",
+   "fieldtype": "Select",
+   "label": "Form",
+   "options": "\nTissue Culture\nRoots\nPlants",
+   "read_only": 1
+  },
+  {
+   "description": "The propagation unit this happened at.",
+   "fieldname": "warehouse",
+   "fieldtype": "Link",
+   "label": "Propagation Unit",
+   "options": "Warehouse"
+  },
+  {
+   "depends_on": "eval:doc.event=='Loss'",
+   "fieldname": "reason",
+   "fieldtype": "Small Text",
+   "label": "Reason"
+  },
+  {
+   "fieldname": "sec_prov",
+   "fieldtype": "Section Break",
+   "label": "Where This Came From"
+  },
+  {
+   "default": "Typed In",
+   "description": "A record read off the stock ledger is not typed again here.",
+   "fieldname": "recorded_from",
+   "fieldtype": "Select",
+   "label": "Recorded From",
+   "options": "Typed In\nStock Ledger",
+   "read_only": 1
+  },
+  {
+   "fieldname": "voucher_type",
+   "fieldtype": "Link",
+   "label": "Voucher Type",
+   "options": "DocType",
+   "read_only": 1
+  },
+  {
+   "fieldname": "cb2",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "voucher_no",
+   "fieldtype": "Dynamic Link",
+   "label": "Voucher",
+   "options": "voucher_type",
+   "read_only": 1
+  },
+  {
+   "fieldname": "remarks",
+   "fieldtype": "Small Text",
+   "label": "Remarks"
+  },
+  {
+   "fetch_from": "propagation_plan.season_start_year",
+   "fieldname": "season_start_year",
+   "fieldtype": "Int",
+   "hidden": 1,
+   "label": "Season (Starting Year)",
+   "read_only": 1
+  },
+  {
+   "fetch_from": "propagation_plan.season",
+   "fieldname": "season",
+   "fieldtype": "Data",
+   "label": "Season",
+   "read_only": 1
+  },
+  {
+   "fieldname": "amended_from",
+   "fieldtype": "Link",
+   "label": "Amended From",
+   "no_copy": 1,
+   "options": "Summer Flower Propagation Actual",
+   "print_hide": 1,
+   "read_only": 1,
+   "search_index": 1
+  }
+ ],
+ "grid_page_length": 50,
+ "index_web_pages_for_search": 1,
+ "links": [],
+ "modified": "2026-10-13 09:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Summer Flowers",
+ "name": "Summer Flower Propagation Actual",
+ "naming_rule": "By \"Naming Series\" field",
+ "owner": "Administrator",
+ "permissions": [
+  {"create": 1, "delete": 1, "email": 1, "export": 1, "print": 1, "read": 1, "report": 1, "role": "Farm Manager", "share": 1, "submit": 1, "cancel": 1, "amend": 1, "write": 1},
+  {"create": 1, "delete": 1, "email": 1, "export": 1, "print": 1, "read": 1, "report": 1, "role": "Agriculture Manager", "share": 1, "submit": 1, "cancel": 1, "amend": 1, "write": 1},
+  {"create": 1, "delete": 1, "email": 1, "export": 1, "print": 1, "read": 1, "report": 1, "role": "Production Manager", "share": 1, "submit": 1, "cancel": 1, "amend": 1, "write": 1},
+  {"create": 1, "delete": 1, "email": 1, "export": 1, "print": 1, "read": 1, "report": 1, "role": "System Manager", "share": 1, "submit": 1, "cancel": 1, "amend": 1, "write": 1},
+  {"create": 1, "email": 1, "export": 1, "print": 1, "read": 1, "report": 1, "role": "Agriculture User", "share": 1, "submit": 1, "write": 1}
+ ],
+ "row_format": "Dynamic",
+ "rows_threshold_for_grid_search": 20,
+ "sort_field": "actual_date",
+ "sort_order": "DESC",
+ "states": [],
+ "title_field": "variety",
+ "track_changes": 1
+}

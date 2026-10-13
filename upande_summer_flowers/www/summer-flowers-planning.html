@@ -346,6 +346,21 @@
         <div id="pg-steps"></div>
         <div id="pg-body" class="pl-scroll"></div>
       </div>
+      <!-- What actually happened, against what was planned. Its own card
+           because it is a different question from "what should we do": the
+           plan above is an instruction, this is a report. -->
+      <div class="pl-card" id="pa-card" hidden>
+        <div class="pl-card-head">
+          <div><h2>{{ _("What actually happened") }}</h2>
+               <p class="pl-note" id="pa-sub"></p></div>
+          <span id="pa-actions" class="pl-actions"></span>
+        </div>
+        <div class="pl-tiles pl-tiles-sm" id="pa-tiles"></div>
+        <div id="pa-note"></div>
+        <div id="pa-replan"></div>
+        <div id="pa-form"></div>
+        <div id="pa-body" class="pl-scroll"></div>
+      </div>
     </section>
 
     <!-- ══ HARVEST ══ -->
@@ -2853,6 +2868,211 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
       `</span></div><div class="bg-grid">${cells}</div></div>`;
   }
 
+  // ══════════════════ WHAT ACTUALLY HAPPENED ══════════════════
+  // The plan above says what the unit should do. This says what it did, and
+  // what that costs the rest of the season. Kept apart from the plan on
+  // purpose: an instruction and a report read differently, and merging them is
+  // how a figure that was promised and a figure that arrived end up in one
+  // column with nobody able to say which is which.
+  const PA_EVENTS = [
+    ["TC Received", "Tissue culture arrived at the unit", "units"],
+    ["Roots Withdrawn", "Roots drawn out of the cold store", "units"],
+    ["Plants To Farm", "Plants handed over to the farm", "plants"],
+    ["Loss", "Plants lost at the unit", "plants"],
+  ];
+
+  function renderActuals() {
+    const card = $("pa-card");
+    if (!card) return;
+    const r = S.pg;
+    if (!r || r.error || !r.propagation_plan || !r.actuals) {
+      card.hidden = true;
+      return;
+    }
+    card.hidden = false;
+    const a = r.actuals;
+
+    $("pa-sub").innerHTML = a.reported_to
+      ? `The unit has reported up to <b>${fdate(a.reported_to)}</b>. ` +
+        `${num(a.recorded)} records, ${num(a.weeks_closed)} weeks judged.`
+      : `Nothing recorded yet. Weeks already past read as <i>not reported</i> ` +
+        `rather than as missed — nobody has said either way.`;
+
+    $("pa-actions").innerHTML =
+      `<button type="button" class="pl-btn" data-pa="new">Record what happened</button>`;
+
+    const tiles = [
+      { k: "Plants to the farm", v: num(a.plants_to_farm),
+        m: a.weeks_closed ? `over ${num(a.weeks_closed)} weeks judged`
+                          : "no week judged yet" },
+      { k: "Carried short", v: num(a.carried_short),
+        m: a.ahead ? `net of ${num(a.ahead)} delivered over` : "on the closed weeks",
+        c: a.carried_short ? "--critical" : "--good" },
+      { k: "Survival achieved",
+        v: a.survival_pct ? a.survival_pct.toFixed(1) + "%" : "—",
+        m: a.survival_basis || "" },
+    ];
+    if (a.tc_received || a.roots_withdrawn) {
+      tiles.splice(1, 0, {
+        k: "Material in", v: num(a.tc_received + a.roots_withdrawn),
+        m: `${num(a.tc_received)} plantlets, ${num(a.roots_withdrawn)} roots` });
+    }
+    if (a.plants_lost) {
+      tiles.push({ k: "Lost at the unit", v: num(a.plants_lost), c: "--warning",
+        m: "recorded as losses" });
+    }
+    $("pa-tiles").innerHTML = tiles.map(tile).join("");
+
+    $("pa-note").innerHTML = a.note
+      ? `<div class="pl-callout">${esc(a.note).replace(/\n/g, "<br>")}</div>` : "";
+
+    // The proposal, and the one button that acts on it. Never shown when there
+    // is nothing to accept: a button that always refuses teaches people to
+    // stop reading buttons.
+    $("pa-replan").innerHTML = a.replan_note
+      ? `<div class="pl-callout"><b>The re-plan</b><br>` +
+        `${esc(a.replan_note).replace(/\n/g, "<br>")}</div>` +
+        (a.replan_cover > 0
+          ? `<p><button type="button" class="pl-btn primary" data-pa="accept">` +
+            `Accept — move ${num(a.replan_cover)} plants forward</button></p>`
+          : "")
+      : "";
+
+    $("pa-body").innerHTML = paWeeks(r) + paConsignments(r);
+    $("pa-form").innerHTML = S.paOpen ? paForm(r) : "";
+  }
+
+  // Only the weeks that have been judged, plus the ones carrying an uplift. A
+  // table of forty weeks that have not happened says nothing about what did.
+  function paWeeks(r) {
+    const rows = (r.weeks || []).filter(
+      (w) => (w.state && w.state !== "To Come" && w.state !== "Not Reported")
+             || w.uplift);
+    if (!rows.length) return "";
+    return `<div class="text-muted small" style="text-transform:uppercase;` +
+      `letter-spacing:.05em;margin:14px 0 4px">Weeks judged — promised ` +
+      `against delivered</div>` +
+      `<table class="pl-t"><thead><tr><th>Week</th><th>To the farm</th>` +
+      `<th class="n">Promised</th><th class="n">Delivered</th>` +
+      `<th class="n">Variance</th><th class="n">Re-plan</th>` +
+      `<th>State</th><th>From</th></tr></thead><tbody>` +
+      rows.map((w) => {
+        const v = w.variance || 0;
+        return `<tr><td class="text-muted">${esc(w.label || "")}</td>` +
+          `<td>${fdate(w.deliver_on)}</td>` +
+          `<td class="n">${num(w.promised)}</td>` +
+          `<td class="n">${w.delivered ? num(w.delivered) : "—"}</td>` +
+          `<td class="n"${v < 0 ? ' style="color:var(--critical)"' : ""}>` +
+          `${v > 0 ? "+" : ""}${v ? num(v) : "—"}</td>` +
+          `<td class="n">${w.uplift ? "+" + num(w.uplift) : ""}</td>` +
+          `<td>${paState(w.state)}</td>` +
+          `<td class="text-muted small">${esc(w.recorded_from || "")}</td></tr>`;
+      }).join("") + `</tbody></table>`;
+  }
+
+  function paConsignments(r) {
+    const rows = (r.consignments || []).filter(
+      (c) => c.state && c.state !== "Awaited" && c.state !== "Not Reported");
+    if (!rows.length) return "";
+    return `<div class="text-muted small" style="text-transform:uppercase;` +
+      `letter-spacing:.05em;margin:14px 0 4px">Consignments — due ` +
+      `against received</div>` +
+      `<table class="pl-t"><thead><tr><th>Week</th><th>Form</th><th>From</th>` +
+      `<th class="n">Due</th><th class="n">Received</th><th class="n">Variance</th>` +
+      `<th class="n">Days late</th><th>State</th><th>Recorded</th>` +
+      `</tr></thead><tbody>` +
+      rows.map((c) => {
+        const v = c.variance_units || 0;
+        return `<tr><td>${fdate(c.week)}</td><td>${esc(c.form || "")}</td>` +
+          `<td class="text-muted small">${esc(c.source || "")}</td>` +
+          `<td class="n">${num(c.units)}</td>` +
+          `<td class="n">${c.actual_units ? num(c.actual_units) : "—"}</td>` +
+          `<td class="n"${v < 0 ? ' style="color:var(--critical)"' : ""}>` +
+          `${v > 0 ? "+" : ""}${v ? num(v) : "—"}</td>` +
+          `<td class="n">${c.days_late ? num(c.days_late) : ""}</td>` +
+          `<td>${paState(c.state)}</td>` +
+          `<td class="text-muted small">${esc(c.recorded_from || "")}</td></tr>`;
+      }).join("") + `</tbody></table>`;
+  }
+
+  function paState(st) {
+    const bad = { Missed: 1, Short: 1, Part: 1 };
+    const good = { Delivered: 1, Arrived: 1 };
+    const colour = bad[st] ? "var(--critical)" : good[st] ? "var(--good)" : "";
+    return `<span${colour ? ` style="color:${colour}"` : ""}>${esc(st || "")}</span>`;
+  }
+
+  // The form. Deliberately short: a date, what happened, how many, and which
+  // planned week it answers. Everything else about the event lives on the
+  // record itself, where somebody who needs it can open it.
+  function paForm(r) {
+    const cons = {};
+    (r.consignments || []).forEach((c) => { if (c.week) cons[c.week] = c; });
+    const conWeeks = Object.keys(cons).sort();
+    const weeks = (r.weeks || []).filter((w) => w.deliver_on);
+    return `<div class="pl-callout"><b>Record what happened</b>` +
+      `<div class="pl-row" style="gap:8px;flex-wrap:wrap;margin-top:8px">` +
+      `<label>What<br><select id="pa-event">` +
+      PA_EVENTS.map(([k, label]) =>
+        `<option value="${esc(k)}">${esc(label)}</option>`).join("") +
+      `</select></label>` +
+      `<label>On<br><input type="date" id="pa-date" value="${esc(todayISO())}"></label>` +
+      `<label>Against planned week<br><select id="pa-week">` +
+      `<option value="">(match it by date)</option>` +
+      conWeeks.map((w) =>
+        `<option value="${esc(w)}">${esc(w)} — ${esc(cons[w].form)}, ` +
+        `${num(cons[w].units)} due</option>`).join("") +
+      weeks.map((w) =>
+        `<option value="${esc(w.deliver_on)}">${esc(w.deliver_on)} — to the ` +
+        `farm, ${num(w.promised || w.plants_to_stick)} due</option>`).join("") +
+      `</select></label>` +
+      `<label>How many<br><input type="number" id="pa-qty" min="0" step="1"></label>` +
+      `<label>Consignment<br><input type="text" id="pa-ref" placeholder="batch, lift, note"></label>` +
+      `<label>Reason (a loss needs one)<br><input type="text" id="pa-reason"></label>` +
+      `</div><p style="margin-top:8px">` +
+      `<button type="button" class="pl-btn primary" data-pa="save">Record it</button> ` +
+      `<button type="button" class="pl-btn quiet" data-pa="cancel">Cancel</button>` +
+      `</p></div>`;
+  }
+
+  function todayISO() {
+    return new Date().toISOString().slice(0, 10);
+  }
+
+  function paSave() {
+    const r = S.pg;
+    const event = $("pa-event").value;
+    const spec = PA_EVENTS.find((e) => e[0] === event);
+    const qty = parseInt($("pa-qty").value, 10) || 0;
+    if (!qty) { toast("How many? A movement of nothing is not an event."); return; }
+    const body = {
+      propagation_plan: r.propagation_plan,
+      event: event,
+      actual_date: $("pa-date").value || todayISO(),
+      against_week: $("pa-week").value || null,
+      reference: $("pa-ref").value || null,
+      reason: $("pa-reason").value || null,
+    };
+    // Units for material coming in, plants for what goes out or is lost. The
+    // two are not interchangeable: a root is not the plants it becomes.
+    body[spec && spec[2] === "plants" ? "plants" : "units"] = qty;
+    call("record_propagation_actual", body)
+      .then((res) => {
+        toast(`Recorded ${res.name}.`);
+        S.paOpen = false;
+        loadPropagation();
+      })
+      .catch((e) => toast(e.message || "Could not record it."));
+  }
+
+  function paAccept() {
+    call("accept_propagation_replan", { propagation_plan: S.pg.propagation_plan })
+      .then((res) => {
+        toast(`${res.accepted} weeks took in ${num(res.plants)} plants.`);
+        loadPropagation();
+      })
+      .catch((e) => toast(e.message || "Could not accept the re-plan."));
+  }
   // ══════════════════════════ PROPAGATION ══════════════════════════
   function loadPropagation() {
     callRl("propagation_overview", { production_plan: S.plan })
@@ -2860,8 +3080,9 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
       .catch((e) => { S.pgo = { error: e.message }; renderOverview(); });
     return call("propagation_detail", { plan: S.plan || null,
                                         variety: S.variety, farm: S.farm })
-      .then((r) => { S.pg = r; renderPropagation(); })
-      .catch((e) => { S.pg = { error: e.message }; renderPropagation(); });
+      .then((r) => { S.pg = r; renderPropagation(); renderActuals(); })
+      .catch((e) => { S.pg = { error: e.message }; renderPropagation();
+                      renderActuals(); });
   }
 
   // Dates and quantities, in the order they happen. No explanation: somebody
@@ -6853,6 +7074,27 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
             onSubmit: (v) => fire(v.r),
           });
         } else { fire(); }
+        return;
+      }
+      // Not `pa`: that name is taken further down this same handler by the
+      // [data-plan] branch, and a redeclaration kills the whole script.
+      const pact = ev.target.closest("[data-pa]");
+      if (pact && S.pg && S.pg.propagation_plan) {
+        const k = pact.dataset.pa;
+        if (k === "new") { S.paOpen = true; renderActuals(); }
+        else if (k === "cancel") { S.paOpen = false; renderActuals(); }
+        else if (k === "save") { paSave(); }
+        else if (k === "accept") {
+          // Confirmed, because it writes records against forward weeks. The
+          // page uses window.confirm for the other writes of this weight.
+          if (window.confirm(
+              `Add ${num(S.pg.actuals.replan_cover)} plants across the weeks ` +
+              `still to come, to cover the ${num(S.pg.actuals.carried_short)} ` +
+              `the closed weeks are short?\n\nNothing already delivered ` +
+              `changes, and no week goes past its variance band.`)) {
+            paAccept();
+          }
+        }
         return;
       }
       const pg = ev.target.closest("[data-pg]");

@@ -65,6 +65,28 @@
   "mother_plants_to_cover_ramp",
   "calendar_section",
   "calendar_html",
+  "sec_actuals",
+  "actuals_recorded",
+  "weeks_closed",
+  "reported_to",
+  "tc_received",
+  "roots_withdrawn",
+  "plants_to_farm",
+  "plants_lost",
+  "cb_act",
+  "delivered_short",
+  "delivered_ahead",
+  "carried_short",
+  "actual_survival_pct",
+  "survival_basis",
+  "baseline_taken_on",
+  "actuals_note",
+  "sec_replan",
+  "replan_cover",
+  "replan_still_short",
+  "cb_replan",
+  "replan_note",
+  "baseline_json",
   "sec_sources",
   "sources",
   "sec_out",
@@ -517,6 +539,138 @@
    "fieldtype": "Small Text",
    "label": "Protocol Note",
    "no_copy": 1,
+   "read_only": 1
+  },
+  {
+   "fieldname": "sec_actuals",
+   "fieldtype": "Section Break",
+   "label": "Against What Actually Happened"
+  },
+  {
+   "fieldname": "actuals_recorded",
+   "fieldtype": "Int",
+   "label": "Records Counted",
+   "read_only": 1
+  },
+  {
+   "fieldname": "weeks_closed",
+   "fieldtype": "Int",
+   "label": "Weeks Closed",
+   "read_only": 1,
+   "description": "Weeks that have been and gone. Only these are judged."
+  },
+  {
+   "fieldname": "tc_received",
+   "fieldtype": "Int",
+   "label": "TC Received",
+   "read_only": 1
+  },
+  {
+   "fieldname": "roots_withdrawn",
+   "fieldtype": "Int",
+   "label": "Roots Withdrawn",
+   "read_only": 1
+  },
+  {
+   "fieldname": "plants_to_farm",
+   "fieldtype": "Int",
+   "label": "Plants To The Farm",
+   "read_only": 1
+  },
+  {
+   "fieldname": "plants_lost",
+   "fieldtype": "Int",
+   "label": "Plants Lost",
+   "read_only": 1
+  },
+  {
+   "fieldname": "cb_act",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "delivered_short",
+   "fieldtype": "Int",
+   "label": "Short On Closed Weeks",
+   "read_only": 1
+  },
+  {
+   "fieldname": "delivered_ahead",
+   "fieldtype": "Int",
+   "label": "Over On Closed Weeks",
+   "read_only": 1
+  },
+  {
+   "fieldname": "carried_short",
+   "fieldtype": "Int",
+   "label": "Carried Short",
+   "read_only": 1,
+   "description": "What the closed weeks are short, net of what they ran over. This is the gap the forward weeks are asked to cover."
+  },
+  {
+   "fieldname": "actual_survival_pct",
+   "fieldtype": "Percent",
+   "label": "Survival Achieved",
+   "read_only": 1,
+   "description": "Plants handed to the farm against the material raised for them. What the unit achieved, not what the protocol hopes for."
+  },
+  {
+   "fieldname": "baseline_taken_on",
+   "fieldtype": "Datetime",
+   "label": "Baseline Frozen On",
+   "read_only": 1
+  },
+  {
+   "fieldname": "actuals_note",
+   "fieldtype": "Small Text",
+   "label": "Where These Figures Came From",
+   "read_only": 1
+  },
+  {
+   "fieldname": "sec_replan",
+   "fieldtype": "Section Break",
+   "label": "The Re-plan"
+  },
+  {
+   "fieldname": "replan_cover",
+   "fieldtype": "Int",
+   "label": "Can Be Covered",
+   "read_only": 1
+  },
+  {
+   "fieldname": "replan_still_short",
+   "fieldtype": "Int",
+   "label": "Still Short",
+   "read_only": 1
+  },
+  {
+   "fieldname": "cb_replan",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "replan_note",
+   "fieldtype": "Small Text",
+   "label": "Proposal",
+   "read_only": 1
+  },
+  {
+   "fieldname": "baseline_json",
+   "fieldtype": "Long Text",
+   "label": "Baseline",
+   "hidden": 1,
+   "read_only": 1,
+   "print_hide": 1
+  },
+  {
+   "fieldname": "reported_to",
+   "fieldtype": "Date",
+   "label": "Reported Up To",
+   "read_only": 1,
+   "description": "The last date the unit recorded anything for. Weeks beyond it are not judged, because nobody has said what happened in them."
+  },
+  {
+   "fieldname": "survival_basis",
+   "fieldtype": "Small Text",
+   "label": "What That Survival Is Measured On",
    "read_only": 1
   }
  ],

@@ -20,7 +20,15 @@
   "shortfall",
   "deliver_on",
   "plant_week",
-  "notes"
+  "notes",
+  "sec_actual",
+  "baseline_plants",
+  "actual_plants",
+  "variance_plants",
+  "actual_on",
+  "state",
+  "recorded_from",
+  "uplift_plants"
  ],
  "fields": [
   {
@@ -124,6 +132,64 @@
    "fieldtype": "Small Text",
    "in_list_view": 0,
    "label": "Notes"
+  },
+  {
+   "fieldname": "sec_actual",
+   "fieldtype": "Section Break",
+   "label": "What The Farm Got"
+  },
+  {
+   "fieldname": "baseline_plants",
+   "fieldtype": "Int",
+   "label": "Promised",
+   "read_only": 1,
+   "in_list_view": 1,
+   "columns": 1,
+   "description": "What the plan said when it was approved. A week is judged against this, not against what the plan has since become."
+  },
+  {
+   "fieldname": "actual_plants",
+   "fieldtype": "Int",
+   "label": "Actually Delivered",
+   "read_only": 1,
+   "in_list_view": 1,
+   "columns": 1
+  },
+  {
+   "fieldname": "variance_plants",
+   "fieldtype": "Int",
+   "label": "Variance",
+   "read_only": 1,
+   "in_list_view": 1,
+   "columns": 1
+  },
+  {
+   "fieldname": "actual_on",
+   "fieldtype": "Date",
+   "label": "Delivered On",
+   "read_only": 1
+  },
+  {
+   "fieldname": "state",
+   "fieldtype": "Select",
+   "label": "State",
+   "read_only": 1,
+   "in_list_view": 1,
+   "columns": 1,
+   "options": "\nTo Come\nDelivered\nPart\nMissed\nNot Reported"
+  },
+  {
+   "fieldname": "recorded_from",
+   "fieldtype": "Data",
+   "label": "Recorded From",
+   "read_only": 1
+  },
+  {
+   "fieldname": "uplift_plants",
+   "fieldtype": "Int",
+   "label": "Re-plan Uplift",
+   "read_only": 1,
+   "description": "Plants added to this week by an accepted re-plan, to cover a shortfall carried from a week that has closed."
   }
  ],
  "grid_page_length": 50,
