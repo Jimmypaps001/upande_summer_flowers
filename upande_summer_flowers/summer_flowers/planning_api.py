@@ -1985,6 +1985,60 @@ def lifetime_production(variety=None, farm=None, plan=None, grain="month"):
 	}
 
 
+# Stages that mean the farm cuts its own material off a standing pool. A route
+# without one of these is a crop that is handed what it plants.
+MOTHERSTOCK_STAGES = ("Motherstock", "Cuttings (Own)", "Roots (Own)",
+                      "Tubers (Own)")
+
+
+def _route_chains_payload(version):
+	"""Each way in, as its own route, with what it costs in time.
+
+	`weeks` is the time from the material arriving to a plantable plant, so it
+	is the stages after the entry one; `lead_weeks` is how long before that the
+	order has to be placed. Added together they are the notice the farm needs,
+	and that is the number the two routes differ on.
+	"""
+	from upande_summer_flowers.summer_flowers import crop_protocol as cp
+
+	out = []
+	for chain in (cp.route_chains(version) or []):
+		stages = []
+		for stage, steps in chain:
+			stages.append({
+				"stage": stage.get("stage"),
+				"weeks": cint(stage.get("weeks")),
+				"loss_pct": flt(stage.get("loss_pct")),
+				"is_purchase": cint(stage.get("is_purchase")),
+				"lead_weeks": cint(stage.get("lead_weeks")),
+				"item": stage.get("item"),
+				"returns_per_plant": flt(stage.get("returns_per_plant")),
+				"share_pct": flt(stage.get("share_pct")),
+				"steps": [{"step": x.get("step"), "weeks": cint(x.get("weeks")),
+				           "loss_pct": flt(x.get("loss_pct"))} for x in steps],
+			})
+		if not stages:
+			continue
+		entry = stages[0]
+		# The entry stage is the material; the weeks that matter are what
+		# happens to it afterwards.
+		after = sum(x["weeks"] for x in stages[1:]) + sum(
+			y["weeks"] for x in stages[1:] for y in x["steps"])
+		out.append({
+			"entry": entry["stage"],
+			"label": " → ".join(x["stage"] for x in stages if x["stage"]),
+			"is_purchase": entry["is_purchase"],
+			"lead_weeks": entry["lead_weeks"],
+			"weeks_to_ground": after,
+			"notice_weeks": entry["lead_weeks"] + after,
+			"returns_per_plant": entry["returns_per_plant"],
+			"item": entry["item"],
+			"share_pct": entry["share_pct"],
+			"stages": stages,
+		})
+	return out
+
+
 @frappe.whitelist()
 def protocol_detail(version=None, variety=None, farm=None, plan=None):
 	"""The whole protocol sheet: inputs, derived values and the journey timelines.
@@ -2064,6 +2118,17 @@ def protocol_detail(version=None, variety=None, farm=None, plan=None):
 			"item": r.item,
 		})
 	bought = [r["stage"] for r in route if r["is_purchase"] and r["stage"]]
+
+	# The route as the chains it actually is, rather than one flat list. A
+	# variety bought two ways has two routes -- Eryngium is tissue culture AND
+	# roots, seven weeks and a year of lead apart -- and reading them as one
+	# column of stages says neither.
+	chains = _route_chains_payload(v)
+	# Whether there is a motherstock at all. A crop handed its material has no
+	# pool, no build-up and no renewal date, and a card asking when to renew a
+	# pool that does not exist is a question nobody asked.
+	has_ms = bool([r for r in route
+	               if (r["stage"] or "") in MOTHERSTOCK_STAGES])
 
 	# TC order through to the first harvest off those cuttings.
 	#
@@ -2186,6 +2251,8 @@ def protocol_detail(version=None, variety=None, farm=None, plan=None):
 		"route": route,
 		"route_summary": " → ".join(r["stage"] for r in route
 		                            if r["row_type"] != "Step" and r["stage"]),
+		"chains": chains,
+		"has_motherstock": 1 if has_ms else 0,
 		"bought_at": bought,
 		"grades": [{"grade": g.grade, "pct": flt(g.allocation_pct),
 		            "price": flt(g.price_per_stem)} for g in v.grade_allocation],

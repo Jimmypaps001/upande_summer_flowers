@@ -470,13 +470,13 @@
       </div>
 
       <div class="pl-three">
-        <div class="pl-card">
+        <div class="pl-card" id="pr-estab-card">
           <div class="pl-card-head"><h2>{{ _("TC establishment") }}</h2></div>
           <div id="pr-estab"></div>
           <h3>{{ _("Build-up to full capacity") }}</h3>
           <div id="pr-ramp" class="pl-ramp"></div>
         </div>
-        <div class="pl-card">
+        <div class="pl-card" id="pr-ms-card">
           <div class="pl-card-head"><h2>{{ _("Motherstock lifecycle & renewal") }}</h2></div>
           <div id="pr-ms"></div>
           <div class="pl-callout" id="pr-deadline"></div>
@@ -503,6 +503,9 @@
           <div><h3>{{ _("Where the plant material comes from") }}</h3>
                <p class="pl-note" id="pr-route-sub"></p></div>
         </div>
+        <!-- Each way in as its own route. A variety bought two ways has two,
+             and reading them as one column of stages says neither. -->
+        <div id="pr-chains"></div>
         <div id="pr-route" class="pl-scroll"></div>
         <div id="pr-flushes" class="pl-scroll"></div>
         <!-- The same numbers as the table above, drawn. A crop cut once is a single
@@ -544,6 +547,15 @@
               <input type="number" id="tc-divert" min="0" max="4" step="1"></label>
             <label class="pl-inline" id="tc-roots-l" style="display:none">{{ _("Roots") }}
               <input type="number" id="tc-roots" min="0" step="100"></label>
+            <!-- The share, for when typing two quantities is the tedious way to
+                 say one thing. It is a shortcut TO the quantities, never a
+                 replacement for them: the engine turns it back into a TC order
+                 and a roots order, and those are what get saved. -->
+            <label class="pl-inline" id="tc-share-l" style="display:none"
+                   title="{{ _('Type the share you want taken the short way and the two orders are worked out from it. Typing either quantity instead overrides the share.') }}"
+            >{{ _("% as TC") }}
+              <input type="number" id="tc-share" min="0" max="100" step="1"
+                     style="width:5rem"></label>
             <button type="button" class="pl-btn" data-tc="allocate"
                     style="display:none"
                     title="{{ _('Split the order between labs. Each sends on its own cycle, and the system sizes every batch from the weeks it feeds.') }}"
@@ -4594,10 +4606,18 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
           // way the plantlet and multiplication boxes are for a motherstock.
           const q = $("tc-qty"), rt = $("tc-roots");
           S.mat = null; renderTc();
+          // A quantity beats a share, because a quantity is what gets
+          // ordered. The share is only asked for when neither box is pinned --
+          // otherwise the engine would be given two answers to one question
+          // and the card would report an order nobody chose.
+          const sh = $("tc-share");
+          const pinned = (q && q.value !== "") || (rt && rt.value !== "");
           return callRl("arrivals_for", {
             production_plan: r.plan,
             tc_qty: (q && q.value !== "") ? q.value : null,
             roots_qty: (rt && rt.value !== "") ? rt.value : null,
+            tc_share: (!pinned && sh && sh.value !== "")
+              ? (Math.max(0, Math.min(100, parseFloat(sh.value))) / 100) : null,
           }).then((m) => { S.mat = m; renderTc(); })
             .catch((e) => { S.mat = { error: e.message }; renderTc(); });
         }
@@ -4697,6 +4717,9 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
     }
     const rl = $("tc-roots-l");
     if (rl) rl.style.display = mother ? "none" : "";
+    // Only a crop with two ways in has a share to set.
+    const sl = $("tc-share-l");
+    if (sl) sl.style.display = mother ? "none" : "";
     const agree = head.querySelector('[data-tc="agree"]');
     if (agree) agree.style.display = mother ? "" : "none";
     const agreeMat = head.querySelector('[data-tc="agreemat"]');
@@ -4731,6 +4754,12 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
     }
     if (rb && document.activeElement !== rb && rb.value === "" && sg.roots != null) {
       rb.value = sg.roots;
+    }
+    // Whatever was typed, the share the plan came out at is shown. Type a
+    // quantity and the share follows it; type a share and the quantities do.
+    const shb = $("tc-share");
+    if (shb && document.activeElement !== shb && m.tc_share_pct != null) {
+      shb.value = Math.round(m.tc_share_pct * 10) / 10;
     }
     const tcPct = m.tc_share_pct, rootPct = Math.round((100 - tcPct) * 10) / 10;
     box.innerHTML = [
@@ -5014,6 +5043,20 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
     });
   }
 
+  // What is being split. The box if somebody typed in it, otherwise what the
+  // engine suggested -- the same figure renderBalance measures against, read
+  // from one place so the two cannot disagree.
+  function allocTarget() {
+    return cintish(($("tc-qty") || {}).value) ||
+           ((S.mat || {}).suggested || {}).tc || 0;
+  }
+
+  function allocPct(r) {
+    const t = allocTarget();
+    if (!t || !cintish(r.tc)) return "";
+    return Math.round(cintish(r.tc) / t * 1000) / 10;
+  }
+
   function renderSuppliers(m) {
     const box = $("tc-sup");
     if (!box) return;
@@ -5024,6 +5067,7 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
       `letter-spacing:.05em;margin:10px 0 4px">Who sends the TC</div>` +
       `<div class="pl-two"><div>` +
       `<table class="pl-t"><thead><tr><th>Supplier</th>` +
+      `<th class="n">Share<br><span class="text-muted">% of the order</span></th>` +
       `<th class="n">TC</th><th class="n">Sends every<br><span class="text-muted">` +
       `weeks</span></th><th class="n">Deliveries<br><span class="text-muted">` +
       `blank = as often as it can</span></th><th></th>` +
@@ -5037,6 +5081,13 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
         ` placeholder="pick a lab">` +
         `<ul id="tc-sup-ac-${i}" class="pl-ac" role="listbox" hidden></ul>` +
         `</span></td>` +
+        // A share and a quantity are the same fact. Typing either fills the
+        // other, so nobody has to work out 37% of 851,961 by hand -- and the
+        // quantity is still what is sent, because a lab is ordered a count of
+        // plantlets, not a percentage.
+        `<td class="n"><input type="number" data-al="pct" data-i="${i}" ` +
+        `min="0" max="100" step="0.1" value="${allocPct(r)}" ` +
+        `style="width:5.5rem" placeholder="—"></td>` +
         `<td class="n"><input type="number" data-al="tc" data-i="${i}" ` +
         `value="${cintish(r.tc)}" style="width:9rem"></td>` +
         `<td class="n"><input type="number" min="1" data-al="cycle_weeks" ` +
@@ -5054,7 +5105,10 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
             `awaiting approval — no order can be raised yet</span>` : "") +
         `</td></tr>`).join("") +
       `</tbody></table>` +
-      `<button type="button" class="pl-btn quiet" data-al="add">Add a supplier</button>` +
+      `<button type="button" class="pl-btn quiet" data-al="add">Add a supplier</button> ` +
+      `<button type="button" class="pl-btn quiet" data-al="even" ` +
+      `title="Give every named lab the same share of the order">` +
+      `Split evenly</button>` +
       `</div><div id="tc-bal"></div></div>`;
     box.querySelectorAll('input[data-al="supplier"]').forEach((inp) => {
       const ul = document.getElementById("tc-sup-ac-" + inp.dataset.i);
@@ -5081,7 +5135,10 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
       `<tr><td>TC to buy</td><td class="n"><b>${num(target)}</b></td></tr>` +
       named.map((r) => `<tr><td class="text-muted">${esc(r.supplier)}` +
         `<span class="text-muted small"> every ${cintish(r.cycle_weeks) || 4} wk` +
-        `</span></td><td class="n">−${num(cintish(r.tc))}</td></tr>`).join("") +
+        `</span></td><td class="n">−${num(cintish(r.tc))}` +
+        `<span class="text-muted small">${target
+          ? "  " + (Math.round(cintish(r.tc) / target * 1000) / 10) + "%" : ""}` +
+        `</span></td></tr>`).join("") +
       `<tr><td><b>Allocated</b></td><td class="n"><b>${num(given)}</b></td></tr>` +
       `<tr><td><b>${left > 0 ? "Still to allocate" : left < 0 ? "Over-allocated"
                    : "Balance"}</b></td>` +
@@ -6059,6 +6116,64 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
       "</span></div>";
   }
 
+  // Show only what this crop actually has. Hiding is not cosmetic here: a
+  // renewal deadline for a pool that does not exist is a wrong answer, not an
+  // empty one.
+  function applyRouteShape(d) {
+    const ms = !!d.has_motherstock;
+    [["pr-estab-card", ms], ["pr-ms-card", ms]].forEach(([id, show]) => {
+      const el = $(id);
+      if (el) el.hidden = !show;
+    });
+    drawChains(d);
+  }
+
+  function drawChains(d) {
+    const el = $("pr-chains");
+    if (!el) return;
+    const ch = (d && d.chains) || [];
+    if (!ch.length) { el.innerHTML = ""; return; }
+
+    // Ordered by notice, longest first: the route that has to be decided
+    // earliest is the one that constrains the season.
+    const sorted = ch.slice().sort((a, b) => b.notice_weeks - a.notice_weeks);
+    const widest = Math.max(1, ...sorted.map((c) => c.notice_weeks));
+    el.innerHTML = sorted.map((c, i) => {
+      const colour = TSEG[i % TSEG.length];
+      const leadW = Math.round(c.lead_weeks / widest * 100);
+      const groundW = Math.round(c.weeks_to_ground / widest * 100);
+      const bits = [];
+      if (c.is_purchase) bits.push("bought in");
+      if (c.returns_per_plant > 0) {
+        bits.push(`one ${esc(String(c.entry || "unit")).toLowerCase()} becomes ` +
+          `${numx(c.returns_per_plant)} plants`);
+      }
+      if (c.item) bits.push(`stock item ${esc(c.item)}`);
+      if (c.share_pct) bits.push(`${numx(c.share_pct)}% of the crop`);
+      return `<div class="pl-callout" style="border-left:4px solid ${colour}">` +
+        `<div style="display:flex;justify-content:space-between;` +
+        `align-items:baseline;gap:12px;flex-wrap:wrap">` +
+        `<b>${esc(c.label || c.entry || "route")}</b>` +
+        `<span class="text-muted small">${c.notice_weeks} weeks' notice</span>` +
+        `</div>` +
+        `<div style="display:flex;height:10px;border-radius:5px;overflow:hidden;` +
+        `background:var(--surface-2,#eee);margin:6px 0">` +
+        `<div title="${c.lead_weeks} weeks of supplier lead" style="width:${leadW}%;` +
+        `background:${colour};opacity:.45"></div>` +
+        `<div title="${c.weeks_to_ground} weeks to a plantable plant" ` +
+        `style="width:${groundW}%;background:${colour}"></div></div>` +
+        `<div class="text-muted small">` +
+        `${c.lead_weeks}w ordering lead, then ${c.weeks_to_ground}w before it is ` +
+        `a plant the field can take` +
+        (bits.length ? " · " + bits.join(" · ") : "") + `</div>` +
+        `<div class="text-muted small" style="margin-top:4px">` +
+        (c.stages || []).map((x) =>
+          `${esc(x.stage || "")}${x.weeks ? " " + x.weeks + "w" : ""}` +
+          (x.loss_pct ? ` −${numx(x.loss_pct)}%` : "")).join("  →  ") +
+        `</div></div>`;
+    }).join("");
+  }
+
   function renderProtocol() {
     const d = S.pr;
     if (!d || !d.version) {
@@ -6066,6 +6181,10 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
       return;
     }
     const F = d.fields, D = d.derived;
+    // A crop handed its material has no pool, no build-up and no renewal date.
+    // Those cards asked a question nobody had about this variety, and a reader
+    // who cannot tell which cards apply cannot trust any of them.
+    applyRouteShape(d);
     $("pr-title").textContent = `${d.variety} — Crop Protocol`;
     $("pr-sub").textContent =
       `${d.version} · v${d.version_no} ${d.status}` +
@@ -7454,6 +7573,16 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
         if (!b || b.tagName === "INPUT") return;
         if (b.dataset.al === "add") {
           S.alloc.push({ supplier: "", tc: 0, cycle_weeks: 4, batches: 0 });
+        } else if (b.dataset.al === "even") {
+          // Largest remainder, so the shares add up to the order exactly
+          // rather than to a rounding of it.
+          const named = S.alloc.filter((r) => (r.supplier || "").trim());
+          const t = allocTarget();
+          if (named.length && t) {
+            const base = Math.floor(t / named.length);
+            let rem = t - base * named.length;
+            named.forEach((r) => { r.tc = base + (rem-- > 0 ? 1 : 0); });
+          }
         } else if (b.dataset.al === "drop") {
           S.alloc.splice(parseInt(b.dataset.i, 10), 1);
           if (!S.alloc.length) {
@@ -7464,19 +7593,41 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
         loadBatches();
       });
       $("tc-sup").addEventListener("input", (e) => {
-        const f = e.target.closest('input[data-al="tc"]');
+        const f = e.target.closest('input[data-al="tc"], input[data-al="pct"]');
         if (!f) return;
         const i = parseInt(f.dataset.i, 10);
-        if (S.alloc && S.alloc[i]) {
+        if (!(S.alloc && S.alloc[i])) return;
+        if (f.dataset.al === "pct") {
+          // A share is only meaningful against a total, so it is turned into
+          // the quantity here and the quantity is what is kept.
+          const t = allocTarget();
+          const pct = Math.max(0, Math.min(100, parseFloat(f.value) || 0));
+          S.alloc[i].tc = Math.round(t * pct / 100);
+          const q = $("tc-sup").querySelector(
+            'input[data-al="tc"][data-i="' + i + '"]');
+          if (q) q.value = S.alloc[i].tc;
+        } else {
           S.alloc[i].tc = parseInt(f.value, 10) || 0;
-          renderBalance();
+          const pb = $("tc-sup").querySelector(
+            'input[data-al="pct"][data-i="' + i + '"]');
+          if (pb && document.activeElement !== pb) {
+            pb.value = allocPct(S.alloc[i]);
+          }
         }
+        renderBalance();
       });
       $("tc-sup").addEventListener("change", (e) => {
         const f = e.target.closest("input[data-al]");
         if (!f) return;
         const i = parseInt(f.dataset.i, 10);
         if (!S.alloc[i]) return;
+        if (f.dataset.al === "pct") {
+          // Already turned into a quantity on input; writing it here too would
+          // put a percentage in the field the order is raised from.
+          renderBalance();
+          loadBatches();
+          return;
+        }
         S.alloc[i][f.dataset.al] = f.dataset.al === "supplier"
           ? f.value : (parseInt(f.value, 10) || 0);
         renderBalance();  // the balance only; redrawing the rows would steal the cursor
@@ -7484,6 +7635,14 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
       });
       $("tc-roots").addEventListener("change", () => {
         loadTc($("tc-qty").value || null);
+      });
+      // A share answers both boxes at once, so it clears both and lets the
+      // engine fill them. Without the clear the old quantities would win and
+      // the share would appear to do nothing.
+      $("tc-share").addEventListener("change", () => {
+        $("tc-qty").value = "";
+        $("tc-roots").value = "";
+        loadTc(null);
       });
       $("tc-divert").addEventListener("change", () => {
         $("tc-qty").value = "";
