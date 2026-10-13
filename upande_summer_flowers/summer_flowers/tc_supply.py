@@ -252,9 +252,17 @@ def tc_suppliers(search=None, all=0):
 	# filtering them out meant somebody could create a lab and then not find it,
 	# with nothing on screen saying why. Hiding it does not stop the order; it
 	# stops the explanation.
+	# workflow_state is a custom field, and only on the sites that put an
+	# approval workflow on Supplier. Asking for it unconditionally made this
+	# whole endpoint fail with "Unknown column 'workflow_state'" on a site
+	# without one -- so the picker returned an error rather than a list, and
+	# the card showed no labs at all with nothing saying why.
+	fields = ["name", "disabled"]
+	if frappe.db.has_column("Supplier", "workflow_state"):
+		fields.append("workflow_state")
 	rows = frappe.get_all(
 		"Supplier", filters=f,
-		fields=["name", "disabled", "workflow_state"],
+		fields=fields,
 		order_by="disabled asc, name asc",
 		limit=0 if cint(all) else 40)
 	return {
