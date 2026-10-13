@@ -26,6 +26,7 @@ from upande_summer_flowers.summer_flowers.motherstock_sim import (
 	tc_needed_for,
 )
 from upande_summer_flowers.summer_flowers.planning import (
+	season_year,
 	SEASON_FIRST_WEEK,
 	iso_monday,
 	iso_year_week,
@@ -295,7 +296,7 @@ def demand_vs_production_by_variety(farm=None, season=None):
 	if farm:
 		f["farm"] = farm
 	if season:
-		f["season_start_year"] = cint(season)
+		f["season_start_year"] = season_year(season)
 	rows = frappe.get_all("Summer Flower Production Plan", filters=f,
 	                      fields=["name", "variety", "docstatus", "creation"],
 	                      order_by="creation desc")
@@ -550,7 +551,7 @@ def _prop_filters(plan):
 	if not row:
 		return {"production_plan": plan, "status": ["!=", "Rejected"]}
 	return {"variety": row.variety,
-	        "season_start_year": cint(row.season_start_year),
+	        "season_start_year": season_year(row.season_start_year),
 	        "status": ["!=", "Rejected"]}
 
 

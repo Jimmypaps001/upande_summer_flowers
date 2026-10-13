@@ -8,6 +8,7 @@ family drifts back one calendar week each time it crosses a 53-week year.
 """
 
 import datetime
+import re
 
 import frappe
 from frappe import _
@@ -24,6 +25,29 @@ MONTH_NAMES = [
 # reads this, because deriving it twice is how a plan came to open a week after the
 # register it was built from.
 SEASON_FIRST_WEEK = 27
+
+
+def season_year(value, default=0):
+	"""The year a season starts in, however the site writes it down.
+
+	season_start_year is a Link to Fiscal Year, and a Fiscal Year is named
+	whatever the site named it. Here they are calendar years -- "2027" -- and
+	cint() reads those perfectly. On marginpar they are the July-to-June span
+	-- "2027-2028" -- and cint() returns 0 for that, silently, so every season
+	a planner asked for collapsed to the one it was already in: the season
+	picker appeared to work and changed nothing, and every Eryngium plan there
+	reads "52 weeks from 2027-W27" instead of "2027-28" because set_season fell
+	through to the branch for a plan with no year.
+
+	So the year is taken off the front rather than parsed as a whole. "2027",
+	"2027-2028", "2027-28" and 2027 all mean the season starting in 2027.
+	"""
+	if value in (None, ""):
+		return default
+	if isinstance(value, int):
+		return value
+	m = re.match(r"\s*(\d{4})", str(value))
+	return int(m.group(1)) if m else default
 
 
 def iso_monday(year, week):

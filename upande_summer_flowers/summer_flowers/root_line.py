@@ -30,6 +30,8 @@ be liftable in time, and what is already in store.
 import math
 
 import frappe
+
+from upande_summer_flowers.summer_flowers.planning import season_year
 from frappe import _
 from frappe.utils import add_days, cint, flt, getdate
 
@@ -530,7 +532,7 @@ def _committed(plan):
 		"propagation_plan": frappe.db.get_value(
 			"Summer Flower Propagation Plan",
 			{"variety": plan.variety,
-			 "season_start_year": cint(plan.season_start_year),
+			 "season_start_year": season_year(plan.season_start_year),
 			 "status": ["!=", "Rejected"]}, "name", order_by="creation desc"),
 	}
 
@@ -776,7 +778,7 @@ def propagation_overview(production_plan):
 	prop = frappe.db.get_value(
 		"Summer Flower Propagation Plan",
 		{"variety": plan.variety,
-		 "season_start_year": cint(plan.season_start_year),
+		 "season_start_year": season_year(plan.season_start_year),
 		 "status": ["!=", "Rejected"]}, "name")
 
 	out = {

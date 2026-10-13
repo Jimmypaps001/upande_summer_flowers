@@ -26,7 +26,10 @@ from upande_summer_flowers.summer_flowers.doctype \
 		lookup_tc_rate,
 	)
 from upande_summer_flowers.summer_flowers.lifecycle_sim import ramp_ratio
-from upande_summer_flowers.summer_flowers.planning import iso_monday
+from upande_summer_flowers.summer_flowers.planning import (
+	iso_monday,
+	season_year,
+)
 
 
 def _back(week, weeks):
@@ -124,7 +127,7 @@ class SummerFlowerPropagationPlan(Document):
 		self.currency = p.currency
 		# The season comes from the production plan, so the two cannot disagree about
 		# which year is being propagated for.
-		self.season_start_year = cint(p.season_start_year)
+		self.season_start_year = season_year(p.season_start_year)
 		self.season = p.season
 		self._plan = p
 		self._version = frappe.get_cached_doc("Crop Protocol Version", p.protocol)
@@ -1041,7 +1044,7 @@ def build_from_plan(production_plan, as_dict=False):
 	plan = frappe.get_cached_doc("Summer Flower Production Plan", production_plan)
 	existing = frappe.db.get_value(
 		"Summer Flower Propagation Plan",
-		{"variety": plan.variety, "season_start_year": cint(plan.season_start_year),
+		{"variety": plan.variety, "season_start_year": season_year(plan.season_start_year),
 		 "status": ["!=", "Rejected"]}, "name")
 
 	if existing:

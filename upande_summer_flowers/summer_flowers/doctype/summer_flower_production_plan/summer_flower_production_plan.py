@@ -22,6 +22,7 @@ from upande_summer_flowers.summer_flowers.doctype.planting_calendar.planting_cal
 )
 from upande_summer_flowers.summer_flowers.cohort_solver import plan_cohorts
 from upande_summer_flowers.summer_flowers.planning import (
+	season_year,
 	week_family_label,
 	MONTH_NAMES,
 	SEASON_FIRST_WEEK,
@@ -198,7 +199,7 @@ class SummerFlowerProductionPlan(Document):
 		through the one containing 30 June, which is 52 weeks most years and 53 when
 		the ISO calendar says so.
 		"""
-		year = cint(self.season_start_year)
+		year = season_year(self.season_start_year)
 		if not year:
 			# Plans made before the season existed keep the grid they were built on
 			# rather than being silently re-scoped.
@@ -867,7 +868,7 @@ class SummerFlowerProductionPlan(Document):
 		existing = frappe.db.get_value(
 			"Summer Flower Propagation Plan",
 			{"variety": self.variety,
-			 "season_start_year": cint(self.season_start_year),
+			 "season_start_year": season_year(self.season_start_year),
 			 "status": ["!=", "Rejected"], "docstatus": 0}, "name")
 		if existing:
 			self.ensure_propagation()
@@ -1377,7 +1378,7 @@ def plan_preview(market_demand, farm=None, season_start_year=None):
 	"""
 	frappe.has_permission("Summer Flower Market Demand", "read", market_demand, throw=True)
 	d = frappe.get_cached_doc("Summer Flower Market Demand", market_demand)
-	year = cint(season_start_year) or season_for(nowdate())
+	year = season_year(season_start_year) or season_for(nowdate())
 	start = datetime.date(year, 7, 1)
 	end = datetime.date(year + 1, 6, 30)
 
@@ -1703,7 +1704,7 @@ def build_from_demand(market_demand, farm=None, season_start_year=None,
 		plan.farm = farm
 	# One plan covers one season. Defaults to the season the register opens in, so a
 	# three-year register is planned a season at a time rather than in one lump.
-	plan.season_start_year = cint(season_start_year) or season_for(
+	plan.season_start_year = season_year(season_start_year) or season_for(
 		first.week_start_date or iso_monday(cint(first.year), cint(first.week_no)))
 	plan.pull_header_from_demand()
 	plan.set_season()
@@ -2298,7 +2299,7 @@ def build_all(season_start_year=None, farm=None, dry_run=1, rebuild=0):
 				out["status"] = _("register has no weeks")
 				rows.append(out); continue
 			first = demand.demand_weeks[0]
-			season = cint(season_start_year) or season_for(
+			season = season_year(season_start_year) or season_for(
 				first.week_start_date or iso_monday(cint(first.year), cint(first.week_no)))
 
 			existing = frappe.get_all(
@@ -2339,7 +2340,7 @@ def build_all(season_start_year=None, farm=None, dry_run=1, rebuild=0):
 
 	if not dry_run:
 		frappe.db.commit()
-	return {"dry_run": bool(dry_run), "season": cint(season_start_year) or None,
+	return {"dry_run": bool(dry_run), "season": season_year(season_start_year) or None,
 	        "rows": rows}
 
 

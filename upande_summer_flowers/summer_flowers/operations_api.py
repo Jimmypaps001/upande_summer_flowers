@@ -19,6 +19,7 @@ from frappe import _
 from frappe.utils import cint, flt, getdate, nowdate
 
 from upande_summer_flowers.summer_flowers.planning import (
+	season_year,
 	SEASON_FIRST_WEEK,
 	iso_monday,
 	iso_year_week,
@@ -539,9 +540,9 @@ def chain_status(variety=None, farm=None, demand=None, plan=None, season=None):
 	# card already is: every step after the register describes one plan, and a plan
 	# is one financial year. Leaving the register at its full span put 24 years of
 	# demand beside one year of everything else and called the difference a gap.
-	d["season_start_year"] = cint(season) or None
+	d["season_start_year"] = season_year(season) or None
 	if season:
-		start = cint(season)
+		start = season_year(season)
 		rows = frappe.db.sql("""select year, week_no, demand_stems
 			from `tabSummer Flower Demand Week` where parent = %s
 			  and ((year = %s and week_no >= %s) or (year = %s and week_no < %s))
@@ -581,7 +582,8 @@ def chain_status(variety=None, farm=None, demand=None, plan=None, season=None):
 	# plan and budget that hang off it. A year with no plan now says so rather than
 	# borrowing another year's -- which is worse than showing nothing, because the
 	# figures look like an answer to the question that was asked.
-	scoped = ([p for p in plans if cint(p.get("season_start_year")) == cint(season)]
+	scoped = ([p for p in plans
+	           if season_year(p.get("season_start_year")) == season_year(season)]
 	          if season else plans)
 	# Describe the plan the dashboard is showing. Falling back to the newest is
 	# what made the chain card name a draft while every tile beside it described
@@ -597,7 +599,7 @@ def chain_status(variety=None, farm=None, demand=None, plan=None, season=None):
 			"Summer Flower Propagation Plan",
 			# Same reasoning as the chain: keyed on variety and season.
 			filters={"variety": plan["variety"],
-			         "season_start_year": cint(plan.get("season_start_year"))},
+			         "season_start_year": season_year(plan.get("season_start_year"))},
 			fields=["name", "status", "total_cuttings_required",
 			        "peak_weekly_cuttings", "peak_week", "cuttings_from_existing",
 			        "existing_cover_pct", "mother_plants_required",
@@ -738,7 +740,7 @@ def process_overview(variety=None, farm=None, plan=None, season=None):
 	# reading its whole span here put decades of demand at the head of a chain
 	# describing one season of work.
 	if season:
-		start = cint(season)
+		start = season_year(season)
 		wk = frappe.db.sql("""select year, week_no, demand_stems
 			from `tabSummer Flower Demand Week` where parent = %s
 			  and ((year = %s and week_no >= %s) or (year = %s and week_no < %s))
@@ -872,7 +874,7 @@ def process_overview(variety=None, farm=None, plan=None, season=None):
 	if p:
 		rows = frappe.get_all("Summer Flower Propagation Plan",
 		                      filters={"variety": p.variety,
-		                               "season_start_year": cint(p.season_start_year),
+		                               "season_start_year": season_year(p.season_start_year),
 		                               "status": ["!=", "Rejected"]},
 		                      fields=["name", "status", "total_cuttings_required",
 		                              "cuttings_uncovered", "plants_short",
@@ -1495,7 +1497,7 @@ def motherstock_commitment(plan=None, variety=None, farm=None):
 		["name", "docstatus", "total_units_to_order", "first_order_by"], as_dict=True)
 	prop = frappe.db.get_value(
 		"Summer Flower Propagation Plan",
-		{"variety": p.variety, "season_start_year": cint(p.season_start_year),
+		{"variety": p.variety, "season_start_year": season_year(p.season_start_year),
 		 "status": ["!=", "Rejected"]},
 		["name", "docstatus"], as_dict=True)
 	return {

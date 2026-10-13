@@ -15,6 +15,8 @@ figure here can be wrong only by being stale, never by disagreeing.
 """
 
 import frappe
+
+from upande_summer_flowers.summer_flowers.planning import season_year
 from frappe import _
 from frappe.model.document import Document
 from frappe.utils import cint, getdate
@@ -66,7 +68,7 @@ class SummerFlowerSeasonPlan(Document):
 		d = getdate(cal.actual_planting_date or cal.planting_date)
 		if not d:
 			return False
-		start = cint(self.season_start_year)
+		start = season_year(self.season_start_year)
 		return getdate("%s-07-01" % start) <= d <= getdate("%s-06-30" % (start + 1))
 
 	def _delivery_dates(self):
@@ -179,7 +181,7 @@ def for_season(variety, farm, season_start_year, production_plan=None):
 	"""The season plan for this crop, made if it is not there and brought up to date."""
 	name = frappe.db.get_value("Summer Flower Season Plan",
 	                           {"variety": variety, "farm": farm,
-	                            "season_start_year": cint(season_start_year)},
+	                            "season_start_year": season_year(season_start_year)},
 	                           "name")
 	if name:
 		doc = frappe.get_doc("Summer Flower Season Plan", name)
@@ -188,9 +190,9 @@ def for_season(variety, farm, season_start_year, production_plan=None):
 	else:
 		doc = frappe.new_doc("Summer Flower Season Plan")
 		doc.variety, doc.farm = variety, farm
-		doc.season_start_year = cint(season_start_year)
-		doc.season = "%s-%s" % (cint(season_start_year),
-		                        str(cint(season_start_year) + 1)[-2:])
+		doc.season_start_year = season_year(season_start_year)
+		doc.season = "%s-%s" % (season_year(season_start_year),
+		                        str(season_year(season_start_year) + 1)[-2:])
 		doc.production_plan = production_plan
 		doc.company = frappe.db.get_value("Summer Flower Production Plan",
 		                                  production_plan, "company") \

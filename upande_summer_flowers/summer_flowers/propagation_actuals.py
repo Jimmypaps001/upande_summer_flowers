@@ -35,6 +35,8 @@ tolerance the planting programme was solved to hold.
 import json
 
 import frappe
+
+from upande_summer_flowers.summer_flowers.planning import season_year
 from frappe import _
 from frappe.utils import add_days, cint, flt, getdate, nowdate
 
@@ -170,13 +172,13 @@ def typed(doc):
 	and a plan that is rebuilt, amended or replaced must not strand what was
 	recorded against it.
 	"""
-	if not (doc.variety and cint(doc.season_start_year)):
+	if not (doc.variety and season_year(doc.season_start_year)):
 		return []
 	rows = []
 	for a in frappe.get_all(
 			"Summer Flower Propagation Actual",
 			filters={"variety": doc.variety,
-			         "season_start_year": cint(doc.season_start_year),
+			         "season_start_year": season_year(doc.season_start_year),
 			         "docstatus": 1},
 			fields=["name", "event", "form", "actual_date", "week_iso",
 			        "against_week", "units", "plants", "reference", "supplier",
@@ -816,13 +818,13 @@ def accept(propagation_plan):
 
 def uplifts(doc):
 	"""Accepted re-plan cover, by the week it was added to."""
-	if not (doc.variety and cint(doc.season_start_year)):
+	if not (doc.variety and season_year(doc.season_start_year)):
 		return {}
 	out = {}
 	for a in frappe.get_all(
 			"Summer Flower Propagation Actual",
 			filters={"variety": doc.variety,
-			         "season_start_year": cint(doc.season_start_year),
+			         "season_start_year": season_year(doc.season_start_year),
 			         "event": UPLIFT, "docstatus": 1},
 			fields=["against_week", "plants", "name"]):
 		if not a.against_week:
