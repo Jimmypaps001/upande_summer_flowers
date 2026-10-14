@@ -932,6 +932,44 @@ def set_raised_from_pool(doc):
 		(r.get("stage") or "") in POOL_STAGES for r in rows) else 0
 
 
+def check_grades(doc):
+	"""A protocol cannot be approved without saying what it grades out as.
+
+	Required to APPROVE, not to save. Thirty-nine of the forty-four summer
+	flower protocols on the first site this ran on had no grades at all, so
+	demanding them on save would have made every one of them unsaveable
+	including the ones already approved -- and a draft is allowed to be
+	half-finished. An approved protocol is different: it is what plans are
+	built on, and a revenue budget prices a stem by its grade, so an approval
+	with no grade mix is an approval nobody can cost.
+	"""
+	rows = doc.get("custom_sf_grade_allocation") or []
+	if not rows:
+		frappe.throw(_(
+			"{0} has no grade allocation. A protocol is approved so plans and "
+			"budgets can be built on it, and a stem is priced by its grade, so "
+			"say what this crop grades out as before approving it."
+		).format(doc.name), title=_("No grades"))
+	total = sum(flt(r.get("allocation_pct")) for r in rows)
+	if abs(total - 100) > 0.5:
+		frappe.throw(_(
+			"The grades on {0} come to {1}%. Every stem lands in one grade or "
+			"another, so they have to make a hundred -- {2}."
+		).format(doc.name, round(total, 2),
+		         _("take {0}% off").format(round(total - 100, 2)) if total > 100
+		         else _("another {0}% is unaccounted for").format(
+			         round(100 - total, 2))),
+			title=_("Grades do not make a whole"))
+	seen = set()
+	for r in rows:
+		if not r.get("grade"):
+			frappe.throw(_("A grade row on {0} names no grade.").format(doc.name))
+		if r.get("grade") in seen:
+			frappe.throw(_("{0} is listed twice on {1}.").format(
+				r.get("grade"), doc.name))
+		seen.add(r.get("grade"))
+
+
 def set_row_types(doc):
 	"""A row that names a step IS a step. Nothing else can say it.
 
@@ -1108,6 +1146,7 @@ def approve(protocol):
 	if not doc.get("farm"):
 		frappe.throw(_("Set the farm. A protocol is approved for a variety at a farm, "
 		               "because the same variety runs differently elsewhere."))
+	check_grades(doc)
 	changed = diff_against_current(doc)
 	if changed == []:
 		frappe.throw(_("Nothing has changed since {0} was approved.").format(
