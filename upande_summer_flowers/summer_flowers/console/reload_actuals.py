@@ -1,6 +1,7 @@
 import frappe, traceback
 
 DOCTYPES = [
+	("summer_flowers", "doctype", "summer_flower_settings"),
 	("summer_flowers", "doctype", "summer_flower_propagation_actual"),
 	("summer_flowers", "doctype", "summer_flower_propagation_intake"),
 	("summer_flowers", "doctype", "summer_flower_propagation_week"),

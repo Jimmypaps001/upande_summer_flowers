@@ -23,6 +23,8 @@
   "propagation_capacity_plants",
   "max_weekly_intake_plants",
   "cb_prop_cap",
+  "tc_loss_pct",
+  "roots_loss_pct",
   "propagation_loss_pct",
   "propagation_hold_weeks",
   "bench_section",
@@ -132,7 +134,7 @@
   },
   {
    "default": "0",
-   "description": "What is expected to be lost between a consignment arriving and plants reaching the field, as a percentage of the consignment. Orders are grossed up by it, so 10% means ordering 1,000 to plant 900. Zero allows for nothing, which is what the planner did before this field existed. The Eryngium delivery book puts the real figure at nine to twelve per cent.",
+   "description": "The fallback, used for any form that does not state its own above. A provision, not a measurement: it sits at zero until somebody sets it.",
    "fieldname": "propagation_loss_pct",
    "fieldtype": "Percent",
    "label": "Allowance For Losses"
@@ -265,6 +267,18 @@
    "fieldtype": "Link",
    "label": "Propagation Unit Warehouse",
    "options": "Warehouse"
+  },
+  {
+   "fieldname": "tc_loss_pct",
+   "fieldtype": "Percent",
+   "label": "Losses On Tissue Culture",
+   "description": "Of the plantlets a lab delivers, the share that never reaches the field. The Eryngium delivery book measures 11.3% across 4.4m plantlets. Left at zero this falls back to the figure below."
+  },
+  {
+   "fieldname": "roots_loss_pct",
+   "fieldtype": "Percent",
+   "label": "Losses On Roots",
+   "description": "The same for roots, which lose more: 13.0% across 2.8m in the same book. Left at zero this falls back to the figure below."
   }
  ],
  "grid_page_length": 50,

@@ -612,17 +612,25 @@ def handover_waves(form="Tissue Culture", supplier=None, default_weeks=0):
 	return [(cint(r.weeks_after_arrival), flt(r.share_pct) / total) for r in mine]
 
 
-def survival():
-	"""The share of a consignment expected to reach the field.
+LOSS_FIELD = {"Tissue Culture": "tc_loss_pct", "Roots": "roots_loss_pct"}
+
+
+def survival(form="Tissue Culture"):
+	"""The share of a consignment of `form` expected to reach the field.
 
 	A provision, not a measurement, and it sits at zero until somebody sets it.
-	The Eryngium book puts the real figure between nine and twelve per cent lost;
-	allowing nothing for it is a decision rather than an oversight, so it is a
-	field with a stated default rather than an assumption buried in arithmetic.
+	Per form, because the two do not lose alike: across the Eryngium delivery
+	book tissue culture loses 11.3% of 4.4m plantlets and roots lose 13.0% of
+	2.8m, and one figure for both understates whichever it is not. A form with
+	nothing set falls back to the single provision, which is what every site
+	had before there were two.
 	"""
 	loss = flt(frappe.db.get_single_value(
-		"Summer Flower Settings", "propagation_loss_pct")) / 100.0
-	return max(0.0, min(1.0, 1.0 - loss)) or 1.0
+		"Summer Flower Settings", LOSS_FIELD.get(form) or "propagation_loss_pct"))
+	if not loss:
+		loss = flt(frappe.db.get_single_value(
+			"Summer Flower Settings", "propagation_loss_pct"))
+	return max(0.0, min(1.0, 1.0 - loss / 100.0)) or 1.0
 
 
 def _lift_batch(batch, waves, keep=1.0):

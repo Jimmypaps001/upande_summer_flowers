@@ -320,12 +320,14 @@ def arrival_plan(plan, tc_share=None, returns_per_plant=None,
 	# What is expected to reach the field out of what is ordered. A provision,
 	# sitting at zero until somebody sets it: ordering a plant for every plant
 	# wanted is a decision about losses, not the absence of one.
-	keep = _survival()
+	keep = _survival("Tissue Culture")
+	keep_roots = _survival("Roots")
 
 	asked = {}
 	if cint(tc_qty) or cint(roots_qty):
 		from_tc = int(cint(tc_qty) * keep)
-		from_roots = int(cint(roots_qty) * per_root * keep) if per_root > 0 else 0
+		from_roots = (int(cint(roots_qty) * per_root * keep_roots)
+		              if per_root > 0 else 0)
 		covered = from_tc + from_roots
 		share = (float(from_tc) / wanted) if wanted else 1.0
 		share = max(0.0, min(1.0, share))
@@ -451,13 +453,16 @@ def arrival_plan(plan, tc_share=None, returns_per_plant=None,
 			# provision is anything but zero.
 			"tc": int(math.ceil(sum(weeks[k]["by_tc"] for k in ordered) / keep)),
 			"roots": int(math.ceil(
-				sum(cint(weeks[k]["roots_needed"]) for k in ordered) / keep)),
+				sum(cint(weeks[k]["roots_needed"]) for k in ordered) / keep_roots)),
 			"from": _("the protocol's own split, {0}% tissue culture"
 			          ).format(round(share * 100, 1))
-			+ (_(", grossed up for {0}% losses").format(
-				round((1 - keep) * 100, 1)) if keep < 1 else ""),
+			+ (_(", grossed up for losses of {0}% on tissue culture and {1}% "
+			     "on roots").format(round((1 - keep) * 100, 1),
+			                        round((1 - keep_roots) * 100, 1))
+			   if (keep < 1 or keep_roots < 1) else ""),
 		},
 		"survival_pct": round(keep * 100, 2),
+		"roots_survival_pct": round(keep_roots * 100, 2),
 		"roots_in_store": root_stock(plan),
 		# What the whole exercise is for. Ordering material is a means; the
 		# question is whether the season's stems arrive when the market wants
@@ -562,11 +567,17 @@ def _apportion(weeks, share, exact=None):
 	return out
 
 
-def _survival():
-	"""The share of what is ordered that is expected to reach the field."""
-	loss = flt(frappe.db.get_single_value(
-		"Summer Flower Settings", "propagation_loss_pct")) / 100.0
-	return max(0.01, min(1.0, 1.0 - loss))
+def _survival(form="Tissue Culture"):
+	"""The share of what is ordered that is expected to reach the field.
+
+	Per form: tissue culture and roots are hardened differently and lose
+	differently, so grossing both orders up by one figure orders too few of
+	whichever loses more. tc_supply owns the lookup so the two engines cannot
+	read different provisions for the same material.
+	"""
+	from upande_summer_flowers.summer_flowers import tc_supply as ts
+
+	return max(0.01, ts.survival(form))
 
 
 def _root_order(pulls, lead_weeks):
