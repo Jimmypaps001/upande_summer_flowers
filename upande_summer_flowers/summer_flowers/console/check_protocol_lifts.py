@@ -4,7 +4,7 @@
 	bench --site <site> execute \\
 		upande_summer_flowers.summer_flowers.console.check_protocol_lifts.main
 
-	lift 1   8 weeks in the unit + 7 rooting = ready at 15   45%
+	lift 1   8 weeks on trough + 7 rooting = ready at 15   45%
 	lift 2  10                   + 7         =           17   30%
 	lift 3  12                   + 7         =           19   25%
 
@@ -77,7 +77,7 @@ def _run(protocol):
 	        cint(r.weeks_after_arrival), flt(r.share_pct))
 	       for r in doc.custom_sf_lifts]
 	for n, tr, rt, wk, sh in got:
-		print("      lift %d  %2dw in the unit + %dw rooting = ready at %2d   %.0f%%"
+		print("      lift %d  %2dw on trough + %dw rooting = ready at %2d   %.0f%%"
 		      % (n, tr, rt, wk, sh))
 	ck([g[3] for g in got] == [15, 17, 19],
 	   "   ready at 15, 17 and 19 — worked out, not typed", [g[3] for g in got])

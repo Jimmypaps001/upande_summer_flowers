@@ -37,11 +37,11 @@
   },
   {
    "columns": 1,
-   "description": "Weeks in the trough or on the bench before this lift is taken. This is what differs between lifts: 8, 10 and 12 on Eryngium roots.",
+   "description": "Weeks on the trough before this lift is taken. This is what differs between lifts: 8, 10 and 12 on Eryngium roots.",
    "fieldname": "trough_weeks",
    "fieldtype": "Int",
    "in_list_view": 1,
-   "label": "In The Unit"
+   "label": "Weeks on Trough"
   },
   {
    "columns": 1,
@@ -53,7 +53,7 @@
   },
   {
    "columns": 1,
-   "description": "In the unit plus rooting. This is the week the plants are ready, counted from the consignment arriving, and it is worked out rather than typed so the two halves always add up to it.",
+   "description": "Weeks on the trough plus rooting. The week the plants are ready, counted from the consignment arriving, and worked out rather than typed so the two halves always add up to it.",
    "fieldname": "weeks_after_arrival",
    "fieldtype": "Int",
    "in_list_view": 1,

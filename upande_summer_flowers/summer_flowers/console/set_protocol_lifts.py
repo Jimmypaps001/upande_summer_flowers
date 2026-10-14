@@ -31,7 +31,7 @@ import traceback
 import frappe
 from frappe.utils import cint
 
-# form -> [(lift, weeks in the unit, weeks rooting, share %)]
+# form -> [(lift, weeks on trough, weeks rooting, share %)]
 PROFILE = {
 	"Roots": [(1, 8, 7, 45.0), (2, 10, 7, 30.0), (3, 12, 7, 25.0)],
 	"Tissue Culture": [(1, 7, 0, 87.5), (2, 8, 0, 12.5)],
@@ -101,7 +101,7 @@ def _run(apply, variety, force):
 	doc = frappe.get_doc("Crop Protocol", todo[0][0])
 	print("\n   %s now reads" % todo[0][0])
 	for r in doc.custom_sf_lifts:
-		print("      %-16s lift %s  %2dw in the unit + %dw rooting = ready at %2d"
+		print("      %-16s lift %s  %2dw on trough + %dw rooting = ready at %2d"
 		      "   %.0f%%" % (r.form, r.lift_no, cint(r.trough_weeks),
 		                     cint(r.rooting_weeks), cint(r.weeks_after_arrival),
 		                     r.share_pct))
