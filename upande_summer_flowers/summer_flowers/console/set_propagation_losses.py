@@ -42,9 +42,21 @@ LOSSES = [
 ]
 
 
-# The loss belongs to the propagation stage of each chain: it is what happens
-# between the material landing at the unit and plants reaching the farm.
-ROUTE_LOSS = {"TC": 11.3, "Roots": 13.0}
+# The propagation stage's loss is NOT a field somebody types: the protocol
+# derives it as 1 - rooting_success x field_establishment every time it is
+# saved. Writing 11.3 onto the child row looked right and did not survive the
+# next save, which is the sort of fix that is worse than none.
+#
+# So the CAUSE is set instead. The two chains share one rooting figure, so the
+# protocol carries the weighted measurement across both forms:
+#
+#   (4,441,971 x 11.3% + 2,797,250 x 13.0%) / 7,239,221 = 12.0%
+#
+# and 88.0% rooting against 100% establishment is exactly that. The per-form
+# precision -- 11.3 on tissue culture, 13.0 on roots -- lives on the settings
+# above, which is what the ordering engine reads.
+ROOTING_SUCCESS = 88.0
+WEIGHTED_LOSS = 12.0
 PROPAGATION = "Propagation"
 
 
@@ -58,15 +70,13 @@ def main(apply=0, force=0, variety="Eryngium", protocols=1):
 
 
 def _routes(apply, force, variety):
-	"""Put the same figures on the protocols, where they can be read.
+	"""Put the cause of the loss on the protocols, where it is derived from.
 
-	The engine takes its provision from the settings above; the route carries
-	it so the protocol card can SAY what is allowed for, and so the roots
-	costing -- which walks the route multiplying out each stage's loss -- works
-	on the same number rather than a zero.
+	The engine takes its provision from the settings above; the protocol
+	carries rooting success so the route can SAY what is allowed for and the
+	roots costing -- which walks the route multiplying out each stage's loss --
+	works on a real number rather than a zero.
 	"""
-	from upande_summer_flowers.summer_flowers import crop_protocol as cp
-
 	names = frappe.get_all("Crop Protocol",
 	                       filters={"name": ["like", "%%%s%%" % variety]},
 	                       pluck="name")
@@ -74,37 +84,26 @@ def _routes(apply, force, variety):
 		print("\nNo %s protocol on this site." % variety)
 		return
 
-	print("\n%s protocols — the loss on each chain's propagation stage" % variety)
+	print("\n%s protocols — rooting success, which is what the propagation "
+	      "loss is derived from" % variety)
 	writes = []
 	for name in sorted(names):
-		doc = frappe.get_doc("Crop Protocol", name)
-		chains = cp.route_chains(doc) or []
-		if not chains:
-			print("   %-48s (no route)" % name[:48])
+		cur = flt(frappe.db.get_value("Crop Protocol", name,
+		                              "custom_sf_rooting_success_pct"))
+		est = flt(frappe.db.get_value("Crop Protocol", name,
+		                              "custom_sf_field_establishment_pct")) or 100.0
+		derived = round((1 - cur / 100.0 * est / 100.0) * 100, 2) if cur else None
+		if cur and abs(cur - ROOTING_SUCCESS) < 1e-9:
+			print("   %-48s already %s%% (loss %s%%)" % (name[:48], cur, derived))
 			continue
-		bits = []
-		for chain in chains:
-			entry = chain[0][0]
-			want = ROUTE_LOSS.get((entry.get("stage") or "").strip())
-			if want is None:
-				continue
-			# The propagation stage of THIS chain, not the first one on the
-			# document: a route with two ways in has two of them.
-			prop = next((st for st, _steps in chain
-			             if (st.get("stage") or "") == PROPAGATION), None)
-			if prop is None:
-				bits.append("%s: no propagation stage" % entry.get("stage"))
-				continue
-			cur = flt(prop.get("loss_pct"))
-			if cur and not force:
-				bits.append("%s: %s%% already set" % (entry.get("stage"), cur))
-				continue
-			if abs(cur - want) < 1e-9:
-				bits.append("%s: already %s%%" % (entry.get("stage"), want))
-				continue
-			bits.append("%s: %s%% -> %s%%" % (entry.get("stage"), cur, want))
-			writes.append((prop.name, want))
-		print("   %-48s %s" % (name[:48], "; ".join(bits) or "nothing to set"))
+		if cur and cur != 100.0 and not force:
+			print("   %-48s %s%% set by somebody — leaving it (force=1 to replace)"
+			      % (name[:48], cur))
+			continue
+		print("   %-48s %s%% -> %s%%   (propagation loss %s%% -> %s%%)" % (
+			name[:48], cur, ROOTING_SUCCESS, derived if derived is not None else 0,
+			WEIGHTED_LOSS))
+		writes.append(name)
 
 	if not writes:
 		print("\n   Nothing to change on the routes.")
@@ -112,13 +111,22 @@ def _routes(apply, force, variety):
 	if not apply:
 		print("\n   (dry run — %d route rows would change)" % len(writes))
 		return
-	for rowname, want in writes:
-		frappe.db.set_value("Crop Material Stage", rowname, "loss_pct", want,
-		                    update_modified=False)
+	for name in writes:
+		doc = frappe.get_doc("Crop Protocol", name)
+		doc.custom_sf_rooting_success_pct = ROOTING_SUCCESS
+		doc.flags.ignore_permissions = True
+		# Saved through the controller on purpose: it is the save that derives
+		# the propagation loss from this, on every chain the route has.
+		doc.save()
 	frappe.db.commit()
-	print("\n   %d route rows updated. Approve each protocol to write a new "
-	      "version — the plans already built keep the version they were built "
-	      "on." % len(writes))
+	print("\n   %d protocols updated, and the loss re-derived on every chain. "
+	      "Approve each one to write a new version — the plans already built "
+	      "keep the version they were built on." % len(writes))
+	for name in writes[:3]:
+		doc = frappe.get_doc("Crop Protocol", name)
+		print("      %-44s %s" % (name[:44], [
+			(r.stage, r.loss_pct) for r in doc.get("custom_sf_material_route")
+			if r.stage == PROPAGATION]))
 
 
 def _run(apply, force):

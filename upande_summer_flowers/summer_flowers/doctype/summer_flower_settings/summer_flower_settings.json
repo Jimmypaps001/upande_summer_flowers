@@ -173,11 +173,10 @@
   },
   {
    "default": "Farm Inputs",
-   "description": "Chemical and Fertiliser Issuing request types are used when the request is type-specific.",
+   "description": "The Material Request type to raise crop inputs under. Free text, not a link: Request Type is a doctype only some of these sites have, and a Link to a doctype that is not installed makes this whole settings record unsaveable -- which is what it did on marginpar, where every save failed with \"DocType Request Type not found\" whatever field was being changed.",
    "fieldname": "default_request_type",
-   "fieldtype": "Link",
-   "label": "Default Request Type",
-   "options": "Request Type"
+   "fieldtype": "Data",
+   "label": "Default Request Type"
   },
   {
    "fieldname": "cb_proc",
