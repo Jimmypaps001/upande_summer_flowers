@@ -1554,11 +1554,21 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
     }
     const bought = d.bought_at || [];
     if (sub) {
+      const split = (d.chains || []).filter((c) => c.share_pct)
+        .map((c) => `${numx(c.share_pct)}% ${c.entry}`).join(" / ");
       sub.textContent = (d.route_summary || "") +
-        (bought.length ? " · bought as " + bought.join(" or ") : " · nothing on this route is bought");
+        (bought.length ? " · bought as " + bought.join(" or ")
+                       : " · nothing on this route is bought") +
+        (split ? " · split " + split
+               : (d.chains || []).length > 1
+                   ? " · no split stated, so the planner divides it evenly" : "");
     }
     el.innerHTML = '<table class="pl-t"><thead><tr><th>Stage</th>' +
       '<th class="n">Weeks</th><th class="n">Loss</th><th class="n">Yields</th>' +
+      // The split the planner reads off this protocol. It was nowhere on this
+      // tab, so a card saying "the protocol\'s own split, 82.18% tissue
+      // culture" sent people here to look for a number the page never showed.
+      '<th class="n">Share<br><span class="text-muted">of the crop</span></th>' +
       '<th>Bought</th><th class="n">Lead</th></tr></thead><tbody>' +
       rows.map((r) => {
         const step = r.row_type === "Step";
@@ -1569,6 +1579,7 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
           `<td class="n">${r.weeks || 0}</td>` +
           `<td class="n">${r.loss_pct ? numx(r.loss_pct) + "%" : "—"}</td>` +
           `<td class="n">${!step && r.yields_per_unit !== 1 ? "×" + numx(r.yields_per_unit) : "—"}</td>` +
+          `<td class="n">${r.share_pct ? numx(r.share_pct) + "%" : "—"}</td>` +
           `<td>${r.is_purchase ? "yes" : ""}</td>` +
           `<td class="n">${r.is_purchase && r.lead_weeks ? r.lead_weeks + "w" : "—"}</td></tr>`;
       }).join("") + "</tbody></table>";

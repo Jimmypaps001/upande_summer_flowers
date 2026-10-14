@@ -2116,6 +2116,10 @@ def protocol_detail(version=None, variety=None, farm=None, plan=None):
 			"is_purchase": cint(r.is_purchase),
 			"lead_weeks": cint(r.lead_weeks), "rate": flt(r.rate),
 			"item": r.item,
+			# The split the planner reads off this protocol. It was computed
+			# from these rows and never sent to the page that shows them.
+			"share_pct": flt(r.share_pct),
+			"returns_per_plant": flt(r.returns_per_plant),
 		})
 	bought = [r["stage"] for r in route if r["is_purchase"] and r["stage"]]
 

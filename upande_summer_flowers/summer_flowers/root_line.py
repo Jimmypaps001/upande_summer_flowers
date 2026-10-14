@@ -37,6 +37,15 @@ from frappe.utils import add_days, cint, flt, getdate
 
 LIFT_STAGE = "Roots"
 
+# Where a split came from, said in the card's own words.
+SPLIT_FROM = {
+	"protocol": _("the protocol's own split"),
+	"agreed": _("the pair already agreed on this plan"),
+	"quantities": _("the quantities in the boxes"),
+	"asked": _("the share you asked for"),
+	"default": _("an even split — the protocol does not say how this crop divides"),
+}
+
 
 def lift_plan(plan, returns_per_plant=None, tc=None, root_item=None):
 	"""What to buy, when to plant the block, when to lift it, and what is left over.
@@ -312,7 +321,13 @@ def arrival_plan(plan, tc_share=None, returns_per_plant=None,
 	# so a plan needing fewer plants than were agreed as tissue culture reads as
 	# 100% tissue culture and no roots at all. What was agreed is still returned,
 	# so the card can say what it was.
-	if not (cint(tc_qty) or cint(roots_qty)) and cint(plan.get("tc_choice_committed")) \
+	# A share that was explicitly asked for is somebody trying a different
+	# split, so it beats the agreed pair the same way a typed quantity does.
+	# Without this the agreement was adopted first and the share derived back
+	# off it, so every share typed into the card returned the agreement's own
+	# figure unchanged -- the box moved and nothing else did.
+	if not (cint(tc_qty) or cint(roots_qty)) and tc_share in (None, "") \
+			and cint(plan.get("tc_choice_committed")) \
 			and not _agreement_stale(plan, wanted, per_root):
 		tc_qty = cint(plan.get("tc_plants_committed"))
 		roots_qty = cint(plan.get("roots_committed"))
@@ -324,6 +339,11 @@ def arrival_plan(plan, tc_share=None, returns_per_plant=None,
 	keep_roots = _survival("Roots")
 
 	asked = {}
+	# Where the split came from, because the card has been calling all three
+	# "the protocol's own split" -- including 44.3% derived from an agreed pair
+	# on a protocol that states 82.18%, which is the sort of sentence that
+	# sends somebody to the protocol looking for a number that was never there.
+	origin = "protocol"
 	if cint(tc_qty) or cint(roots_qty):
 		from_tc = int(cint(tc_qty) * keep)
 		from_roots = (int(cint(roots_qty) * per_root * keep_roots)
@@ -338,8 +358,13 @@ def arrival_plan(plan, tc_share=None, returns_per_plant=None,
 			"short_by": max(0, wanted - covered),
 			"over_by": max(0, covered - wanted),
 		}
+		origin = "agreed" if cint(plan.get("tc_choice_committed")) else "quantities"
+	elif tc_share not in (None, ""):
+		share = flt(tc_share)
+		origin = "asked"
 	else:
-		share = flt(tc_share if tc_share not in (None, "") else _tc_share(rows))
+		share = _tc_share(rows)
+		origin = "protocol" if _states_a_split(rows) else "default"
 
 	tc_weeks = _weeks_for(rows, "TC")
 	root_weeks = _weeks_for(rows, LIFT_STAGE)
@@ -354,11 +379,19 @@ def arrival_plan(plan, tc_share=None, returns_per_plant=None,
 		w = weeks.setdefault(land, {"plants": 0})
 		w["plants"] += cint(b.plants)
 
-	# Where a quantity has been asked for, the weeks must add up to exactly that
-	# quantity. Rounding each week on its own lost two plantlets out of 851,961
-	# and the card then carried two different figures for one order -- the box
-	# said what was agreed and the tile said what the weeks came to.
-	share_by_week = _apportion(weeks, share, cint(tc_qty) if asked else None)
+	# Where a quantity has been asked for, the weeks must add up to exactly what
+	# that quantity DELIVERS. Rounding each week on its own lost two plantlets
+	# out of 851,961 and the card then carried two different figures for one
+	# order -- the box said what was agreed and the tile said what the weeks
+	# came to.
+	#
+	# Plants, not plantlets. This used to apportion the order itself, so 470,112
+	# plantlets filled 470,112 plants' worth of weeks and the suggestion then
+	# grossed that up for losses a second time: an agreed order of 470,112 read
+	# back as 530,003. It was invisible while the loss provision sat at zero,
+	# because then the two are the same number.
+	share_by_week = _apportion(
+		weeks, share, cint(asked["plants_from_tc"]) if asked else None)
 
 	for land, w in weeks.items():
 		by_tc = share_by_week[land]
@@ -454,13 +487,15 @@ def arrival_plan(plan, tc_share=None, returns_per_plant=None,
 			"tc": int(math.ceil(sum(weeks[k]["by_tc"] for k in ordered) / keep)),
 			"roots": int(math.ceil(
 				sum(cint(weeks[k]["roots_needed"]) for k in ordered) / keep_roots)),
-			"from": _("the protocol's own split, {0}% tissue culture"
-			          ).format(round(share * 100, 1))
+			"from": _("{0}, {1}% tissue culture").format(
+				SPLIT_FROM.get(origin, SPLIT_FROM["protocol"]),
+				round(share * 100, 1))
 			+ (_(", grossed up for losses of {0}% on tissue culture and {1}% "
 			     "on roots").format(round((1 - keep) * 100, 1),
 			                        round((1 - keep_roots) * 100, 1))
 			   if (keep < 1 or keep_roots < 1) else ""),
 		},
+		"split_from": origin,
 		"survival_pct": round(keep * 100, 2),
 		"roots_survival_pct": round(keep_roots * 100, 2),
 		"roots_in_store": root_stock(plan),
@@ -660,6 +695,12 @@ def _lift_return(rows):
 		if (r.get("stage") or "") == LIFT_STAGE:
 			return flt(r.get("returns_per_plant") or 0)
 	return 0
+
+
+def _states_a_split(rows):
+	"""Whether the route actually says how the crop divides, or says nothing."""
+	return any(flt(r.get("share_pct") or 0) for r in rows
+	           if (r.get("stage") or "") in ("TC", LIFT_STAGE))
 
 
 def _tc_share(rows):
