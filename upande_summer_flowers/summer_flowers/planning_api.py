@@ -1990,6 +1990,9 @@ def lifetime_production(variety=None, farm=None, plan=None, grain="month"):
 MOTHERSTOCK_STAGES = ("Motherstock", "Cuttings (Own)", "Roots (Own)",
                       "Tubers (Own)")
 
+# Which lift profile belongs to which way in.
+CHAIN_FORM = {"TC": "Tissue Culture", "Roots": "Roots"}
+
 
 def _route_chains_payload(version):
 	"""Each way in, as its own route, with what it costs in time.
@@ -2024,8 +2027,21 @@ def _route_chains_payload(version):
 		# happens to it afterwards.
 		after = sum(x["weeks"] for x in stages[1:]) + sum(
 			y["weeks"] for x in stages[1:] for y in x["steps"])
+		# How this material is handed over once it is in. A consignment is not
+		# one delivery: roots go to the trough and come off in waves, and the
+		# waves are what decide when plants actually reach the farm.
+		form = CHAIN_FORM.get(entry["stage"])
+		lifts = []
+		if form:
+			from upande_summer_flowers.summer_flowers import tc_supply as ts
+
+			for i, (wk, share) in enumerate(ts.handover_waves(form, None, after), 1):
+				lifts.append({"lift": i, "weeks_after_arrival": cint(wk),
+				              "share_pct": round(share * 100, 1)})
 		out.append({
 			"entry": entry["stage"],
+			"form": form,
+			"lifts": lifts,
 			"label": " → ".join(x["stage"] for x in stages if x["stage"]),
 			"is_purchase": entry["is_purchase"],
 			"lead_weeks": entry["lead_weeks"],

@@ -654,8 +654,13 @@ def handover_waves(form="Tissue Culture", supplier=None, default_weeks=0):
 		mine = [r for r in rows if not r.source]
 	if not mine:
 		return [(cint(default_weeks), 1.0)]
+	# Taken as stated. Settings refuses a profile that does not add to a
+	# hundred, so rescaling here would only paper over one that got in before
+	# that rule existed -- and quietly handing over 45% of a consignment as
+	# though it were 50% is worse than saying the profile is wrong.
 	total = sum(flt(r.share_pct) for r in mine) or 1.0
-	return [(cint(r.weeks_after_arrival), flt(r.share_pct) / total) for r in mine]
+	scale = 100.0 if abs(total - 100.0) <= 0.5 else total
+	return [(cint(r.weeks_after_arrival), flt(r.share_pct) / scale) for r in mine]
 
 
 LOSS_FIELD = {"Tissue Culture": "tc_loss_pct", "Roots": "roots_loss_pct"}

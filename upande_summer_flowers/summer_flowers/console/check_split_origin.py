@@ -36,12 +36,25 @@ def _run(plan):
 	from upande_summer_flowers.summer_flowers import root_line as rl
 	from upande_summer_flowers.summer_flowers import planning_api as api
 
-	name = plan or frappe.get_all(
-		"Summer Flower Production Plan",
-		filters={"tc_choice_committed": 1}, pluck="name",
-		order_by="creation desc", limit=1)
-	name = name[0] if isinstance(name, list) else name
-	ck(bool(name), "a plan with an agreed pair", name)
+	# A plan whose agreement is still GOOD FOR the season it was made against.
+	# Picking whichever was newest got a stale one -- an agreement for fewer
+	# plants than the plan now needs -- which the card deliberately does not
+	# adopt, so the test read a correct refusal as a failure.
+	name, stale_name = plan, None
+	for n in frappe.get_all("Summer Flower Production Plan",
+	                        filters={"tc_choice_committed": 1}, pluck="name",
+	                        order_by="creation desc"):
+		d = frappe.get_doc("Summer Flower Production Plan", n)
+		wanted = sum(cint(b.plants) for b in d.plan_blocks
+		             if cint(b.is_new_planting))
+		v = frappe.get_cached_doc("Crop Protocol Version", d.protocol)
+		from upande_summer_flowers.summer_flowers import crop_protocol as cp
+		per_root = rl._lift_return(cp.route_rows(v) or []) or 0
+		if rl._agreement_stale(d, wanted, per_root):
+			stale_name = stale_name or n
+		elif not name:
+			name = n
+	ck(bool(name), "a plan whose agreement still fits the season", name)
 	p = frappe.get_doc("Summer Flower Production Plan", name)
 	keep = rl._survival("Tissue Culture")
 
@@ -78,6 +91,20 @@ def _run(plan):
 	ck(abs(tc_plants - int(agreed * keep)) <= 1,
 	   "   the weeks carry the plants the order delivers, not the order",
 	   "%s vs %s" % ("{:,}".format(tc_plants), "{:,}".format(int(agreed * keep))))
+
+	print("\n=== an agreement the plan has outgrown is not adopted ===")
+	if stale_name:
+		sp = frappe.get_doc("Summer Flower Production Plan", stale_name)
+		sm = rl.arrival_plan(sp)
+		ck(sm["split_from"] != "agreed",
+		   "   %s has outgrown its agreement, so it is not used" % stale_name,
+		   sm["split_from"])
+		ck("already agreed" not in sm["suggested"]["from"],
+		   "   and the card does not claim it was")
+		ck(bool(sm.get("committed")),
+		   "   but what WAS agreed still comes back, so the card can say so")
+	else:
+		print("      (no stale agreement on this site to check)")
 
 	print("\n=== the protocol's own split, where it states one ===")
 	p2 = frappe.copy_doc(p)

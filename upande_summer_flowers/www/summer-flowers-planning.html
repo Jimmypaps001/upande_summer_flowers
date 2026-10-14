@@ -6168,6 +6168,27 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
     drawChains(d);
   }
 
+  // How a consignment on THIS route is handed over. A consignment is not one
+  // delivery: roots go to the trough and come off in waves weeks apart, and
+  // which wave a plant is in decides the week it reaches the farm.
+  function liftProfile(c) {
+    const ls = c.lifts || [];
+    if (ls.length < 2) return "";
+    const per = ls.map((l) =>
+      `<span style="white-space:nowrap">lift ${l.lift} ` +
+      `<b>${numx(l.share_pct)}%</b> at ${l.weeks_after_arrival}w</span>`
+    ).join(" · ");
+    const total = ls.reduce((a, l) => a + (l.share_pct || 0), 0);
+    return `<div class="text-muted small" style="margin-top:4px">` +
+      `handed over in ${ls.length} lifts — ${per}` +
+      // Settings refuses a profile that misses a hundred, but a protocol read
+      // from an older site may still carry one.
+      (Math.abs(total - 100) > 0.5
+        ? ` <b style="color:var(--critical)">(these come to ${numx(total)}%, ` +
+          `not 100%)</b>` : "") +
+      `</div>`;
+  }
+
   function drawChains(d) {
     const el = $("pr-chains");
     if (!el) return;
@@ -6210,7 +6231,7 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
         (c.stages || []).map((x) =>
           `${esc(x.stage || "")}${x.weeks ? " " + x.weeks + "w" : ""}` +
           (x.loss_pct ? ` −${numx(x.loss_pct)}%` : "")).join("  →  ") +
-        `</div></div>`;
+        `</div>` + liftProfile(c) + `</div>`;
     }).join("");
   }
 
@@ -6281,29 +6302,47 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
       `<div class="ts">${esc(x.s)}</div></div>`).join("");
 
     // production parameters
+    // Pinching is a thing done to a cutting on its way up. A crop handed
+    // rooted plants is not pinched, and a row reading "0 weeks from planting"
+    // is a question nobody asked rather than an answer.
+    const pinches = !!d.has_motherstock || !!F.weeks_to_pinch;
     $("pr-prod").innerHTML =
-      prow("Weeks to pinch", F.weeks_to_pinch + " weeks", "from planting",
-        { field: "weeks_to_pinch", value: F.weeks_to_pinch }) +
+      (pinches
+        ? prow("Weeks to pinch", F.weeks_to_pinch + " weeks", "from planting",
+            { field: "weeks_to_pinch", value: F.weeks_to_pinch })
+        : "") +
       prow("Flush interval", F.flush_interval_weeks + " weeks", "between flushes",
         { field: "flush_interval_weeks", value: F.flush_interval_weeks }) +
       prow("Planting to first harvest", D.first_harvest_offset_weeks + " weeks",
-        `pinch(${F.weeks_to_pinch}) + first flush`, null,
-        "first_harvest_offset_weeks") +
+        pinches ? `pinch(${F.weeks_to_pinch}) + first flush` : "to the first flush",
+        null, "first_harvest_offset_weeks") +
       prow("Total flushes", D.total_flushes + " flushes", "from the flush schedule") +
       prow("Total weeks in ground", D.total_weeks_in_ground + " weeks",
         D.life_expectancy_years.toFixed(2) + " yrs");
 
     // The propagation side: taking a cutting through to a plantable plant, and the
     // bench that costs. Kept apart from the growing cycle, which starts at planting.
+    // A crop that is handed its material has no cutting to stick, so the rows
+    // about sticking one describe nothing. What it has instead is each route's
+    // own propagation: how long the material is held, and in how many lifts it
+    // comes off.
     $("pr-prop").innerHTML =
-      prow("Hardening", F.hardening_weeks + " weeks", "cutting to plantable",
-        { field: "hardening_weeks", value: F.hardening_weeks }) +
-      prow("Sticking to planting", F.sticking_to_planting_weeks + " weeks",
-        "cutting stuck to plant in the field",
-        { field: "sticking_to_planting_weeks", value: F.sticking_to_planting_weeks }) +
-      prow("Cutting to harvest", D.cutting_to_harvest_weeks + " weeks",
-        `hard(${F.hardening_weeks}) + pinch(${F.weeks_to_pinch}) + F1(${F.flush_interval_weeks})`,
-        null, "cutting_to_harvest_weeks") +
+      (d.has_motherstock
+        ? prow("Hardening", F.hardening_weeks + " weeks", "cutting to plantable",
+            { field: "hardening_weeks", value: F.hardening_weeks }) +
+          prow("Sticking to planting", F.sticking_to_planting_weeks + " weeks",
+            "cutting stuck to plant in the field",
+            { field: "sticking_to_planting_weeks", value: F.sticking_to_planting_weeks }) +
+          prow("Cutting to harvest", D.cutting_to_harvest_weeks + " weeks",
+            `hard(${F.hardening_weeks}) + pinch(${F.weeks_to_pinch}) + F1(${F.flush_interval_weeks})`,
+            null, "cutting_to_harvest_weeks")
+        : (d.chains || []).map((c) =>
+            prow(`${esc(c.entry)} — in propagation`,
+              `${c.weeks_to_ground} weeks`,
+              (c.lifts || []).length > 1
+                ? `${c.lifts.length} lifts, ` +
+                  c.lifts.map((l) => `${numx(l.share_pct)}% at ${l.weeks_after_arrival}w`).join(", ")
+                : "handed over in one go")).join("")) +
       prow("Cuttings per plant per week", F.cuttings_per_plant_per_week,
         "what one mother plant yields",
         { field: "cuttings_per_plant_per_week", value: F.cuttings_per_plant_per_week, step: "0.1" }) +
