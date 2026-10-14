@@ -28,13 +28,14 @@
   {
    "columns": 1,
    "default": "Stage",
-   "description": "A stage is where the material becomes a different thing. A step is where the same material sits for a while. A step belongs to the stage above it.",
+   "description": "Worked out: a row that names a step is a Step, anything else is a Stage.",
    "fieldname": "row_type",
    "fieldtype": "Select",
-   "in_list_view": 1,
+   "in_list_view": 0,
    "label": "Row",
    "options": "Stage\nStep",
-   "reqd": 1
+   "reqd": 1,
+   "read_only": 1
   },
   {
    "depends_on": "eval:doc.row_type=='Step'",
@@ -43,7 +44,9 @@
    "in_list_view": 1,
    "label": "Step",
    "mandatory_depends_on": "eval:doc.row_type=='Step'",
-   "options": "\nOrder to arrival\nTray\nHardening\nPot\nSticking\nRooting\nGermination\nGrowing on\nBulking\nDivision\nCooling\nStorage\nField establishment"
+   "options": "\nOrder to arrival\nTray\nHardening\nPot\nSticking\nRooting\nGermination\nGrowing on\nBulking\nDivision\nCooling\nStorage\nField establishment",
+   "columns": 2,
+   "description": "A phase inside the stage above, for a route that needs the detail. Most do not."
   },
   {
    "depends_on": "eval:doc.row_type!='Step'",
@@ -52,7 +55,9 @@
    "in_list_view": 1,
    "label": "Stage",
    "mandatory_depends_on": "eval:doc.row_type!='Step'",
-   "options": "\nTC\nSeeds\nCuttings (Own)\nRoots (Own)\nTubers (Own)\nBudwoods\nBought-in Plants\nMotherstock\nRoots\nTubers\nSprouting\nCooling\nPropagation\nPlants"
+   "options": "\nTC\nSeeds\nCuttings (Own)\nRoots (Own)\nTubers (Own)\nBudwoods\nBought-in Plants\nMotherstock\nRoots\nTubers\nSprouting\nCooling\nPropagation\nPlants",
+   "columns": 2,
+   "description": "What the material IS at this point. Leave it empty and name a step instead to add a phase inside the stage above."
   },
   {
    "description": "How long this stage takes, off the protocol's own timings: tray plus pot for a motherstock, sticking to planting for a propagation stage. A stage with steps under it is the sum of them. Change the weeks on the protocol, not here.",
@@ -61,7 +66,8 @@
    "in_list_view": 1,
    "label": "Weeks",
    "non_negative": 1,
-   "read_only": 1
+   "read_only": 1,
+   "columns": 1
   },
   {
    "description": "Material lost at this stage. Worked out from the protocol's own loss fields -- the TC order allowance, the cutting reject rate, rooting and field establishment. Change it on the protocol.",
@@ -69,7 +75,8 @@
    "fieldtype": "Percent",
    "in_list_view": 1,
    "label": "Loss %",
-   "read_only": 1
+   "read_only": 1,
+   "columns": 1
   },
   {
    "fieldname": "column_break_main",
@@ -82,7 +89,9 @@
    "fieldname": "is_purchase",
    "fieldtype": "Check",
    "label": "Bought at this stage",
-   "read_only": 1
+   "read_only": 1,
+   "in_list_view": 1,
+   "columns": 1
   },
   {
    "depends_on": "eval:doc.is_purchase",
@@ -90,7 +99,9 @@
    "fieldname": "lead_weeks",
    "fieldtype": "Int",
    "label": "Supplier Lead (weeks)",
-   "non_negative": 1
+   "non_negative": 1,
+   "in_list_view": 1,
+   "columns": 1
   },
   {
    "fieldname": "share_pct",
@@ -101,10 +112,11 @@
   },
   {
    "depends_on": "eval:doc.is_purchase",
-   "description": "What one unit costs here. A plantlet, a rooted plant and a tuber are different money.",
+   "description": "Unused. Costing reads its prices from the TC price bands and the purchase documents, not from here.",
    "fieldname": "rate",
    "fieldtype": "Currency",
-   "label": "Rate per unit"
+   "label": "Rate per unit",
+   "hidden": 1
   },
   {
    "default": "1",
@@ -121,7 +133,7 @@
    "fieldtype": "Check",
    "label": "Stands and is cut from",
    "description": "Material here is established once and cut from week after week -- a motherstock. It is not consumed by one planting, so it is bought once and sized from the busiest week, not from the season's total.",
-   "depends_on": "eval:(doc.row_type||'Stage')=='Stage'"
+   "depends_on": "eval:doc.is_standing || doc.yields_per_week || doc.max_cycles"
   },
   {
    "fieldname": "yields_per_week",
@@ -129,11 +141,11 @@
    "label": "Yields per unit per week",
    "precision": "3",
    "description": "What one standing unit hands on each week -- cuttings off one mother plant. Derived from the protocol's Cuttings Per Plant Per Week.",
-   "depends_on": "is_standing",
+   "depends_on": "eval:doc.is_standing || doc.yields_per_week || doc.max_cycles",
    "read_only": 1
   },
   {
-   "depends_on": "eval:doc.row_type!='Step'",
+   "depends_on": "eval:doc.is_standing || doc.yields_per_week || doc.max_cycles",
    "description": "How many times material may go round at this stage -- motherstock generations, tuber divisions. 0 means it does not recycle.",
    "fieldname": "max_cycles",
    "fieldtype": "Int",

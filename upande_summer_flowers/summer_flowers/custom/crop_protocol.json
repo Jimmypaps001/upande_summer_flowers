@@ -1427,7 +1427,7 @@
    "name": "Crop Protocol-custom_sf_route_table_section"
   },
   {
-   "depends_on": "eval:doc.crop_type==\"Summer Flowers\" && (doc.custom_sf_growing_cycle==\"Perennial - continuous\"||doc.custom_sf_growing_cycle==\"Single flush cycle\")",
+   "depends_on": "eval:doc.crop_type==\"Summer Flowers\" && !doc.custom_sf_harvest_is_scheduled",
    "description": "Relative weights per week as the season builds. Empty = the house curve.",
    "doctype": "Custom Field",
    "dt": "Crop Protocol",
@@ -1439,7 +1439,7 @@
    "name": "Crop Protocol-custom_sf_season_curve_build"
   },
   {
-   "depends_on": "eval:doc.crop_type==\"Summer Flowers\" && (doc.custom_sf_growing_cycle==\"Perennial - continuous\"||doc.custom_sf_growing_cycle==\"Single flush cycle\")",
+   "depends_on": "eval:doc.crop_type==\"Summer Flowers\" && !doc.custom_sf_harvest_is_scheduled",
    "description": "Relative weights per week as it tails off. Empty = the house curve.",
    "doctype": "Custom Field",
    "dt": "Crop Protocol",
@@ -1467,7 +1467,7 @@
   },
   {
    "depends_on": "eval:doc.crop_type==\"Summer Flowers\"",
-   "description": "",
+   "description": "Read off the flush schedule where the rows give stems. Only typed when the harvest is entered as percentages of a life, which needs a life to take a percentage of.",
    "doctype": "Custom Field",
    "dt": "Crop Protocol",
    "fieldname": "custom_sf_stated_stems_per_plant_life",
@@ -1478,7 +1478,8 @@
    "name": "Crop Protocol-custom_sf_stated_stems_per_plant_life",
    "non_negative": 1,
    "precision": "3",
-   "read_only": 1
+   "read_only": 1,
+   "read_only_depends_on": "eval:doc.custom_sf_harvest_is_scheduled"
   },
   {
    "depends_on": "eval:(doc.crop_type==\"Summer Flowers\") && !doc.__islocal",
@@ -1507,7 +1508,7 @@
    "read_only": 1
   },
   {
-   "depends_on": "eval:doc.crop_type==\"Summer Flowers\" && doc.custom_sf_growing_cycle==\"Perennial - continuous\"",
+   "depends_on": "eval:doc.crop_type==\"Summer Flowers\" && !doc.custom_sf_harvest_is_scheduled",
    "description": "Seeds the schedule for a crop with no flush rows yet.",
    "doctype": "Custom Field",
    "dt": "Crop Protocol",
@@ -1709,7 +1710,7 @@
    "read_only_depends_on": "eval:(doc.custom_sf_material_route||[]).some(function(r){return r.row_type=='Step';})"
   },
   {
-   "depends_on": "eval:doc.crop_type==\"Summer Flowers\" && doc.custom_sf_growing_cycle==\"Perennial - continuous\"",
+   "depends_on": "eval:doc.crop_type==\"Summer Flowers\" && !doc.custom_sf_harvest_is_scheduled",
    "description": "Seeds the schedule for a crop with no flush rows yet.",
    "doctype": "Custom Field",
    "dt": "Crop Protocol",
@@ -2483,6 +2484,20 @@
    "name": "Crop Protocol-custom_sf_lifts",
    "options": "Summer Flower Protocol Lift",
    "description": "A consignment is not handed over in one go. Each lift states its weeks on the trough and its weeks rooting — those two add to how long after the consignment arrives it reaches the farm — and the share of the consignment it carries. The shares of one form must come to 100%."
+  },
+  {
+   "depends_on": "eval:doc.crop_type==\"Summer Flowers\"",
+   "doctype": "Custom Field",
+   "dt": "Crop Protocol",
+   "fieldname": "custom_sf_harvest_is_scheduled",
+   "fieldtype": "Check",
+   "insert_after": "custom_sf_flush_schedule",
+   "read_only": 1,
+   "hidden": 1,
+   "label": "Harvest Is Scheduled",
+   "module": "Summer Flowers",
+   "name": "Crop Protocol-custom_sf_harvest_is_scheduled",
+   "description": "Set when the flush schedule has rows. The fields that SEED a schedule are only of use before there is one."
   }
  ],
  "custom_perms": [

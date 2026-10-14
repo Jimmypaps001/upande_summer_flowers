@@ -849,6 +849,8 @@ def validate(doc, method=None):
 	derive(doc)
 	check_route(doc)
 	set_raised_from_pool(doc)
+	set_row_types(doc)
+	set_harvest_is_scheduled(doc)
 	check_lifts(doc)
 	set_route_quantities(doc)
 	fill_native_gaps(doc)
@@ -928,6 +930,33 @@ def set_raised_from_pool(doc):
 	rows = route_rows(doc) or []
 	doc.custom_sf_raised_from_pool = 1 if any(
 		(r.get("stage") or "") in POOL_STAGES for r in rows) else 0
+
+
+def set_row_types(doc):
+	"""A row that names a step IS a step. Nothing else can say it.
+
+	The grid used to carry three columns to answer one question -- a row type,
+	a stage and a step -- and the row type was the one nothing could tell you
+	from the others. It is worked out now, so the route reads as what it is:
+	a stage, with any phases of it named underneath.
+	"""
+	for row in (doc.get("custom_sf_material_route") or []):
+		row.row_type = "Step" if (row.get("step") or "").strip() else "Stage"
+		if row.row_type == "Step":
+			# A step is a phase of the stage above, so it cannot also BE one.
+			row.stage = None
+
+
+def set_harvest_is_scheduled(doc):
+	"""Whether the harvest is entered rather than seeded.
+
+	Weeks to first cut, stems per plant per week and the two season curves
+	exist to GENERATE a flush schedule for a crop that has none. Once the rows
+	are there they are read and those fields are not, so a protocol with 52
+	flush rows was showing four inputs that change nothing.
+	"""
+	doc.custom_sf_harvest_is_scheduled = 1 if (
+		doc.get("custom_sf_flush_schedule") or []) else 0
 
 
 def check_lifts(doc):
