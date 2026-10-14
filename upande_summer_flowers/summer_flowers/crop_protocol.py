@@ -933,9 +933,10 @@ def set_raised_from_pool(doc):
 def check_lifts(doc):
 	"""Each lift adds its two halves, and each form's shares make a whole.
 
-	The week a lift is ready is not typed: it is the weeks on the trough plus
+	The week a lift reaches the farm is not typed: it is the weeks on the
+	trough plus
 	weeks rooting. Eryngium roots sit 8, 10 and 12 weeks in the trough and root
-	for 7, so they are ready at 15, 17 and 19 -- and writing 15 straight in is
+	for 7, so they reach the farm at 15, 17 and 19 -- and writing 15 straight in is
 	how the two halves come to disagree with the total the next time somebody
 	changes one of them.
 	"""
@@ -980,8 +981,9 @@ def check_lifts(doc):
 		for a, b in zip(order, order[1:]):
 			if cint(b.weeks_after_arrival) <= cint(a.weeks_after_arrival):
 				frappe.throw(_(
-					"{0} lift {1} is ready {2} weeks after the consignment "
-					"arrives and lift {3} is ready at {4}. A later lift comes "
+					"{0} lift {1} reaches the farm {2} weeks after the "
+					"consignment arrives and lift {3} reaches it at {4}. A "
+					"later lift comes "
 					"off later, so give it more weeks on the trough."
 				).format(form, cint(b.lift_no), cint(b.weeks_after_arrival),
 				         cint(a.lift_no), cint(a.weeks_after_arrival)))

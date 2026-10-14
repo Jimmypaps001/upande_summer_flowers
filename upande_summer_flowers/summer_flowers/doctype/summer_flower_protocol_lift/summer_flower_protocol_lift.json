@@ -53,11 +53,11 @@
   },
   {
    "columns": 1,
-   "description": "Weeks on the trough plus rooting. The week the plants are ready, counted from the consignment arriving, and worked out rather than typed so the two halves always add up to it.",
+   "description": "Weeks on the trough plus rooting: how long after the consignment arrives this lift reaches the farm. Worked out rather than typed, so the two halves always add up to it.",
    "fieldname": "weeks_after_arrival",
    "fieldtype": "Int",
    "in_list_view": 1,
-   "label": "Ready After",
+   "label": "Delivered to Farm",
    "read_only": 1
   },
   {

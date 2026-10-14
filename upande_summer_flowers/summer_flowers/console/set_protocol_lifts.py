@@ -12,7 +12,7 @@ The table is only worth having filled in. Each lift states its weeks in the
 unit and its weeks rooting, and those two add to the week the plants are
 ready -- so the farm's roots protocol reads
 
-	lift 1   8 weeks in the trough + 7 rooting = ready at 15   45%
+	lift 1   8 weeks on trough + 7 rooting = to the farm at 15   45%
 	lift 2  10                     + 7         =           17   30%
 	lift 3  12                     + 7         =           19   25%
 
@@ -101,7 +101,7 @@ def _run(apply, variety, force):
 	doc = frappe.get_doc("Crop Protocol", todo[0][0])
 	print("\n   %s now reads" % todo[0][0])
 	for r in doc.custom_sf_lifts:
-		print("      %-16s lift %s  %2dw on trough + %dw rooting = ready at %2d"
+		print("      %-16s lift %s  %2dw on trough + %dw rooting = to the farm at %2d"
 		      "   %.0f%%" % (r.form, r.lift_no, cint(r.trough_weeks),
 		                     cint(r.rooting_weeks), cint(r.weeks_after_arrival),
 		                     r.share_pct))

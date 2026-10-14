@@ -2482,7 +2482,7 @@
    "module": "Summer Flowers",
    "name": "Crop Protocol-custom_sf_lifts",
    "options": "Summer Flower Protocol Lift",
-   "description": "A consignment is not handed over in one go. Each lift states its weeks on the trough and its weeks rooting — those two add to the week the plants are ready — and the share of the consignment it carries. The shares of one form must come to 100%."
+   "description": "A consignment is not handed over in one go. Each lift states its weeks on the trough and its weeks rooting — those two add to how long after the consignment arrives it reaches the farm — and the share of the consignment it carries. The shares of one form must come to 100%."
   }
  ],
  "custom_perms": [
