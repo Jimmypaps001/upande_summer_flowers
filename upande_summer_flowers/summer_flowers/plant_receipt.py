@@ -343,3 +343,193 @@ def revise_to_delivered(planting, reason=None):
 	                  "on the record.").format(
 		planting, was, beds, doc.plants_before_revision))
 	return beds
+
+
+# ------------------------------------------------------- arrivals, from the unit
+def _signed_in():
+	if frappe.session.user == "Guest":
+		frappe.throw(_("Please sign in."), frappe.PermissionError)
+
+
+def open_plant_orders(supplier=None, variety=None, farm=None, limit=40):
+	"""Orders with plant material still outstanding.
+
+	The unit cannot say what arrived until it knows what was ordered, so this is
+	the list the phone opens on: submitted orders still open, plant lines only,
+	and only where something is still to come. A line received in full is not an
+	arrival waiting to be recorded, and offering it would invite a second receipt
+	against a delivery already taken in.
+	"""
+	_signed_in()
+	groups = list(plant_item_groups())
+	conds = []
+	args = {"groups": groups, "limit": cint(limit) or 40}
+	if supplier:
+		conds.append("and po.supplier = %(supplier)s")
+		args["supplier"] = supplier
+	if variety:
+		# set_line_context refuses a line whose item is not the planting's
+		# variety, so on a plant line the item code is the variety.
+		conds.append("and poi.item_code = %(variety)s")
+		args["variety"] = variety
+
+	# The planting link is a custom field and the farm hangs off it. Neither is
+	# present on a site that has not installed them, and asking regardless is
+	# how an endpoint like this dies with "Unknown column".
+	has_link = frappe.db.has_column("Purchase Order Item", "custom_planting_calendar")
+	link_select = ("poi.custom_planting_calendar as planting"
+	               if has_link else "null as planting")
+	join = ""
+	if has_link and farm:
+		join = ("left join `tabPlanting Calendar` pc "
+		        "on pc.name = poi.custom_planting_calendar")
+		conds.append("and pc.farm = %(farm)s")
+		args["farm"] = farm
+
+	rows = frappe.db.sql("""
+		select
+			po.name as purchase_order, po.supplier, po.supplier_name,
+			po.transaction_date, po.status, po.currency,
+			poi.name as po_item, poi.idx, poi.item_code, poi.item_name,
+			poi.qty, poi.received_qty, poi.uom, poi.warehouse, poi.rate,
+			poi.schedule_date, {link_select}
+		from `tabPurchase Order Item` poi
+		join `tabPurchase Order` po on po.name = poi.parent
+		join `tabItem` it on it.name = poi.item_code
+		{join}
+		where po.docstatus = 1
+		  and po.status not in ('Closed', 'Completed')
+		  and poi.received_qty < poi.qty
+		  and it.item_group in %(groups)s
+		  {conds}
+		order by poi.schedule_date asc, po.transaction_date desc, poi.idx asc
+		limit %(limit)s
+	""".format(link_select=link_select, join=join, conds=" ".join(conds)),
+		args, as_dict=True)
+
+	orders = {}
+	for r in rows:
+		o = orders.setdefault(r.purchase_order, {
+			"purchase_order": r.purchase_order,
+			"supplier": r.supplier,
+			"supplier_name": r.supplier_name,
+			"transaction_date": str(r.transaction_date) if r.transaction_date else None,
+			"status": r.status,
+			"currency": r.currency,
+			"lines": [],
+		})
+		o["lines"].append({
+			"po_item": r.po_item,
+			"idx": r.idx,
+			"item_code": r.item_code,
+			"item_name": r.item_name,
+			"ordered": flt(r.qty),
+			"received": flt(r.received_qty),
+			"outstanding": flt(r.qty) - flt(r.received_qty),
+			"uom": r.uom,
+			"warehouse": r.warehouse,
+			"rate": flt(r.rate),
+			"schedule_date": str(r.schedule_date) if r.schedule_date else None,
+			"planting": r.planting,
+		})
+	# What this site makes mandatory on the receipt itself. Sites differ --
+	# karenroses demands the supplier's delivery note -- and a form that only
+	# finds out on save costs a second trip for the paperwork.
+	meta = frappe.get_meta("Purchase Receipt")
+	required = [f for f in ("supplier_delivery_note", "bill_no", "bill_date")
+	            if (meta.get_field(f) or frappe._dict()).get("reqd")]
+	return {"orders": list(orders.values()), "item_groups": groups,
+	        "required_on_receipt": required}
+
+
+def draft_plant_receipt(purchase_order, lines, posting_date=None,
+                        rejected_warehouse=None, supplier_delivery_note=None,
+                        bill_no=None, bill_date=None):
+	"""A draft Purchase Receipt for what actually turned up.
+
+	Draft on purpose. Submitting moves stock and posts to the ledger, and the
+	phone at the trough is not where that should happen -- but the figures are
+	freshest there, so this writes them down and leaves the submission to
+	whoever checks the delivery against the invoice.
+
+	Nothing extra is recorded here. refresh_planting already runs on submit, off
+	the submitted document, exactly as it does for a receipt raised in the desk,
+	so the plan comparison needs no help from this end.
+	"""
+	_signed_in()
+	from erpnext.buying.doctype.purchase_order.purchase_order import make_purchase_receipt
+
+	if isinstance(lines, str):
+		lines = frappe.parse_json(lines or "[]")
+
+	wanted = {}
+	for line in (lines or []):
+		po_item = line.get("po_item")
+		if not po_item:
+			continue
+		accepted = flt(line.get("accepted"))
+		rejected = flt(line.get("rejected"))
+		if accepted < 0 or rejected < 0:
+			frappe.throw(_("A quantity cannot be negative."))
+		if accepted + rejected <= 0:
+			continue
+		wanted[po_item] = line
+	if not wanted:
+		frappe.throw(_("Nothing to receive: every line came through as zero."))
+
+	pr = make_purchase_receipt(purchase_order)
+	kept = []
+	for row in (pr.get("items") or []):
+		line = wanted.get(row.get("purchase_order_item"))
+		if not line:
+			continue
+		row.qty = flt(line.get("accepted"))
+		row.rejected_qty = flt(line.get("rejected"))
+		row.received_qty = row.qty + row.rejected_qty
+		if row.rejected_qty:
+			where = line.get("rejected_warehouse") or rejected_warehouse
+			if not where:
+				frappe.throw(_(
+					"Row #{0}: {1} were rejected, so a rejected warehouse is needed. "
+					"ERPNext will not hold rejected stock in the accepted warehouse."
+				).format(row.idx, cint(row.rejected_qty)))
+			if where == row.warehouse:
+				frappe.throw(_(
+					"Row #{0}: the rejected warehouse cannot be the accepted one."
+				).format(row.idx))
+			row.rejected_warehouse = where
+		if line.get("rejection_reason") and frappe.db.has_column(
+				"Purchase Receipt Item", "custom_rejection_reason"):
+			row.custom_rejection_reason = line.get("rejection_reason")
+		if line.get("batch_no"):
+			row.batch_no = line.get("batch_no")
+		kept.append(row)
+
+	if not kept:
+		frappe.throw(_("None of those lines belong to {0}.").format(purchase_order))
+
+	pr.items = kept
+	for i, row in enumerate(pr.items, start=1):
+		row.idx = i
+	if posting_date:
+		pr.set_posting_time = 1
+		pr.posting_date = getdate(posting_date)
+	# Site-mandatory header fields, set only when given, so a site that does not
+	# ask for them is never handed an empty string to validate.
+	if supplier_delivery_note:
+		pr.supplier_delivery_note = supplier_delivery_note
+	if bill_no:
+		pr.bill_no = bill_no
+	if bill_date:
+		pr.bill_date = getdate(bill_date)
+	pr.flags.ignore_permissions = True
+	pr.insert()
+	return {
+		"name": pr.name,
+		"docstatus": pr.docstatus,
+		"supplier": pr.supplier,
+		"posting_date": str(pr.posting_date),
+		"total_qty": flt(pr.total_qty),
+		"lines": [{"item_code": r.item_code, "accepted": flt(r.qty),
+		           "rejected": flt(r.rejected_qty)} for r in pr.items],
+	}
