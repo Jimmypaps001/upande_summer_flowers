@@ -80,7 +80,19 @@ def batch_plan(plan, allocations, lead_weeks=None, to_ground_weeks=None,
 		_renumber(run)
 		for b in run["batches"]:
 			b["lifts"] = _lift_batch(b, run["_waves"], keep)
-	handovers = _cover(out, need)
+	# Each consignment's lifts add up to that consignment. Across nineteen of
+	# them the per-consignment flooring lost nineteen plants, which was enough
+	# to leave the last planting week uncovered and the card reporting a season
+	# covered only to March. The rounding goes on the last lift of the season,
+	# where it is one number out by a few rather than every number out by one.
+	_settle_rounding(out, keep)
+	# Measured against the plants TISSUE CULTURE is responsible for, not against
+	# the whole week. Roots cover the rest of this plan, so crediting TC lifts
+	# against the full requirement reported a programme that never caught up --
+	# 416,970 of 940,224 on a plan that was exactly covered -- and the shortfall
+	# was simply the roots doing their job. The docstring above said as much;
+	# the arithmetic did not.
+	handovers = _cover(out, _tc_week_need(plan, need, tc_target, keep))
 	grand = sum(run["tc_total"] for run in out)
 	capacity = capacity_view(out, limits, lead)
 	for k in ("units", "from", "intake_is_observed", "silent", "unstated_hold"):
@@ -198,6 +210,40 @@ def _one_supplier(alloc, need, land_lag, lead=None):
 		"even_split": int(round(tc / float(len(batches)))) if batches else 0,
 		"batches": batches,
 	}
+
+
+def _settle_rounding(out, keep):
+	"""Make the lifts of every consignment add to what the whole order yields."""
+	want = int(round(sum(cint(b["tc"]) for run in out
+	                     for b in run["batches"]) * flt(keep or 1.0)))
+	lifts = [w for run in out for b in run["batches"] for w in (b.get("lifts") or [])]
+	if not lifts:
+		return
+	got = sum(cint(w["plants"]) for w in lifts)
+	if got == want:
+		return
+	last = max(lifts, key=lambda w: str(w.get("ready") or ""))
+	last["plants"] = max(0, cint(last["plants"]) + (want - got))
+
+
+def _tc_week_need(plan, need, tc_target, keep):
+	"""The share of each planting week that tissue culture has to cover.
+
+	A plan raised two ways splits every week between them. The split is
+	root_line's, and it is borrowed rather than recomputed: two implementations
+	of one apportionment is how the card and the plan come to disagree about a
+	week by a plant or two.
+
+	With no TC order named, the whole requirement is TC's -- which is the right
+	answer for a plan that has no roots in it.
+	"""
+	from upande_summer_flowers.summer_flowers.root_line import _apportion
+
+	plants = int(cint(tc_target) * flt(keep or 1.0))
+	if not plants:
+		return dict(need)
+	weeks = {k: {"plants": v} for k, v in need.items()}
+	return _apportion(weeks, 1.0, plants)
 
 
 def _plants_by_week(plan):

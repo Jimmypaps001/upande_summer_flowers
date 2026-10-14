@@ -5199,7 +5199,14 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
       `plants</span></th>` +
       `<th>At the unit</th>` +
       `<th class="n">Hardening</th>` +
-      `<th>First lift</th><th>Last lift</th>` +
+      // What the consignment is worth as plants, and how it divides. A week on
+      // its own did not answer "if I buy 1,000, how many come off first?" --
+      // that was only in the lift table underneath, a row per lift per lab.
+      `<th class="n">Plants<br><span class="text-muted">after losses</span></th>` +
+      `<th class="n">First lift<br><span class="text-muted">plants · week` +
+      `</span></th>` +
+      `<th class="n">Last lift<br><span class="text-muted">plants · week` +
+      `</span></th>` +
       `<th class="n">Plants covered<br><span class="text-muted">running ` +
       `total</span></th><th>Season covered to</th>` +
       `</tr></thead><tbody>` +
@@ -5213,8 +5220,8 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
         `<td>${fdate(x.arrives)}<br><span class="text-muted">` +
         `${esc(x.arrives_iso || "")}</span></td>` +
         `<td class="n text-muted">${hardening(x)}</td>` +
-        `<td>${esc(x.lands_iso || "")}</td>` +
-        `<td class="text-muted">${esc(x.last_lift_iso || x.lands_iso || "")}</td>` +
+        `<td class="n">${num(liftTotal(x))}</td>` +
+        `${liftCell(x, 0)}${liftCell(x, -1)}` +
         `<td class="n">${num(x.plants_served)}</td>` +
         `<td class="text-muted">${x.serves_to ? fdate(x.serves_to) : ""}</td>` +
         `</tr>`).join("") +
@@ -5226,6 +5233,28 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
   // first batch of plants off a consignment and the second. A consignment that
   // hands over twice cannot be shown as one week, and the week the farm can
   // plant is the week of the lift, not the week the crate arrived.
+  // A consignment is bought as TC units and handed over as plants, in two
+  // lifts weeks apart. Both halves belong on the consignment's own row.
+  function liftTotal(x) {
+    return (x.lifts || []).reduce((a, w) => a + (w.plants || 0), 0);
+  }
+
+  function liftCell(x, which) {
+    const ls = x.lifts || [];
+    if (!ls.length) {
+      // No lift profile configured, so the consignment lands in one go and the
+      // only honest thing to show is the week it lands.
+      return `<td class="n">${which === 0 ? esc(x.lands_iso || "") : ""}</td>`;
+    }
+    const w = which === 0 ? ls[0] : ls[ls.length - 1];
+    if (ls.length === 1 && which !== 0) {
+      return `<td class="n text-muted">—</td>`;
+    }
+    return `<td class="n">${num(w.plants)}` +
+      `<br><span class="text-muted">${esc(w.ready_iso || "")}` +
+      `${w.share_pct ? " · " + w.share_pct + "%" : ""}</span></td>`;
+  }
+
   function liftsTable(b) {
     const rows = b.handovers || [];
     if (!rows.length || (b.suppliers || []).every((s) =>
