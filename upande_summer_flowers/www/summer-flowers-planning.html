@@ -463,7 +463,7 @@
         </div>
         <div class="pl-card">
           <div class="pl-card-head">
-            <div><h2>{{ _("Propagation house and bench") }}</h2></div>
+            <div><h2 id="pr-prop-title">{{ _("Propagation house and bench") }}</h2></div>
           </div>
           <div id="pr-prop"></div>
         </div>
@@ -6171,6 +6171,40 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
   // How a consignment on THIS route is handed over. A consignment is not one
   // delivery: roots go to the trough and come off in waves weeks apart, and
   // which wave a plant is in decides the week it reaches the farm.
+  // The lift profile as the protocol sheet writes it: a column per lift, a
+  // row per thing you would compare across them. Weeks on the trough is the
+  // only row that moves between lifts, which is the point the layout makes.
+  function liftTable(c) {
+    const ls = c.lifts || [];
+    if (!ls.length) return "";
+    const head = ls.map((l) => `<th class="n">${ordinal(l.lift)} lift</th>`).join("");
+    const row = (label, cells, note) =>
+      `<tr><td>${esc(label)}${note ? `<br><span class="text-muted small">` +
+        `${esc(note)}</span>` : ""}</td>${cells.join("")}</tr>`;
+    const anyTrough = ls.some((l) => l.trough_weeks);
+    const anyRooting = ls.some((l) => l.rooting_weeks);
+    return `<div class="text-muted small" style="text-transform:uppercase;` +
+      `letter-spacing:.05em;margin:12px 0 4px">${esc(c.entry || "")} — ` +
+      `propagation timings</div>` +
+      `<table class="pl-t"><thead><tr><th></th>${head}</tr></thead><tbody>` +
+      (anyTrough
+        ? row("Weeks on trough", ls.map((l) => `<td class="n">${l.trough_weeks}</td>`))
+        : "") +
+      row("%", ls.map((l) => `<td class="n"><b>${numx(l.share_pct)}%</b></td>`)) +
+      (anyRooting
+        ? row("Rooting", ls.map((l) => `<td class="n">${l.rooting_weeks}</td>`))
+        : "") +
+      row("Delivered to farm", ls.map((l) =>
+        `<td class="n"><b>${l.weeks_after_arrival}</b></td>`),
+        "weeks after the consignment arrives") +
+      `</tbody></table>`;
+  }
+
+  function ordinal(n) {
+    const s = ["th", "st", "nd", "rd"], v = n % 100;
+    return n + (s[(v - 20) % 10] || s[v] || s[0]);
+  }
+
   function liftProfile(c) {
     const ls = c.lifts || [];
     if (ls.length < 2) return "";
@@ -6246,6 +6280,13 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
     // Those cards asked a question nobody had about this variety, and a reader
     // who cannot tell which cards apply cannot trust any of them.
     applyRouteShape(d);
+    // No bench on a crop that is handed rooted material, so the card does not
+    // say there is one.
+    const pt = $("pr-prop-title");
+    if (pt) {
+      pt.textContent = d.has_motherstock
+        ? "Propagation house and bench" : "Propagation timings";
+    }
     $("pr-title").textContent = `${d.variety} — Crop Protocol`;
     $("pr-sub").textContent =
       `${d.version} · v${d.version_no} ${d.status}` +
@@ -6326,6 +6367,10 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
     // about sticking one describe nothing. What it has instead is each route's
     // own propagation: how long the material is held, and in how many lifts it
     // comes off.
+    // A crop that is handed its material has no cutting to stick, so the rows
+    // about sticking one describe nothing. What it has instead is each route's
+    // own propagation, laid out the way the protocol sheet lays it out: a
+    // column per lift, because that is how somebody reads a lift profile.
     $("pr-prop").innerHTML =
       (d.has_motherstock
         ? prow("Hardening", F.hardening_weeks + " weeks", "cutting to plantable",
@@ -6336,13 +6381,7 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
           prow("Cutting to harvest", D.cutting_to_harvest_weeks + " weeks",
             `hard(${F.hardening_weeks}) + pinch(${F.weeks_to_pinch}) + F1(${F.flush_interval_weeks})`,
             null, "cutting_to_harvest_weeks")
-        : (d.chains || []).map((c) =>
-            prow(`${esc(c.entry)} — in propagation`,
-              `${c.weeks_to_ground} weeks`,
-              (c.lifts || []).length > 1
-                ? `${c.lifts.length} lifts, ` +
-                  c.lifts.map((l) => `${numx(l.share_pct)}% at ${l.weeks_after_arrival}w`).join(", ")
-                : "handed over in one go")).join("")) +
+        : (d.chains || []).map(liftTable).join("")) +
       prow("Cuttings per plant per week", F.cuttings_per_plant_per_week,
         "what one mother plant yields",
         { field: "cuttings_per_plant_per_week", value: F.cuttings_per_plant_per_week, step: "0.1" }) +

@@ -1994,6 +1994,28 @@ MOTHERSTOCK_STAGES = ("Motherstock", "Cuttings (Own)", "Roots (Own)",
 CHAIN_FORM = {"TC": "Tissue Culture", "Roots": "Roots"}
 
 
+def _stated_lifts(version, form):
+	"""The lift rows for `form`, from the version or the protocol behind it.
+
+	A version only carries them once it has been approved since they were put
+	on the protocol. Until then the protocol is the only place the two halves
+	of a lift exist, and showing a total with no halves is showing a figure
+	nobody can check against the sheet it came from.
+	"""
+	rows = [r for r in (version.get("lifts") or [])
+	        if (r.get("form") or "") == form] if hasattr(version, "get") else []
+	if not rows and hasattr(version, "get") and version.get("crop_protocol"):
+		try:
+			doc = frappe.get_cached_doc("Crop Protocol",
+			                            version.get("crop_protocol"))
+			rows = [r for r in (doc.get("custom_sf_lifts") or [])
+			        if (r.get("form") or "") == form]
+		except Exception:
+			frappe.clear_last_message()
+			rows = []
+	return {cint(r.get("lift_no")): r for r in rows}
+
+
 def _route_chains_payload(version):
 	"""Each way in, as its own route, with what it costs in time.
 
@@ -2035,9 +2057,17 @@ def _route_chains_payload(version):
 		if form:
 			from upande_summer_flowers.summer_flowers import tc_supply as ts
 
+			# The two halves as well as the total, because the week a lift
+			# reaches the farm is weeks on the trough plus rooting and the
+			# protocol sheet reads it that way -- a total with no halves
+			# cannot be checked against the sheet it came from.
+			stated = _stated_lifts(version, form)
 			for i, (wk, share) in enumerate(
 					ts.handover_waves(form, None, after, version=version), 1):
+				row = stated.get(i) or {}
 				lifts.append({"lift": i, "weeks_after_arrival": cint(wk),
+				              "trough_weeks": cint(row.get("trough_weeks")),
+				              "rooting_weeks": cint(row.get("rooting_weeks")),
 				              "share_pct": round(share * 100, 1)})
 		out.append({
 			"entry": entry["stage"],
