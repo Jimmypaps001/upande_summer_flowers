@@ -1,0 +1,93 @@
+{
+ "actions": [],
+ "allow_rename": 1,
+ "creation": "2026-10-14 13:00:00.000000",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "istable": 1,
+ "field_order": [
+  "form",
+  "lift_no",
+  "trough_weeks",
+  "rooting_weeks",
+  "weeks_after_arrival",
+  "share_pct",
+  "notes"
+ ],
+ "fields": [
+  {
+   "columns": 2,
+   "description": "Which material this lift comes off.",
+   "fieldname": "form",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "label": "Form",
+   "options": "Tissue Culture\nRoots",
+   "reqd": 1
+  },
+  {
+   "columns": 1,
+   "description": "First, second, third. Each lift is one wave off the consignment.",
+   "fieldname": "lift_no",
+   "fieldtype": "Int",
+   "in_list_view": 1,
+   "label": "Lift",
+   "reqd": 1
+  },
+  {
+   "columns": 1,
+   "description": "Weeks in the trough or on the bench before this lift is taken. This is what differs between lifts: 8, 10 and 12 on Eryngium roots.",
+   "fieldname": "trough_weeks",
+   "fieldtype": "Int",
+   "in_list_view": 1,
+   "label": "In The Unit"
+  },
+  {
+   "columns": 1,
+   "description": "Weeks rooting after it is lifted, before it is a plant the field can take. The same for every lift on most crops.",
+   "fieldname": "rooting_weeks",
+   "fieldtype": "Int",
+   "in_list_view": 1,
+   "label": "Rooting"
+  },
+  {
+   "columns": 1,
+   "description": "In the unit plus rooting. This is the week the plants are ready, counted from the consignment arriving, and it is worked out rather than typed so the two halves always add up to it.",
+   "fieldname": "weeks_after_arrival",
+   "fieldtype": "Int",
+   "in_list_view": 1,
+   "label": "Ready After",
+   "read_only": 1
+  },
+  {
+   "columns": 1,
+   "description": "The share of the consignment this lift hands over. The shares of one form must come to 100%.",
+   "fieldname": "share_pct",
+   "fieldtype": "Percent",
+   "in_list_view": 1,
+   "label": "Share",
+   "reqd": 1
+  },
+  {
+   "fieldname": "notes",
+   "fieldtype": "Small Text",
+   "label": "Notes"
+  }
+ ],
+ "grid_page_length": 50,
+ "index_web_pages_for_search": 1,
+ "links": [],
+ "modified": "2026-10-14 13:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Summer Flowers",
+ "name": "Summer Flower Protocol Lift",
+ "owner": "Administrator",
+ "permissions": [],
+ "row_format": "Dynamic",
+ "rows_threshold_for_grid_search": 20,
+ "sort_field": "creation",
+ "sort_order": "DESC",
+ "states": [],
+ "track_changes": 1
+}

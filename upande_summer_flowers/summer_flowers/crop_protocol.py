@@ -848,6 +848,8 @@ def validate(doc, method=None):
 	number_flushes(doc)
 	derive(doc)
 	check_route(doc)
+	set_raised_from_pool(doc)
+	check_lifts(doc)
 	set_route_quantities(doc)
 	fill_native_gaps(doc)
 	set_status(doc)
@@ -905,6 +907,98 @@ def diff_against_current(doc):
 	v = frappe.get_doc("Crop Protocol Version", current)
 	mine, theirs = _comparable(doc, True), _comparable(v, False)
 	return sorted(k for k in mine if mine[k] != theirs[k])
+
+
+POOL_STAGES = ("Motherstock", "Cuttings (Own)", "Roots (Own)", "Tubers (Own)")
+
+# A lift profile may miss a hundred by this much and still be rounding: three
+# equal lifts are 33.3 each.
+LIFT_SLACK = 0.5
+
+
+def set_raised_from_pool(doc):
+	"""Whether this crop is cut from a pool of its own, or handed its material.
+
+	Derived from the route rather than asked for, because the route already
+	says it. Everything about pots, benches, cuttings per mother plant and
+	multiplication cycles only means something when it is on -- and on a crop
+	that is bought rooted those fields sat on the form at zero, which reads as
+	a measurement nobody has taken rather than a question that does not apply.
+	"""
+	rows = route_rows(doc) or []
+	doc.custom_sf_raised_from_pool = 1 if any(
+		(r.get("stage") or "") in POOL_STAGES for r in rows) else 0
+
+
+def check_lifts(doc):
+	"""Each lift adds its two halves, and each form's shares make a whole.
+
+	The week a lift is ready is not typed: it is the weeks in the unit plus the
+	weeks rooting. Eryngium roots sit 8, 10 and 12 weeks in the trough and root
+	for 7, so they are ready at 15, 17 and 19 -- and writing 15 straight in is
+	how the two halves come to disagree with the total the next time somebody
+	changes one of them.
+	"""
+	rows = doc.get("custom_sf_lifts") or []
+	if not rows:
+		return
+	groups = {}
+	for r in rows:
+		if not r.form:
+			frappe.throw(_("Row {0} of the lifts does not say which material it "
+			               "is for.").format(r.idx))
+		r.weeks_after_arrival = cint(r.trough_weeks) + cint(r.rooting_weeks)
+		groups.setdefault(r.form, []).append(r)
+
+	for form, mine in sorted(groups.items()):
+		total = sum(flt(r.share_pct) for r in mine)
+		if total > 100 + LIFT_SLACK:
+			frappe.throw(_(
+				"The {0} lifts come to {1}%. A consignment cannot hand over more "
+				"than all of itself, so take {2}% off somewhere."
+			).format(form, round(total, 2), round(total - 100, 2)),
+				title=_("More than a whole consignment"))
+		if total < 100 - LIFT_SLACK:
+			frappe.throw(_(
+				"The {0} lifts come to {1}%, so {2}% of every consignment is "
+				"never handed over. Add a lift for it, or raise the shares."
+			).format(form, round(total, 2), round(100 - total, 2)),
+				title=_("Less than a whole consignment"))
+
+		seen = {}
+		for r in sorted(mine, key=lambda x: cint(x.lift_no)):
+			n = cint(r.lift_no)
+			if not n:
+				frappe.throw(_("Number the {0} lifts: 1, 2, 3.").format(form))
+			if n in seen:
+				frappe.throw(_("There are two {0} lift {1}s.").format(form, n))
+			if flt(r.share_pct) <= 0:
+				frappe.throw(_("{0} lift {1} takes no share of the consignment. "
+				               "Give it one or remove it.").format(form, n))
+			seen[n] = r
+		order = [seen[k] for k in sorted(seen)]
+		for a, b in zip(order, order[1:]):
+			if cint(b.weeks_after_arrival) <= cint(a.weeks_after_arrival):
+				frappe.throw(_(
+					"{0} lift {1} is ready {2} weeks after the consignment "
+					"arrives and lift {3} is ready at {4}. A later lift comes "
+					"off later, so give it more weeks in the unit."
+				).format(form, cint(b.lift_no), cint(b.weeks_after_arrival),
+				         cint(a.lift_no), cint(a.weeks_after_arrival)))
+
+
+def protocol_lifts(doc, form):
+	"""[(weeks after arrival, share), ...] this protocol states for `form`."""
+	rows = [r for r in (doc.get("custom_sf_lifts") or doc.get("lifts") or [])
+	        if (r.get("form") or "") == form]
+	if not rows:
+		return []
+	rows.sort(key=lambda r: cint(r.get("lift_no")))
+	total = sum(flt(r.get("share_pct")) for r in rows) or 1.0
+	scale = 100.0 if abs(total - 100.0) <= LIFT_SLACK else total
+	return [(cint(r.get("weeks_after_arrival"))
+	         or cint(r.get("trough_weeks")) + cint(r.get("rooting_weeks")),
+	         flt(r.get("share_pct")) / scale) for r in rows]
 
 
 def set_status(doc):

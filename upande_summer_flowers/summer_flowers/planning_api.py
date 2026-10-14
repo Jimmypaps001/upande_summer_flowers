@@ -2035,7 +2035,8 @@ def _route_chains_payload(version):
 		if form:
 			from upande_summer_flowers.summer_flowers import tc_supply as ts
 
-			for i, (wk, share) in enumerate(ts.handover_waves(form, None, after), 1):
+			for i, (wk, share) in enumerate(
+					ts.handover_waves(form, None, after, version=version), 1):
 				lifts.append({"lift": i, "weeks_after_arrival": cint(wk),
 				              "share_pct": round(share * 100, 1)})
 		out.append({

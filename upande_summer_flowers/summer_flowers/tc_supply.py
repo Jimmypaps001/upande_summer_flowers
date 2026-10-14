@@ -57,7 +57,8 @@ def batch_plan(plan, allocations, lead_weeks=None, to_ground_weeks=None,
 	for a in allocations:
 		run = _one_supplier(a, need, land_lag, lead=lead)
 		run["_cycle"] = max(1, cint(a.get("cycle_weeks")) or 4)
-		run["_waves"] = handover_waves("Tissue Culture", a.get("supplier"), ground)
+		run["_waves"] = handover_waves("Tissue Culture", a.get("supplier"), ground,
+		                               version=plan.protocol)
 		run["lifts_per_consignment"] = len(run["_waves"])
 		grand += run["tc_total"]
 		out.append(run)
@@ -630,7 +631,8 @@ def capacity_view(suppliers, limits, lead):
 # A consignment does not become plants all at once
 # ---------------------------------------------------------------------------
 
-def handover_waves(form="Tissue Culture", supplier=None, default_weeks=0):
+def handover_waves(form="Tissue Culture", supplier=None, default_weeks=0,
+                   version=None):
 	"""[(weeks after it arrives, share of the consignment), ...].
 
 	Grade 1 and Grade 2 in the planning workbook are not qualities. They are the
@@ -644,6 +646,23 @@ def handover_waves(form="Tissue Culture", supplier=None, default_weeks=0):
 	and where there are none of those at all the old behaviour stands: everything
 	in one lift, at the protocol's weeks to ground.
 	"""
+	# The protocol's own profile first, where it states one. How a crop is
+	# propagated is a property of the crop -- Eryngium roots sit 8, 10 and 12
+	# weeks in the trough and root for 7 -- and the settings are the house
+	# default for crops that have not said. A supplier's own rules still win
+	# over both, because how often a lab ships is the lab's business.
+	if version and not supplier:
+		from upande_summer_flowers.summer_flowers import crop_protocol as cp
+
+		try:
+			doc = (version if hasattr(version, "get")
+			       else frappe.get_cached_doc("Crop Protocol Version", version))
+			mine = cp.protocol_lifts(doc, form)
+			if mine:
+				return mine
+		except Exception:
+			frappe.clear_last_message()
+
 	rows = frappe.get_all(
 		"Summer Flower Handover Wave",
 		filters={"parent": "Summer Flower Settings", "form": form},
