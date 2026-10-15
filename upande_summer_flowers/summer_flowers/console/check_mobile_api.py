@@ -94,6 +94,54 @@ def main():
 		_ok("plant_receipt.%s is not exposed twice" % inner_name,
 			inner not in frappe.whitelisted)
 
+	# ---------------------------------------------------- what the unit sees
+	# These two back the unit's own screens. The checks are about what they must
+	# NOT carry as much as what they must: a propagation unit that can see
+	# coverage starts arguing with a plan that was approved without it.
+	from upande_summer_flowers.summer_flowers import planning_api as pa
+
+	d = pa.delivery_schedule(weeks=12)
+	_ok("delivery schedule answers", isinstance(d, dict) and "weeks" in d)
+	_ok("delivery schedule says why it is empty when it is",
+	    bool(d.get("rows")) or bool(d.get("reason")), str(d.get("reason") or ""))
+	_ok("delivery schedule carries no demand figures",
+	    not any(k in d for k in ("total_demand_stems", "coverage_pct", "demand")),
+	    ", ".join(sorted(d)))
+	for r in d.get("rows", [])[:1]:
+		_ok("a delivery row names a farm and a date",
+		    bool(r.get("farm")) and bool(r.get("deliver_on")))
+		_ok("a delivery row says how the plants are raised",
+		    isinstance(r.get("source"), dict))
+
+	# A draft is a proposal, not a load.
+	drafts = set(frappe.get_all("Summer Flower Propagation Plan",
+	                            filters={"status": ["!=", "Approved"]}, pluck="name"))
+	_ok("no draft plan reaches the lorry list",
+	    not (drafts & {r["plan"] for r in d.get("rows", [])}))
+
+	with_ms = 0
+	for v in pa.propagation_varieties():
+		variety = v["variety"]
+		m = pa.motherstock_plan(variety=variety)
+		_ok("motherstock_plan answers for %s" % variety, isinstance(m, dict))
+		if m.get("batches"):
+			with_ms += 1
+			kinds = {s["kind"] for s in m["steps"]}
+			_ok("%s says when it is cut" % variety,
+			    bool(kinds & {"ms_first_cut", "ms_full", "ms_cuttable"}),
+			    ", ".join(sorted(kinds)))
+			cycles = (m["batches"][0] or {}).get("build_up_cycles") or 0
+			_ok("%s multiplication weeks match its cycle count" % variety,
+			    len([s for s in m["steps"] if s["kind"] == "ms_multiply"]) == cycles,
+			    str(cycles))
+			sched = pa.propagation_schedule(variety=variety)
+			_ok("%s motherstock reaches the calendar" % variety,
+			    any(e["kind"].startswith("ms_") for e in sched.get("events", [])))
+		else:
+			_ok("%s explains having no motherstock" % variety,
+			    bool(m.get("reason")), str(m.get("reason") or ""))
+	_ok("at least one variety has a motherstock line to check", with_ms > 0, str(with_ms))
+
 	for name, detail in PASS:
 		print("  ok   %s%s" % (name, (" -- " + detail) if detail else ""))
 	for name, detail in FAIL:

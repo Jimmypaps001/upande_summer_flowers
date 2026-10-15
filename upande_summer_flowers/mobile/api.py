@@ -184,3 +184,21 @@ def propagation_schedule(propagation_plan=None, plan=None, variety=None,
 	return _planning.propagation_schedule(
 		propagation_plan=propagation_plan, plan=plan, variety=variety,
 		farm=farm, from_date=from_date, weeks=weeks)
+
+
+@frappe.whitelist()
+def delivery_schedule(farm=None, variety=None, from_date=None, weeks=None,
+                      include_past=None):
+	"""What the unit owes the farms: plants, farm, week, and what has gone."""
+	_guard()
+	return _planning.delivery_schedule(
+		farm=farm, variety=variety, from_date=from_date, weeks=weeks,
+		include_past=include_past)
+
+
+@frappe.whitelist()
+def motherstock_plan(variety=None, farm=None, plan=None, propagation_plan=None):
+	"""The motherstock line behind a variety: when it is cut, when multiplied."""
+	_guard()
+	return _planning.motherstock_plan(
+		variety=variety, farm=farm, plan=plan, propagation_plan=propagation_plan)

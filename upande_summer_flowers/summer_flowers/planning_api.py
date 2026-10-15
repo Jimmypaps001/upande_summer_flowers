@@ -3256,6 +3256,17 @@ def propagation_schedule(propagation_plan=None, plan=None, variety=None,
 		    qty=plants, source="plan" if w.get("deliver_on") else "derived",
 		    ref=w.get("label"))
 
+	# The motherstock line the cuttings come off. Without these the calendar
+	# says "stick 4,000 cuttings" in a week with nothing to cut them from, and
+	# the multiplication weeks -- when the unit is building the line up rather
+	# than supplying from it -- do not appear at all.
+	ms = motherstock_plan(variety=detail.get("variety"), farm=detail.get("farm"),
+	                      propagation_plan=detail.get("propagation_plan"))
+	for s in ms.get("steps", []):
+		add(s.get("target_date"), s.get("kind"), s.get("step"),
+		    qty=s.get("mother_plants"), note=s.get("notes"),
+		    source="motherstock", ref=s.get("batch"))
+
 	events.sort(key=lambda e: (e["date"], e["kind"]))
 	if weeks:
 		cutoff = str(add_days(getdate(from_date or nowdate()), cint(weeks) * 7))
@@ -3284,4 +3295,265 @@ def propagation_schedule(propagation_plan=None, plan=None, variety=None,
 	            route_summary=spec.get("route_summary"),
 	            cycle_time_weeks=cint(spec.get("cycle_time_weeks")),
 	            max_cycles=cint(spec.get("max_multiplication_cycles")),
-	            kinds=PROP_EVENT_TYPES)
+	            motherstock=ms.get("batches", []),
+	            motherstock_reason=ms.get("reason"),
+	            kinds=dict(PROP_EVENT_TYPES, **MS_EVENT_TYPES))
+
+
+# ---------------------------------------------------------------------------
+# What the propagation unit actually needs
+#
+# The unit is not deciding what to grow -- by the time a plan reaches it the
+# demand argument is over and the plan is approved. Showing the unit how well
+# the plan covers the market invites it to second-guess a decision it has no
+# standing to make, and buries the two things it does own: what leaves for the
+# farms and when, and how the plants to fill that are raised.
+#
+# So: no demand, no coverage, no stems. Plants, dates, farms, and the
+# motherstock the cuttings come off.
+# ---------------------------------------------------------------------------
+
+MS_EVENT_TYPES = {
+	"ms_tc_order": "Order motherstock TC",
+	"ms_tc_arrive": "Motherstock TC on farm",
+	"ms_cuttable": "Motherstock cuttable",
+	"ms_multiply": "Multiply motherstock",
+	"ms_productive": "Multiplied generation productive",
+	"ms_first_cut": "First cutting",
+	"ms_full": "Full cutting capacity",
+	"ms_renew": "Order renewal TC",
+	"ms_expire": "Motherstock expires",
+}
+
+# The step labels build_steps() writes, mapped onto the event kinds above. The
+# labels are translated at write time, so match on the untranslated source the
+# controller uses and fall back to a substring for anything new.
+_MS_STEP_KINDS = (
+	("Place TC order", "ms_tc_order"),
+	("TC plantlets on farm", "ms_tc_arrive"),
+	("TC generation cuttable", "ms_cuttable"),
+	("Multiplication cycle", "ms_multiply"),
+	("Multiplied generation productive", "ms_productive"),
+	("First cutting", "ms_first_cut"),
+	("Full cutting capacity", "ms_full"),
+	("Order renewal TC", "ms_renew"),
+	("Motherstock expires", "ms_expire"),
+)
+
+
+def _ms_kind(step_label):
+	for needle, kind in _MS_STEP_KINDS:
+		if needle.lower() in (step_label or "").lower():
+			return kind
+	return "ms_multiply"
+
+
+def _motherstock_batches(variety=None, farm=None, production_plan=None):
+	"""The motherstock lines a unit would be cutting for this variety.
+
+	Variety is the key and the only hard filter. A motherstock line is not
+	owned by one production plan -- it is cut from for years, across seasons
+	and across plans -- and on a real site `production_plan` is usually blank,
+	so filtering on it hides the line entirely. Farm only narrows, and only
+	when it leaves something standing: the motherstock is raised at the
+	propagation unit, which is routinely not the farm the plants travel to.
+	"""
+	base = {"docstatus": ["<", 2]}
+	if variety:
+		base["variety"] = variety
+
+	def fetch(filters):
+		return frappe.get_all(
+		"Summer Flower Motherstock Batch", filters=filters,
+		fields=["name", "variety", "farm", "batch_status", "generation",
+		        "mother_plants", "pots_required", "bench_sqm",
+		        "effective_peak_cuttings", "peak_weekly_cuttings",
+		        "build_up_cycles", "multiplication_factor",
+		        "tc_plants_required", "tc_order_date", "tc_on_farm_date",
+		        "first_sticking_date", "line_start_date", "max_pc_date",
+		        "productive_weeks", "expiry_date", "renewal_tc_order_date",
+		        "ramp_weeks", "schedule_warning", "protocol"],
+		order_by="first_sticking_date asc, name asc")
+
+	if farm:
+		narrowed = fetch(dict(base, farm=farm))
+		if narrowed:
+			return narrowed
+	return fetch(base)
+
+
+@frappe.whitelist()
+def motherstock_plan(variety=None, farm=None, plan=None, propagation_plan=None):
+	"""How the cuttings for this variety are raised, and when they are cut.
+
+	Everything here is already computed on the batch -- this only reads it out
+	in the order the unit works in, so that nobody has to open a desk form to
+	find out whether this is a cutting week or a multiplication week.
+	"""
+	_guard()
+	if propagation_plan:
+		pp = frappe.db.get_value("Summer Flower Propagation Plan", propagation_plan,
+		                         ["variety", "farm"], as_dict=True)
+		if pp:
+			variety = variety or pp.variety
+			farm = farm or pp.farm
+
+	batches = _motherstock_batches(variety, farm)
+	# A variety with no motherstock line is bought-in, not broken. Say so
+	# rather than returning an empty list that reads like a loading failure.
+	if not batches:
+		return {"variety": variety, "farm": farm, "batches": [],
+		        "steps": [], "reason": "no motherstock line for this variety"}
+
+	out = []
+	for b in batches:
+		steps = frappe.get_all(
+			"Summer Flower Motherstock Cycle",
+			filters={"parent": b.name, "parenttype": "Summer Flower Motherstock Batch"},
+			fields=["step", "week_label", "target_date", "mother_plants", "pots", "notes"],
+			order_by="idx asc")
+		for s in steps:
+			s["kind"] = _ms_kind(s.get("step"))
+			s["kind_label"] = MS_EVENT_TYPES.get(s["kind"], s["kind"])
+			s["batch"] = b.name
+			s["done"] = bool(s.get("target_date")
+			                 and getdate(s["target_date"]) <= getdate(nowdate()))
+		b["steps"] = steps
+		b["cutting_from"] = b.get("first_sticking_date") or b.get("line_start_date")
+		b["cuttings_per_week"] = cint(b.get("effective_peak_cuttings"))
+		out.append(b)
+
+	flat = [s for b in out for s in b["steps"] if s.get("target_date")]
+	flat.sort(key=lambda s: str(s["target_date"]))
+
+	return {"variety": variety, "farm": farm, "batches": out, "steps": flat,
+	        "kinds": MS_EVENT_TYPES}
+
+
+DELIVERY_STATES = ("Planned", "Partially Delivered", "Delivered", "Closed")
+
+
+@frappe.whitelist()
+def delivery_schedule(farm=None, variety=None, from_date=None, weeks=None,
+                      include_past=None):
+	"""What leaves for the farms, when, and whether it has gone yet.
+
+	One row per plan-week that has a delivery date: the farm expecting it, the
+	variety, how many plants, and -- once the week is closed -- what the farm
+	actually got. Grouped by week, because the unit works a week at a time and
+	a lorry carries whatever is ready that week regardless of which plan it
+	belongs to.
+
+	Only approved plans. A draft is a proposal; loading a lorry against it is
+	how a farm ends up with plants nobody agreed to.
+	"""
+	_guard()
+	start = getdate(from_date or nowdate())
+	if not cint(include_past):
+		# Last week is still worth seeing -- a Monday delivery slips to Tuesday
+		# and the week it belonged to has already turned.
+		start = add_days(start, -7)
+	horizon = add_days(start, cint(weeks or 12) * 7)
+
+	plan_filters = {"status": "Approved", "docstatus": ["<", 2]}
+	if farm:
+		plan_filters["farm"] = farm
+	if variety:
+		plan_filters["variety"] = variety
+	plans = frappe.get_all("Summer Flower Propagation Plan", filters=plan_filters,
+	                       fields=["name", "variety", "farm", "season", "protocol"])
+
+	def empty(reason):
+		# An empty lorry list and a broken screen look identical unless the
+		# reason is carried out with it.
+		return {"weeks": [], "rows": [], "totals": {
+			        "plants": 0, "delivered": 0, "outstanding": 0, "weeks": 0},
+		        "farms": [], "varieties": [], "reason": reason,
+		        "from_date": str(start), "to_date": str(horizon)}
+
+	if not plans:
+		unapproved = frappe.db.count("Summer Flower Propagation Plan",
+		                             {"status": ["!=", "Approved"], "docstatus": ["<", 2]})
+		if unapproved:
+			return empty(_("No approved plan yet. {0} plan(s) are still drafts -- "
+			               "nothing is delivered off a draft.").format(unapproved))
+		return empty(_("No propagation plan covers this farm or variety."))
+
+	by_name = {p.name: p for p in plans}
+	rows = frappe.get_all(
+		"Summer Flower Propagation Week",
+		filters={"parent": ["in", list(by_name)],
+		         "parenttype": "Summer Flower Propagation Plan",
+		         "deliver_on": ["between", [str(start), str(horizon)]]},
+		fields=["parent", "year", "week_no", "deliver_on", "week_start_date",
+		        "plants_to_stick", "baseline_plants", "actual_plants",
+		        "actual_on", "variance_plants", "state", "plant_week",
+		        "from_existing_ms", "from_new_ms", "from_bought", "notes"],
+		order_by="deliver_on asc")
+
+	out = []
+	for r in rows:
+		p = by_name.get(r.parent)
+		if not p:
+			continue
+		due = cint(r.plants_to_stick)
+		got = cint(r.actual_plants)
+		y, w = iso_year_week(getdate(r.deliver_on))
+		out.append({
+			"plan": r.parent, "variety": p.variety, "farm": p.farm,
+			"season": p.season, "protocol": p.protocol,
+			"deliver_on": str(r.deliver_on),
+			"week_label": f"{y}-W{w:02d}",
+			"stuck_in_week": str(r.week_start_date) if r.week_start_date else None,
+			"plant_week": r.plant_week,
+			"plants": due,
+			"delivered": got,
+			"outstanding": max(0, due - got),
+			"variance": cint(r.variance_plants),
+			"state": r.state or "Planned",
+			"delivered_on": str(r.actual_on) if r.actual_on else None,
+			# Where this week's plants come from: the unit's own standing
+			# motherstock, a line still building up, or bought-in material.
+			"source": {
+				"existing_motherstock": cint(r.from_existing_ms),
+				"new_motherstock": cint(r.from_new_ms),
+				"bought": cint(r.from_bought),
+			},
+			"notes": r.notes,
+		})
+
+	if not out:
+		return empty(_("Approved plans exist, but none has a delivery due "
+		               "between {0} and {1}.").format(start, horizon))
+
+	by_week = {}
+	for r in out:
+		by_week.setdefault(r["week_label"], []).append(r)
+
+	weeks_out = []
+	for label in sorted(by_week):
+		items = by_week[label]
+		weeks_out.append({
+			"week": label,
+			"deliver_on": min(i["deliver_on"] for i in items),
+			"farms": sorted({i["farm"] for i in items if i["farm"]}),
+			"plants": sum(i["plants"] for i in items),
+			"delivered": sum(i["delivered"] for i in items),
+			"outstanding": sum(i["outstanding"] for i in items),
+			"rows": items,
+		})
+
+	return {
+		"weeks": weeks_out,
+		"rows": out,
+		"from_date": str(start),
+		"to_date": str(horizon),
+		"totals": {
+			"plants": sum(r["plants"] for r in out),
+			"delivered": sum(r["delivered"] for r in out),
+			"outstanding": sum(r["outstanding"] for r in out),
+			"weeks": len(weeks_out),
+		},
+		"farms": sorted({r["farm"] for r in out if r["farm"]}),
+		"varieties": sorted({r["variety"] for r in out if r["variety"]}),
+	}
