@@ -36,6 +36,8 @@ EXPECTED = (
 	"tc_suppliers",
 	"open_plant_orders",
 	"draft_plant_receipt",
+	"propagation_varieties",
+	"propagation_schedule",
 )
 
 # A wrapper and the thing it delegates to. The wrapper may offer fewer

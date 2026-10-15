@@ -166,3 +166,21 @@ def draft_plant_receipt(purchase_order, lines, posting_date=None,
 		rejected_warehouse=rejected_warehouse,
 		supplier_delivery_note=supplier_delivery_note,
 		bill_no=bill_no, bill_date=bill_date)
+
+
+# ------------------------------------------------------------ the unit calendar
+@frappe.whitelist()
+def propagation_varieties(farm=None, season=None):
+	"""Varieties that have a propagation plan, for the filter on the plans list."""
+	_guard()
+	return _planning.propagation_varieties(farm=farm, season=season)
+
+
+@frappe.whitelist()
+def propagation_schedule(propagation_plan=None, plan=None, variety=None,
+                         farm=None, from_date=None, weeks=None):
+	"""One variety's plan as dated work: order TC, stick, root, pot, harden, deliver."""
+	_guard()
+	return _planning.propagation_schedule(
+		propagation_plan=propagation_plan, plan=plan, variety=variety,
+		farm=farm, from_date=from_date, weeks=weeks)

@@ -3096,3 +3096,192 @@ def accept_propagation_replan(propagation_plan):
 
 	_guard()
 	return pa.accept(propagation_plan)
+
+
+# ---------------------------------------------------------- the unit's calendar
+# What the propagation plan means week by week, as dates rather than as a table.
+# A unit does not read "week 14, 12,000 cuttings"; it reads "stick on Monday the
+# 30th, pot up on the 20th, hardening from the 11th". Those later dates are not
+# stored anywhere -- they are the sticking date plus what the protocol says each
+# establishment phase takes -- so this is where they get worked out, once.
+PROP_EVENT_TYPES = {
+	"tc_order": "Order tissue culture",
+	"tc_arrive": "Tissue culture on farm",
+	"consignment": "Consignment due",
+	"consignment_ready": "Consignment ready to work",
+	"stick": "Sticking",
+	"root": "Rooting done, pot up",
+	"nursery": "Out of the nursery",
+	"harden": "Hardening",
+	"to_farm": "To the farm",
+}
+
+
+@frappe.whitelist()
+def propagation_varieties(farm=None, season=None):
+	"""Varieties that have a propagation plan, for the filter on the plans list."""
+	_guard()
+	filters = {"status": ["!=", "Rejected"]}
+	if farm:
+		filters["farm"] = farm
+	if season:
+		filters["season"] = season
+	rows = frappe.get_all(
+		"Summer Flower Propagation Plan", filters=filters,
+		fields=["variety", "farm", "season", "name", "status",
+		        "total_plants_to_stick", "first_sticking_date"],
+		order_by="season_start_year desc")
+	out = {}
+	for r in rows:
+		if not r.variety:
+			continue
+		v = out.setdefault(r.variety, {
+			"variety": r.variety,
+			"variety_name": frappe.get_cached_value("Item", r.variety, "item_name"),
+			"plans": 0, "plants_to_stick": 0, "farms": set(),
+			"next_sticking": None})
+		v["plans"] += 1
+		v["plants_to_stick"] += cint(r.total_plants_to_stick)
+		if r.farm:
+			v["farms"].add(r.farm)
+		if r.first_sticking_date:
+			d = str(r.first_sticking_date)
+			if not v["next_sticking"] or d < v["next_sticking"]:
+				v["next_sticking"] = d
+	for v in out.values():
+		v["farms"] = sorted(v["farms"])
+	return sorted(out.values(), key=lambda v: (v["variety_name"] or v["variety"]))
+
+
+@frappe.whitelist()
+def propagation_schedule(propagation_plan=None, plan=None, variety=None,
+                         farm=None, from_date=None, weeks=None):
+	"""Every dated thing the unit has to do for one variety, in order.
+
+	Built from three sources and kept honest about which is which:
+
+	    the plan's own dates      TC order, TC on farm, first sticking
+	    the intake rows           a consignment due, and when it can be worked
+	    the week rows + protocol  sticking, and what follows it
+
+	Only the first two are stored. The rest are derived here -- sticking date
+	plus weeks_on_tray is when rooting is done, plus weeks_on_pot is when it
+	leaves the nursery, plus hardening_weeks is when it can travel -- because
+	storing them would mean a protocol change silently leaving a hundred stale
+	dates behind on approved plans.
+	"""
+	_guard()
+	detail = propagation_detail(plan=plan, propagation_plan=propagation_plan,
+	                            variety=variety, farm=farm)
+	if not detail.get("propagation_plan"):
+		return dict(detail, events=[], by_week=[], phases=[])
+
+	version = detail.get("protocol")
+	spec = frappe.db.get_value(
+		"Crop Protocol Version", version,
+		["weeks_on_tray", "weeks_on_pot", "hardening_weeks", "weeks_to_max_pc",
+		 "sticking_to_planting_weeks", "establishment_weeks", "cycle_time_weeks",
+		 "route_summary", "max_multiplication_cycles"],
+		as_dict=True) if version else frappe._dict()
+	spec = spec or frappe._dict()
+
+	tray = cint(spec.get("weeks_on_tray"))
+	pot = cint(spec.get("weeks_on_pot"))
+	harden = cint(spec.get("hardening_weeks"))
+	to_plant = cint(spec.get("sticking_to_planting_weeks")) or (tray + pot + harden)
+
+	events = []
+
+	def add(date, kind, title, qty=None, note=None, source="derived", ref=None):
+		if not date:
+			return
+		d = getdate(date)
+		if from_date and d < getdate(from_date):
+			return
+		y, w = iso_year_week(d)
+		events.append({
+			"date": str(d), "iso_year": y, "week_no": w,
+			"week_label": "%s-W%02d" % (y, w),
+			"kind": kind, "kind_label": PROP_EVENT_TYPES.get(kind, kind),
+			"title": title, "qty": cint(qty) if qty else None,
+			"note": note, "source": source, "ref": ref,
+		})
+
+	t = detail["totals"]
+	add(t.get("tc_order_date"), "tc_order",
+	    _("Order {0} tissue culture plantlets").format(t.get("tc_plants") or 0),
+	    qty=t.get("tc_plants"), source="plan")
+	add(t.get("tc_on_farm_date"), "tc_arrive",
+	    _("Tissue culture due on farm"), qty=t.get("tc_plants"), source="plan")
+
+	for c in detail.get("consignments", []):
+		label = c.get("form") or _("material")
+		add(c.get("week"), "consignment",
+		    _("{0}: {1} due").format(label, "{:,}".format(cint(c.get("plants")))),
+		    qty=c.get("plants"),
+		    note=(_("{0} actually arrived on {1}").format(
+			    "{:,}".format(cint(c.get("actual_units"))), c.get("actual_on"))
+		          if c.get("actual_on") else c.get("state")),
+		    source="plan", ref=c.get("reference"))
+		add(c.get("ready_on"), "consignment_ready",
+		    _("{0} ready to work").format(label), qty=c.get("plants"),
+		    source="plan")
+
+	for w in detail.get("weeks", []):
+		stick_on = w.get("week_start_date")
+		plants = cint(w.get("plants_to_stick"))
+		if not stick_on or not plants:
+			continue
+		add(stick_on, "stick",
+		    _("Stick {0} cuttings").format("{:,}".format(cint(w.get("cuttings_required")) or plants)),
+		    qty=plants,
+		    note=(_("{0} delivered").format("{:,}".format(cint(w.get("delivered"))))
+		          if w.get("delivered") else None),
+		    source="plan", ref=w.get("label"))
+		if tray:
+			add(add_days(stick_on, tray * 7), "root",
+			    _("Rooting done -- pot up {0}").format("{:,}".format(plants)),
+			    qty=plants,
+			    note=_("{0} weeks on the tray").format(tray), ref=w.get("label"))
+		if pot:
+			add(add_days(stick_on, (tray + pot) * 7), "nursery",
+			    _("Out of the nursery"), qty=plants,
+			    note=_("{0} weeks on the pot").format(pot), ref=w.get("label"))
+		if harden:
+			add(add_days(stick_on, (tray + pot) * 7), "harden",
+			    _("Hardening starts"), qty=plants,
+			    note=_("{0} weeks hardening off").format(harden), ref=w.get("label"))
+		add(w.get("deliver_on") or (add_days(stick_on, to_plant * 7) if to_plant else None),
+		    "to_farm", _("{0} plants to the farm").format("{:,}".format(plants)),
+		    qty=plants, source="plan" if w.get("deliver_on") else "derived",
+		    ref=w.get("label"))
+
+	events.sort(key=lambda e: (e["date"], e["kind"]))
+	if weeks:
+		cutoff = str(add_days(getdate(from_date or nowdate()), cint(weeks) * 7))
+		events = [e for e in events if e["date"] <= cutoff]
+
+	by_week = {}
+	for e in events:
+		by_week.setdefault(e["week_label"], []).append(e)
+
+	phases = [
+		{"phase": _("On the tray"), "weeks": tray,
+		 "note": _("sticking to rooted")},
+		{"phase": _("On the pot"), "weeks": pot,
+		 "note": _("rooted to nursery-grown")},
+		{"phase": _("Hardening"), "weeks": harden,
+		 "note": _("nursery to field-ready")},
+		{"phase": _("Sticking to planting"), "weeks": to_plant,
+		 "note": _("the whole establishment")},
+	]
+
+	return dict(detail,
+	            events=events,
+	            by_week=[{"week": k, "events": v} for k, v in
+	                     sorted(by_week.items())],
+	            phases=[p for p in phases if p["weeks"]],
+	            route_summary=spec.get("route_summary"),
+	            cycle_time_weeks=cint(spec.get("cycle_time_weeks")),
+	            max_cycles=cint(spec.get("max_multiplication_cycles")),
+	            kinds=PROP_EVENT_TYPES)
