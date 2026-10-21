@@ -25,6 +25,13 @@ ZERO = [
 
 
 def execute():
+	# A patch that raises rolls back every doctype change in the migrate with
+	# it, so a patch must never assume a custom field is already there. This
+	# one filters on a field installed elsewhere; on a site that has not got it
+	# there is simply nothing to zero.
+	if not frappe.db.has_column("Crop Protocol", "custom_is_summer_flower"):
+		return
+
 	protocols = frappe.get_all("Crop Protocol",
 	                           filters={"custom_is_summer_flower": 1}, pluck="name")
 	if not protocols:
