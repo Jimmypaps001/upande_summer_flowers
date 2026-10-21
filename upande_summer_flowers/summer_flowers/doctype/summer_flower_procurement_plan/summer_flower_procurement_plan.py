@@ -1024,6 +1024,7 @@ def build(production_plan, method=None, entry_stage=None, supplier=None,
 			_("{0} takes its material off the farm's own crop, so there is nothing "
 			  "to buy. {1}").format(v.name, decided["reason"]),
 			title=_("Nothing to purchase"))
+	chosen_stage = bool(entry_stage)
 	if method == "Purchase":
 		entry_stage = entry_stage or decided["entry_stage"]
 		if entry_stage not in decided["buyable"]:
@@ -1039,6 +1040,31 @@ def build(production_plan, method=None, entry_stage=None, supplier=None,
 	per_unit = flt(journey["plants_per_unit"]) if journey else 1.0
 	weeks_to_ground = cint(journey["weeks_to_ground"]) if journey else 0
 	lead = cint(journey["lead_weeks"]) if journey else 0
+
+	# A crop bought two ways is bought BOTH ways, in the shares the route gives.
+	# Eryngium is 65% tissue culture and 35% roots, and the route has said so since
+	# it was written -- but the order was placed along one stage for the whole
+	# season, so the farm was told to buy TC for plants it had decided to buy as
+	# roots, and no roots at all. The two differ by 37 weeks of lead and by what one
+	# unit becomes, so it is not a rounding difference: it is the wrong order.
+	#
+	# A stage named by the caller still takes the whole order. That is a person
+	# overruling the route on purpose, and the share is not theirs to redistribute.
+	ways = []
+	if method == "Purchase" and not chosen_stage:
+		for w in (decided.get("ways_in") or []):
+			wj = sourcing.journey(v, w["stage"])
+			if not wj or flt(w.get("share_pct")) <= 0:
+				continue
+			ways.append({
+				"stage": w["stage"],
+				"share_pct": flt(w["share_pct"]),
+				"per_unit": flt(wj["plants_per_unit"]) or 1.0,
+				"notice_weeks": cint(wj["weeks_to_ground"]) + cint(wj["lead_weeks"]),
+			})
+	if len(ways) < 2:
+		ways = [{"stage": entry_stage, "share_pct": 100.0, "per_unit": per_unit,
+		         "notice_weeks": weeks_to_ground + lead}]
 	# A route that passes a motherstock is bought once, not once a cohort. The pool
 	# is established and then cut from every week, so its size is set by the busiest
 	# week's sticking and not by the season's total -- summing the cohorts bought
@@ -1150,7 +1176,10 @@ def build(production_plan, method=None, entry_stage=None, supplier=None,
 	doc.variety, doc.farm, doc.company = p.variety, p.farm, p.company
 	doc.season, doc.protocol = p.get("season"), v.name
 	doc.method = method
-	doc.entry_stage = entry_stage if method == "Purchase" else None
+	doc.entry_stage = (
+		" + ".join("%s %g%%" % (w["stage"], w["share_pct"]) for w in ways)
+		if (method == "Purchase" and len(ways) > 1)
+		else (entry_stage if method == "Purchase" else None))
 	doc.supplier = supplier if method == "Purchase" else None
 	doc.propagates_here = 1 if decided.get("propagates") else 0
 	doc.in_house_stages = ", ".join(decided.get("in_house") or []) or None
@@ -1193,38 +1222,51 @@ def build(production_plan, method=None, entry_stage=None, supplier=None,
 			beds_left -= beds
 		if capped:
 			trimmed += 1
-		# On a standing route the cohort buys nothing: it is stuck with cuttings off
-		# the pool, and the pool was bought once on the establishment line below.
-		units = 0 if standing else (
-			int(math.ceil(plants / per_unit)) if (plants and per_unit) else 0)
 		required = getdate(b.planting_date) if b.planting_date else None
-		order_by = None if standing else (
-			required - datetime.timedelta(weeks=weeks_to_ground + lead)
-			if required else None)
-		doc.append("requirements", {
-			"line_type": "Planting",
-			"drawn_from_pool": 1 if standing else 0,
-			"cohort": b.name,
-			"planting_week": ("%s-W%02d" % (cint(b.planting_year), cint(b.planting_week))
-			                  if b.planting_year else None),
-			"planting_date": b.planting_date,
-			"first_harvest_week": ("%s-W%02d" % (cint(b.first_harvest_year),
-			                                     cint(b.first_harvest_week))
-			                       if b.first_harvest_year else None),
-			"qty_at_field": plants,
-			"beds": beds,
-			"capped": capped,
-			"method": method,
-			"entry_stage": doc.entry_stage,
-			"supplier": doc.supplier,
-			"qty_to_order": units,
-			"required_at_site_date": required,
-			"order_by_date": order_by,
-			# What the plan is asking for. A supplier may come back with something
-			# else, and that goes in confirmed_delivery_week -- the two are not the
-			# same fact and the calendar keys on the second.
-			"expected_delivery_date": required,
-		})
+		# One line per way in. The cohort's plants are split in the route's shares,
+		# the last way taking the remainder so the lines still add to the cohort --
+		# a rounded share dropped plants that nobody then bought.
+		taken = 0
+		for i, way in enumerate(ways):
+			share = (plants - taken) if i == len(ways) - 1 else int(
+				round(plants * way["share_pct"] / 100.0))
+			taken += share
+			# On a standing route the cohort buys nothing: it is stuck with cuttings
+			# off the pool, and the pool was bought once on the establishment line
+			# below.
+			units = 0 if standing else (
+				int(math.ceil(share / way["per_unit"]))
+				if (share and way["per_unit"]) else 0)
+			order_by = None if standing else (
+				required - datetime.timedelta(weeks=way["notice_weeks"])
+				if required else None)
+			doc.append("requirements", {
+				"line_type": "Planting",
+				"drawn_from_pool": 1 if standing else 0,
+				"cohort": b.name,
+				"planting_week": ("%s-W%02d" % (cint(b.planting_year),
+				                                cint(b.planting_week))
+				                  if b.planting_year else None),
+				"planting_date": b.planting_date,
+				"first_harvest_week": ("%s-W%02d" % (cint(b.first_harvest_year),
+				                                     cint(b.first_harvest_week))
+				                       if b.first_harvest_year else None),
+				"qty_at_field": share,
+				# Beds are the cohort's, not the share's: the two ways in fill the
+				# same ground. Counting them on every line would book the block twice.
+				"beds": beds if i == 0 else 0,
+				"capped": capped,
+				"method": method,
+				"entry_stage": way["stage"],
+				"supplier": doc.supplier,
+				"qty_to_order": units,
+				"required_at_site_date": required,
+				"order_by_date": order_by,
+				# What the plan is asking for. A supplier may come back with something
+				# else, and that goes in confirmed_delivery_week -- the two are not the
+				# same fact and the calendar keys on the second.
+				"expected_delivery_date": required,
+			})
 
 	if standing:
 		# One line for the one purchase, dated back through the function that knows

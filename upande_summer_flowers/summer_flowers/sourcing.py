@@ -26,7 +26,7 @@ import frappe
 from frappe import _
 from frappe.utils import cint, flt, getdate
 
-from upande_summer_flowers.summer_flowers.crop_protocol import ROUTE_END
+from upande_summer_flowers.summer_flowers.crop_protocol import ROUTE_END, ROUTE_ENTRY
 
 
 def _blocks(version):
@@ -64,10 +64,21 @@ def journey(version, from_stage):
 		return None
 	start = names.index(from_stage)
 
+	# Only this stage's own chain. A route can be bought into more than one way --
+	# Eryngium is bought as TC and as roots, in the same year for the same variety --
+	# and the chains run one after another down the same table. Walking to the end
+	# of the table from the first of them swallowed the second: TC came out at 22
+	# weeks instead of 7, because it was given the roots leg's fifteen, and one TC
+	# jar was credited with 10.2 plants, because the roots' x15 lift was applied to
+	# it. A chain ends where the next way in begins.
+	end = next((i for i in range(start + 1, len(blocks))
+	            if blocks[i][0].stage in ROUTE_ENTRY), len(blocks))
+	chain = blocks[start:end]
+
 	weeks = 0
 	plants_per_unit = 1.0
 	standing = None
-	for stage, steps in blocks[start:]:
+	for stage, steps in chain:
 		if cint(stage.get("is_standing")):
 			# A pool is not a step on a conveyor. Carrying its multiplication into
 			# plants_per_unit would say one plantlet becomes four plants, when what it
