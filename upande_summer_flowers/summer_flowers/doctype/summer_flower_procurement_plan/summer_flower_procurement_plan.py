@@ -129,7 +129,8 @@ class SummerFlowerProcurementPlan(Document):
 					                                 {"company": self.company,
 					                                  "is_group": 0}, "name"),
 					"description": _("{0} as {1} for planting {2}").format(
-						self.variety, self.entry_stage or _("plants"),
+						self.variety,
+						r.entry_stage or self.entry_stage or _("plants"),
 						r.planting_week or ""),
 				}
 				# A site field, but one this chain cannot skip: custom_purpose is
@@ -363,6 +364,22 @@ class SummerFlowerProcurementPlan(Document):
 		return {"season_plants": total,
 		        "basis": _("the production plan's weekly plantings, summed")}
 
+	def main_entry_stage(self):
+		"""The stage the most of this order comes in as.
+
+		entry_stage reads as a summary where a route is bought more than one way
+		-- "TC 65% + Roots 35%" -- and that is a label, not a stage. Handing it to
+		anything that looks a stage up by name asks for a form that does not
+		exist, so the question is answered from the lines, which each name one.
+		"""
+		weight = {}
+		for r in (self.requirements or []):
+			if r.entry_stage:
+				weight[r.entry_stage] = weight.get(r.entry_stage, 0) + cint(r.qty_at_field)
+		if weight:
+			return max(weight, key=weight.get)
+		return self.entry_stage
+
 	@frappe.whitelist()
 	def propose_allocation(self, units=None, suppliers=None):
 		"""Fill the allocation from what the units' troughs will actually hold.
@@ -431,12 +448,12 @@ class SummerFlowerProcurementPlan(Document):
 				dests.append({"supplier": sup.get("supplier"),
 				              "share_pct": flt(sup.get("share_pct"))})
 			res = A.allocate(self.production_plan, dests,
-			                 form=self.entry_stage or "Roots",
+			                 form=self.main_entry_stage() or "Roots",
 			                 version=self.protocol)
 		else:
 			res = A.allocate_by_capacity(self.production_plan, units=units,
 			                             suppliers=suppliers,
-			                             form=self.entry_stage or "Roots",
+			                             form=self.main_entry_stage() or "Roots",
 			                             version=self.protocol)
 		self.set("propagation_allocation", [])
 		for d in res["destinations"]:
