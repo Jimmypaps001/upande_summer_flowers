@@ -482,16 +482,25 @@ class SummerFlowerPropagationPlan(Document):
 
 		self.set("sources", [])
 		sg = m.get("suggested") or {}
+		# What each way in has to deliver, and therefore what has to be bought.
+		# The column held plants for the tissue culture row and root units for
+		# the roots row, so reading down it added jars to roots and the sum was
+		# neither one.
+		tc_plants = sum(cint(w.get("by_tc")) for w in (m.get("weeks") or []))
+		root_plants = sum(cint(w.get("by_roots")) for w in (m.get("weeks") or []))
 		if cint(sg.get("tc")):
 			first = (m.get("tc_order_schedule") or [{}])[0].get("week")
 			self.append("sources", {
 				"source_type": "New Motherstock (TC)",
 				"mother_plants": 0,
-				"total_cuttings": cint(sg["tc"]),
+				"total_cuttings": self._units_for("TC", tc_plants) or cint(sg["tc"]),
 				"available_from": first,
 				"notes": _("Tissue culture, {0} weeks of lead and {1} in "
-				           "propagation before it is plantable.").format(
-					cint(m.get("tc_lead_weeks")), cint(m.get("tc_weeks_to_ground"))),
+				           "propagation before it is plantable. {2} in a hundred "
+				           "do not take, so the order is the plants it has to "
+				           "stand plus that.").format(
+					cint(m.get("tc_lead_weeks")), cint(m.get("tc_weeks_to_ground")),
+					round(100 * (1 - self._plants_per_unit("TC")))),
 			})
 		if cint(sg.get("roots")):
 			# When the unit can be worked with, not when it was ordered. Roots
@@ -502,15 +511,17 @@ class SummerFlowerPropagationPlan(Document):
 			self.append("sources", {
 				"source_type": "Bought-in Rooted Cuttings",
 				"mother_plants": 0,
-				"total_cuttings": cint(sg["roots"]),
+				"total_cuttings": self._units_for("Roots", root_plants) or cint(sg["roots"]),
 				"available_from": first,
 				"notes": _("Roots, {0} weeks of lead and {1} in propagation. One "
-				           "root becomes {2} plants. They come in once and are "
-				           "held in the coldroom, then drawn out week by week as "
-				           "the plantings need them.").format(
+				           "root is lifted {2} times and stands {3} plants once "
+				           "the losses are off it. They come in once and are held "
+				           "in the coldroom, then drawn out week by week as the "
+				           "plantings need them.").format(
 					cint(m.get("root_lead_weeks")),
 					cint(m.get("root_weeks_to_ground")),
-					flt(m.get("returns_per_plant"))),
+					flt(m.get("returns_per_plant")),
+					round(self._plants_per_unit("Roots"), 2)),
 			})
 		self.tc_plants_required = cint(sg.get("tc"))
 		if m.get("tc_order_schedule"):
@@ -525,6 +536,30 @@ class SummerFlowerPropagationPlan(Document):
 			if c.get("tc_order_date_committed"):
 				self.tc_order_date = c["tc_order_date_committed"]
 		self._cover_from_bought(m)
+
+	def _plants_per_unit(self, stage):
+		"""What one bought unit of `stage` actually puts in the ground.
+
+		The intake is what has to ARRIVE, and a jar is not a plant: the route
+		loses twelve per cent in propagation, so 297,554 plants need 338,000
+		jars and not 297,554 of them. A root is not fifteen plants either -- it
+		is fifteen lifted, twelve per cent of which do not take, and twelve per
+		cent of those again lost in the trough.
+
+		Answered by the same walk the procurement plan sizes its order with, so
+		the two documents cannot name different quantities for one purchase.
+		"""
+		from upande_summer_flowers.summer_flowers import sourcing
+
+		if not self.protocol:
+			return 1.0
+		version = frappe.get_cached_doc("Crop Protocol Version", self.protocol)
+		j = sourcing.journey(version, stage)
+		return flt((j or {}).get("plants_per_unit")) or 1.0
+
+	def _units_for(self, stage, plants):
+		per_unit = self._plants_per_unit(stage)
+		return int(math.ceil(cint(plants) / per_unit)) if (plants and per_unit) else 0
 
 	def _root_withdrawals(self, m):
 		"""What comes out of the cold store, and when.
@@ -553,7 +588,8 @@ class SummerFlowerPropagationPlan(Document):
 					"week_start_date": pull["week"], "week_iso": pull["week_iso"],
 					"form": "Roots", "source": _("Cold store"),
 					"reference": _("One consignment, drawn down"),
-					"units": cint(pull["roots"]),
+					"units": self._units_for("Roots",
+					                         cint((w or {}).get("by_roots"))),
 					"plants": cint((w or {}).get("by_roots")),
 					"ready_on": (w or {}).get("week"),
 					"ready_week": (w or {}).get("week_iso"),
@@ -598,7 +634,7 @@ class SummerFlowerPropagationPlan(Document):
 				"reference": _("{0} filled - {1} plants, lifted {2}x").format(
 					row["trough"], "{:,}".format(cint(row["plants"])), len(lifts)),
 				# Roots out of store, which is the trough\'s fill converted back.
-				"units": int(math.ceil(cint(row["plants"]) / per_root)) if per_root else 0,
+				"units": self._units_for("Roots", cint(row["plants"])),
 				"plants": cint(row["plants"]),
 				"ready_on": (first or {}).get("ready_on"),
 				# _iso(None) is today's week, not "unknown" -- a blank date must
@@ -617,7 +653,7 @@ class SummerFlowerPropagationPlan(Document):
 				"week_iso": _iso(when),
 				"form": "Roots", "source": _("Cold store"),
 				"reference": _("No trough free - raised outside or bought as plants"),
-				"units": int(math.ceil(cint(short) / per_root)) if per_root else 0,
+				"units": self._units_for("Roots", cint(short)),
 				"plants": cint(short),
 				"ready_on": None, "ready_week": "", "deliver_on": None, "plant_week": "",
 			})
@@ -680,7 +716,7 @@ class SummerFlowerPropagationPlan(Document):
 					"source": h.get("supplier"),
 					"reference": _("Batch {0}, lift {1} of {2}%").format(
 						h.get("batch"), h.get("lift"), h.get("share_pct")),
-					"units": cint(h["plants"]),
+					"units": self._units_for("TC", cint(h["plants"])),
 					"plants": cint(h["plants"]),
 					"ready_on": h["week"], "ready_week": h["week_iso"],
 					# The batcher has already worked out which planting week this
@@ -700,13 +736,28 @@ class SummerFlowerPropagationPlan(Document):
 					                         m.get("tc_weeks_to_ground")),
 					"week_iso": "", "form": "Tissue Culture",
 					"source": _("Not allocated to a lab yet"),
-					"units": cint(w["by_tc"]), "plants": cint(w["by_tc"]),
+					"units": self._units_for("TC", cint(w["by_tc"])),
+					"plants": cint(w["by_tc"]),
 					"ready_on": w.get("week"), "ready_week": w.get("week_iso"),
 					"deliver_on": w.get("week"), "plant_week": w.get("week_iso"),
 				})
 		for row in self.intake:
 			if row.week_start_date and not row.week_iso:
 				row.week_iso = _iso(row.week_start_date)
+
+		# The season total is the consignments added up, not the season rounded
+		# once on its own. Rounding both ways left the two tables of one document
+		# thirteen jars apart, which is the kind of difference a reader spends an
+		# afternoon on.
+		of_form = {"New Motherstock (TC)": "Tissue Culture",
+		           "Bought-in Rooted Cuttings": "Roots"}
+		for src in (self.sources or []):
+			form = of_form.get(src.source_type)
+			if not form:
+				continue
+			booked = sum(cint(r.units) for r in self.intake if r.form == form)
+			if booked:
+				src.total_cuttings = booked
 
 	def motherstock_line(self):
 		"""The Motherstock Plan behind this season, built if it is not there yet."""
