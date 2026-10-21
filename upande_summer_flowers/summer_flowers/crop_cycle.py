@@ -309,11 +309,13 @@ class SummerFlowerCropCycle(CropCycle):
 		"""
 		if not self.get("custom_block"):
 			frappe.throw(_("A block-scoped cycle needs a Block."))
-		if self.get("bed_range"):
-			frappe.throw(_(
-				"This cycle is scoped to block {0}, so its beds come from the block. "
-				"Clear the Bed Ranges table, or set the scope to Greenhouse."
-			).format(self.custom_block))
+		# A block cycle naming its beds is how the farm records a planting: the
+		# block register says "beds 1 to 44 of B24", and those bed numbers are
+		# what the field works to. This used to be refused, on the reading that
+		# a block cycle's beds belong to the block rather than to the cycle --
+		# which left every planting as a bed COUNT with no way to say which
+		# beds, and left the native planted_area and qty_planted at zero
+		# because they are summed from the bed rows.
 		# The native greenhouse field is unique, so it stays empty; the greenhouse is
 		# still recorded, derived from the block, so reports do not lose it.
 		self.greenhouse = None
