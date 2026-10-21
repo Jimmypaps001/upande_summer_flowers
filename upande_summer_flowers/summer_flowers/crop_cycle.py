@@ -105,6 +105,7 @@ class EffectiveProtocol:
 class SummerFlowerCropCycle(CropCycle):
 	# ----------------------------------------------------------- one variety
 	def before_validate(self):
+		self.settle_crop_class()
 		"""Keep custom_sf_variety filled from the native variety.
 
 		Both are Link fields to Item, both were labelled "Variety", and both were
@@ -121,6 +122,23 @@ class SummerFlowerCropCycle(CropCycle):
 		parent = getattr(super(), "before_validate", None)
 		if parent:
 			parent()
+
+	def settle_crop_class(self):
+		"""Crop Class is the one question asked first; the rest follows it.
+
+		`custom_is_summer_flower_cycle` is what eighty-odd fields hang their
+		depends_on off, so it stays -- but it is now derived from the class
+		rather than typed, which is how a cycle came to be flagged one way and
+		planned the other.
+		"""
+		cls = self.get("custom_crop_class")
+		if not cls:
+			# An existing cycle has no class yet. Read it from the flag it was
+			# saved with, so nothing already recorded changes meaning.
+			cls = "Summer Flower" if cint(self.get("custom_is_summer_flower_cycle")) \
+				else "Rose"
+			self.custom_crop_class = cls
+		self.custom_is_summer_flower_cycle = 1 if cls == "Summer Flower" else 0
 
 	def fill_farm_from_block(self):
 		"""A block cycle's farm comes from its block.
@@ -336,6 +354,24 @@ class SummerFlowerCropCycle(CropCycle):
 			).format(flt(self.custom_area_planted_sqm), self.custom_block,
 			         round(area_sqm, 2)))
 
+		# Beds are what a grower records -- "we planted nineteen beds". Area is
+		# what the maths needs. Deriving one from the other is the difference
+		# between a cycle that knows what is standing in it and one that reports
+		# nothing: of 341 loaded cycles, 339 carried a bed count and no area, so
+		# every plant count, every block rollup and every biological asset value
+		# on them was zero.
+		if not flt(self.custom_area_planted_sqm) and cint(self.custom_beds_planted):
+			block = None
+			if self.get("custom_block"):
+				try:
+					block = frappe.get_doc("Block", self.custom_block)
+				except frappe.DoesNotExistError:
+					block = None
+			per_bed = self._per_bed_area(block) if block is not None else 0
+			if per_bed > 0:
+				self.custom_area_planted_sqm = round(
+					cint(self.custom_beds_planted) * per_bed, 2)
+
 		self.custom_area_utilisation_pct = (
 			flt(self.custom_area_planted_sqm) * 100.0 / area_sqm if area_sqm else 0
 		)
@@ -345,6 +381,168 @@ class SummerFlowerCropCycle(CropCycle):
 				flt(self.custom_planting_density_per_sqm)))
 
 	# ---------------------------------------------------------------- dates
+	def on_update(self):
+		"""The block is written after the cycle exists, not during validate.
+
+		The bed range put on the block links back to this cycle by name. Doing
+		that in validate meant the link was written while the cycle was still
+		unsaved, and every insert died on "Could not find Row #1: Crop Cycle:
+		CC-...". A document cannot be referred to until it is there.
+		"""
+		parent = getattr(super(), "on_update", None)
+		if callable(parent):
+			parent()
+		if self.get("custom_cycle_scope") == "Block" and \
+				not self.flags.get("skip_block_ledger"):
+			# A bulk reload saves hundreds of cycles onto the same block; each
+			# save would rewrite the block's whole bed ledger. The caller sets
+			# this flag and rebuilds the block once at the end instead.
+			self.write_block_ledger()
+
+	def _per_bed_area(self, block):
+		"""How big one bed on this block is, in m2.
+
+		The ledger multiplies bed_length by bed_width to get a bed's area, so
+		whatever goes in those two fields has to describe ONE bed. Writing the
+		block's own length and width there -- which is what this used to do --
+		gave every bed the area of the whole block, and a 6.8 ha block came out
+		carrying two billion plants.
+
+		Three sources, best first. None of them is invented: if the ground is
+		not described anywhere, no bed range is written at all, because a made-up
+		bed size would be indistinguishable from a measured one once it is saved.
+		"""
+		beds = cint(self.get("custom_beds_planted"))
+		if beds <= 0:
+			return 0.0
+		# 1. What this planting actually covered, divided by the beds it covered.
+		planted = flt(self.get("custom_area_planted_sqm"))
+		if planted > 0:
+			return planted / beds
+		# 2. A bed the block already has. This is deliberately ahead of the
+		# block's area, because `custom_total_beds` is kept equal to the beds
+		# actually PLANTED -- so dividing the block's area by it makes the bed
+		# shrink every time more is planted, and the next cycle saved against
+		# the same block gets a different bed size. A bed that exists is a
+		# measurement; the division is a moving average of occupancy.
+		for b in (block.get("individual_beds") or []):
+			if flt(b.get("area_m2")) > 0:
+				return flt(b.area_m2)
+		# 3. The block's area over the beds it is cut into. Right only while
+		# the block is not over-planted, which is why it comes after a real bed.
+		capacity = cint(block.get("custom_total_beds"))
+		area = flt(block.get("block_area")) or \
+			flt(block.get("custom_net_area_ha")) * 10_000
+		if area > 0 and capacity > 0:
+			return area / capacity
+		# 4. The average bed the farm actually has on record.
+		from upande_summer_flowers.summer_flowers.crop_protocol import farm_bed_geometry
+		avg, _beds = farm_bed_geometry(self.get("farm"))
+		return flt(avg)
+
+	def _is_standing(self):
+		"""Is this cycle still holding ground today?
+
+		Beds are replanted season after season. Kariki Naivasha's block holds
+		1,951 beds and its cycles plant 6,495 of them across 2024-2027 -- the
+		same ground, three times over. Giving every cycle its own fresh bed
+		numbers made the block read as three times the size it is, so a cycle
+		only occupies beds while it is actually in the ground.
+		"""
+		if self.get("custom_sf_cycle_status") in ENDED_STATES:
+			return False
+		if self.get("custom_actual_uproot_date"):
+			return getdate(self.custom_actual_uproot_date) > getdate(nowdate())
+		uproot = self.get("custom_planned_uproot_date")
+		if uproot:
+			return getdate(uproot) > getdate(nowdate())
+		return True
+
+	def write_block_ledger(self):
+		"""Put this cycle's planting onto the Block, as a greenhouse cycle does.
+
+		A greenhouse cycle has always written its beds onto the Greenhouse's own
+		ledger -- that is what makes the greenhouse know what is standing in it.
+		A block cycle read the block's area and wrote nothing back, so a block
+		never knew what it was carrying and every figure derived from its beds
+		was a figure about empty ground.
+
+		The Block now carries the same tables as the Greenhouse, so the same
+		thing can be said on it: one bed range for this cycle, which the block
+		expands into its own beds and rolls up on save.
+		"""
+		# A summer flower cycle can carry its variety in either field: the native
+		# `variety` or the summer flower `custom_sf_variety`. Reading only the
+		# first made a cycle with the second silently skip the block ledger --
+		# the planting happened, the block never heard about it.
+		variety = self.variety or self.get("custom_sf_variety")
+		if not self.get("custom_block") or not variety:
+			return
+		beds = cint(self.get("custom_beds_planted"))
+		if beds <= 0:
+			return
+		try:
+			block = frappe.get_doc("Block", self.custom_block)
+		except frappe.DoesNotExistError:
+			return
+		if not block.meta.has_field("bed_range"):
+			return            # an older Block that has not been mirrored yet
+
+		# One row per cycle, replaced rather than added to, so re-saving a cycle
+		# does not plant its beds twice.
+		rows = [r for r in (block.get("bed_range") or [])
+		        if (r.crop_cycle or "") != self.name]
+		if not self._is_standing():
+			# Uprooted or ended: the cycle keeps its own record, but it stops
+			# occupying the block so the ground it used can be replanted.
+			if len(rows) != len(block.get("bed_range") or []):
+				block.set("bed_range", rows)
+				block.flags.ignore_permissions = True
+				block.save()
+			return
+
+		per_bed = self._per_bed_area(block)
+		if per_bed <= 0:
+			frappe.msgprint(
+				_("Block {0} has no bed size on record, so cycle {1} could not be "
+				  "put on its bed ledger. Set the block's area and total beds.")
+				.format(self.custom_block, self.name),
+				indicator="orange", alert=True)
+			return
+		# The block's length is the length of a bed running down it, which is how
+		# the Karen blocks are already laid out (38.46 m beds, 1.3 m apart); the
+		# width is then whatever that length and the bed's area imply.
+		length = flt(block.get("block_length")) or round(per_bed ** 0.5, 4)
+		width = round(per_bed / length, 4)
+
+		# The cycle is what actually stands on the ground, so the block has to
+		# agree with IT, not with the protocol's intended density. Where the
+		# cycle knows both its plants and its area, that ratio is the density --
+		# otherwise a block rolled up 19,000 plants for a cycle recording
+		# 12,632 and both numbers claimed to describe the same nineteen beds.
+		density = 0.0
+		if cint(self.get("custom_live_plant_count")) and flt(self.get("custom_area_planted_sqm")):
+			density = (cint(self.custom_live_plant_count)
+			           / flt(self.custom_area_planted_sqm))
+		density = density or flt(self.get("custom_planting_density_per_sqm")) or \
+			flt(frappe.db.get_value("Crop Protocol Version",
+			                        self.get("custom_crop_protocol_version"),
+			                        "plants_per_sqm_net"))
+		taken = max([cint(r.to_bed) for r in rows] or [0])
+		block.set("bed_range", rows)
+		block.append("bed_range", {
+			"from_bed": taken + 1, "to_bed": taken + beds,
+			"variety": variety,
+			"crop_protocol": self.get("crop_protocol"),
+			"planting_date": self.get("custom_planting_date") or self.planting_date,
+			"bed_length": length,
+			"bed_width": width,
+			"plants_per_sqm": density,
+			"crop_cycle": self.name,
+		})
+		block.flags.ignore_permissions = True
+		block.save()
+
 	def set_dates(self):
 		"""Planned dates from the effective protocol; actuals override forward.
 

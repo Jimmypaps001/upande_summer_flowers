@@ -129,9 +129,16 @@ def from_stock(doc, version=None):
 	# The plants themselves are the variety's own Item. Nothing else can be:
 	# the variety IS an Item on this site, and inventing a second one for the
 	# same plant is how a stock figure stops meaning anything.
+	# Roots have their own item -- a root is not a plant. Tissue culture
+	# usually does not: a plantlet IS the variety, arriving as the thing it
+	# will be. Where the route names no TC item, the variety stands for it,
+	# and the two directions keep them apart: a positive movement INTO a unit
+	# is material arriving, a negative one is plants leaving for the farm.
+	# Without that fallback every TC receipt on the site was unreadable, which
+	# is most of them.
 	wanted = [
 		(items.get("Roots"), ROOTS_IN, "Roots", 1),
-		(items.get("TC"), TC_IN, "Tissue Culture", 1),
+		(items.get("TC") or doc.variety, TC_IN, "Tissue Culture", 1),
 		(doc.variety, TO_FARM, "Plants", -1),
 	]
 

@@ -81,6 +81,7 @@
   "supplied_coverage_pct",
   "tc_choice_note",
   "space_section",
+  "ground_demanded",
   "space_required_ha",
   "space_stated_ha",
   "space_measured_ha",
@@ -452,7 +453,7 @@
    "fieldtype": "Column Break"
   },
   {
-   "description": "Largest single sticking week. This — not the annual total — sizes the motherstock.",
+   "description": "Largest single sticking week. This \u2014 not the annual total \u2014 sizes the motherstock.",
    "fieldname": "peak_weekly_sticking",
    "fieldtype": "Int",
    "label": "Peak Weekly Sticking",
@@ -556,14 +557,14 @@
   },
   {
    "depends_on": "eval:doc.tc_choice_committed",
-   "description": "Roots to buy alongside the tissue culture, for a crop raised both ways. One root becomes several plants, so this is the smaller number and the far earlier order — roots are a year in the making.",
+   "description": "Roots to buy alongside the tissue culture, for a crop raised both ways. One root becomes several plants, so this is the smaller number and the far earlier order \u2014 roots are a year in the making.",
    "fieldname": "roots_committed",
    "fieldtype": "Int",
    "label": "Confirmed Roots",
    "non_negative": 1
   },
   {
-   "description": "Who sends how much, and on what cycle. A lab does not send a year's order in one crate — it sends on its own rhythm, and the farm buys from several at once. Set from the material plan.",
+   "description": "Who sends how much, and on what cycle. A lab does not send a year's order in one crate \u2014 it sends on its own rhythm, and the farm buys from several at once. Set from the material plan.",
    "fieldname": "tc_supplier_allocations",
    "fieldtype": "Small Text",
    "label": "TC Supplier Allocations",
@@ -599,6 +600,14 @@
    "fieldname": "space_section",
    "fieldtype": "Section Break",
    "label": "Space: What This Plan Needs Against What We Have"
+  },
+  {
+   "fieldname": "ground_demanded",
+   "fieldtype": "Small Text",
+   "label": "Ground This Plan Demands",
+   "read_only": 1,
+   "in_list_view": 0,
+   "description": "Beds and plants at the peak, and the hectares those come to when the farm has a measured bed."
   },
   {
    "description": "Peak concurrent beds at the protocol's net area per bed. The peak, not the sum: a block that hosts two plantings in turn is one piece of land, not two.",

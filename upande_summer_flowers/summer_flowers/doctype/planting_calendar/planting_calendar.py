@@ -559,8 +559,72 @@ def refresh_coverage(block):
 	frappe.db.set_value("Block", block, coverage_of(block), update_modified=False)
 
 
+class _CycleAsPlanting:
+	"""A Crop Cycle read as a planting, so planning can see it.
+
+	What is actually standing on a block is recorded as a Crop Cycle -- that is
+	where the farm writes its actuals. A Planting Calendar is raised by the
+	planner and often never exists for ground that was planted before this
+	system, or planted straight onto a block. Reading only calendars made a
+	farm carrying 1.4 million standing plants look like empty ground, and the
+	plan bought the whole season again.
+
+	The flush table is the same child doctype on both documents, so the figures
+	downstream need no translation.
+	"""
+
+	def __init__(self, doc):
+		self._doc = doc
+		self.name = doc.name
+		self.doctype = "Crop Cycle"
+		self.block = doc.get("custom_block")
+		self.variety = doc.get("variety") or doc.get("custom_sf_variety")
+		self.farm = doc.get("farm")
+		self.beds = cint(doc.get("custom_beds_planted"))
+		self.plants = cint(doc.get("custom_live_plant_count"))
+		self.planting_date = doc.get("custom_planting_date") or doc.get("planting_date")
+		self.flush_projection = doc.get("custom_flush_schedule") or []
+
+		# The planner measures ground in hectares; a cycle records square metres.
+		self.net_area_ha = flt(doc.get("custom_area_planted_sqm")) / 10_000.0
+		# The rest of what a plan row asks of a planting. A cycle keeps the same
+		# facts under its own names, or derives them from the planting date --
+		# there is no second source for any of these, so nothing is invented.
+		self.pinch_date = (doc.get("custom_actual_pinch_date")
+		                   or doc.get("custom_planned_pinch_date"))
+		self.expected_stems_life = cint(doc.get("custom_expected_stems_life"))
+		self.harvest_week_family = doc.get("custom_harvest_week_family")
+		if self.planting_date:
+			iso = getdate(self.planting_date).isocalendar()
+			self.planting_year, self.planting_week = iso[0], iso[1]
+		else:
+			self.planting_year = self.planting_week = None
+
+	def end_date(self):
+		return getdate(self._doc.get("custom_actual_uproot_date")
+		               or self._doc.get("custom_planned_uproot_date")
+		               or self.planting_date)
+
+	def first_harvest(self):
+		"""(year, week) of the first flush, read the same way a calendar reads it."""
+		rows = [r for r in (self.flush_projection or []) if r.year and r.week_no]
+		if not rows:
+			return None, None
+		head = min(rows, key=lambda r: (cint(r.year), cint(r.week_no)))
+		return cint(head.year), cint(head.week_no)
+
+	def __getattr__(self, item):
+		return getattr(self._doc, item)
+
+
 def standing_plantings(farm, variety, as_of=None):
-	"""Plantings that will still be producing on or after `as_of`."""
+	"""Everything of this variety still in the ground at `farm` on `as_of`.
+
+	Two sources, because the farm uses two documents: the planner's Planting
+	Calendar and the Crop Cycle the farm actually records against a block. A
+	cycle raised FROM a calendar is skipped so one planting is not counted
+	twice.
+	"""
 	as_of = getdate(as_of or nowdate())
 	names = frappe.get_all(
 		"Planting Calendar",
@@ -571,11 +635,30 @@ def standing_plantings(farm, variety, as_of=None):
 		},
 		pluck="name",
 	)
-	out = []
+	out, seen = [], set()
 	for name in names:
 		doc = frappe.get_doc("Planting Calendar", name)
 		if doc.end_date() >= as_of:
 			out.append(doc)
+			seen.add(name)
+
+	# The cycles. `variety` lives in either field on a summer flower cycle.
+	rows = frappe.get_all(
+		"Crop Cycle",
+		filters={"farm": farm, "docstatus": ["<", 2]},
+		or_filters=[{"variety": variety}, {"custom_sf_variety": variety}],
+		fields=["name", "custom_planting_calendar", "custom_sf_cycle_status"])
+	for r in rows:
+		# Raised from a calendar that is already in the list: same planting.
+		if r.custom_planting_calendar and r.custom_planting_calendar in seen:
+			continue
+		if (r.custom_sf_cycle_status or "") == "Ended":
+			continue
+		pl = _CycleAsPlanting(frappe.get_doc("Crop Cycle", r.name))
+		if not (pl.block and pl.planting_date):
+			continue
+		if pl.end_date() >= as_of:
+			out.append(pl)
 	return out
 
 

@@ -242,9 +242,19 @@ def farm_bed_geometry(farm):
 	"""
 	if not farm:
 		return None, None
+	# A bed reaches its farm two ways: its own `farm` field, and the greenhouse
+	# it sits in. Only 4,789 of 25,457 beds on this site carry the first, so
+	# reading it alone returned nothing for most farms -- and a missing bed size
+	# makes the production plan report 0 ha of ground required, which reads as
+	# "needs no land" rather than "we do not know". plan_preview already joins
+	# through the greenhouse; this now agrees with it, and falls back to the
+	# bed's own farm so neither route is lost.
 	area = frappe.db.sql(
-		"""select avg(bed_area) from tabBed where farm=%s and ifnull(bed_area,0)>0""",
-		farm)[0][0]
+		"""select avg(b.bed_area) from tabBed b
+		   left join tabWarehouse w on w.name = b.greenhouse
+		   where ifnull(b.bed_area, 0) > 0
+		     and (w.custom_farm = %(farm)s or b.farm = %(farm)s)""",
+		{"farm": farm})[0][0]
 	beds = frappe.db.sql(
 		"""select avg(custom_total_beds) from tabBlock
 		   where farm=%s and ifnull(custom_total_beds,0)>0""", farm)[0][0]

@@ -452,6 +452,22 @@ class SummerFlowerProductionPlan(Document):
 		# gets approved.
 		self._bed_size_unknown = not sqm_per_bed
 
+		# What the plan asks of the land, said in the units that are always
+		# knowable. Beds and plants come from the planting rows; hectares need a
+		# measured bed, and when there is none the figure is left out rather than
+		# shown as zero -- a plan reading "0 ha" looks like one that needs no
+		# ground, which is how a plan with nowhere to go gets approved.
+		plants_peak = sum(cint(r.plants) for r in self.plan_blocks
+		                  if r.get("is_new_planting"))
+		parts = ["{0} beds at the peak".format(cint(self.beds_required_peak)),
+		         "{0} plants".format("{:,}".format(plants_peak))]
+		if sqm_per_bed:
+			parts.append("{0} ha at {1} m2 a bed".format(
+				round(self.space_required_ha, 3), round(sqm_per_bed, 2)))
+		else:
+			parts.append(_("hectares unknown -- {0} has no measured bed").format(self.farm))
+		self.ground_demanded = " | ".join(parts)
+
 		blocks = frappe.get_all(
 			"Block", filters={"farm": self.farm, "custom_is_summer_flower_block": 1},
 			fields=["name", "custom_total_beds", "custom_net_area_ha",
@@ -1429,16 +1445,20 @@ def plan_preview(market_demand, farm=None, season_start_year=None):
 			from tabBed b join tabWarehouse w on w.name = b.greenhouse
 			where w.custom_farm = %s and ifnull(b.custom_block, '') = ''
 		""", farm, as_dict=True)[0]
-		# Not a note. A farm with no blocks has nowhere to plant, and a plan it
-		# cannot plant is not a plan -- it was being built anyway, reporting full
-		# coverage against ground that does not exist.
-		blocking.append(_(
-			"{0} has no summer flower blocks, so there is nowhere to plant. It has "
-			"{1} beds across {2} greenhouses belonging to no block: draw blocks over "
-			"them first."
+		# A warning, not a bar. This was a blocker because a plan built against a
+		# farm with no blocks reports full coverage over ground that does not
+		# exist -- that remains true, and the note below still says so. It is
+		# demoted on the explicit instruction that a plan must be creatable
+		# before the ground is drawn, so the planning can run ahead of the
+		# surveying. Whoever approves such a plan is accepting coverage figures
+		# that no bed yet backs.
+		notes.append(_(
+			"{0} has no summer flower blocks, so there is nowhere to plant yet. It "
+			"has {1} beds across {2} greenhouses belonging to no block: draw blocks "
+			"over them, or this plan's coverage stands on ground that does not exist."
 		).format(farm, cint(unblocked.n), cint(unblocked.gh)) if cint(unblocked.n) else _(
-			"{0} has no summer flower blocks and no beds. There is no land to plant "
-			"on, so there is nothing to plan."
+			"{0} has no summer flower blocks and no beds. This plan's coverage will "
+			"stand on ground that does not exist until some is drawn."
 		).format(farm))
 
 	prop = frappe.db.get_value("Summer Flower Propagation Plan", {
@@ -1791,10 +1811,17 @@ def _populate(plan):
 		))
 		if hit:
 			fh_year, fh_week = planting.first_harvest()
+			# `existing_planting` links a Planting Calendar and only that -- the
+			# field is read as one everywhere downstream. A standing crop read
+			# from a Crop Cycle has no calendar to point at, so it names the
+			# cycle in its note instead of writing a link that does not resolve.
+			from_cycle = getattr(planting, "doctype", "") == "Crop Cycle"
 			plan.append("plan_blocks", {
 				"is_new_planting": 0,
 				"block": planting.block,
-				"existing_planting": planting.name,
+				"existing_planting": None if from_cycle else planting.name,
+				"notes": (_("Standing crop, from cycle {0}").format(planting.name)
+				          if from_cycle else None),
 				"beds": planting.beds,
 				"plants": planting.plants,
 				"planting_year": planting.planting_year,

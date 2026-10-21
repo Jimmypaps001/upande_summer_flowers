@@ -13,6 +13,7 @@
   "market_demand",
   "variety",
   "farm",
+  "propagation_unit",
   "season_start_year",
   "season",
   "last_change_summary",
@@ -21,6 +22,8 @@
   "company",
   "currency",
   "status",
+  "sec_overview",
+  "sfpp_overview_html",
   "sec_tc",
   "tc_plants_required",
   "tc_order_date",
@@ -139,6 +142,13 @@
    "label": "Farm",
    "options": "Farm",
    "read_only": 1
+  },
+  {
+   "fieldname": "propagation_unit",
+   "fieldtype": "Link",
+   "options": "Warehouse",
+   "label": "Propagation Unit",
+   "description": "The unit that raises this material. Blank means the plan is not yet allocated to a unit."
   },
   {
    "description": "From the production plan. A season runs 1 July to 30 June, and there is one propagation plan per variety per season.",
@@ -672,6 +682,17 @@
    "fieldtype": "Small Text",
    "label": "What That Survival Is Measured On",
    "read_only": 1
+  },
+  {
+   "fieldname": "sec_overview",
+   "fieldtype": "Section Break",
+   "label": "The season around this plan",
+   "collapsible": 0
+  },
+  {
+   "fieldname": "sfpp_overview_html",
+   "fieldtype": "HTML",
+   "label": "Overview"
   }
  ],
  "grid_page_length": 50,

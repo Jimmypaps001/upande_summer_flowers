@@ -2743,6 +2743,75 @@ def propagation_detail(plan=None, propagation_plan=None, variety=None, farm=None
 			"notes": r.notes,
 		} for r in d.sources],
 		"batches": batches,
+		# Who else is raising this season. The allocation lives on the
+		# procurement plan, so it is read from there rather than copied here --
+		# a re-allocation must not leave a stale share on a plan written before
+		# it. Includes the procurement plans themselves, because "what was
+		# bought" and "who raises it" are two halves of one answer.
+		"procurement": d.procurement_summary(),
+		"allocations": d.allocation_summary(),
+	}
+
+
+@frappe.whitelist()
+def procurement_detail(plan=None, variety=None, farm=None):
+	"""What was bought for a production plan, and who was allocated to raise it.
+
+	Its own endpoint rather than a corner of `propagation_detail`, because a
+	plan can have been bought without anybody propagating it yet -- that is the
+	normal state of a plan between approval and the first allocation, and
+	reaching this through the propagation plan made it invisible exactly then.
+	"""
+	_guard()
+	plan = resolve_plan(variety, farm, plan)
+	if not plan:
+		return {"plan": None, "plans": [], "allocations": {"rows": []},
+		        "reason": "no production plan in scope"}
+
+	plans = frappe.get_all(
+		"Summer Flower Procurement Plan",
+		filters={"production_plan": plan, "docstatus": ["<", 2]},
+		fields=["name", "status", "docstatus", "method", "entry_stage", "supplier",
+		        "total_units_to_order", "total_plants_at_field", "plants_per_unit",
+		        "first_order_by", "last_order_by", "orders_late", "propagates_here",
+		        "beds_required", "beds_available", "capped_by_space", "space_note",
+		        "lead_weeks", "weeks_to_ground", "sizing_basis", "route_summary",
+		        "pool_plants", "weekly_draw", "cycles_suggested"],
+		order_by="creation desc")
+
+	rows = []
+	for pr in plans:
+		for r in frappe.get_all(
+				"Summer Flower Propagation Allocation",
+				filters={"parent": pr["name"],
+				         "parenttype": "Summer Flower Procurement Plan"},
+				fields=["propagation_unit", "supplier", "plants", "share_pct",
+				        "planted", "surplus", "troughs_used", "plantings",
+				        "propagation_plan", "note"],
+				order_by="idx"):
+			r["procurement_plan"] = pr["name"]
+			r["entry_stage"] = pr["entry_stage"]
+			rows.append(r)
+
+	season = 0
+	try:
+		from upande_propagation.allocation import plan_weeks
+		season = int(sum(q for _d, q in plan_weeks(plan)))
+	except Exception:
+		season = cint(frappe.db.get_value("Summer Flower Production Plan",
+		                                  plan, "total_plants"))
+	allocated = sum(cint(r.get("plants")) for r in rows)
+	return {
+		"plan": plan,
+		"plans": plans,
+		"allocations": {
+			"rows": rows,
+			"season_plants": season,
+			"allocated": allocated,
+			"to_buy": max(season - allocated, 0),
+			"units": len({r["propagation_unit"] for r in rows
+			              if r.get("propagation_unit")}),
+		},
 	}
 
 
@@ -3556,4 +3625,220 @@ def delivery_schedule(farm=None, variety=None, from_date=None, weeks=None,
 		},
 		"farms": sorted({r["farm"] for r in out if r["farm"]}),
 		"varieties": sorted({r["variety"] for r in out if r["variety"]}),
+	}
+
+
+# ---------------------------------------------------------------------------
+# The farm's own view
+#
+# Everything above answers the planner's question -- what to grow, what to buy,
+# who raises it. The farm asks a shorter one: what is coming, when, and from
+# whom. It is the same plan read from the other end, and until now it could
+# only be assembled by opening four documents.
+# ---------------------------------------------------------------------------
+
+def _trough_calendar(production_plan, proc, version):
+	"""When this plan's roots come off the troughs, per unit.
+
+	Returns None rather than raising when the answer cannot be had -- no
+	upande_propagation, no allocated units, no troughs standing in them, or a
+	protocol with no lifts for this form. In every one of those cases the farm
+	plan falls back to the allocation share, which is worse but is not a
+	guess dressed up as a measurement.
+	"""
+	try:
+		from upande_propagation import allocation as A
+	except ImportError:
+		return None
+	units = [a["propagation_unit"] for a in proc.get("allocated") or []
+	         if a.get("propagation_unit")]
+	if not units:
+		return None
+	try:
+		cal = A.delivery_calendar(production_plan, units=units,
+		                          form=proc.get("entry_stage") or "Roots",
+		                          version=version)
+	except Exception:
+		# A missing protocol lift row or a trough mid-edit must not take the
+		# whole farm plan down with it.
+		frappe.log_error(frappe.get_traceback(), "farm_plan trough calendar")
+		return None
+	return cal if cal.get("units") else None
+
+
+@frappe.whitelist()
+def farm_plan(farm, variety=None, from_date=None, weeks=None, include_past=None):
+	"""What the farm expects to receive, week by week, and where each lot is raised.
+
+	A week's plants rarely come from one place: some are raised at our own unit,
+	the rest bought in as plants because the troughs could not hold them. The
+	farm needs both halves on the same line -- a delivery that is 90% bought in
+	is a different conversation with a different person from one that is ours.
+	"""
+	_guard()
+	start = getdate(from_date or nowdate())
+	if not cint(include_past):
+		start = add_days(start, -7)
+	horizon = add_days(start, cint(weeks or 26) * 7)
+
+	pfilters = {"farm": farm, "docstatus": ["<", 2]}
+	if variety:
+		pfilters["variety"] = variety
+	plans = frappe.get_all("Summer Flower Production Plan", filters=pfilters,
+	                       fields=["name", "variety", "season", "status", "protocol"])
+	if not plans:
+		return {"farm": farm, "weeks": [], "totals": {}, "sources": [],
+		        "reason": _("No production plan for {0}.").format(farm)}
+
+	by_plan = {p.name: p for p in plans}
+
+	# Who raises what, per plan: the allocation rows, and the shortfall that is
+	# bought in. A procurement plan with no allocation is entirely bought.
+	raisers = {}
+	for proc in frappe.get_all("Summer Flower Procurement Plan",
+	                           filters={"production_plan": ["in", list(by_plan)],
+	                                    "docstatus": ["<", 2]},
+	                           fields=["name", "production_plan", "entry_stage",
+	                                   "method", "supplier"]):
+		rows = frappe.get_all("Summer Flower Propagation Allocation",
+		                      filters={"parent": proc.name},
+		                      fields=["propagation_unit", "plants", "propagation_plan"])
+		raisers.setdefault(proc.production_plan, []).append({
+			"procurement_plan": proc.name, "entry_stage": proc.entry_stage,
+			"method": proc.method, "supplier": proc.supplier,
+			"allocated": [dict(r) for r in rows],
+			"own_plants": sum(cint(r.plants) for r in rows),
+		})
+
+	# ── the trough calendar, first ─────────────────────────────────────────
+	# Where it can answer, it answers for the whole plan, not for some weeks:
+	# a trough is planted full and comes off in lifts, so the week a plant is
+	# WANTED and the week it is DELIVERED are different weeks. Keeping the
+	# wanted weeks alongside the delivered ones counts the same plants twice.
+	calendars, lots = {}, []
+	for p in plans:
+		for proc in raisers.get(p.name, []):
+			if (proc.get("entry_stage") or "") != "Roots":
+				continue
+			cal = _trough_calendar(p.name, proc, p.protocol)
+			if cal:
+				calendars[p.name] = (cal, proc)
+				break
+
+	weeks_out = {}
+
+	def slot_for(when):
+		d = getdate(when)
+		key = "%d-W%02d" % (d.isocalendar()[0], d.isocalendar()[1])
+		return key, weeks_out.setdefault(key, {
+			"week": key, "deliver_on": str(iso_monday(*[int(x) for x in
+			                                           key.replace("W", "").split("-")])),
+			"plants": 0, "varieties": set(), "sources": {}, "from_calendar": False})
+
+	def add(when, who, qty, variety, kind, from_calendar):
+		qty = cint(qty)
+		if qty <= 0 or not (getdate(start) <= getdate(when) <= getdate(horizon)):
+			return
+		_key, slot = slot_for(when)
+		slot["plants"] += qty
+		slot["varieties"].add(variety)
+		slot["from_calendar"] = slot["from_calendar"] or from_calendar
+		cur = slot["sources"].setdefault(who, {"plants": 0, "kind": kind})
+		cur["plants"] += qty
+
+	for p in plans:
+		if p.name in calendars:
+			cal, proc = calendars[p.name]
+			# Our own units: the lift dates, in trough-sized lots.
+			for u in cal["units"]:
+				for on, qty in u["by_week"].items():
+					add(on, u["unit"], qty, p.variety, "trough lift", True)
+				lots.extend([dict(x, unit=u["unit"], variety=p.variety)
+				             for x in u["rows"]
+				             if getdate(start) <= getdate(x["ready_on"]) <= getdate(horizon)])
+			# What no trough could hold is bought as plants, and those land on
+			# the week they were wanted rather than on a lift date.
+			who = proc.get("supplier") or _("bought in")
+			for on, qty in (cal.get("bought_in") or {}).items():
+				add(on, who, qty, p.variety, "bought in", True)
+			continue
+
+		# No trough answer for this plan: fall back to the allocation share,
+		# spread evenly over the plan's own planting weeks. It is an
+		# approximation, and `from_calendar` says so on every week it touches.
+		rows = frappe.get_all(
+			"Summer Flower Plan Block",
+			filters={"parent": p.name, "is_new_planting": 1},
+			fields=["planting_year", "planting_week", "plants"])
+		mine = raisers.get(p.name, [])
+		own_total = sum(r["own_plants"] for r in mine)
+		plan_total = sum(cint(r.plants) for r in rows) or 1
+		own_share = min(1.0, own_total / float(plan_total))
+
+		for r in rows:
+			y, w = cint(r.planting_year), cint(r.planting_week)
+			if not (y and w):
+				continue
+			when = iso_monday(y, w)
+			qty = cint(r.plants)
+			own = int(round(qty * own_share))
+			for a in mine:
+				for alloc in a["allocated"]:
+					share = (cint(alloc["plants"]) / float(own_total)) if own_total else 0
+					add(when, alloc["propagation_unit"], int(round(own * share)),
+					    p.variety, "allocated share", False)
+			bought = qty - own
+			if bought > 0:
+				who = next((a["supplier"] for a in mine if a.get("supplier")), None) \
+					or _("bought in")
+				add(when, who, bought, p.variety, "bought in", False)
+
+	out = []
+	for key in sorted(weeks_out):
+		s = weeks_out[key]
+		out.append({
+			"week": s["week"], "deliver_on": s["deliver_on"], "plants": s["plants"],
+			"varieties": sorted(s["varieties"]),
+			# Whether this week is what the troughs will actually hand over, or
+			# a season share spread evenly. The two mean different things and
+			# the farm should not have to guess which it is reading.
+			"from_calendar": bool(s["from_calendar"]),
+			"sources": [{"name": k, "plants": v["plants"], "kind": v["kind"]}
+			            for k, v in sorted(s["sources"].items(),
+			                               key=lambda kv: -kv[1]["plants"])
+			            if v["plants"] > 0],
+		})
+
+	own_names = {a["propagation_unit"] for v in raisers.values() for x in v
+	             for a in x["allocated"] if a.get("propagation_unit")}
+	return {
+		"farm": farm,
+		"from_date": str(start), "to_date": str(horizon),
+		"weeks": out,
+		"own_units": sorted(own_names),
+		"totals": {
+			"plants": sum(w["plants"] for w in out),
+			"weeks": len(out),
+			"from_own_units": sum(s["plants"] for w in out for s in w["sources"]
+			                      if s["name"] in own_names),
+			"from_troughs": sum(s["plants"] for w in out for s in w["sources"]
+			                    if s["kind"] == "trough lift"),
+			"bought_in": sum(s["plants"] for w in out for s in w["sources"]
+			                 if s["kind"] == "bought in"),
+			# What the plan asked for, against what the troughs make it. They
+			# are not equal and should not be: a trough is planted full, so a
+			# season wanting 1,206,208 roots receives 1,209,240 of them. The
+			# 3,032 is not an error to chase -- it is the last trough's spare
+			# capacity, and the farm has to find ground for it.
+			"demand": sum(cint(c[0]["season_plants"]) for c in calendars.values()),
+			"surplus": sum(cint(u["surplus"]) for c in calendars.values()
+			               for u in c[0]["units"]),
+		},
+		"varieties": sorted({v for w in out for v in w["varieties"]}),
+		# Every trough lot landing in the window: which trough, what went into
+		# it, which lift this is. 7,000 off one trough's second lift is a
+		# different thing to plan around from 7,000 off seven troughs.
+		"lots": sorted(lots, key=lambda x: (x["ready_on"], x.get("unit") or "")),
+		"calendar_weeks": len([w for w in out if w["from_calendar"]]),
+		"plans_on_calendar": sorted(calendars),
 	}

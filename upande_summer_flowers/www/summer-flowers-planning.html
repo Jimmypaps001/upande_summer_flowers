@@ -61,6 +61,7 @@
       <button role="tab" data-tab="protocol" aria-selected="false">{{ _("Protocol") }}</button>
       <button role="tab" data-tab="plan" aria-selected="false">{{ _("Production Plan") }}</button>
       <button role="tab" data-tab="planting" aria-selected="false">{{ _("Planting Plan") }}</button>
+      <button role="tab" data-tab="procurement" aria-selected="false">{{ _("Procurement") }}</button>
       <button role="tab" data-tab="propagation" aria-selected="false">{{ _("Propagation") }}</button>
       <button role="tab" data-tab="motherstock" aria-selected="false">{{ _("Materials Planning") }}</button>
       <button role="tab" data-tab="blocks" aria-selected="false">{{ _("Block Forecast") }}</button>
@@ -334,6 +335,25 @@
       </div>
     </section>
 
+    <!-- ══ PROCUREMENT ══ -->
+    <section class="pl-pane" data-pane="procurement">
+      <div class="pl-card">
+        <div class="pl-card-head">
+          <div><h2>{{ _("Procurement plan") }}</h2>
+               <p class="pl-note" id="pc-sub"></p></div>
+        </div>
+        <div class="pl-tiles pl-tiles-sm" id="pc-tiles"></div>
+        <div id="pc-body" class="pl-scroll"></div>
+      </div>
+      <div class="pl-card">
+        <div class="pl-card-head">
+          <div><h2>{{ _("Who raises it") }}</h2>
+               <p class="pl-note">{{ _("Each unit is offered the season in turn and takes what its troughs will actually hold. What none of them can take has to be bought in as plants.") }}</p></div>
+        </div>
+        <div id="pc-alloc" class="pl-scroll"></div>
+      </div>
+    </section>
+
     <section class="pl-pane" data-pane="propagation">
       <div class="pl-card">
         <div class="pl-card-head">
@@ -345,6 +365,18 @@
         <div id="pg-warn"></div>
         <div id="pg-steps"></div>
         <div id="pg-body" class="pl-scroll"></div>
+      </div>
+      <!-- Who else is raising this season. The plan above is what THIS unit
+           sticks; the season is shared out across several units and bought
+           material covers whatever none of them can hold, so a plan read on
+           its own looks like the whole order when it is a fraction of it. -->
+      <div class="pl-card">
+        <div class="pl-card-head">
+          <div><h2>{{ _("Allocated across the propagation units") }}</h2>
+               <p class="pl-note" id="pg-alloc-sub"></p></div>
+        </div>
+        <div class="pl-tiles pl-tiles-sm" id="pg-alloc-tiles"></div>
+        <div id="pg-alloc-body" class="pl-scroll"></div>
       </div>
       <!-- What actually happened, against what was planned. Its own card
            because it is a different question from "what should we do": the
@@ -3187,6 +3219,12 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
   }
 
   function renderPropagation() {
+    // The allocation is painted first and unconditionally: it belongs to the
+    // procurement plan, not to this one, so it is there to be read whether or
+    // not a propagation plan was ever raised -- and the overview's early
+    // return below would otherwise skip it.
+    renderAllocation(S.pg && S.pg.allocations, "pg-alloc-sub", "pg-alloc-tiles",
+                     "pg-alloc-body", S.pg && S.pg.propagation_plan);
     // The overview owns the tiles, the track and the table now. This keeps the
     // actions and the empty state, which are still its own.
     if (S.pgo && !S.pgo.error) return;
@@ -7199,6 +7237,122 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
     if (bar) bar.classList.toggle("is-empty", !want.length);
   }
 
+  // One allocation table, used by the Propagation tab (where it answers "is my
+  // plan the whole order?") and by the Procurement tab (where it answers "who
+  // did we give the season to?"). `mine` marks the row the reader is standing
+  // in; on the procurement tab nothing is standing in, so nothing is marked.
+  function renderAllocation(a, subId, tilesId, bodyId, mine) {
+    const sub = subId && $(subId), tiles = tilesId && $(tilesId), body = $(bodyId);
+    if (!body) return;
+    const rows = (a && a.rows) || [];
+    if (!rows.length) {
+      if (sub) sub.textContent = "";
+      if (tiles) tiles.innerHTML = "";
+      body.innerHTML = `<p class="pl-empty">${esc(
+        "Nothing allocated yet. On the procurement plan, Choose Propagation Units "
+        + "works the season through each unit's troughs.")}</p>`;
+      return;
+    }
+    if (sub) {
+      sub.textContent = `${a.units} unit${a.units === 1 ? "" : "s"} · `
+        + `${num(a.allocated)} of ${num(a.season_plants)} plants`;
+    }
+    if (tiles) {
+      tiles.innerHTML = [
+        tile({ k: "The season", v: num(a.season_plants),
+               m: "plants the plan puts in the ground" }),
+        tile({ k: "Allocated", v: num(a.allocated),
+               m: `${a.units} propagation unit${a.units === 1 ? "" : "s"}`,
+               c: a.allocated ? "--good" : "--warning" }),
+        // Not a failure -- it is the answer to "what do we still have to buy".
+        tile({ k: "Bought in as plants", v: num(a.to_buy),
+               m: a.to_buy ? "no unit's troughs can hold these"
+                           : "nothing left to buy",
+               c: a.to_buy ? "--warning" : "--good" }),
+      ].join("");
+    }
+    body.innerHTML = `<table class="pl-t"><thead><tr>
+      <th>Propagation unit</th><th>Bought as</th>
+      <th class="r">Share</th><th class="r">Plants</th>
+      <th class="r">Planted</th><th class="r">Surplus</th>
+      <th class="r">Troughs</th><th>Its plan</th><th>Note</th>
+    </tr></thead><tbody>${rows.map((r) => {
+      const me = mine && r.propagation_plan === mine;
+      return `<tr${me ? ' class="pl-chosen"' : ""}>` +
+        `<td>${esc(r.propagation_unit || r.supplier || "\u2014")}${
+          r.supplier && !r.propagation_unit ? ' <span class="pill">outside</span>' : ""}${
+          me ? ' <span class="pill">this plan</span>' : ""}</td>` +
+        `<td>${esc(r.entry_stage || "\u2014")}</td>` +
+        `<td class="r">${(+r.share_pct || 0).toFixed(2)}%</td>` +
+        `<td class="r">${num(r.plants)}</td>` +
+        `<td class="r">${r.planted ? num(r.planted) : "\u2014"}</td>` +
+        `<td class="r">${r.surplus ? num(r.surplus) : "\u2014"}</td>` +
+        `<td class="r">${r.troughs_used ? num(r.troughs_used) : "\u2014"}</td>` +
+        `<td>${r.propagation_plan
+          ? `<a href="/app/summer-flower-propagation-plan/${encodeURIComponent(r.propagation_plan)}">${esc(r.propagation_plan)}</a>`
+          : "\u2014"}</td>` +
+        `<td>${esc(r.note || "")}</td></tr>`;
+    }).join("")}</tbody></table>`;
+  }
+
+  function loadProcurement() {
+    const a = { variety: S.variety, farm: S.farm, plan: S.plan || null };
+    return call("procurement_detail", a)
+      .then((r) => { S.pc = r; renderProcurement(); })
+      .catch((e) => { S.pc = { error: e.message }; renderProcurement(); });
+  }
+
+  function renderProcurement() {
+    const r = S.pc;
+    const body = $("pc-body");
+    if (!r || r.error || !(r.plans || []).length) {
+      $("pc-sub").textContent = "";
+      $("pc-tiles").innerHTML = "";
+      body.innerHTML = `<p class="pl-empty">${esc(
+        (r && r.error) || "No procurement plan for this production plan yet.")}</p>`;
+      $("pc-alloc").innerHTML = "";
+      return;
+    }
+    const plans = r.plans;
+    $("pc-sub").textContent = `${plans.length} plan${plans.length === 1 ? "" : "s"}`
+      + ` for ${r.plan}`;
+    // TC and roots are bought on separate plans for the same season, so the
+    // tiles sum across them rather than describing whichever happens to be first.
+    const units = plans.reduce((x, p) => x + (p.total_units_to_order || 0), 0);
+    const late = plans.reduce((x, p) => x + (p.orders_late || 0), 0);
+    const stand = Math.max.apply(null, plans.map((p) => p.total_plants_at_field || 0));
+    const first = plans.map((p) => p.first_order_by).filter(Boolean).sort()[0];
+    $("pc-tiles").innerHTML = [
+      tile({ k: "Units to order", v: num(units),
+             m: plans.map((p) => p.entry_stage).filter(Boolean).join(" · ") }),
+      tile({ k: "Plants to stand", v: num(stand),
+             m: "what the plan puts in the ground" }),
+      tile({ k: "First order by", v: first ? fdate(first) : "\u2014",
+             m: late ? `${late} order${late === 1 ? "" : "s"} already late`
+                     : "in time",
+             c: late ? "--critical" : "--good" }),
+    ].join("");
+    body.innerHTML = `<table class="pl-t"><thead><tr>
+      <th>Plan</th><th>Bought as</th><th>Method</th><th>Supplier</th>
+      <th class="r">Units</th><th class="r">Plants to stand</th>
+      <th class="r">Beds</th><th>Order by</th><th>Status</th>
+    </tr></thead><tbody>${plans.map((p) =>
+      `<tr${p.orders_late ? ' class="pl-chosen"' : ""}>` +
+      `<td><a href="/app/summer-flower-procurement-plan/${encodeURIComponent(p.name)}">${esc(p.name)}</a></td>` +
+      `<td>${esc(p.entry_stage || "\u2014")}</td>` +
+      `<td>${esc(p.method || "\u2014")}</td>` +
+      `<td>${esc(p.supplier || "\u2014")}</td>` +
+      `<td class="r">${num(p.total_units_to_order)}</td>` +
+      `<td class="r">${num(p.total_plants_at_field)}</td>` +
+      `<td class="r">${num(p.beds_required)} of ${num(p.beds_available)}${
+        p.capped_by_space ? ' <span class="pill">trimmed to fit</span>' : ""}</td>` +
+      `<td>${p.first_order_by ? fdate(p.first_order_by) : "\u2014"}${
+        p.orders_late ? ` <span class="pill">${p.orders_late} late</span>` : ""}</td>` +
+      `<td>${esc(p.status || "")}</td></tr>`).join("")}</tbody></table>`;
+
+    renderAllocation(r.allocations, null, null, "pc-alloc", null);
+  }
+
   function setTab(name, fromHash) {
     // The tab lives in the URL so a workspace shortcut can point straight at
     // Harvest or Review instead of landing on Overview and making the user hunt.
@@ -7234,6 +7388,7 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
       Promise.all([loadChain(), loadTc(), loadWhatIf()]).then(renderPlanTab)
         .catch((e) => toast(esc(e.message), true));
     }
+    if (name === "procurement") loadProcurement().catch((e) => toast(esc(e.message), true));
     if (name === "propagation") loadPropagation().catch((e) => toast(esc(e.message), true));
     if (name === "harvest") loadCycles().catch((e) => toast(esc(e.message), true));
     if (name === "review") {

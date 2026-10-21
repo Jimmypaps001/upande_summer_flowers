@@ -1,0 +1,117 @@
+{
+ "actions": [],
+ "creation": "2026-10-20 00:00:00.000000",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "propagation_unit",
+  "supplier",
+  "plants",
+  "share_pct",
+  "column_break_a",
+  "planted",
+  "surplus",
+  "troughs_used",
+  "plantings",
+  "column_break_b",
+  "propagation_plan",
+  "note"
+ ],
+ "fields": [
+  {
+   "fieldname": "propagation_unit",
+   "fieldtype": "Link",
+   "options": "Warehouse",
+   "label": "Propagation Unit",
+   "in_list_view": 1,
+   "columns": 2,
+   "reqd": 0,
+   "depends_on": "eval:!doc.supplier"
+  },
+  {
+   "fieldname": "supplier",
+   "fieldtype": "Link",
+   "options": "Supplier",
+   "label": "Outside Propagator",
+   "depends_on": "eval:!doc.propagation_unit",
+   "description": "Raised off the farm. The row names a unit or a propagator, not both."
+  },
+  {
+   "fieldname": "plants",
+   "fieldtype": "Int",
+   "label": "Plants Allocated",
+   "in_list_view": 1,
+   "columns": 1,
+   "description": "What this unit takes off the plan -- what it covers, not what it plants."
+  },
+  {
+   "fieldname": "share_pct",
+   "fieldtype": "Percent",
+   "label": "Share",
+   "in_list_view": 1,
+   "columns": 1
+  },
+  {
+   "fieldname": "column_break_a",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "planted",
+   "fieldtype": "Int",
+   "label": "Plants Planted",
+   "read_only": 1,
+   "description": "Troughs go in full, so this is at or above what was allocated."
+  },
+  {
+   "fieldname": "surplus",
+   "fieldtype": "Int",
+   "label": "Surplus",
+   "read_only": 1,
+   "in_list_view": 1,
+   "columns": 1
+  },
+  {
+   "fieldname": "troughs_used",
+   "fieldtype": "Int",
+   "label": "Troughs Used",
+   "read_only": 1
+  },
+  {
+   "fieldname": "plantings",
+   "fieldtype": "Int",
+   "label": "Plantings",
+   "read_only": 1
+  },
+  {
+   "fieldname": "column_break_b",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "propagation_plan",
+   "fieldtype": "Link",
+   "options": "Summer Flower Propagation Plan",
+   "label": "Propagation Plan",
+   "read_only": 1,
+   "in_list_view": 1,
+   "columns": 2
+  },
+  {
+   "fieldname": "note",
+   "fieldtype": "Small Text",
+   "label": "Note"
+  }
+ ],
+ "index_web_pages_for_search": 1,
+ "istable": 1,
+ "links": [],
+ "modified": "2026-10-20 00:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Summer Flowers",
+ "name": "Summer Flower Propagation Allocation",
+ "owner": "Administrator",
+ "permissions": [],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": []
+}

@@ -39,7 +39,10 @@ class SummerFlowerProcurementPlan(Document):
 		# can want both, and this one does.
 		if self.method == "Purchase":
 			self.raise_material_requests()
-		if cint(self.propagates_here):
+		# An allocation is itself the statement that this is raised here, so it
+		# carries the same weight as the flag. Without this, choosing units and
+		# then approving produced no propagation plans at all and said nothing.
+		if cint(self.propagates_here) or self.get("propagation_allocation"):
 			self.build_propagation_plan()
 		# Whichever way the material was got, the farm needs to know what to plant
 		# and when. How it was got only changes what the calendar records as its
@@ -337,6 +340,131 @@ class SummerFlowerProcurementPlan(Document):
 			                  "blocks and approve again.").format(skipped),
 			                indicator="orange", title=_("Planting plan"))
 
+	@frappe.whitelist()
+	def allocation_pool(self):
+		"""The plantings a share is a share OF.
+
+		Typing 30% into the grid means nothing until it is 30% of something, and
+		the something has to be the same figure `propose_allocation` divides --
+		the production plan's weekly plantings summed -- or the two ways of
+		filling the same table would disagree with each other.
+		"""
+		try:
+			from upande_propagation.allocation import plan_weeks
+		except ImportError:
+			return {"season_plants": cint(self.total_plants_at_field),
+			        "basis": _("the plan's plants to stand")}
+		if not self.production_plan:
+			return {"season_plants": 0, "basis": ""}
+		try:
+			total = int(sum(q for _d, q in plan_weeks(self.production_plan)))
+		except Exception:
+			total = cint(self.total_plants_at_field)
+		return {"season_plants": total,
+		        "basis": _("the production plan's weekly plantings, summed")}
+
+	@frappe.whitelist()
+	def propose_allocation(self, units=None, suppliers=None):
+		"""Fill the allocation from what the units' troughs will actually hold.
+
+		Offered after the plan is made, not before: the material is bought the
+		same way whichever unit raises it, so the buying decision does not wait
+		on this one. What this decides is who raises it -- and the honest answer
+		comes from the troughs rather than from a share typed in, because a
+		share the benches cannot hold is a shortfall discovered in week forty.
+
+		Units are offered the season in turn; what none can take is what has to
+		be bought in as plants.
+		"""
+		try:
+			from upande_propagation import allocation as A
+		except ImportError:
+			frappe.throw(_("Trough allocation needs the upande_propagation app, "
+			               "which is not installed on this site."))
+
+		if isinstance(units, str):
+			units = frappe.parse_json(units)
+		if not units:
+			units = frappe.get_all("Warehouse",
+			                       filters={"custom_prop_is_unit": 1, "disabled": 0,
+			                                "company": self.company} if self.get("company")
+			                       else {"custom_prop_is_unit": 1, "disabled": 0},
+			                       pluck="name")
+		if not units:
+			frappe.throw(_("No propagation unit is marked on any warehouse, so there "
+			               "is nobody to allocate to."))
+
+		# Outside propagators take what our benches cannot. Given none, the
+		# plan's own supplier stands for the market, because a shortfall has to
+		# be somebody's to raise -- reporting it as unallocated only hides it.
+		if isinstance(suppliers, str):
+			suppliers = frappe.parse_json(suppliers)
+		if suppliers:
+			suppliers = [{"supplier": x} if isinstance(x, str) else x
+			             for x in suppliers]
+		elif self.supplier:
+			suppliers = [{"supplier": self.supplier, "share_pct": 100.0}]
+
+		# Two ways to decide, and they answer different questions.
+		#
+		# By capacity: offer the season to each unit in turn and let the troughs
+		# say what they can hold. The honest default, because a share the
+		# benches cannot hold is a shortfall discovered in week forty.
+		#
+		# By share: somebody has decided to send a fixed part of the season
+		# outside -- to spread the risk, to honour a contract, or to keep a
+		# bench free. That is a decision about the business, not about the
+		# troughs, so it is obeyed and the troughs then report what the share
+		# actually costs in surplus.
+		want_shares = any(flt((x or {}).get("share_pct")) for x in (units or [])
+		                  if isinstance(x, dict))
+		if want_shares:
+			dests = []
+			for u in units:
+				if isinstance(u, dict) and u.get("share_pct") is not None:
+					dests.append({"unit": u.get("unit") or u.get("propagation_unit"),
+					              "share_pct": flt(u["share_pct"])})
+				else:
+					dests.append({"unit": u if isinstance(u, str) else u.get("unit"),
+					              "share_pct": 0})
+			for sup in (suppliers or []):
+				dests.append({"supplier": sup.get("supplier"),
+				              "share_pct": flt(sup.get("share_pct"))})
+			res = A.allocate(self.production_plan, dests,
+			                 form=self.entry_stage or "Roots",
+			                 version=self.protocol)
+		else:
+			res = A.allocate_by_capacity(self.production_plan, units=units,
+			                             suppliers=suppliers,
+			                             form=self.entry_stage or "Roots",
+			                             version=self.protocol)
+		self.set("propagation_allocation", [])
+		for d in res["destinations"]:
+			if d.get("kind") == "own unit":
+				self.append("propagation_allocation", {
+					"propagation_unit": d["unit"], "plants": d["plants"],
+					"share_pct": d["share_pct"], "planted": d.get("planted"),
+					"surplus": d.get("surplus"), "troughs_used": d.get("troughs_used"),
+					"plantings": d.get("plantings"), "note": d.get("reason"),
+				})
+			elif d.get("kind") == "propagator":
+				# What our own benches cannot hold is raised off the farm. The
+				# allocator has always worked these out; they were dropped on the
+				# way to the table because there was nowhere to put a supplier,
+				# so a plan that sent 80% of its season outside showed only the
+				# 20% it kept.
+				self.append("propagation_allocation", {
+					"supplier": d.get("supplier"), "plants": d["plants"],
+					"share_pct": d["share_pct"],
+					"note": _("Raised off the farm · {0} weeks · {1} weeks' lead")
+						.format(d.get("weeks"), d.get("lead_weeks")),
+				})
+		self.save()
+		return {"allocated": sum(cint(r.plants) for r in self.propagation_allocation),
+		        "season": res["season_plants"],
+		        "to_buy": res.get("unallocated", 0),
+		        "units": len(self.propagation_allocation)}
+
 	def build_propagation_plan(self):
 		"""Raise the propagation plan, now that propagating is what was chosen.
 
@@ -350,6 +478,11 @@ class SummerFlowerProcurementPlan(Document):
 			.summer_flower_propagation_plan.summer_flower_propagation_plan import (
 				build_from_plan,
 			)
+
+		allocated = [r for r in (self.get("propagation_allocation") or [])
+		             if r.propagation_unit and cint(r.plants) > 0]
+		if allocated:
+			return self._build_allocated_plans(allocated, build_from_plan)
 
 		try:
 			outcome = build_from_plan(self.production_plan, as_dict=True)
@@ -370,6 +503,37 @@ class SummerFlowerProcurementPlan(Document):
 			outcome["name"], _("created") if outcome.get("created") else _("updated"),
 			" " + carried if carried else ""),
 			indicator="green", title=_("Propagation plan"))
+
+	def _build_allocated_plans(self, allocated, build_from_plan):
+		"""One propagation plan per allocated unit.
+
+		The uniqueness rule is variety + season + unit, so these sit beside each
+		other instead of overwriting one another -- which is what happened while
+		it was variety + season alone.
+		"""
+		made = []
+		for row in allocated:
+			try:
+				outcome = build_from_plan(self.production_plan, as_dict=True,
+				                          propagation_unit=row.propagation_unit)
+			except TypeError:
+				# An older build_from_plan that does not take a unit: make the
+				# plan, then stamp the unit on it so the rule can tell them apart.
+				outcome = build_from_plan(self.production_plan, as_dict=True)
+				frappe.db.set_value("Summer Flower Propagation Plan", outcome["name"],
+				                    "propagation_unit", row.propagation_unit)
+			except Exception:
+				frappe.log_error(frappe.get_traceback(),
+				                 "Propagation plan for %s at %s" % (self.name,
+				                                                    row.propagation_unit))
+				continue
+			row.db_set("propagation_plan", outcome["name"], update_modified=False)
+			self._carry_tc_choice(outcome["name"])
+			made.append("%s (%s)" % (outcome["name"], row.propagation_unit))
+		if made:
+			frappe.msgprint(_("Propagation plans raised: {0}").format(", ".join(made)),
+			                indicator="green", title=_("Propagation"))
+		return made
 
 	def _carry_tc_choice(self, propagation_plan):
 		"""Put the confirmed TC order onto the propagation plan just built."""

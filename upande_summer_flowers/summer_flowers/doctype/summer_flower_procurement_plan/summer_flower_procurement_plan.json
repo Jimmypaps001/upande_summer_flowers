@@ -59,6 +59,8 @@
   "first_order_by",
   "last_order_by",
   "orders_late",
+  "section_allocation",
+  "propagation_allocation",
   "section_lines",
   "requirements",
   "amended_from"
@@ -409,6 +411,18 @@
    "fieldtype": "Int",
    "label": "Orders Already Late",
    "read_only": 1
+  },
+  {
+   "fieldname": "section_allocation",
+   "fieldtype": "Section Break",
+   "label": "Who Raises It",
+   "description": "The material is bought once; raising it is shared out. Each unit takes what its troughs will hold, and the rest is bought in as plants."
+  },
+  {
+   "fieldname": "propagation_allocation",
+   "fieldtype": "Table",
+   "options": "Summer Flower Propagation Allocation",
+   "label": "Propagation Allocation"
   },
   {
    "fieldname": "section_lines",

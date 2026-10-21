@@ -197,6 +197,14 @@ def delivery_schedule(farm=None, variety=None, from_date=None, weeks=None,
 
 
 @frappe.whitelist()
+def farm_plan(farm, variety=None, from_date=None, weeks=None, include_past=None):
+	"""What a farm expects to receive, week by week, and who raises each lot."""
+	_guard()
+	return _planning.farm_plan(farm=farm, variety=variety, from_date=from_date,
+	                           weeks=weeks, include_past=include_past)
+
+
+@frappe.whitelist()
 def motherstock_plan(variety=None, farm=None, plan=None, propagation_plan=None):
 	"""The motherstock line behind a variety: when it is cut, when multiplied."""
 	_guard()

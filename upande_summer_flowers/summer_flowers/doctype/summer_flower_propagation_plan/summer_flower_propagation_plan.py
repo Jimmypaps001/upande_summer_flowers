@@ -95,26 +95,36 @@ class SummerFlowerPropagationPlan(Document):
 		return lines
 
 	def check_one_per_season(self):
-		"""One propagation plan per variety per season, and only one.
+		"""One propagation plan per variety per season PER UNIT.
 
-		Propagation is a single physical operation for a crop in a year: one pool of
-		motherstock, one bench, one TC order. Two plans for the same variety and season
-		would each size that pool as though the other did not exist, and the farm would
-		have no way to tell which order to place.
+		Propagation is a single physical operation -- one pool of motherstock, one
+		bench, one TC order -- but that is true of a unit, not of a variety. The
+		rule used to key on variety and season alone, which meant two farms growing
+		the same crop in the same year shared one plan: approving the second
+		production plan rebuilt the first farm's plan, leaving it pinned to the
+		first farm's protocol while serving the second. A variety raised at two
+		units has two pools, two benches and two orders, and needs two plans.
+
+		A plan with no unit yet is still held to the old rule against other
+		unallocated plans, so an unallocated plan cannot quietly multiply.
 		"""
 		if not (self.variety and self.season_start_year):
 			return
 		filters = {"variety": self.variety, "season_start_year": self.season_start_year,
-		           "status": ["!=", "Rejected"]}
+		           "status": ["!=", "Rejected"],
+		           "propagation_unit": self.propagation_unit or ""}
 		if not self.is_new():
 			filters["name"] = ["!=", self.name]
 		dupe = frappe.db.get_value("Summer Flower Propagation Plan", filters, "name")
 		if dupe:
+			where = _("at {0}").format(self.propagation_unit) if self.propagation_unit \
+				else _("with no unit allocated")
 			frappe.throw(_(
-				"{0} is already the propagation plan for {1} in season {2}. Rebuild it "
-				"from the production plan rather than creating a second one -- one "
-				"variety in one season has one pool of motherstock and one TC order."
-			).format(dupe, self.variety, self.season), title=_("Plan exists"))
+				"{0} is already the propagation plan for {1} in season {2} {3}. Rebuild "
+				"it from the production plan rather than creating a second one -- one "
+				"variety at one unit in one season has one pool of motherstock and one "
+				"TC order. A different unit may have its own plan."
+			).format(dupe, self.variety, self.season, where), title=_("Plan exists"))
 
 	def pull_header(self):
 		p = frappe.get_cached_doc("Summer Flower Production Plan",
@@ -516,6 +526,104 @@ class SummerFlowerPropagationPlan(Document):
 				self.tc_order_date = c["tc_order_date_committed"]
 		self._cover_from_bought(m)
 
+	def _root_withdrawals(self, m):
+		"""What comes out of the cold store, and when.
+
+		Demand says a week wants 57 plants. Nobody opens a cold store for 57.
+		A trough is planted full or not at all, so what leaves store is whole
+		troughs -- and the surplus that plants is not waste, it is the next
+		weeks\' lifts off the same trough.
+
+		Sized against the unit\'s own troughs, because a 7,000 trough and a
+		4,200 trough are different withdrawals. Where the unit has no troughs
+		on record, or the protocol cannot say when one comes free, the old
+		week-by-week shape is kept -- it is wrong about how roots move, but it
+		is better than a confident number from troughs that do not exist.
+		"""
+		pulls = m.get("root_withdrawals") or []
+		if not pulls:
+			return []
+
+		def by_demand():
+			out = []
+			for pull in pulls:
+				w = next((x for x in (m.get("weeks") or [])
+				          if str(x.get("root_out_week")) == str(pull["week"])), None)
+				out.append({
+					"week_start_date": pull["week"], "week_iso": pull["week_iso"],
+					"form": "Roots", "source": _("Cold store"),
+					"reference": _("One consignment, drawn down"),
+					"units": cint(pull["roots"]),
+					"plants": cint((w or {}).get("by_roots")),
+					"ready_on": (w or {}).get("week"),
+					"ready_week": (w or {}).get("week_iso"),
+					"deliver_on": (w or {}).get("week"),
+					"plant_week": (w or {}).get("week_iso"),
+				})
+			return out
+
+		if not self.propagation_unit:
+			return by_demand()
+		try:
+			from upande_propagation import troughs as T
+		except ImportError:
+			return by_demand()
+
+		per_root = flt(m.get("returns_per_plant")) or 1.0
+		# The trough schedule works in PLANTS -- that is what a trough holds.
+		weeks = [(getdate(p["week"]), int(round(cint(p["roots"]) * per_root)))
+		         for p in pulls if cint(p["roots"]) > 0]
+		if not weeks:
+			return by_demand()
+		try:
+			sched = T.schedule(self.propagation_unit, self.protocol, "Roots", weeks)
+		except Exception:
+			frappe.clear_last_message()
+			return by_demand()
+		if sched.get("reason") or not sched.get("rows"):
+			return by_demand()
+
+		out = []
+		for row in sched["rows"]:
+			lifts = row.get("lifts") or []
+			first = lifts[0] if lifts else None
+			last = lifts[-1] if lifts else None
+			out.append({
+				"week_start_date": row["planted_on"],
+				"week_iso": _iso(row["planted_on"]),
+				"form": "Roots", "source": _("Cold store"),
+				# Which trough, and what it holds: the two facts that make the
+				# number large. Without them a 7,000 withdrawal against a week
+				# wanting 1,200 reads as an error.
+				"reference": _("{0} filled - {1} plants, lifted {2}x").format(
+					row["trough"], "{:,}".format(cint(row["plants"])), len(lifts)),
+				# Roots out of store, which is the trough\'s fill converted back.
+				"units": int(math.ceil(cint(row["plants"]) / per_root)) if per_root else 0,
+				"plants": cint(row["plants"]),
+				"ready_on": (first or {}).get("ready_on"),
+				# _iso(None) is today's week, not "unknown" -- a blank date must
+				# stay blank rather than quietly becoming this week.
+				"ready_week": _iso(first["ready_on"]) if first else "",
+				"deliver_on": (last or {}).get("ready_on"),
+				"plant_week": _iso(last["ready_on"]) if last else "",
+			})
+		# What the troughs could not take still has to come out of store, or the
+		# plants it stands for simply vanish from the plan.
+		for when, short in (sched.get("unplaced") or []):
+			if cint(short) <= 0:
+				continue
+			out.append({
+				"week_start_date": str(getdate(when)),
+				"week_iso": _iso(when),
+				"form": "Roots", "source": _("Cold store"),
+				"reference": _("No trough free - raised outside or bought as plants"),
+				"units": int(math.ceil(cint(short) / per_root)) if per_root else 0,
+				"plants": cint(short),
+				"ready_on": None, "ready_week": "", "deliver_on": None, "plant_week": "",
+			})
+		out.sort(key=lambda r: str(r["week_start_date"]))
+		return out
+
 	def _cover_from_bought(self, m):
 		"""Cover each week from the material arriving for it, and list it.
 
@@ -530,32 +638,29 @@ class SummerFlowerPropagationPlan(Document):
 		for w in (m.get("weeks") or []):
 			by_plant_week[str(w.get("week"))] = w
 
+		version = frappe.get_cached_doc("Crop Protocol Version", self.protocol)
 		for r in self.weeks:
 			w = by_plant_week.get(str(r.deliver_on))
 			if not w:
 				continue
+			# `from_bought` is PLANTS -- that is what a lab ships and what the
+			# field stands. `cuttings_required` is those plants scaled up for
+			# rooting, field and reject losses. Subtracting the one from the
+			# other left the loss allowance behind and called it a shortfall:
+			# every week of a wholly bought season read as 10% short, and the
+			# motherstock batch raised to "cover" it ordered 2,529 plantlets
+			# for a season needing a million.
 			r.from_bought = cint(w.get("plants"))
+			covered = version.cuttings_for_plants(cint(r.from_bought))
 			r.shortfall = max(0, cint(r.cuttings_required)
 			                  - cint(r.from_existing_ms) - cint(r.from_new_ms)
-			                  - cint(r.from_bought))
+			                  - covered)
 
 		self.set("intake", [])
 		# Roots first: they are in store a year before any of it, and the unit
-		# draws them out week by week.
-		for pull in (m.get("root_withdrawals") or []):
-			w = next((x for x in (m.get("weeks") or [])
-			          if str(x.get("root_out_week")) == str(pull["week"])), None)
-			self.append("intake", {
-				"week_start_date": pull["week"], "week_iso": pull["week_iso"],
-				"form": "Roots", "source": _("Cold store"),
-				"reference": _("One consignment, drawn down"),
-				"units": cint(pull["roots"]),
-				"plants": cint((w or {}).get("by_roots")),
-				"ready_on": (w or {}).get("week"),
-				"ready_week": (w or {}).get("week_iso"),
-				"deliver_on": (w or {}).get("week"),
-				"plant_week": (w or {}).get("week_iso"),
-			})
+		# draws them out in whole troughs.
+		for pull in self._root_withdrawals(m):
+			self.append("intake", pull)
 
 		# Then the tissue culture, consignment by consignment and lift by lift,
 		# which is the only form in which a lab's deliveries are workable.
@@ -830,15 +935,20 @@ class SummerFlowerPropagationPlan(Document):
 		except Exception:
 			frappe.clear_last_message()
 			return
+		version = frappe.get_cached_doc("Crop Protocol Version", self.protocol)
 		for r in self.weeks:
 			got = extra.get(getdate(r.deliver_on)) if r.deliver_on else None
 			r.uplift_plants = cint(got["plants"]) if got else 0
 			if not r.uplift_plants:
 				continue
+			# Plants in, cuttings out -- same conversion as _cover_from_bought,
+			# for the same reason: an uplift is extra PLANTS delivered, and the
+			# requirement it closes is in cuttings.
 			r.from_bought = cint(r.from_bought) + r.uplift_plants
+			covered = version.cuttings_for_plants(cint(r.from_bought))
 			r.shortfall = max(0, cint(r.cuttings_required)
 			                  - cint(r.from_existing_ms) - cint(r.from_new_ms)
-			                  - cint(r.from_bought))
+			                  - covered)
 
 	def apply_actuals(self):
 		"""Set the plan against what the unit actually did, and offer the gap forward.
@@ -905,6 +1015,124 @@ class SummerFlowerPropagationPlan(Document):
 			return
 		self.baseline_json = json.dumps(pa.snapshot(self))
 		self.baseline_taken_on = now_datetime()
+
+	@frappe.whitelist()
+	def overview_for_form(self):
+		"""The three things this plan depends on, which were in three other tabs.
+
+		A propagation plan is the middle of a chain, and on its own it says only
+		what this unit sticks. Who else was allocated the same season, what was
+		bought to make it possible, and when the plants it raises actually go in
+		the ground all lived on other documents -- so answering "is this plan
+		the whole story" meant opening three of them.
+		"""
+		return {
+			"procurement": self.procurement_summary(),
+			"allocations": self.allocation_summary(),
+			"planting": self.planting_summary(),
+		}
+
+	def _procurement_plans(self):
+		"""Every procurement plan for this production plan, newest first.
+
+		TC and Roots are bought on separate plans for the same season, so this
+		is deliberately a list: showing only one of them hid the other half of
+		what was ordered.
+		"""
+		if not self.production_plan:
+			return []
+		return frappe.get_all(
+			"Summer Flower Procurement Plan",
+			filters={"production_plan": self.production_plan, "docstatus": ["<", 2]},
+			fields=["name", "status", "docstatus", "method", "entry_stage",
+			        "supplier", "total_units_to_order", "total_plants_at_field",
+			        "plants_per_unit", "first_order_by", "last_order_by",
+			        "orders_late", "propagates_here", "beds_required",
+			        "beds_available", "capped_by_space"],
+			order_by="creation desc")
+
+	def procurement_summary(self):
+		return self._procurement_plans()
+
+	def allocation_summary(self):
+		"""Who else is raising this season, and how much of it.
+
+		The allocation lives on the procurement plan, one row per propagation
+		unit. Read from there rather than copied onto this plan, because a
+		re-allocation must not leave a stale share sitting on a plan that was
+		written before it.
+		"""
+		plans = self._procurement_plans()
+		if not plans:
+			return {"rows": [], "season_plants": 0, "allocated": 0, "to_buy": 0}
+
+		rows = []
+		for p in plans:
+			for r in frappe.get_all(
+					"Summer Flower Propagation Allocation",
+					filters={"parent": p["name"], "parenttype":
+					         "Summer Flower Procurement Plan"},
+					fields=["propagation_unit", "supplier", "plants", "share_pct",
+					        "planted", "surplus", "troughs_used", "plantings",
+					        "propagation_plan", "note"],
+					order_by="idx"):
+				r["procurement_plan"] = p["name"]
+				r["entry_stage"] = p["entry_stage"]
+				# Which row is this plan's own. Matching on the back-link first
+				# and the unit second, because one unit can hold two plans for
+				# the same season -- one for TC, one for roots.
+				r["is_this_plan"] = 1 if (
+					r.get("propagation_plan") == self.name
+					or (not r.get("propagation_plan")
+					    and r.get("propagation_unit") == self.propagation_unit)
+				) else 0
+				rows.append(r)
+
+		season = self.season_plants()
+		allocated = sum(cint(r.get("plants")) for r in rows)
+		return {
+			"rows": rows,
+			"season_plants": season,
+			"allocated": allocated,
+			"to_buy": max(season - allocated, 0),
+			"units": len({r["propagation_unit"] for r in rows if r.get("propagation_unit")}),
+		}
+
+	def season_plants(self):
+		"""The plantings the production plan asks for, which shares are shares of."""
+		if not self.production_plan:
+			return 0
+		try:
+			from upande_propagation.allocation import plan_weeks
+		except ImportError:
+			return cint(frappe.db.get_value("Summer Flower Production Plan",
+			                                self.production_plan, "total_plants"))
+		try:
+			return int(sum(q for _d, q in plan_weeks(self.production_plan)))
+		except Exception:
+			return 0
+
+	def planting_summary(self):
+		"""When what this unit raises actually goes in the ground.
+
+		The propagation weeks say when cuttings are stuck; they do not say when
+		the plant stands in a bed, which is the date the farm plans around and
+		the one this plan is ultimately judged by.
+		"""
+		if not self.production_plan:
+			return {"rows": [], "totals": {}}
+		try:
+			from upande_summer_flowers.summer_flowers.planning_api import planting_plan
+			pp = planting_plan(plan=self.production_plan)
+		except Exception as e:
+			return {"rows": [], "totals": {}, "error": str(e)}
+		rows = pp.get("plantings") or []
+		return {
+			"rows": rows,
+			"totals": pp.get("totals") or {},
+			"protocol_status": pp.get("protocol_status"),
+			"protocol_stale": cint(pp.get("protocol_stale") or 0),
+		}
 
 	@frappe.whitelist()
 	def accept_replan(self):
@@ -1025,13 +1253,17 @@ class SummerFlowerPropagationPlan(Document):
 
 
 @frappe.whitelist()
-def build_from_plan(production_plan, as_dict=False):
-	"""The propagation plan for a variety and season: create it, or bring it up to date.
+def build_from_plan(production_plan, as_dict=False, propagation_unit=None):
+	"""The propagation plan for a variety, season and unit: create or rebuild it.
 
-	Keyed on variety and season, not on the production plan. Propagation is one
-	physical operation for a crop in a year -- one pool, one bench, one TC order --
-	so a second production plan for the same crop and season feeds the same
-	propagation plan rather than starting a rival one.
+	Keyed on variety, season and UNIT, not on the production plan. Propagation is
+	one physical operation -- one pool, one bench, one TC order -- but that is
+	true of a unit, not of a crop: two units raising the same variety have two of
+	each. Keying on variety and season alone meant the second unit's plan found
+	the first unit's and rebuilt it, leaving one plan serving two benches.
+
+	With no unit given the behaviour is as before, which is what an unallocated
+	plan still wants.
 
 	Where it already exists this rebuilds it and reports what moved. It used to
 	return the existing name untouched, which meant every later change to the
@@ -1045,7 +1277,8 @@ def build_from_plan(production_plan, as_dict=False):
 	existing = frappe.db.get_value(
 		"Summer Flower Propagation Plan",
 		{"variety": plan.variety, "season_start_year": season_year(plan.season_start_year),
-		 "status": ["!=", "Rejected"]}, "name")
+		 "status": ["!=", "Rejected"],
+		 "propagation_unit": propagation_unit or ""}, "name")
 
 	if existing:
 		d = frappe.get_doc("Summer Flower Propagation Plan", existing)
@@ -1057,6 +1290,8 @@ def build_from_plan(production_plan, as_dict=False):
 		before = d.snapshot()
 		was_plan = d.production_plan
 		d.production_plan = production_plan
+		if propagation_unit:
+			d.propagation_unit = propagation_unit
 		d.flags.ignore_permissions = True
 		d.save()
 		changes = d.describe_changes(before)
@@ -1071,6 +1306,7 @@ def build_from_plan(production_plan, as_dict=False):
 
 	d = frappe.new_doc("Summer Flower Propagation Plan")
 	d.production_plan = production_plan
+	d.propagation_unit = propagation_unit
 	d.flags.ignore_permissions = True
 	# No commit here. This runs inside the Procurement Plan's on_submit, and a
 	# commit mid-submit means a step that fails afterwards rolls the submit back
