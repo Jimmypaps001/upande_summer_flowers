@@ -49,7 +49,11 @@ class CropProtocolVersion(Document):
 		# into a new Draft. Guarding the Draft too meant that amendment created a
 		# version it could not then write to, so no approved protocol could be
 		# changed at all: the edit died on the copy it had just made.
-		if (self.version_status or "Draft") == "Draft":
+		# Pending Approval is on the same side of the line. The workflow's own
+		# Draft -> Pending Approval -> Active path saves the doc at every step, so
+		# guarding Pending made Approve unreachable: the version could be sent for
+		# approval and then never approved, stranded in a state it could not leave.
+		if (self.version_status or "Draft") in ("Draft", "Pending Approval"):
 			return
 		frappe.throw(
 			_("{0} is a snapshot and cannot be edited. Change the protocol on Crop "
