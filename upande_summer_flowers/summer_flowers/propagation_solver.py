@@ -837,30 +837,54 @@ def _walk_line(demand, buy, c, regen, per_week, life, ramp, per_area, first_cut,
 			steps.append({"week_no": r["week_no"], "week_start": r["week_start"],
 			              "mothers": held})
 
+	# Taken before the clearance row is added. That row is a note, not a week of
+	# cutting: where the block happens to be cleared ON a sticking week it would
+	# otherwise stand in for it, zeros and all, and the week the field actually
+	# wanted plants in would be passed over as already covered.
+	walked = {r["week_start"] for r in rows}
+
 	rows.append({"week_no": n + 1, "week_start": str(line_end),
 	             "event": _("Block cleared"), "generations_live": "",
 	             "mothers_standing": 0, "cuttings_cut": 0,
 	             "to_multiplication": 0, "to_field": 0, "cuttings_spare": 0,
 	             "mothers_removed": 0,
 	             "cumulative_to_field": run, "demand": 0, "shortfall": 0})
-	# Over EVERY demand week, not only the ones the line is alive for. A sticking
-	# week before the first cut or after the clearance has no row at all, and
-	# counting the shortfall only across rows made those weeks disappear: the
-	# schedule reported no shortfall while meeting 32 of 38 weeks.
-	by_week = {r["week_start"]: r for r in rows}
+	# A sticking week the line never reaches is still a week the field wants
+	# plants in. The walk covers the line's own life and nothing else, so those
+	# weeks had no row at all -- and the schedule, which is the part anybody
+	# actually scrolls, showed every week met while the header beside it said 27
+	# of 44. The totals were right and the table contradicted them.
+	for d, nn in sorted(demand.items()):
+		if str(d) in walked:
+			continue
+		before = getdate(d) < first_cut
+		rows.append({
+			"week_no": 0, "week_start": str(d),
+			"event": (_("Before the first cut: no mother is standing yet")
+			          if before else
+			          _("After the block is cleared: this line cannot reach it")),
+			"generations_live": "", "mothers_standing": 0, "cuttings_cut": 0,
+			"to_multiplication": 0, "to_field": 0, "cuttings_spare": 0,
+			"mothers_removed": 0, "cumulative_to_field": 0 if before else run,
+			"demand": cint(nn), "shortfall": cint(nn),
+		})
+	rows.sort(key=lambda r: r["week_start"])
+	for i, r in enumerate(rows, 1):
+		r["week_no"] = i
+
+	# Over EVERY demand week, not only the ones the line is alive for -- and
+	# SUMMED per week rather than read off one row, because two rows can share a
+	# date: the clearance lands on a sticking week often enough, and keying a
+	# dict by date let that empty row hide the real one behind it. The week then
+	# read as wholly unmet and the total was 5,000 cuttings worse than the table
+	# it was printed beside.
+	by_week = {}
+	for r in rows:
+		by_week[r["week_start"]] = by_week.get(r["week_start"], 0) + cint(r["to_field"])
 	short = 0
 	weeks_met = 0
 	for d, nn in demand.items():
-		got = cint((by_week.get(str(d)) or {}).get("to_field"))
-		if got >= nn:
-			weeks_met += 1
-		else:
-			short += nn - got
-	by_week = {r["week_start"]: r for r in rows}
-	short = 0
-	weeks_met = 0
-	for d, nn in demand.items():
-		got = cint((by_week.get(str(d)) or {}).get("to_field"))
+		got = cint(by_week.get(str(d), 0))
 		if got >= nn:
 			weeks_met += 1
 		else:
