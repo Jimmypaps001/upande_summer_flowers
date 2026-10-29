@@ -1,0 +1,126 @@
+{
+ "actions": [],
+ "creation": "2026-10-29 09:00:00.000000",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "entry_stage",
+  "supplier",
+  "share_pct",
+  "units",
+  "rate",
+  "amount",
+  "note",
+  "column_break_a",
+  "lead_weeks",
+  "order_by",
+  "arrives",
+  "material_request",
+  "purchase_order"
+ ],
+ "fields": [
+  {
+   "fieldname": "entry_stage",
+   "fieldtype": "Data",
+   "label": "Bought As",
+   "read_only": 1,
+   "in_list_view": 1,
+   "columns": 2,
+   "description": "Which way in this row buys. A crop bought two ways has a line of sellers for each."
+  },
+  {
+   "fieldname": "supplier",
+   "fieldtype": "Link",
+   "options": "Supplier",
+   "label": "Supplier",
+   "in_list_view": 1,
+   "columns": 2,
+   "description": "Left blank until you pick one. The plan refuses to be approved with any of its material unsold."
+  },
+  {
+   "fieldname": "share_pct",
+   "fieldtype": "Percent",
+   "label": "Share",
+   "in_list_view": 1,
+   "columns": 1,
+   "description": "Of what this way in buys, not of the whole order."
+  },
+  {
+   "fieldname": "units",
+   "fieldtype": "Int",
+   "label": "Units",
+   "read_only": 1,
+   "in_list_view": 1,
+   "columns": 1
+  },
+  {
+   "fieldname": "rate",
+   "fieldtype": "Currency",
+   "label": "Price per Unit",
+   "in_list_view": 1,
+   "columns": 1
+  },
+  {
+   "fieldname": "amount",
+   "fieldtype": "Currency",
+   "label": "Amount",
+   "read_only": 1
+  },
+  {
+   "fieldname": "note",
+   "fieldtype": "Small Text",
+   "label": "Notes",
+   "in_list_view": 1,
+   "columns": 2
+  },
+  {
+   "fieldname": "column_break_a",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "lead_weeks",
+   "fieldtype": "Int",
+   "label": "Lead (weeks)",
+   "description": "This seller's own notice. Blank takes the protocol's."
+  },
+  {
+   "fieldname": "order_by",
+   "fieldtype": "Date",
+   "label": "Order By",
+   "read_only": 1
+  },
+  {
+   "fieldname": "arrives",
+   "fieldtype": "Date",
+   "label": "First Arrival",
+   "read_only": 1
+  },
+  {
+   "fieldname": "material_request",
+   "fieldtype": "Link",
+   "options": "Material Request",
+   "label": "Material Request",
+   "read_only": 1
+  },
+  {
+   "fieldname": "purchase_order",
+   "fieldtype": "Link",
+   "options": "Purchase Order",
+   "label": "Purchase Order",
+   "read_only": 1
+  }
+ ],
+ "index_web_pages_for_search": 1,
+ "istable": 1,
+ "links": [],
+ "modified": "2026-10-29 09:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Summer Flowers",
+ "name": "Summer Flower Purchase Allocation",
+ "owner": "Administrator",
+ "permissions": [],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": []
+}

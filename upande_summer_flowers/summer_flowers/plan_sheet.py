@@ -91,6 +91,10 @@ def build(plan):
 	# empty rather than silently splitting evenly.
 	grades = []
 	total_pct = 0
+	# Every grade is valued at the variety Item's valuation; nothing is typed per grade.
+	from upande_summer_flowers.summer_flowers.valuation import stem_price
+
+	price = stem_price(plan.variety, plan.get("company"))
 	for g in (protocol.grade_allocation if protocol else []):
 		pct = flt(g.allocation_pct)
 		total_pct += pct
@@ -99,7 +103,7 @@ def build(plan):
 			"pct": pct,
 			"weekly": [int(round(v * pct / 100)) for v in weekly_prod] if pct else [],
 			"demand": [int(round(v * pct / 100)) for v in weekly_dem] if pct else [],
-			"price_per_stem": flt(g.price_per_stem),
+			"price_per_stem": price,
 		})
 
 	return {

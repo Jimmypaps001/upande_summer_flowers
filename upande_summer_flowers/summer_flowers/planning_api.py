@@ -14,7 +14,7 @@ from frappe import _
 from frappe.utils import add_days, cint, flt, getdate, nowdate
 
 from upande_summer_flowers.summer_flowers.doctype.crop_protocol_version.crop_protocol_version import (
-	BED_SQM_PER_HA,
+	bed_sqm_per_ha,
 )
 from upande_summer_flowers.summer_flowers.doctype.summer_flower_production_plan.summer_flower_production_plan import (
 	protocol_freshness,
@@ -27,7 +27,7 @@ from upande_summer_flowers.summer_flowers.motherstock_sim import (
 )
 from upande_summer_flowers.summer_flowers.planning import (
 	season_year,
-	SEASON_FIRST_WEEK,
+	season_first_week,
 	iso_monday,
 	iso_year_week,
 	week_sequence,
@@ -120,7 +120,7 @@ def plans(variety=None, farm=None):
 			y, wk = cint(w.year), cint(w.week_no)
 			if y and wk:
 				# July to June: W27 on belongs to the year it starts in.
-				seasons.add(y if wk >= SEASON_FIRST_WEEK else y - 1)
+				seasons.add(y if wk >= season_first_week() else y - 1)
 
 	return {
 		"plans": rows,
@@ -1239,7 +1239,7 @@ def plan_whatif(plan=None, variety=None, farm=None, tc_qty=None, week_overrides=
 		"weeks_required": cint(chosen_line.get("weeks")),
 		"line_end_date": chosen_line.get("line_end_date"),
 		"first_cut_date": chosen_line.get("first_cut_date"),
-		"max_multiplications": ps.MAX_MULTIPLICATIONS,
+		"max_multiplications": ps.max_multiplications(),
 		"suggested_multiplications": cint(sizing["suggested"]),
 		"covers": 1 if (sched or {}).get("covers") else 0,
 		"shortfall": cint((sched or {}).get("shortfall")),
@@ -1987,11 +1987,23 @@ def lifetime_production(variety=None, farm=None, plan=None, grain="month"):
 
 # Stages that mean the farm cuts its own material off a standing pool. A route
 # without one of these is a crop that is handed what it plants.
-MOTHERSTOCK_STAGES = ("Motherstock", "Cuttings (Own)", "Roots (Own)",
-                      "Tubers (Own)")
+from upande_summer_flowers.summer_flowers import stages as _stages
+
+MOTHERSTOCK_STAGES = _stages.StageSet((_stages.MOTHERSTOCK, _stages.TAKEN))
 
 # Which lift profile belongs to which way in.
-CHAIN_FORM = {"TC": "Tissue Culture", "Roots": "Roots"}
+class _ChainForm:
+	def get(self, stage, default=None):
+		return _stages.lift_forms().get(stage, default)
+
+	def __getitem__(self, stage):
+		return _stages.lift_forms()[stage]
+
+	def __contains__(self, stage):
+		return stage in _stages.lift_forms()
+
+
+CHAIN_FORM = _ChainForm()
 
 
 def _stated_lifts(version, form):
@@ -2129,7 +2141,7 @@ def protocol_detail(version=None, variety=None, farm=None, plan=None):
 	flushes = []
 	cum = 0
 	# Per hectare of BED. It is the only area this app carries.
-	plants_per_ha = (v.plants_per_sqm_net or 0) * BED_SQM_PER_HA
+	plants_per_ha = (v.plants_per_sqm_net or 0) * bed_sqm_per_ha()
 	for r in sorted(v.flush_schedule, key=lambda r: r.flush_number or 0):
 		cum += r.stems_per_plant or 0
 		flushes.append({
@@ -2306,7 +2318,7 @@ def protocol_detail(version=None, variety=None, farm=None, plan=None):
 		"has_motherstock": 1 if has_ms else 0,
 		"bought_at": bought,
 		"grades": [{"grade": g.grade, "pct": flt(g.allocation_pct),
-		            "price": flt(g.price_per_stem)} for g in v.grade_allocation],
+		            "price": _stem_price(v.variety)} for g in v.grade_allocation],
 		"ramp": ramp,
 		"journey": journey,
 		"versions": sibling,
@@ -2785,13 +2797,32 @@ def procurement_detail(plan=None, variety=None, farm=None):
 				"Summer Flower Propagation Allocation",
 				filters={"parent": pr["name"],
 				         "parenttype": "Summer Flower Procurement Plan"},
-				fields=["propagation_unit", "supplier", "plants", "share_pct",
+				fields=["propagation_unit", "supplier", "plants", "share_pct", "raises",
 				        "planted", "surplus", "troughs_used", "plantings",
-				        "propagation_plan", "note"],
+				        "propagation_plan", "note", "rate_per_plant", "amount",
+				        "purchase_order"],
 				order_by="idx"):
 			r["procurement_plan"] = pr["name"]
 			r["entry_stage"] = pr["entry_stage"]
+			r["editable"] = 1 if pr["docstatus"] == 0 else 0
 			rows.append(r)
+
+	# Who SELLS it, beside who raises it. The dashboard could allocate the
+	# propagating and not the buying, so a crop bought as tissue culture from
+	# two laboratories and raised on two benches showed half its own plan.
+	buying = []
+	for pr in plans:
+		for r in frappe.get_all(
+				"Summer Flower Purchase Allocation",
+				filters={"parent": pr["name"],
+				         "parenttype": "Summer Flower Procurement Plan"},
+				fields=["entry_stage", "supplier", "share_pct", "units", "rate",
+				        "amount", "lead_weeks", "order_by", "arrives",
+				        "material_request", "purchase_order", "note"],
+				order_by="idx"):
+			r["procurement_plan"] = pr["name"]
+			r["editable"] = 1 if pr["docstatus"] == 0 else 0
+			buying.append(r)
 
 	season = 0
 	try:
@@ -2804,6 +2835,7 @@ def procurement_detail(plan=None, variety=None, farm=None):
 	return {
 		"plan": plan,
 		"plans": plans,
+		"buying": buying,
 		"allocations": {
 			"rows": rows,
 			"season_plants": season,
@@ -3122,7 +3154,7 @@ def motherstock_line(plan=None, variety=None, farm=None, tc=None,
 			"per_mother_per_week": sizing["cuttings_per_mother_per_week"],
 			"min_planting_area": sizing["min_planting_area"],
 			"suggested": sizing["suggested"],
-			"max": ps.MAX_MULTIPLICATIONS,
+			"max": ps.max_multiplications(),
 		}
 
 	out["saved"] = saved
@@ -3702,12 +3734,16 @@ def farm_plan(farm, variety=None, from_date=None, weeks=None, include_past=None)
 	                                   "method", "supplier"]):
 		rows = frappe.get_all("Summer Flower Propagation Allocation",
 		                      filters={"parent": proc.name},
-		                      fields=["propagation_unit", "plants", "propagation_plan"])
+		                      fields=["propagation_unit", "supplier", "plants",
+		                              "propagation_plan"])
+		# Our own units and outside propagators are kept apart: a supplier row
+		# has no unit, and counting it as one put its plants on a unit called None.
 		raisers.setdefault(proc.production_plan, []).append({
 			"procurement_plan": proc.name, "entry_stage": proc.entry_stage,
 			"method": proc.method, "supplier": proc.supplier,
-			"allocated": [dict(r) for r in rows],
-			"own_plants": sum(cint(r.plants) for r in rows),
+			"allocated": [dict(r) for r in rows if r.propagation_unit],
+			"outside": [dict(r) for r in rows if r.supplier and not r.propagation_unit],
+			"own_plants": sum(cint(r.plants) for r in rows if r.propagation_unit),
 		})
 
 	# ── the trough calendar, first ─────────────────────────────────────────
@@ -3787,7 +3823,13 @@ def farm_plan(farm, variety=None, from_date=None, weeks=None, include_past=None)
 					share = (cint(alloc["plants"]) / float(own_total)) if own_total else 0
 					add(when, alloc["propagation_unit"], int(round(own * share)),
 					    p.variety, "allocated share", False)
-			bought = qty - own
+			outside = 0
+			for a in mine:
+				for alloc in a.get("outside") or []:
+					theirs = int(round(qty * min(1.0, cint(alloc["plants"]) / float(plan_total))))
+					outside += theirs
+					add(when, alloc["supplier"], theirs, p.variety, "outside propagator", False)
+			bought = qty - own - outside
 			if bought > 0:
 				who = next((a["supplier"] for a in mine if a.get("supplier")), None) \
 					or _("bought in")
@@ -3842,3 +3884,68 @@ def farm_plan(farm, variety=None, from_date=None, weeks=None, include_past=None)
 		"calendar_weeks": len([w for w in out if w["from_calendar"]]),
 		"plans_on_calendar": sorted(calendars),
 	}
+
+
+
+def _unit_type():
+	from upande_summer_flowers.summer_flowers.settings import propagation_unit_type
+
+	return propagation_unit_type()
+
+
+def _stem_price(variety):
+	from upande_summer_flowers.summer_flowers.valuation import stem_price
+
+	return stem_price(variety)
+
+# ---------------------------------------------------------------------------
+# Who raises it: own propagation units and outside propagators, from the board
+# ---------------------------------------------------------------------------
+
+@frappe.whitelist()
+def propagator_choices():
+	"""Our own propagation units (warehouses of type Propagation Unit) and suppliers."""
+	return {
+		"units": frappe.get_all("Warehouse", filters={"warehouse_type": _unit_type(),
+		                                              "is_group": 0, "disabled": 0},
+		                        pluck="name", order_by="name"),
+		"suppliers": frappe.get_all("Supplier", filters={"disabled": 0}, pluck="name",
+		                            order_by="name"),
+	}
+
+
+def _draft_procurement(name):
+	doc = frappe.get_doc("Summer Flower Procurement Plan", name)
+	doc.check_permission("write")
+	if doc.docstatus != 0:
+		frappe.throw(_("{0} is already approved; who raises it was settled then.").format(name))
+	return doc
+
+
+@frappe.whitelist()
+def propose_propagators(procurement_plan):
+	"""Allocate the season across our own units by what their troughs hold."""
+	return _draft_procurement(procurement_plan).propose_allocation()
+
+
+@frappe.whitelist()
+def save_propagators(procurement_plan, rows):
+	"""Allocate the season by the shares chosen on the board.
+
+	rows: [{"propagation_unit": ...} or {"supplier": ..., "rate_per_plant": ...},
+	with "share_pct"]. Shares are of the whole season and must make 100.
+	"""
+	rows = frappe.parse_json(rows) if isinstance(rows, str) else (rows or [])
+	units = [{"unit": r["propagation_unit"], "share_pct": flt(r.get("share_pct"))}
+	         for r in rows if r.get("propagation_unit")]
+	suppliers = [{"supplier": r["supplier"], "share_pct": flt(r.get("share_pct")),
+	              "rate_per_plant": flt(r.get("rate_per_plant"))}
+	             for r in rows if r.get("supplier")]
+	if not units and not suppliers:
+		frappe.throw(_("Choose at least one propagation unit or outside propagator."))
+	total = sum(x["share_pct"] for x in units + suppliers)
+	if abs(total - 100) > 0.01:
+		frappe.throw(_("The shares come to {0}%. They have to make the whole season, 100%.")
+		             .format(round(total, 2)))
+	return _draft_procurement(procurement_plan).propose_allocation(units=units,
+	                                                                suppliers=suppliers)

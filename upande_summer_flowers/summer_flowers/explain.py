@@ -13,7 +13,7 @@ The point is that a planner can challenge a number without reading the code.
 import frappe
 from frappe import _
 
-from upande_summer_flowers.summer_flowers.doctype.crop_protocol_version.crop_protocol_version import BED_SQM_PER_HA
+from upande_summer_flowers.summer_flowers.doctype.crop_protocol_version.crop_protocol_version import bed_sqm_per_ha
 from frappe.utils import flt
 
 WEEKS_PER_YEAR = 52
@@ -71,25 +71,25 @@ def _m_spl(v):
 def _m_pph(v):
 	return {
 		"label": _("Plants per hectare"),
-		"value": flt(v.plants_per_sqm_net) * BED_SQM_PER_HA, "unit": _("plants/ha"),
-		"formula": _("plants per m² of bed × {0} m² of bed per hectare of ground").format(BED_SQM_PER_HA),
+		"value": flt(v.plants_per_sqm_net) * bed_sqm_per_ha(), "unit": _("plants/ha"),
+		"formula": _("plants per m² of bed × {0} m² of bed per hectare of ground").format(bed_sqm_per_ha()),
 		"steps": [
 			_step(_("Plants per m² of bed (net)"), v.plants_per_sqm_net,
 			      _("{0} → plants_per_sqm_net, the agronomic density").format(v.name)),
-			_step(_("× {0} m² of bed per hectare of ground").format(BED_SQM_PER_HA),
-			      flt(v.plants_per_sqm_net) * BED_SQM_PER_HA),
+			_step(_("× {0} m² of bed per hectare of ground").format(bed_sqm_per_ha()),
+			      flt(v.plants_per_sqm_net) * bed_sqm_per_ha()),
 		],
 		"caveats": [
 			_("A hectare of GROUND, of which {0} m² is bed. Paths, headlands and the gaps "
 			  "between beds take the rest, so a hectare never carries 10,000 m² of crop.")
-			.format(BED_SQM_PER_HA),
+			.format(bed_sqm_per_ha()),
 		],
 	}
 
 
 @protocol_metric("stems_per_ha_life")
 def _m_sphl(v):
-	pph = flt(v.plants_per_sqm_net) * BED_SQM_PER_HA
+	pph = flt(v.plants_per_sqm_net) * bed_sqm_per_ha()
 	return {
 		"label": _("Life stems per hectare"),
 		"value": flt(v.stems_per_ha_life), "unit": _("stems/ha"),

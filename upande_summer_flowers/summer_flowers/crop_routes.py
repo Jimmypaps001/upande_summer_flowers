@@ -31,15 +31,18 @@ SINGLE = "Single flush cycle"
 
 # Route name -> the stages it passes through, in order. The name is for reading;
 # the stages are what anything downstream measures.
-ROUTES = {
+#
+# These are only the routes a site starts with: the patch add_material_routes
+# writes them as Material Route records, and from then on the records are the
+# routes. A new way in is a new record, not an edit here.
+SEED_ROUTES = {
 	"TC to motherstock": ["TC", "Motherstock", "Plants"],
-	"TC to propagation": ["TC", "Propagation", "Plants"],
-	"TC through roots": ["TC", "Roots", "Propagation", "Plants"],
+	"TC to propagation": ["TC", "Rooting", "Plants"],
 	# Roots bought from a root supplier, not grown from our own tissue culture.
 	# Eryngium buys both, in the same year, for the same variety: fifteen weeks of
 	# supplier lead against seven, and fifteen weeks of hardening against seven.
-	"Bought as roots": ["Roots", "Propagation", "Plants"],
-	"Seed raised": ["Seeds", "Propagation", "Plants"],
+	"Bought as roots": ["Roots", "Rooting", "Plants"],
+	"Seed raised": ["Seeds", "Rooting", "Plants"],
 	"Bought as plants": ["Bought-in Plants", "Plants"],
 	# Own cuttings are a draw from a motherstock, and the motherstock was tissue
 	# culture. So there is no route that starts at a cutting: this crop runs the
@@ -47,15 +50,56 @@ ROUTES = {
 	# netting says when the pool already standing covers the peak week, not a
 	# property of the crop.
 	"Own cuttings": ["TC", "Motherstock", "Plants"],
+	"Own cuttings, rooted": ["Cuttings (Own)", "Rooting", "Plants"],
 	"Own roots, cooled": ["Roots (Own)", "Cooling", "Plants"],
 	"Own roots, direct": ["Roots (Own)", "Plants"],
-	"Budwood": ["Budwoods", "Propagation", "Plants"],
+	"Budwood": ["Budwoods", "Rooting", "Plants"],
 	# Tubers. Not in the categories document of 14 August -- Dahlia is listed there
 	# under TC to motherstock, which is not how a tuber crop is raised. Added so the
 	# process can be planned before the farm reaches it.
 	"Own tubers, direct": ["Tubers (Own)", "Plants"],
-	"Tubers through cuttings": ["Tubers", "Sprouting", "Propagation", "Plants"],
+	"Tubers through cuttings": ["Tubers", "Sprouting", "Rooting", "Plants"],
 }
+
+
+class _Routes:
+	"""Route name -> stages, read from the Material Route records.
+
+	Looks like the dict it replaced so its readers did not change. Read per request
+	(cached on frappe.local), so a route added on the site is seen straight away.
+	"""
+
+	def _all(self):
+		cache = getattr(frappe.local, "_sf_routes", None)
+		if cache is None:
+			cache = {}
+			for r in frappe.get_all("Material Route Stage",
+			                        filters={"parenttype": "Material Route"},
+			                        fields=["parent", "stage"], order_by="parent, idx"):
+				cache.setdefault(r.parent, []).append(r.stage)
+			frappe.local._sf_routes = cache
+		return cache
+
+	def get(self, name, default=None):
+		return self._all().get(name, default)
+
+	def __getitem__(self, name):
+		return self._all()[name]
+
+	def __contains__(self, name):
+		return name in self._all()
+
+	def __iter__(self):
+		return iter(self._all())
+
+	def items(self):
+		return self._all().items()
+
+	def keys(self):
+		return self._all().keys()
+
+
+ROUTES = _Routes()
 
 # (route, cycle, [varieties]). Written out as the document has them, including the
 # spellings, so a name that does not match a site's Item is visible as a miss
@@ -102,7 +146,7 @@ CATALOGUE = [
 		"Helleborus Classic Grace",
 		"Helleborus Classic One",
 	]),
-	("TC through roots", CONTINUOUS, [
+	("TC to propagation", CONTINUOUS, [
 		"Eryngium Aquarius Questar",
 		"Eryngium Magnetar Questar",
 		"Eryngium Orion Questar",
@@ -133,7 +177,7 @@ CATALOGUE = [
 		"Limonium sinensis Scarlet Diamond",
 		"Limonium sinensis Anouchka Diamond",
 	]),
-	("Own cuttings", DISTINCT, [
+	("Own cuttings, rooted", DISTINCT, [
 		"Hypericum androsaemum Sisu Charm",
 		"Hypericum androsaemum Sisu Flirt",
 		"Hypericum androsaemum Sisu Red",
@@ -167,30 +211,53 @@ CATALOGUE = [
 	("Tubers through cuttings", CONTINUOUS, [
 		"Dahlia",
 	]),
-	("Budwood", CONTINUOUS, [
-		"Rosa large flowered Confidential",
-		"Rosa large flowered Esperance",
-		"Rosa large flowered Helene",
-		"Rosa large flowered Madam red",
-		"Rosa large flowered Pink Athena",
-		"Rosa large flowered Snowstorm+",
-		"Rosa small flowered Candid Prophyta",
-		"Rosa small flowered Menta",
-	]),
 ]
 
 # The stage material is bought at, per route. Only the first stage is a purchase
 # unless the farm says otherwise; own cuttings and own roots are taken, not bought,
 # so nothing on those routes is marked bought.
-PURCHASED_AT = {
-	"TC to motherstock": "TC",
-	"TC to propagation": "TC",
-	"TC through roots": "TC",
-	"Seed raised": "Seeds",
-	"Bought as plants": "Bought-in Plants",
-	"Budwood": "Budwoods",
-	"Tubers through cuttings": "Tubers",
+CATEGORY_FARMS = {
+	("TC to motherstock", DISTINCT): ("Carzan Ks", "Kariki Juja", "Carzan St"),
+	("TC to motherstock", CONTINUOUS): ("Carzan Mr",),
+	("TC to propagation", CONTINUOUS): ("Kariki Naivasha", "Carzan Mr", "Kudenga", "Bondet"),
+	("Seed raised", DISTINCT): ("Kariki Naivasha", "Carzan Mr"),
+	("Seed raised", SINGLE): (),
+	("Bought as plants", CONTINUOUS): ("Carzan Mr", "Kudenga", "Carzan Ks"),
+	("Bought as plants", DISTINCT): ("Kariki Naivasha", "Kudenga"),
+	("Bought as plants", SINGLE): (),
+	("Own cuttings, rooted", DISTINCT): ("Carzan Ks", "Carzan St", "Bondet",
+	                                     "Kariki Naivasha", "Kariki Juja"),
+	("Own roots, cooled", CONTINUOUS): ("Bondet", "Kudenga"),
+	("Own roots, cooled", DISTINCT): ("Kudenga",),
+	("Own roots, direct", SINGLE): ("Carzan St", "Carzan Ks"),
+	("Own roots, direct", CONTINUOUS): ("Kariki Naivasha",),
+	("Tubers through cuttings", CONTINUOUS): ("Carzan Ks",),
 }
+
+
+def farms_for(route, cycle):
+	return CATEGORY_FARMS.get((route, cycle), ())
+
+
+def grows_here(farm, route, cycle):
+	want = (farm or "").strip().lower()
+	return any(want == f.strip().lower() for f in farms_for(route, cycle))
+
+
+SECOND_WAY = {
+	v: ("Bought as roots", 35.0)
+	for v in ("Eryngium Aquarius Questar", "Eryngium Magnetar Questar",
+	          "Eryngium Orion Questar", "Eryngium planum Gemini Questar",
+	          "Eryngium Scorpius Questar", "Eryngium Sirius Questar",
+	          "Eryngium Supernova Questar")
+}
+
+
+def second_way():
+	from upande_summer_flowers.summer_flowers.settings import second_way as _s
+
+	return _s(SECOND_WAY)
+
 
 
 def _lookup():
@@ -212,19 +279,27 @@ def _lookup():
 #: Roots are a year: by the time a root reaches a farm it has been grown and
 #: lifted already, whether at a supplier or in our own block. Tissue culture is
 #: fifteen weeks in the lab.
-LEAD_WEEKS = {
-	"Roots": 52,
-	"TC": 15,
-}
+
+
+def lead_weeks():
+	"""Supplier lead per bought stage: each Material Stage's default lead weeks."""
+	from upande_summer_flowers.summer_flowers import stages
+	from upande_summer_flowers.summer_flowers.settings import lead_weeks as _l
+
+	return _l(stages.default_lead_weeks())
 
 
 def stages_for(route):
 	"""The ordered stage rows for a route, ready to append to a protocol."""
-	bought = PURCHASED_AT.get(route)
+	# The stage a route buys is its first, when that stage is a bought one.
+	from upande_summer_flowers.summer_flowers import stages
+
+	first = (ROUTES.get(route) or [None])[0]
+	bought = first if stages.kind(first) == stages.BOUGHT else None
 	return [
 		{"stage": stage, "weeks": 0, "loss_pct": 0, "yields_per_unit": 1,
 		 "is_purchase": 1 if stage == bought else 0,
-		 "lead_weeks": LEAD_WEEKS.get(stage, 0)}
+		 "lead_weeks": lead_weeks().get(stage, 0)}
 		for stage in ROUTES[route]
 	]
 
@@ -385,6 +460,8 @@ def provision(farm, dry_run=1, only_route=None):
 
 	for variety, (route, cycle) in sorted(by_variety.items()):
 		if only_route and route != only_route:
+			continue
+		if not grows_here(farm, route, cycle):
 			continue
 		items[_ensure_item(variety, dry_run)] += 1
 		name = "%s-%s" % (variety, farm)

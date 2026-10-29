@@ -29,8 +29,6 @@
   "period_section",
   "season_start_year",
   "season",
-  "season_start_date",
-  "season_end_date",
   "from_year",
   "from_week",
   "cb_period",
@@ -44,7 +42,6 @@
   "cb_outcome",
   "total_variance_stems",
   "weekly_variance_band_pct",
-  "variance_band_held",
   "weeks_outside_band",
   "coverage_pct",
   "placeable_coverage_pct",
@@ -66,8 +63,6 @@
   "tc_plants_to_order",
   "tc_order_by_date",
   "cb_tc",
-  "tc_mother_plants",
-  "tc_cuttings_at_peak",
   "tc_status",
   "tc_choice_section",
   "tc_choice_committed",
@@ -80,25 +75,9 @@
   "supplied_production_stems",
   "supplied_coverage_pct",
   "tc_choice_note",
-  "space_section",
-  "ground_demanded",
-  "space_required_ha",
-  "space_stated_ha",
-  "space_measured_ha",
-  "cb_space",
-  "beds_required_peak",
-  "beds_available_stated",
-  "beds_available_measured",
-  "beds_unblocked",
-  "space_unblocked_ha",
-  "space_utilisation_pct",
-  "space_verdict",
-  "space_rows_section",
-  "plan_space",
   "budget_link_section",
   "budget",
   "weeks_tab",
-  "weeks_section",
   "sheet_section",
   "matrix_json",
   "matrix_html",
@@ -114,9 +93,6 @@
   "amend_section",
   "amended_from",
   "plantings_not_placed",
-  "plantings_slipped",
-  "worst_slip_days",
-  "slippage_note",
   "unmet_stems",
   "blocks_used",
   "peak_concurrent_beds",
@@ -232,8 +208,10 @@
   {
    "fieldname": "price_per_stem",
    "fieldtype": "Currency",
-   "label": "Price Per Stem",
-   "options": "currency"
+   "label": "Price Per Stem (item valuation)",
+   "options": "currency",
+   "read_only": 1,
+   "description": "The variety Item's valuation rate, read from stock. Not typed."
   },
   {
    "fieldname": "workflow_state",
@@ -273,18 +251,6 @@
    "fieldname": "season",
    "fieldtype": "Data",
    "label": "Season",
-   "read_only": 1
-  },
-  {
-   "fieldname": "season_start_date",
-   "fieldtype": "Date",
-   "label": "Season Starts",
-   "read_only": 1
-  },
-  {
-   "fieldname": "season_end_date",
-   "fieldtype": "Date",
-   "label": "Season Ends",
    "read_only": 1
   },
   {
@@ -368,13 +334,6 @@
    "fieldname": "weekly_variance_band_pct",
    "fieldtype": "Percent",
    "label": "Weekly Variance Band",
-   "read_only": 1
-  },
-  {
-   "description": "Cleared when the planting programme could not be kept inside the band -- usually a planting quantum coarser than the band itself, or demand no planting can reach in time. The plan then covers the demand and overshoots. Both this and the count beside it are meaningless on a plan built before the band existed, which is any plan whose Weekly Variance Band is blank.",
-   "fieldname": "variance_band_held",
-   "fieldtype": "Check",
-   "label": "Variance Band Held",
    "read_only": 1
   },
   {
@@ -504,18 +463,6 @@
    "fieldtype": "Column Break"
   },
   {
-   "fieldname": "tc_mother_plants",
-   "fieldtype": "Int",
-   "label": "Mother Plants Needed",
-   "read_only": 1
-  },
-  {
-   "fieldname": "tc_cuttings_at_peak",
-   "fieldtype": "Int",
-   "label": "Cuttings in Peak Week",
-   "read_only": 1
-  },
-  {
    "fieldname": "tc_status",
    "fieldtype": "Small Text",
    "label": "TC Order Note",
@@ -597,104 +544,6 @@
    "read_only": 1
   },
   {
-   "fieldname": "space_section",
-   "fieldtype": "Section Break",
-   "label": "Space: What This Plan Needs Against What We Have"
-  },
-  {
-   "fieldname": "ground_demanded",
-   "fieldtype": "Small Text",
-   "label": "Ground This Plan Demands",
-   "read_only": 1,
-   "in_list_view": 0,
-   "description": "Beds and plants at the peak, and the hectares those come to when the farm has a measured bed."
-  },
-  {
-   "description": "Peak concurrent beds at the protocol's net area per bed. The peak, not the sum: a block that hosts two plantings in turn is one piece of land, not two.",
-   "fieldname": "space_required_ha",
-   "fieldtype": "Float",
-   "label": "Space This Plan Needs (ha)",
-   "precision": "4",
-   "read_only": 1
-  },
-  {
-   "description": "The summer flower blocks at this farm, from what each block states.",
-   "fieldname": "space_stated_ha",
-   "fieldtype": "Float",
-   "label": "Space We Say We Have (ha)",
-   "precision": "4",
-   "read_only": 1
-  },
-  {
-   "description": "The same blocks measured from their beds' own length and width.",
-   "fieldname": "space_measured_ha",
-   "fieldtype": "Float",
-   "label": "Space We Actually Have (ha)",
-   "precision": "4",
-   "read_only": 1
-  },
-  {
-   "fieldname": "cb_space",
-   "fieldtype": "Column Break"
-  },
-  {
-   "fieldname": "beds_required_peak",
-   "fieldtype": "Int",
-   "label": "Beds Needed at the Peak",
-   "read_only": 1
-  },
-  {
-   "fieldname": "beds_available_stated",
-   "fieldtype": "Int",
-   "label": "Beds We Say We Have",
-   "read_only": 1
-  },
-  {
-   "fieldname": "beds_available_measured",
-   "fieldtype": "Int",
-   "label": "Beds Found in the Bed Register",
-   "read_only": 1
-  },
-  {
-   "description": "Beds in this farm's greenhouses that belong to no block. Real land, but a planting is placed in a block, so none of it can be used until blocks are drawn over it.",
-   "fieldname": "beds_unblocked",
-   "fieldtype": "Int",
-   "label": "Beds Not In Any Block",
-   "read_only": 1
-  },
-  {
-   "fieldname": "space_unblocked_ha",
-   "fieldtype": "Float",
-   "label": "Space Not In Any Block (ha)",
-   "precision": "4",
-   "read_only": 1
-  },
-  {
-   "description": "Needed as a percentage of stated. Over 100% and the plan cannot fit however the blocks are arranged.",
-   "fieldname": "space_utilisation_pct",
-   "fieldtype": "Percent",
-   "label": "Space Used by This Plan",
-   "read_only": 1
-  },
-  {
-   "fieldname": "space_verdict",
-   "fieldtype": "Small Text",
-   "label": "Space Verdict",
-   "read_only": 1
-  },
-  {
-   "collapsible": 1,
-   "fieldname": "space_rows_section",
-   "fieldtype": "Section Break",
-   "label": "Block by Block"
-  },
-  {
-   "fieldname": "plan_space",
-   "fieldtype": "Table",
-   "label": "Space by Block",
-   "options": "Summer Flower Plan Space"
-  },
-  {
    "fieldname": "budget_link_section",
    "fieldtype": "Section Break",
    "label": "Budget"
@@ -711,10 +560,6 @@
    "fieldname": "weeks_tab",
    "fieldtype": "Tab Break",
    "label": "Weekly"
-  },
-  {
-   "fieldname": "weeks_section",
-   "fieldtype": "Section Break"
   },
   {
    "collapsible": 1,
@@ -805,27 +650,6 @@
    "read_only": 1
   },
   {
-   "description": "Cohorts whose actual planting date differs from the one this plan committed to.",
-   "fieldname": "plantings_slipped",
-   "fieldtype": "Int",
-   "label": "Plantings Not Planted On Plan",
-   "read_only": 1
-  },
-  {
-   "description": "The largest gap between a planned and an actual planting date. Negative is early.",
-   "fieldname": "worst_slip_days",
-   "fieldtype": "Int",
-   "label": "Worst Slip (days)",
-   "read_only": 1
-  },
-  {
-   "description": "The plan's own figures are left as they were approved -- what it committed to is what it committed to. This says which harvest weeks have moved because planting did not happen when it was meant to.",
-   "fieldname": "slippage_note",
-   "fieldtype": "Small Text",
-   "label": "What Has Moved On The Ground",
-   "read_only": 1
-  },
-  {
    "description": "Stems from plantings with no block assigned yet. They are in the plan and in the TC order; they need a block before they can be planted.",
    "fieldname": "unmet_stems",
    "fieldtype": "Int",
@@ -857,7 +681,7 @@
  "index_web_pages_for_search": 1,
  "is_submittable": 1,
  "links": [],
- "modified": "2026-08-07 15:00:00.000000",
+ "modified": "2026-10-28 20:00:00.000000",
  "modified_by": "Administrator",
  "module": "Summer Flowers",
  "name": "Summer Flower Production Plan",

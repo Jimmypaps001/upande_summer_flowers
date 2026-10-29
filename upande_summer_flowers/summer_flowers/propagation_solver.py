@@ -50,6 +50,12 @@ TC_IS_ONE_MOTHER = {"multiplication_factor": 1.0, "build_up_cycles": 1}
 #: field until it is cleared.
 MAX_MULTIPLICATIONS = 4
 
+
+def max_multiplications():
+	from upande_summer_flowers.summer_flowers.settings import max_multiplications as _m
+
+	return _m(MAX_MULTIPLICATIONS)
+
 MAX_TC = 2_000_000
 SEARCH_CEILING_STEPS = 24
 
@@ -498,7 +504,7 @@ def round_up_to_area(plants, per_area):
 	return int(math.ceil(plants / float(per_area)) * per_area)
 
 
-def peak_sizing(plan, cycles=None, max_cycles=MAX_MULTIPLICATIONS):
+def peak_sizing(plan, cycles=None, max_cycles=None):
 	"""What to buy, sized by the busiest week, and how often to multiply.
 
 	The pool is bought once and cut from every week of the season, so the week
@@ -513,6 +519,8 @@ def peak_sizing(plan, cycles=None, max_cycles=MAX_MULTIPLICATIONS):
 	fewer weeks left to cut from. So the suggestion is the most multiplication
 	that still leaves the pool enough cutting weeks to see the season out.
 	"""
+	if max_cycles in (None, ""):
+		max_cycles = max_multiplications()
 	v = frappe.get_cached_doc("Crop Protocol Version", plan.protocol)
 	demand = demand_by_sticking_week(plan)
 	if not demand:
@@ -709,7 +717,7 @@ def _walk_line(demand, buy, c, regen, per_week, life, ramp, per_area, first_cut,
 	# Without this every generation was a copy of the order, which is only right
 	# when the season arrives in equal instalments.
 	given = [cint(b) for b in (batches or []) if cint(b) > 0]
-	batches = given or [cint(buy)] * min(cint(c), MAX_MULTIPLICATIONS)
+	batches = given or [cint(buy)] * min(cint(c), max_multiplications())
 	if sends_allowed is None:
 		# The farm's four is the DEFAULT, not a law. A caller that hands over an
 		# explicit list of batches has already decided how many rounds it wants
@@ -717,7 +725,7 @@ def _walk_line(demand, buy, c, regen, per_week, life, ramp, per_area, first_cut,
 		# -- and capping it here answered a different question and labelled the
 		# result "4 of 4".
 		sends_allowed = len(batches) if given else min(len(batches),
-		                                              MAX_MULTIPLICATIONS)
+		                                              max_multiplications())
 
 	gens = [{"generation": 1, "mothers": buy, "live": buy, "arrivals": 1,
 	         "first_cut_date": str(first_cut),
@@ -1071,8 +1079,8 @@ def multiplications_for_tc(plan, tc, max_search=24):
 	return {
 		"tc": tc,
 		"needed": row["cycles"],
-		"beyond_protocol": row["cycles"] > MAX_MULTIPLICATIONS,
-		"max_usual": MAX_MULTIPLICATIONS,
+		"beyond_protocol": row["cycles"] > max_multiplications(),
+		"max_usual": max_multiplications(),
 		"covers": row["covers"],
 		"tried": tried,
 		"schedule": walk,

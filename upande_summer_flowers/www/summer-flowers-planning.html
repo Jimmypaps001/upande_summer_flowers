@@ -348,8 +348,9 @@
       <div class="pl-card">
         <div class="pl-card-head">
           <div><h2>{{ _("Who raises it") }}</h2>
-               <p class="pl-note">{{ _("Each unit is offered the season in turn and takes what its troughs will actually hold. What none of them can take has to be bought in as plants.") }}</p></div>
+               <p class="pl-note">{{ _("Our own propagation units raise it free; an outside propagator delivers plants and charges per plant, and gets a purchase order when the procurement plan is approved.") }}</p></div>
         </div>
+        <div id="pc-buying" class="pl-scroll"></div>
         <div id="pc-alloc" class="pl-scroll"></div>
       </div>
     </section>
@@ -592,6 +593,10 @@
                     style="display:none"
                     title="{{ _('Split the order between labs. Each sends on its own cycle, and the system sizes every batch from the weeks it feeds.') }}"
             >{{ _("Allocate to suppliers") }}</button>
+            <button type="button" class="pl-btn" data-tc="unit"
+                    style="display:none"
+                    title="{{ _('Who raises what arrives. Our own bench, or a propagator who charges per plant.') }}"
+            >{{ _("Choose propagation unit") }}</button>
             <button type="button" class="pl-btn primary" data-tc="agreemat"
                     style="display:none"
                     title="{{ _('Writes the TC and roots figures to the plan, then builds the procurement plan that orders them and the propagation plan that receives them.') }}"
@@ -4752,29 +4757,294 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
     const h2 = head.querySelector("h2"), note = head.querySelector(".pl-note");
     const qty = head.querySelector('label[for], .pl-inline');
     if (h2) h2.textContent = mother ? "The motherstock line" : "The material plan";
+    const one = wayOne(S.mat), two = wayTwo(S.mat);
     if (note && !mother) {
-      note.textContent = "This crop has no motherstock. It is bought as "
-        + "plantlets, as roots, or as both — and the two are nothing like the "
-        + "same length, so the share you choose decides when each has to be "
-        + "ordered for them to land in the same week. Roots are a year ahead.";
+      note.textContent = two
+        ? `This crop has no motherstock. It is bought as ${one.toLowerCase()}, `
+          + `as ${two.toLowerCase()}, or as both — and the two are nothing like `
+          + "the same length, so the share you choose decides when each has to "
+          + `be ordered for them to land in the same week. ${two} are a year ahead.`
+        : `This crop has no motherstock. It is bought as ${one.toLowerCase()} `
+          + "and planted as it arrives, so there is one quantity to decide and "
+          + "one lead time to count back from.";
     }
     const labels = head.querySelectorAll("label.pl-inline");
     if (labels.length >= 2) {
       // Quantities, not a percentage: a percentage is not what anybody buys.
-      labels[0].childNodes[0].nodeValue = mother ? "Plantlets" : "TC";
+      labels[0].childNodes[0].nodeValue = mother ? "Plantlets" : one;
       labels[1].style.display = mother ? "" : "none";
     }
     const rl = $("tc-roots-l");
-    if (rl) rl.style.display = mother ? "none" : "";
-    // Only a crop with two ways in has a share to set.
+    // A crop with one way in has no second quantity and no share between them.
+    if (rl) {
+      rl.style.display = mother || !two ? "none" : "";
+      const rlab = rl.childNodes[0];
+      if (rlab && two) rlab.nodeValue = two;
+    }
     const sl = $("tc-share-l");
-    if (sl) sl.style.display = mother ? "none" : "";
+    if (sl) {
+      sl.style.display = mother || !two ? "none" : "";
+      const slab = sl.childNodes[0];
+      if (slab && two) slab.nodeValue = `% as ${one.toLowerCase()}`;
+    }
     const agree = head.querySelector('[data-tc="agree"]');
     if (agree) agree.style.display = mother ? "" : "none";
     const agreeMat = head.querySelector('[data-tc="agreemat"]');
     if (agreeMat) agreeMat.style.display = mother ? "none" : "";
+    // Both choosers on every route. A crop with a motherstock is still bought
+    // from somebody, and that question had no button on this card at all.
     const alloc = head.querySelector('[data-tc="allocate"]');
-    if (alloc) alloc.style.display = mother ? "none" : "";
+    if (alloc) alloc.style.display = "";
+    // Who raises it is a question on every route, motherstock or not: the
+    // material still has to be stuck by somebody before it is a plant.
+    const unitb = head.querySelector('[data-tc="unit"]');
+    if (unitb) unitb.style.display = "";
+  }
+
+  // What this crop is bought as, off the route, with the old names as the
+  // fallback for a plan built before the server said.
+  const wayOne = (m) => (m && m.primary_stage) || "TC";
+  const wayTwo = (m) => (m && m.ways === 1 ? null : (m && m.secondary_stage) || "Roots");
+
+  // Who sells each way in. The twin of the chooser below it, and against the
+  // same document: the card used to write a supplier split of its own onto the
+  // production plan while the orders were raised off the procurement plan's
+  // table, so a lab chosen here was never the lab anything was ordered from.
+  function chooseSeller() {
+    const plan = (S.tc && S.tc.plan) || S.plan;
+    if (!plan) return;
+    Promise.all([callRl("selling_choices", { production_plan: plan }), loadSuppliers()])
+      .then(([c]) => {
+        if (!c.procurement_plan) {
+          toast("Save the material plan first — there is no draft procurement plan to buy on.");
+          return;
+        }
+        S.sell = c;
+        S.sellRows = (c.chosen || []).map((x) => ({
+          entry_stage: x.entry_stage, supplier: x.supplier,
+          share_pct: x.share_pct, rate: x.rate, lead_weeks: x.lead_weeks }));
+        if (!S.sellRows.length) {
+          S.sellRows = (c.ways || []).map((w) => ({
+            entry_stage: w, supplier: "", share_pct: 100,
+            lead_weeks: c.lead_weeks || 0 }));
+        }
+        renderSell();
+      })
+      .catch((e) => toast(e.message));
+  }
+
+  function renderSell() {
+    const c = S.sell, rows = S.sellRows || [];
+    let host = $("tc-sell");
+    if (!host) {
+      host = document.createElement("div");
+      host.id = "tc-sell";
+      $("tc-note").prepend(host);
+    }
+    const ways = c.ways && c.ways.length ? c.ways : [""];
+    const need = (w) => (c.units_by_way || {})[w] || 0;
+    const byWay = {};
+    rows.forEach((x) => { byWay[x.entry_stage] =
+      (byWay[x.entry_stage] || 0) + (+x.share_pct || 0); });
+    const names = S.suppliers || [];
+
+    host.innerHTML = `<div class="pl-callout">
+      <div style="margin-bottom:6px"><b>Who sells it</b>` +
+      ` <span class="text-muted">· ${esc(c.procurement_plan)}</span></div>
+      <table class="pl-t"><thead><tr><th>Bought as</th><th>Supplier</th>
+        <th class="n">Share</th><th class="n">Units</th><th class="n">Price</th>
+        <th class="n">Lead wk</th><th></th></tr></thead><tbody>` +
+      rows.map((x, i) => `<tr data-i="${i}">
+        <td>${ways.length > 1
+          ? `<select class="sl-way">${ways.map((w) =>
+              `<option${w === x.entry_stage ? " selected" : ""}>${esc(w)}</option>`).join("")}</select>`
+          : esc(x.entry_stage || ways[0] || "")}</td>
+        <td><input class="sl-sup" list="tc-sup-names" value="${esc(x.supplier || "")}"
+             placeholder="type to search" style="min-width:14rem"></td>
+        <td class="n"><input class="sl-share" type="number" min="0" max="100" step="0.1"
+             style="width:5rem" value="${+x.share_pct || 0}"></td>
+        <td class="n">${num(Math.round(need(x.entry_stage) * (+x.share_pct || 0) / 100))}</td>
+        <td class="n"><input class="sl-rate" type="number" min="0" step="0.01"
+             style="width:6rem" value="${+x.rate || 0}"></td>
+        <td class="n"><input class="sl-lead" type="number" min="0" step="1"
+             style="width:4.5rem" value="${+x.lead_weeks || 0}"></td>
+        <td><a class="sl-del" style="cursor:pointer" title="Remove">✕</a></td></tr>`).join("") +
+      `</tbody></table>
+      <datalist id="tc-sup-names">${names.slice(0, 400).map((n) =>
+        `<option value="${esc(n)}"></option>`).join("")}</datalist>
+      <div style="margin-top:8px">
+        <button type="button" class="pl-btn" id="sl-add">+ Another seller</button>
+        <button type="button" class="pl-btn primary" id="sl-save">Save</button>
+        <button type="button" class="pl-btn" id="sl-x">Close</button>
+      </div>` +
+      ways.map((w) => {
+        const got = byWay[w] || 0;
+        return Math.abs(got - 100) < 0.5 ? "" :
+          `<div class="text-muted small" style="margin-top:6px;color:var(--critical)">` +
+          `${esc(w || "The material")}: ${got.toFixed(1)}% allocated` +
+          `${got < 100 ? ` — ${num(Math.round(need(w) * (100 - got) / 100))} units with no seller` : ""}</div>`;
+      }).join("") + `</div>`;
+
+    host.querySelectorAll("tr[data-i]").forEach((tr) => {
+      const i = +tr.dataset.i, row = rows[i];
+      const way = tr.querySelector(".sl-way");
+      if (way) way.onchange = (e) => { row.entry_stage = e.target.value; renderSell(); };
+      tr.querySelector(".sl-sup").onchange = (e) => { row.supplier = e.target.value.trim(); };
+      tr.querySelector(".sl-share").onchange = (e) => {
+        row.share_pct = parseFloat(e.target.value) || 0; renderSell(); };
+      tr.querySelector(".sl-rate").onchange = (e) => { row.rate = parseFloat(e.target.value) || 0; };
+      tr.querySelector(".sl-lead").onchange = (e) => { row.lead_weeks = parseInt(e.target.value, 10) || 0; };
+      tr.querySelector(".sl-del").onclick = () => { rows.splice(i, 1); renderSell(); };
+    });
+    $("sl-add").onclick = () => {
+      rows.push({ entry_stage: ways[0], supplier: "", share_pct: 0,
+                  lead_weeks: c.lead_weeks || 0 });
+      renderSell();
+    };
+    $("sl-x").onclick = () => host.remove();
+    $("sl-save").onclick = () => {
+      $("sl-save").disabled = true;
+      callRl("set_selling", { production_plan: (S.tc && S.tc.plan) || S.plan,
+                              rows: JSON.stringify(rows) })
+        .then((res) => {
+          S.sell = res;
+          S.sellRows = (res.chosen || []).map((x) => ({
+            entry_stage: x.entry_stage, supplier: x.supplier, share_pct: x.share_pct,
+            rate: x.rate, lead_weeks: x.lead_weeks }));
+          renderSell();
+          toast(`Saved — ${(res.chosen || []).length} seller(s) on ${res.procurement_plan}.`);
+          loadTc(null);
+        })
+        .catch((e) => { $("sl-save").disabled = false; toast(e.message); });
+    };
+  }
+
+  // Who raises what arrives, chosen here rather than a document away. Opens on
+  // what is already chosen -- a chooser that opens blank over an allocation
+  // that exists invites a second one, and the first anybody hears of it is the
+  // share totalling 200%.
+  function chooseUnit() {
+    const plan = (S.tc && S.tc.plan) || S.plan;
+    if (!plan) return;
+    callRl("raising_choices", { production_plan: plan })
+      .then((r) => { S.raise = r; S.raiseRows = (r.chosen || []).map((x) => ({
+        raises: x.raises, unit: x.unit, supplier: x.supplier,
+        share_pct: x.share_pct, rate: x.rate }));
+        renderRaise(); })
+      .catch((e) => toast(e.message));
+  }
+
+  function renderRaise() {
+    const r = S.raise;
+    if (!r) return;
+    let host = $("tc-raise");
+    if (!host) {
+      host = document.createElement("div");
+      host.id = "tc-raise";
+      $("tc-note").prepend(host);
+    }
+    const units = r.units || [], props = r.propagators || [];
+    const ways = r.ways && r.ways.length ? r.ways : [""];
+    const rows = S.raiseRows || [];
+    // What each way in still needs somebody to raise.
+    const byWay = {};
+    rows.forEach((x) => { byWay[x.raises || ways[0]] =
+      (byWay[x.raises || ways[0]] || 0) + (+x.share_pct || 0); });
+
+    const unitOpts = (sel) => units.map((u) =>
+      `<option value="${esc(u.name)}"${u.name === sel ? " selected" : ""}>` +
+      `${esc(u.name)} — ${num(u.free)} free of ${num(u.capacity)}` +
+      `${u.here ? " · this farm" : ""}</option>`).join("");
+    const propOpts = (sel) => props.map((p) =>
+      `<option value="${esc(p.name)}"${p.name === sel ? " selected" : ""}>` +
+      `${esc(p.name)} — ${p.lead_weeks || 0} wk` +
+      `${p.rate ? `, ${p.rate}/plant` : ""}</option>`).join("");
+
+    host.innerHTML = `<div class="pl-callout">
+      <div style="margin-bottom:6px"><b>Who raises it</b>` +
+      (r.procurement_plan ? ` <span class="text-muted">· ${esc(r.procurement_plan)}</span>` : "") +
+      `</div>
+      <table class="pl-t"><thead><tr><th>Where</th><th>Raises</th>
+        <th>Unit / propagator</th><th class="n">Share</th><th class="n">Plants</th><th></th>
+      </tr></thead><tbody>` +
+      (rows.length ? rows.map((x, i) => {
+        const external = !!x.supplier;
+        const need = (r.plants_by_way || {})[x.raises || ways[0]] || 0;
+        return `<tr data-i="${i}">
+          <td><select class="rz-kind">
+            <option value="in"${external ? "" : " selected"}>Our own unit</option>
+            <option value="out"${external ? " selected" : ""}>Outside propagator</option>
+          </select></td>
+          <td>${ways.length > 1
+            ? `<select class="rz-way">${ways.map((w) =>
+                `<option${w === x.raises ? " selected" : ""}>${esc(w)}</option>`).join("")}</select>`
+            : esc(x.raises || ways[0] || "")}</td>
+          <td><select class="rz-party">${external ? propOpts(x.supplier) : unitOpts(x.unit)}</select></td>
+          <td class="n"><input class="rz-share" type="number" min="0" max="100" step="0.1"
+             style="width:5rem" value="${+x.share_pct || 0}"></td>
+          <td class="n">${num(Math.round(need * (+x.share_pct || 0) / 100))}</td>
+          <td><a class="rz-del" style="cursor:pointer" title="Remove">✕</a></td></tr>`;
+      }).join("") : `<tr><td colspan="6" class="text-muted">Nobody yet.</td></tr>`) +
+      `</tbody></table>
+      <div style="margin-top:8px">
+        <button type="button" class="pl-btn" id="rz-add-in">+ Our own unit</button>
+        <button type="button" class="pl-btn" id="rz-add-out">+ Outside propagator</button>
+        <button type="button" class="pl-btn primary" id="rz-save">Save</button>
+        <button type="button" class="pl-btn" id="rz-x">Close</button>
+      </div>` +
+      ways.map((w) => {
+        const got = byWay[w] || 0;
+        return Math.abs(got - 100) < 0.5 ? "" :
+          `<div class="text-muted small" style="margin-top:6px;color:var(--critical)">` +
+          `${esc(w || "The material")}: ${got.toFixed(1)}% allocated` +
+          `${got < 100 ? ` — ${num(Math.round(((r.plants_by_way || {})[w] || 0) * (100 - got) / 100))} plants with nobody raising them` : ""}</div>`;
+      }).join("") + `</div>`;
+
+    host.querySelectorAll("tr[data-i]").forEach((tr) => {
+      const i = +tr.dataset.i, row = rows[i];
+      tr.querySelector(".rz-kind").onchange = (e) => {
+        if (e.target.value === "out") { row.supplier = (props[0] || {}).name; row.unit = null;
+          row.rate = (props[0] || {}).rate || 0; }
+        else { row.unit = (units[0] || {}).name; row.supplier = null; row.rate = 0; }
+        renderRaise();
+      };
+      const way = tr.querySelector(".rz-way");
+      if (way) way.onchange = (e) => { row.raises = e.target.value; renderRaise(); };
+      tr.querySelector(".rz-party").onchange = (e) => {
+        if (row.supplier) { row.supplier = e.target.value;
+          row.rate = (props.find((p) => p.name === e.target.value) || {}).rate || 0; }
+        else row.unit = e.target.value;
+      };
+      tr.querySelector(".rz-share").onchange = (e) => {
+        row.share_pct = parseFloat(e.target.value) || 0; renderRaise();
+      };
+      tr.querySelector(".rz-del").onclick = () => { rows.splice(i, 1); renderRaise(); };
+    });
+    $("rz-add-in").onclick = () => {
+      rows.push({ raises: ways[0], unit: (units[0] || {}).name, share_pct: 0 });
+      renderRaise();
+    };
+    $("rz-add-out").onclick = () => {
+      const p0 = props[0] || {};
+      rows.push({ raises: ways[0], supplier: p0.name, rate: p0.rate || 0, share_pct: 0 });
+      renderRaise();
+    };
+    $("rz-x").onclick = () => host.remove();
+    $("rz-save").onclick = () => {
+      $("rz-save").disabled = true;
+      callRl("set_raising", { production_plan: (S.tc && S.tc.plan) || S.plan,
+                              rows: JSON.stringify(rows) })
+        .then((res) => {
+          S.raise = res;
+          S.raiseRows = (res.chosen || []).map((x) => ({
+            raises: x.raises, unit: x.unit, supplier: x.supplier,
+            share_pct: x.share_pct, rate: x.rate }));
+          renderRaise();
+          toast(`Saved — ${(res.chosen || []).length} raising this plan.`);
+          loadTc(null);
+        })
+        .catch((e) => { $("rz-save").disabled = false; toast(e.message); });
+    };
   }
 
   function renderMaterial(t) {
@@ -4811,22 +5081,29 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
       shb.value = Math.round(m.tc_share_pct * 10) / 10;
     }
     const tcPct = m.tc_share_pct, rootPct = Math.round((100 - tcPct) * 10) / 10;
-    box.innerHTML = [
+    // The route names the ways in. A crop bought as plants is not bought as
+    // tissue culture, and a card that says it is sends somebody looking for an
+    // order nobody placed.
+    const one = wayOne(m), two = wayTwo(m);
+    const tiles = [
       { k: "Plants needed", v: num(m.plants_total), m: "for the whole season" },
-      { k: "As TC", v: `${tcPct}%`,
-        m: `${num(m.tc_total)} TC · ${m.tc_lead_weeks} wk lead + ` +
+      { k: `As ${one}`, v: `${tcPct}%`,
+        m: `${num(m.tc_total)} ${one} · ${m.tc_lead_weeks} wk lead + ` +
            `${m.tc_weeks_to_ground} wk to ground` },
-      { k: "As roots", v: `${rootPct}%`,
+    ];
+    if (two) {
+      tiles.push({ k: `As ${two.toLowerCase()}`, v: `${rootPct}%`,
         m: m.returns_per_plant > 0
-          ? `${num(m.roots_total)} roots × ${m.returns_per_plant} · ` +
+          ? `${num(m.roots_total)} ${two.toLowerCase()} × ${m.returns_per_plant} · ` +
             `${m.root_lead_weeks} wk lead, one delivery, then drawn from store ` +
             `${m.root_weeks_to_ground} wk before each landing`
-          : "the protocol does not say what a root becomes",
-        c: m.returns_per_plant > 0 ? "" : "--critical" },
-      { k: "Roots go in first by", v: `${m.root_head_start_weeks} wk`,
-        m: "ahead of the plantlets, for the same landing week",
-        c: m.root_head_start_weeks > 0 ? "--series-2" : "--critical" },
-    ].map((x) => `<div class="pl-tile"><div class="k">${esc(x.k)}</div>` +
+          : `the protocol does not say what one ${two.toLowerCase().replace(/s$/, "")} becomes`,
+        c: m.returns_per_plant > 0 ? "" : "--critical" });
+      tiles.push({ k: `${two} go in first by`, v: `${m.root_head_start_weeks} wk`,
+        m: `ahead of the ${one.toLowerCase()}, for the same landing week`,
+        c: m.root_head_start_weeks > 0 ? "--series-2" : "--critical" });
+    }
+    box.innerHTML = tiles.map((x) => `<div class="pl-tile"><div class="k">${esc(x.k)}</div>` +
       `<div class="v"${x.c ? ` style="color:var(${x.c})"` : ""}>` +
       `${esc(String(x.v))}</div><div class="m">${esc(x.m || "")}</div></div>`).join("");
 
@@ -4874,7 +5151,7 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
       notes.push(`${num(m.roots_in_store.qty)} roots of ` +
         `${esc(m.roots_in_store.item)} are already in store and have been ` +
         `netted off before anything was ordered.`);
-    } else if ((m.roots_in_store || {}).note) {
+    } else if ((m.roots_in_store || {}).note && wayTwo(m)) {
       notes.push(esc(m.roots_in_store.note));
     }
     note.innerHTML = notes.map((n) => `<div class="pl-callout">${n}</div>`).join("");
@@ -4888,11 +5165,13 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
 
     wk.innerHTML =
       `<div class="text-muted small" style="text-transform:uppercase;` +
-      `letter-spacing:.05em;margin:10px 0 4px">Plants to the farm — both ways ` +
-      `in, against what each week needs</div>` +
+      `letter-spacing:.05em;margin:10px 0 4px">Plants to the farm — ` +
+      (wayTwo(m) ? "both ways in, " : "") +
+      `against what each week needs</div>` +
       `<table class="pl-t"><thead><tr><th>Wanted</th><th>Week</th>` +
       `<th class="n">Plants needed</th>` +
-      `<th class="n">From TC</th><th class="n">From roots</th>` +
+      `<th class="n">From ${esc(wayOne(m).toLowerCase())}</th>` +
+      (wayTwo(m) ? `<th class="n">From ${esc(wayTwo(m).toLowerCase())}</th>` : "") +
       `<th class="n">Total</th><th class="n">Variance</th>` +
       `</tr></thead><tbody>` +
       (m.weeks || []).map((w) => {
@@ -4902,7 +5181,7 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
           `<td class="text-muted">${esc(w.week_iso || "")}</td>` +
           `<td class="n">${num(w.plants)}</td>` +
           `<td class="n">${w.by_tc ? num(w.by_tc) : ""}</td>` +
-          `<td class="n">${w.by_roots ? num(w.by_roots) : ""}</td>` +
+          (wayTwo(m) ? `<td class="n">${w.by_roots ? num(w.by_roots) : ""}</td>` : "") +
           `<td class="n">${num(got)}</td>` +
           `<td class="n"${v < 0 ? ' style="color:var(--critical)"' : ""}>` +
           `${v > 0 ? "+" : ""}${v ? num(v) : "—"}</td></tr>`;
@@ -5015,14 +5294,21 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
     const a = m.asked || {};
     const warn = a.short_by
       ? `\n\nIt does not cover the plan: short by ${num(a.short_by)} plants.` : "";
-    if (!window.confirm(`Save ${num(tc)} TC and ${num(roots)} roots as the plan ` +
+    const one = wayOne(m), two = wayTwo(m);
+    const what = two
+      ? `${num(tc)} ${one.toLowerCase()} and ${num(roots)} ${two.toLowerCase()}`
+      : `${num(tc)} ${one.toLowerCase()}`;
+    if (!window.confirm(`Save ${what} as the plan ` +
         `for ${esc(m.variety)} at ${esc(m.farm)}?${warn}\n\nThis writes the ` +
         `figures to the production plan, then builds the procurement plan that ` +
         `orders them and the propagation plan that receives them.`)) return;
-    callRl("agree_material_plan", {
-      production_plan: t.plan, tc_qty: tc, roots_qty: roots,
-      allocations: JSON.stringify((S.alloc || []).filter((x) => cintish(x.tc) > 0)),
-    }).then((r) => {
+    const args = { production_plan: t.plan, tc_qty: tc, roots_qty: roots };
+    // Only if the old quantity-based allocator was actually used. Sending an
+    // empty list wrote an empty allocation over whatever was there, and who
+    // sells it is the procurement plan's table now.
+    const legacy = (S.alloc || []).filter((x) => cintish(x.tc) > 0);
+    if (legacy.length) args.allocations = JSON.stringify(legacy);
+    callRl("agree_material_plan", args).then((r) => {
       const bad = (r.steps || []).filter((x) => !x.ok);
       toast(`Saved: ${num(r.tc)} TC and ${num(r.roots)} roots` +
         (bad.length ? ` — ${bad.length} step(s) did not run` : ", documents built"),
@@ -6558,8 +6844,7 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
         { field: "cutting_reject_pct", value: F.cutting_reject_pct }) +
       prow("Cuttings per standing plant", D.cuttings_per_plant_required.toFixed(3),
         "both loss layers", null, "cuttings_per_plant_required") +
-      prow("Ready cutting price", F.ready_cutting_price, null,
-        { field: "ready_cutting_price", value: F.ready_cutting_price, step: "0.01" }) +
+
       prow("Stated yield", num(F.stated_yield_stems_per_ha), "stems/ha/yr target",
         { field: "stated_yield_stems_per_ha", value: F.stated_yield_stems_per_ha });
 
@@ -7275,7 +7560,8 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
       <th>Propagation unit</th><th>Bought as</th>
       <th class="r">Share</th><th class="r">Plants</th>
       <th class="r">Planted</th><th class="r">Surplus</th>
-      <th class="r">Troughs</th><th>Its plan</th><th>Note</th>
+      <th class="r">Troughs</th><th>Its plan</th>
+      <th class="r">Charge / plant</th><th>Order</th><th>Note</th>
     </tr></thead><tbody>${rows.map((r) => {
       const me = mine && r.propagation_plan === mine;
       return `<tr${me ? ' class="pl-chosen"' : ""}>` +
@@ -7291,8 +7577,94 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
         `<td>${r.propagation_plan
           ? `<a href="/app/summer-flower-propagation-plan/${encodeURIComponent(r.propagation_plan)}">${esc(r.propagation_plan)}</a>`
           : "\u2014"}</td>` +
+        `<td class="r">${r.supplier ? (+r.rate_per_plant || 0).toFixed(2) + (r.amount ? ` <span class="pl-note">(${num(r.amount)})</span>` : "") : "free"}</td>` +
+        `<td>${r.purchase_order
+          ? `<a href="/app/purchase-order/${encodeURIComponent(r.purchase_order)}">${esc(r.purchase_order)}</a>`
+          : "\u2014"}</td>` +
         `<td>${esc(r.note || "")}</td></tr>`;
     }).join("")}</tbody></table>`;
+  }
+
+  // Who raises it, decided here for a procurement plan still in draft: our own
+  // propagation units and/or outside propagators, each a share of the season,
+  // the outside ones at their charge per plant. Saving allocates through the
+  // plan's own troughs (propose_allocation); approving the plan then raises a
+  // propagation plan per unit and a purchase order per outside propagator.
+  let PROP_CHOICES = null;
+  async function renderAllocEditor(r) {
+    const box = $("pc-alloc");
+    const drafts = (r.plans || []).filter((p) => p.docstatus === 0);
+    if (!PROP_CHOICES) {
+      try { PROP_CHOICES = await call("propagator_choices"); }
+      catch (e) { PROP_CHOICES = { units: [], suppliers: [] }; }
+    }
+    const rows = (r.allocations && r.allocations.rows) || [];
+    box.innerHTML = drafts.map((p) => {
+      const mine = rows.filter((x) => x.procurement_plan === p.name);
+      return `<div class="pl-alloc-edit" data-plan="${esc(p.name)}">
+        <p class="pl-note"><a href="/app/summer-flower-procurement-plan/${encodeURIComponent(p.name)}">${esc(p.name)}</a>
+          · ${esc(p.entry_stage || "")} · draft — choose who raises it, then save.</p>
+        <table class="pl-t"><thead><tr>
+          <th>Type</th><th>Unit / propagator</th><th class="r">Share %</th>
+          <th class="r">Charge / plant</th><th class="r">Plants now</th><th></th>
+        </tr></thead><tbody>${mine.map((x) => allocRow(x)).join("")}</tbody></table>
+        <div class="pl-alloc-actions" style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px">
+          <select class="pl-add-unit"><option value="">+ our propagation unit…</option>${
+            PROP_CHOICES.units.map((u) => `<option>${esc(u)}</option>`).join("")}</select>
+          <input class="pl-add-sup" list="pl-sup-list" placeholder="+ outside propagator (supplier)…" style="min-width:240px">
+          <button class="pl-btn pl-alloc-protocol">Propose by unit capacity</button>
+          <button class="pl-btn pl-btn-primary pl-alloc-save">Save allocation</button>
+          <span class="pl-note pl-alloc-msg"></span>
+        </div>
+      </div>`;
+    }).join("") + `<datalist id="pl-sup-list">${
+      PROP_CHOICES.suppliers.map((x) => `<option value="${esc(x)}">`).join("")}</datalist>`;
+
+    box.querySelectorAll(".pl-alloc-edit").forEach((ed) => {
+      const plan = ed.dataset.plan;
+      const tbody = ed.querySelector("tbody");
+      const msg = ed.querySelector(".pl-alloc-msg");
+      const add = (x) => { tbody.insertAdjacentHTML("beforeend", allocRow(x)); };
+      ed.addEventListener("click", (e) => {
+        if (e.target.classList.contains("pl-alloc-del")) e.target.closest("tr").remove();
+      });
+      ed.querySelector(".pl-add-unit").addEventListener("change", (e) => {
+        if (e.target.value) add({ propagation_unit: e.target.value, share_pct: 0 });
+        e.target.value = "";
+      });
+      ed.querySelector(".pl-add-sup").addEventListener("change", (e) => {
+        const v = e.target.value.trim();
+        if (v && PROP_CHOICES.suppliers.includes(v)) add({ supplier: v, share_pct: 0 });
+        else if (v) msg.textContent = `${v} is not a supplier.`;
+        e.target.value = "";
+      });
+      const done = (p) => p.then(() => loadProcurement())
+        .catch((err) => { msg.textContent = err.message; });
+      ed.querySelector(".pl-alloc-protocol").addEventListener("click", () => {
+        msg.textContent = "Allocating…";
+        done(call("propose_propagators", { procurement_plan: plan }));
+      });
+      ed.querySelector(".pl-alloc-save").addEventListener("click", () => {
+        const out = [...tbody.querySelectorAll("tr")].map((tr) => ({
+          propagation_unit: tr.dataset.unit || null, supplier: tr.dataset.sup || null,
+          share_pct: +tr.querySelector(".pl-share").value || 0,
+          rate_per_plant: tr.dataset.sup ? (+tr.querySelector(".pl-rate").value || 0) : 0,
+        }));
+        msg.textContent = "Saving…";
+        done(call("save_propagators", { procurement_plan: plan, rows: JSON.stringify(out) }));
+      });
+    });
+  }
+
+  function allocRow(x) {
+    const out = !!x.supplier && !x.propagation_unit;
+    return `<tr data-unit="${esc(x.propagation_unit || "")}" data-sup="${esc(out ? x.supplier : "")}">
+      <td><span class="pill">${out ? "outside" : "our unit"}</span></td>
+      <td>${esc(x.propagation_unit || x.supplier)}</td>
+      <td class="r"><input class="pl-share" type="number" step="0.01" style="width:80px" value="${(+x.share_pct || 0).toFixed(2)}"></td>
+      <td class="r">${out ? `<input class="pl-rate" type="number" step="0.01" style="width:80px" value="${+x.rate_per_plant || 0}">` : "free"}</td>
+      <td class="r">${x.plants ? num(x.plants) : "\u2014"}</td>
+      <td><a class="pl-alloc-del" style="cursor:pointer" title="Remove">✕</a></td></tr>`;
   }
 
   function loadProcurement() {
@@ -7300,6 +7672,43 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
     return call("procurement_detail", a)
       .then((r) => { S.pc = r; renderProcurement(); })
       .catch((e) => { S.pc = { error: e.message }; renderProcurement(); });
+  }
+
+  // Who sells each way in. The companion to the allocation below it: one says
+  // where the material is bought, the other who raises what arrives, and a crop
+  // that is bought AND propagated needs both answered.
+  function renderBuying(rows) {
+    const box = $("pc-buying");
+    if (!box) return;
+    if (!rows.length) {
+      box.innerHTML = `<p class="pl-empty">Nobody is named as selling this yet. ` +
+        `Open the procurement plan and press <b>Choose Suppliers</b>.</p>`;
+      return;
+    }
+    const byStage = {};
+    rows.forEach((x) => { (byStage[x.entry_stage || "—"] ||= []).push(x); });
+    box.innerHTML = Object.keys(byStage).map((stage) => {
+      const rs = byStage[stage];
+      const share = rs.reduce((a, x) => a + (+x.share_pct || 0), 0);
+      return `<div class="text-muted small" style="text-transform:uppercase;` +
+        `letter-spacing:.05em;margin:10px 0 4px">Bought as ${esc(stage)}` +
+        (Math.abs(share - 100) > 0.5
+          ? ` — <span style="color:var(--critical)">${share.toFixed(1)}% allocated</span>`
+          : "") + `</div>` +
+        `<table class="pl-t"><thead><tr><th>Supplier</th>` +
+        `<th class="n">Share</th><th class="n">Units</th><th class="n">Price</th>` +
+        `<th class="n">Amount</th><th>Order by</th><th>Arrives</th><th>Raised</th>` +
+        `</tr></thead><tbody>` +
+        rs.map((x) => `<tr><td>${esc(x.supplier || "—")}</td>` +
+          `<td class="n">${(+x.share_pct || 0).toFixed(1)}%</td>` +
+          `<td class="n">${num(x.units)}</td>` +
+          `<td class="n">${x.rate ? x.rate : "—"}</td>` +
+          `<td class="n">${x.amount ? num(x.amount) : "—"}</td>` +
+          `<td>${fdate(x.order_by)}</td><td>${fdate(x.arrives)}</td>` +
+          `<td>${x.material_request || x.purchase_order
+            ? esc(x.material_request || x.purchase_order) : "—"}</td></tr>`).join("") +
+        `</tbody></table>`;
+    }).join("");
   }
 
   function renderProcurement() {
@@ -7311,6 +7720,7 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
       body.innerHTML = `<p class="pl-empty">${esc(
         (r && r.error) || "No procurement plan for this production plan yet.")}</p>`;
       $("pc-alloc").innerHTML = "";
+      if ($("pc-buying")) $("pc-buying").innerHTML = "";
       return;
     }
     const plans = r.plans;
@@ -7350,7 +7760,9 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
         p.orders_late ? ` <span class="pill">${p.orders_late} late</span>` : ""}</td>` +
       `<td>${esc(p.status || "")}</td></tr>`).join("")}</tbody></table>`;
 
-    renderAllocation(r.allocations, null, null, "pc-alloc", null);
+    if (plans.some((p) => p.docstatus === 0)) renderAllocEditor(r);
+    else renderAllocation(r.allocations, null, null, "pc-alloc", null);
+    renderBuying(r.buying || []);
   }
 
   function setTab(name, fromHash) {
@@ -7812,14 +8224,8 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
         }
         if (b.dataset.tc === "agree") agreeTc();
         if (b.dataset.tc === "agreemat") agreeMaterial();
-        if (b.dataset.tc === "allocate") {
-          S.allocOpen = true;
-          renderSuppliers(S.mat || {});
-          refreshSupplierList("");
-          loadBatches();
-          const el = $("tc-sup");
-          if (el && el.scrollIntoView) el.scrollIntoView({ behavior: "smooth" });
-        }
+        if (b.dataset.tc === "unit") { chooseUnit(); return; }
+        if (b.dataset.tc === "allocate") { chooseSeller(); return; }
       });
       $("ag-dlg").addEventListener("click", (e) => {
         const b = e.target.closest("[data-ag]");

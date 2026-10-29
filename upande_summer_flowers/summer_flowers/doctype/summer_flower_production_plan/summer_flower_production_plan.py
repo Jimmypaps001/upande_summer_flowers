@@ -25,7 +25,7 @@ from upande_summer_flowers.summer_flowers.planning import (
 	season_year,
 	week_family_label,
 	MONTH_NAMES,
-	SEASON_FIRST_WEEK,
+	season_first_week,
 	iso_monday,
 	iso_year_week,
 	week_sequence,
@@ -74,7 +74,29 @@ class SummerFlowerProductionPlan(Document):
 		raised here.
 		"""
 		self.db_set("status", "Approved")
+		self.warn_on_space()
 		self.create_budget()
+
+	def warn_on_space(self):
+		"""Say it now if this plan does not fit the farm.
+
+		The land figures used to live on the form, where nobody had to look at
+		them. They are a report now, so the one moment they must not be missed --
+		committing to a plan the farm has no room for -- says so here instead.
+		"""
+		from upande_summer_flowers.summer_flowers import plan_space
+
+		try:
+			notes = plan_space.analyse(self)["notes"]
+		except Exception:
+			frappe.log_error(frappe.get_traceback(), "Plan space for %s" % self.name)
+			return
+		if notes:
+			frappe.msgprint(
+				"<br>".join(frappe.utils.escape_html(n) for n in notes)
+				+ "<br><br>" + _("Summer Flower Plan Space has the block-by-block "
+				                 "figures behind this."),
+				indicator="orange", title=_("What this plan asks of the land"))
 
 	def ensure_propagation(self):
 		"""Rebuild the propagation plan this crop and season already has.
@@ -142,9 +164,13 @@ class SummerFlowerProductionPlan(Document):
 		# frappe.new_doc pre-filled from the global default company -- on a
 		# multi-company site that silently plans against the wrong entity.
 		self.company = d.company or self.company
-		self.currency = d.currency or self.currency
-		if not self.price_per_stem:
-			self.price_per_stem = d.price_per_stem
+		# The register no longer carries a currency; the plan is in its company's.
+		self.currency = (frappe.get_cached_value("Company", self.company, "default_currency")
+		                 if self.company else None) or self.currency
+		# A stem is valued at its variety Item's valuation, read from stock.
+		from upande_summer_flowers.summer_flowers.valuation import stem_price
+
+		self.price_per_stem = stem_price(self.variety or d.variety, self.company)
 		self.resolve_protocol()
 
 	def resolve_protocol(self):
@@ -211,8 +237,6 @@ class SummerFlowerProductionPlan(Document):
 		start = datetime.date(year, 7, 1)
 		end = datetime.date(year + 1, 6, 30)
 		self.season = "%s-%s" % (year, str(year + 1)[2:])
-		self.season_start_date = start
-		self.season_end_date = end
 
 		# A season runs W27 to W26, which is how the demand register numbers it and
 		# how the workbook it is loaded from is laid out: W27 onward belongs to the
@@ -225,8 +249,8 @@ class SummerFlowerProductionPlan(Document):
 		# stems against the register's 53 and 3,410,000, the whole difference being
 		# 2026-W27 on its own. One boundary, defined twice, is a plan that cannot
 		# reconcile with the demand it was built from.
-		self.from_year, self.from_week = year, SEASON_FIRST_WEEK
-		last_year, last_week = year + 1, SEASON_FIRST_WEEK - 1
+		self.from_year, self.from_week = year, season_first_week()
+		last_year, last_week = year + 1, season_first_week() - 1
 		self.weeks_covered = weeks_between(
 			self.from_year, self.from_week, last_year, last_week) + 1
 
@@ -375,228 +399,8 @@ class SummerFlowerProductionPlan(Document):
 			self.peak_weekly_sticking_planned = 0
 			self.peak_sticking_week_planned = None
 		self.set_tc_order(planned_sticking)
-		self.set_slippage()
-		self.set_space()
 
 	# --------------------------------------------------------------------- space
-	def set_slippage(self):
-		"""What has moved on the ground, without moving the plan.
-
-		The plan's figures stay as they were approved: what it committed to is what
-		it committed to, and rewriting them under an approval would lose the one
-		thing worth seeing -- the gap between what was planned and what happened.
-		So this counts the gap and names it, and changes nothing else.
-		"""
-		self.plantings_slipped = 0
-		self.worst_slip_days = 0
-		self.slippage_note = None
-		links = [b.existing_planting for b in self.plan_blocks if b.existing_planting]
-		if not links:
-			return
-		rows = frappe.get_all(
-			"Planting Calendar", filters={"name": ["in", links]},
-			fields=["name", "planting_date", "actual_planting_date",
-			        "planting_slip_days", "block"])
-		slipped = [r for r in rows if r.actual_planting_date
-		           and cint(r.planting_slip_days)]
-		if not slipped:
-			return
-		self.plantings_slipped = len(slipped)
-		worst = max(slipped, key=lambda r: abs(cint(r.planting_slip_days)))
-		self.worst_slip_days = cint(worst.planting_slip_days)
-		late = sum(1 for r in slipped if cint(r.planting_slip_days) > 0)
-		early = len(slipped) - late
-		parts = []
-		if late:
-			parts.append(_("{0} went in late").format(late))
-		if early:
-			parts.append(_("{0} went in early").format(early))
-		self.slippage_note = _(
-			"{0} of {1} plantings were not planted on the day this plan asked for: "
-			"{2}. The worst is {3} by {4} days, so its harvest weeks move by the "
-			"same. These figures are the plan as approved and are not changed by "
-			"it -- the calendars and their crop cycles carry the real dates."
-		).format(len(slipped), len(links), ", ".join(parts), worst.block or worst.name,
-		         abs(self.worst_slip_days))
-
-	def set_space(self):
-		"""What this plan needs against what the farm has, in beds and hectares.
-
-		Two capacity columns, deliberately, because they disagree. The stated figure
-		is what each block claims through its area history; the measured one is the
-		sum of its beds' own length and width. On this site most blocks have no beds
-		pointing at them at all, so the measured column reads low -- which is a
-		statement about the bed register, not about the land, and saying so is more
-		use than averaging the two into one number nobody can act on.
-
-		The planner already refuses a planting it cannot place, so
-		total_production_stems is what the space allows. This section is why.
-		"""
-		self.plan_space = []
-		self.space_required_ha = 0
-		self.space_stated_ha = 0
-		self.space_measured_ha = 0
-		self.beds_required_peak = cint(self.peak_concurrent_beds)
-		self.beds_available_stated = 0
-		self.beds_available_measured = 0
-		self.space_utilisation_pct = 0
-		self.space_verdict = None
-		if not self.farm:
-			return
-
-		v = getattr(self, "_version", None)
-		sqm_per_bed = bed_sqm(v) if v else 0
-		self.space_required_ha = (self.beds_required_peak * sqm_per_bed) / 10_000
-		# No bed size, no land answer. Reporting hectares from a bed nobody has
-		# measured is worse than reporting none, because a plan that says it fits
-		# gets approved.
-		self._bed_size_unknown = not sqm_per_bed
-
-		# What the plan asks of the land, said in the units that are always
-		# knowable. Beds and plants come from the planting rows; hectares need a
-		# measured bed, and when there is none the figure is left out rather than
-		# shown as zero -- a plan reading "0 ha" looks like one that needs no
-		# ground, which is how a plan with nowhere to go gets approved.
-		plants_peak = sum(cint(r.plants) for r in self.plan_blocks
-		                  if r.get("is_new_planting"))
-		parts = ["{0} beds at the peak".format(cint(self.beds_required_peak)),
-		         "{0} plants".format("{:,}".format(plants_peak))]
-		if sqm_per_bed:
-			parts.append("{0} ha at {1} m2 a bed".format(
-				round(self.space_required_ha, 3), round(sqm_per_bed, 2)))
-		else:
-			parts.append(_("hectares unknown -- {0} has no measured bed").format(self.farm))
-		self.ground_demanded = " | ".join(parts)
-
-		blocks = frappe.get_all(
-			"Block", filters={"farm": self.farm, "custom_is_summer_flower_block": 1},
-			fields=["name", "custom_total_beds", "custom_net_area_ha",
-			        "custom_measured_beds", "custom_measured_net_area_ha"],
-			order_by="name asc")
-
-		# What this plan itself asked of each block, and what someone else holds.
-		mine = defaultdict(int)
-		for row in self.plan_blocks:
-			if row.get("block") and row.get("is_new_planting"):
-				mine[row.block] = max(mine[row.block], cint(row.beds))
-		others = defaultdict(int)
-		for pl in standing_plantings(self.farm, self.variety):
-			others[pl.block] += cint(pl.beds)
-
-		for b in blocks:
-			stated_beds = cint(b.custom_total_beds)
-			needed = mine.get(b.name, 0)
-			held = others.get(b.name, 0)
-			free = max(0, stated_beds - held)
-			self.space_stated_ha += flt(b.custom_net_area_ha)
-			self.space_measured_ha += flt(b.custom_measured_net_area_ha)
-			self.beds_available_stated += stated_beds
-			self.beds_available_measured += cint(b.custom_measured_beds)
-			self.append("plan_space", {
-				"block": b.name,
-				"beds_stated": stated_beds,
-				"beds_measured": cint(b.custom_measured_beds),
-				"area_stated_ha": flt(b.custom_net_area_ha),
-				"area_measured_ha": flt(b.custom_measured_net_area_ha),
-				"beds_needed_by_plan": needed,
-				"beds_held_by_others": held,
-				"beds_free": free,
-				"verdict": (
-					_("{0} beds to this plan").format(needed) if needed else
-					_("full -- held by another planting") if held and not free else
-					_("{0} beds free").format(free) if free else
-					_("no beds stated")
-				),
-			})
-
-		self.space_utilisation_pct = (
-			self.space_required_ha / self.space_stated_ha * 100
-			if self.space_stated_ha else 0)
-
-		# Land at this farm that belongs to no block. A bed sits under a block or
-		# directly under a greenhouse, never both, so this is the rest of the farm --
-		# and it is where the answer to "we have no space" usually is. Chepsito has no
-		# blocks at all and 14.4 ha of beds, which is a different problem from having
-		# no land, and needs a different thing done about it.
-		unblocked = frappe.db.sql('''
-			select count(*) n, ifnull(sum(b.bed_area), 0) sqm
-			from tabBed b join tabWarehouse w on w.name = b.greenhouse
-			where w.custom_farm = %s and ifnull(b.custom_block, '') = ''
-		''', self.farm, as_dict=True)[0]
-		self.beds_unblocked = cint(unblocked.n)
-		self.space_unblocked_ha = flt(unblocked.sqm) / 10_000
-
-		notes = []
-		# Said first and on its own, because everything after it is arithmetic on
-		# a bed size nobody has given. A plan that reports hectares it cannot know
-		# gets approved on the strength of them.
-		if getattr(self, "_bed_size_unknown", False):
-			notes.append(_(
-				"The land figures below cannot be trusted: {0} does not say how big "
-				"a bed is, so this plan has no way to turn {1} plants into beds or "
-				"hectares. Set the net area per bed on the protocol -- the farm's "
-				"beds are 50 m2 -- and regenerate. Until then the plan may be far "
-				"larger than the farm, and nothing here will say so."
-			).format(self.protocol, "{:,}".format(cint(self.new_plants_required))))
-
-		if not blocks and self.beds_unblocked:
-			notes.append(_(
-				"{0} has no summer flower blocks, so nothing can be placed there -- but "
-				"it does have {1} beds ({2} ha) in its greenhouses belonging to no "
-				"block. The land is there; draw blocks over it and this plan can be "
-				"planted."
-			).format(self.farm, self.beds_unblocked, round(self.space_unblocked_ha, 3)))
-		elif not blocks:
-			notes.append(_(
-				"{0} has no summer flower blocks and no beds in its greenhouses, so it "
-				"has no space to plan into at all."
-			).format(self.farm))
-		elif self.space_utilisation_pct > 100:
-			notes.append(_(
-				"This plan needs {0} ha at its peak and {1} has {2} ha, so it cannot "
-				"fit however the blocks are arranged. {3} plantings are waiting on a "
-				"block and some of them will not get one until the farm has more land."
-			).format(round(self.space_required_ha, 3), self.farm,
-			         round(self.space_stated_ha, 3), cint(self.plantings_not_placed)))
-		elif cint(self.plantings_not_placed) and not getattr(
-				self, "_bed_size_unknown", False):
-			notes.append(_(
-				"There is enough land in total ({0} ha needed of {1} ha) but {2} "
-				"plantings are still waiting on a block: a block is held for a whole "
-				"planting's life, so the free beds are not free at the same time. "
-				"Moving a planting a week or two either way often finds one."
-			).format(round(self.space_required_ha, 3),
-			         round(self.space_stated_ha, 3), cint(self.plantings_not_placed)))
-		elif cint(self.plantings_not_placed):
-			# Same fact, without the claim about land. Saying the figures cannot
-			# be trusted and then "there is enough land in total" in the next
-			# breath is worse than either line alone.
-			notes.append(_(
-				"{0} plantings are waiting on a block. Whether the farm has room "
-				"for them cannot be said until the bed size is set."
-			).format(cint(self.plantings_not_placed)))
-		# Its own note, not part of the chain above. Land the plan cannot reach is
-		# worth saying, but never at the price of suppressing the reason plantings
-		# failed -- that line is the one a planner acts on.
-		if blocks and self.beds_unblocked:
-			notes.append(_(
-				"A further {0} beds ({1} ha) at this farm belong to no block, so the "
-				"plan cannot reach them."
-			).format(self.beds_unblocked, round(self.space_unblocked_ha, 3)))
-		if self.beds_available_measured < self.beds_available_stated:
-			notes.append(_(
-				"The bed register accounts for {0} of the {1} beds these blocks claim. "
-				"Planning uses the stated figure; until the beds are linked to their "
-				"blocks the measured column is not a second opinion, it is a gap."
-			).format(self.beds_available_measured, self.beds_available_stated))
-		if not sqm_per_bed:
-			notes.append(_("The protocol does not state a net area per bed, so the "
-			               "hectares this plan needs cannot be computed."))
-		self.space_verdict = "\n".join(notes) or _(
-			"{0} ha of {1} ha, {2} beds of {3} at the peak."
-		).format(round(self.space_required_ha, 3), round(self.space_stated_ha, 3),
-		         self.beds_required_peak, self.beds_available_stated)
-
 	# ---------------------------------------------------------------- TC to order
 	def set_tc_order(self, planned_sticking):
 		"""What to buy, on the document that decides it.
@@ -608,8 +412,6 @@ class SummerFlowerProductionPlan(Document):
 		opinion about it.
 		"""
 		self.tc_plants_to_order = 0
-		self.tc_mother_plants = 0
-		self.tc_cuttings_at_peak = 0
 		self.tc_order_by_date = None
 		self.tc_status = None
 
@@ -643,8 +445,6 @@ class SummerFlowerProductionPlan(Document):
 			return
 		cuttings = cint(req.get("weekly_draw"))
 		mothers = cint(req.get("pool"))
-		self.tc_cuttings_at_peak = cuttings
-		self.tc_mother_plants = mothers
 		calculated = cint(req.get("units"))
 
 		# A confirmed choice is the order; the calculation becomes advice about it.
@@ -776,54 +576,6 @@ class SummerFlowerProductionPlan(Document):
 		# There is one propagation plan per variety per season, so a second production
 		# plan for the same crop and season rebuilds it instead of starting a rival.
 		return build_from_plan(self.name, as_dict=True)
-
-	@frappe.whitelist()
-	def create_plantings(self):
-		"""Turn approved new-planting rows into actual Plantings on the ground.
-
-		Rows without a block are skipped -- they need allocating first. Rows already
-		converted are skipped too, so this is safe to run more than once.
-		"""
-		if self.docstatus != 1:
-			frappe.throw(_("Approve the plan before creating plantings."))
-
-		created, skipped = [], []
-		for row in self.plan_blocks:
-			if not row.is_new_planting:
-				continue
-			# A link to a planting that has since been deleted must not block a
-			# rebuild, otherwise the row is skipped silently and forever.
-			if row.existing_planting:
-				if frappe.db.exists("Planting Calendar", row.existing_planting):
-					continue
-				row.db_set("existing_planting", None)
-			if not row.block:
-				skipped.append(_("row {0}: no block allocated").format(row.idx))
-				continue
-
-			doc = frappe.get_doc({
-				"doctype": "Planting Calendar",
-				"block": row.block,
-				"variety": self.variety,
-				"crop_protocol_version": self.protocol,
-				"company": self.company,
-				"beds": row.beds,
-				"planting_date": row.planting_date,
-				"calendar_status": "Draft",
-				"workflow_state": "Draft",
-			})
-			try:
-				doc.insert()
-			except frappe.ValidationError as e:
-				# Most often the block is already occupied for that window.
-				skipped.append(_("row {0}: {1}").format(
-					row.idx, frappe.utils.strip_html(str(e))[:120]
-				))
-				continue
-			row.db_set("existing_planting", doc.name)
-			created.append(doc.name)
-
-		return {"created": created, "skipped": skipped}
 
 	@frappe.whitelist()
 	def _warn_if_agreement_stale(self, before):
@@ -2075,7 +1827,6 @@ def _populate(plan):
 			"contributing_plantings": "\n".join(contributors[(year, week)]) or None,
 		})
 	plan.weeks_outside_band = outside
-	plan.variance_band_held = 0 if outside else 1
 
 
 class BlockCalendar:

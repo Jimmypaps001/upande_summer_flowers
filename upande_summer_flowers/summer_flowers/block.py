@@ -11,11 +11,13 @@ than a single mutable number, and the current value is derived from that history
 import frappe
 from frappe import _
 from frappe.utils import cint, flt, getdate, now_datetime, nowdate
+from upande_summer_flowers.summer_flowers import settings as _settings
 
-APPROVER_ROLES = ("Farm Manager", "Agriculture Manager", "System Manager")
 
 
-def _has_role(roles=APPROVER_ROLES):
+def _has_role(roles=None):
+	# Who counts is set in Summer Flower Settings, not here.
+	roles = _settings.approver_roles() if roles is None else roles
 	return bool(set(roles) & set(frappe.get_roles(frappe.session.user)))
 
 

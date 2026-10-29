@@ -126,9 +126,14 @@ def before_validate(doc, method=None):
 # own crop -- Eryngium buys them from a root supplier alongside its tissue culture,
 # 1.7m plants of 9.5m in the 2026 order, and until this listed them a protocol
 # could not say so: Roots existed only as a step in the middle of a TC route.
-ROUTE_ENTRY = ("TC", "Seeds", "Roots", "Roots (Own)", "Tubers (Own)",
-               "Tubers", "Budwoods", "Bought-in Plants")
-ROUTE_END = "Plants"
+# What each stage is lives on its Material Stage record (see stages.py); these are
+# live views of those records, not lists written here.
+from upande_summer_flowers.summer_flowers import stages as _stages
+
+ROUTE_ENTRY = _stages.StageSet((_stages.BOUGHT, _stages.TAKEN))
+ROUTE_END = _stages.end_stage()
+READY_TO_PLANT = _stages.StageSet(flag="ready_to_plant")
+ROOTING_LOSSES = _stages.StageSet(flag="takes_rooting_losses")
 
 
 def route_rows(doc):
@@ -338,7 +343,7 @@ def check_route(doc):
 					frappe.bold(rows[-1].stage)),
 				title=_("Route has no end"))
 		# Bought-in Plants IS the plant, so it needs no stages after it.
-		if rows[0].stage == "Bought-in Plants" and len(rows) > 2:
+		if rows[0].stage in READY_TO_PLANT and len(rows) > 2:
 			frappe.throw(
 				_("Plants bought ready to plant do not pass through {0}. The route is "
 				  "Bought-in Plants then Plants, or the material is not bought as "
@@ -377,17 +382,20 @@ def check_route(doc):
 # sized from the busiest week rather than from the season's total. Getting this
 # wrong is not a rounding error: ordering a motherstock per cohort over-buys by
 # as many times as there are cohorts.
-STANDING_STAGES = ("Motherstock",)
+STANDING_STAGES = _stages.StageSet((_stages.MOTHERSTOCK,))
 
 # Material that comes from outside the farm. A route that starts at one of these
 # is a route that buys, and saying so is not a judgement call -- it is what the
 # stage IS. Asking someone to tick a box to confirm that tissue culture is bought
 # was a question with one answer, and a procurement plan refused to build until
 # somebody answered it.
-BOUGHT_STAGES = ("TC", "Seeds", "Roots", "Tubers", "Budwoods", "Bought-in Plants")
+BOUGHT_STAGES = _stages.StageSet((_stages.BOUGHT,))
 
 # Material the farm takes off its own crop. Nothing is ordered for these.
-TAKEN_STAGES = ("Roots (Own)", "Tubers (Own)")
+# The one definition: sourcing and route_methods import it rather than keeping
+# their own copies, which is how Cuttings (Own) came to be own material in two
+# of the three lists and bought in the third.
+TAKEN_STAGES = _stages.StageSet((_stages.TAKEN,))
 
 
 # Where each stage's numbers live on the protocol. The route used to hold its own
@@ -461,13 +469,18 @@ def set_route_quantities(doc, native=False):
 	# sticking_to_planting_weeks is a single number. So on a route bought more than
 	# one way, a figure typed on the row wins and the derivation fills only what is
 	# left blank.
-	multi = len(_chains_of(blocks)) > 1
+	# Weeks typed against each way's stages are also honoured on a single route:
+	# they are the only place those weeks are entered now (see route_ways).
+	multi = len(_chains_of(blocks)) > 1 or bool(not native and doc.flags.sf_typed_weeks)
 
 	for stage, steps in blocks:
 		name = stage.stage
 		standing = 1 if name in STANDING_STAGES else 0
 		stage.is_purchase = 1 if id(stage) in bought_in_chain else 0
 		typed_weeks = cint(stage.get("weeks")) if multi else 0
+		if not native and doc.flags.sf_typed_weeks and standing:
+			# A motherstock's weeks are its tray and pot weeks, not typed against the way.
+			typed_weeks = 0
 		# And how long it takes. A stage with steps under it is the sum of them --
 		# check_route already sets that -- so only the ones without are derived here.
 		if not steps:
@@ -487,7 +500,7 @@ def set_route_quantities(doc, native=False):
 				# the Propagation row after it, and counting both gave bought roots
 				# 22 weeks to the ground where the tracker says 15.
 				stage.weeks = 0
-			elif name in ("Propagation", "Sprouting", "Cooling", "Roots"):
+			elif name in ROOTING_LOSSES:
 				# Stuck to plantable.
 				stage.weeks = to_planting or establish
 			elif cycle_time:
@@ -508,7 +521,7 @@ def set_route_quantities(doc, native=False):
 			# single pass through the route -- see sourcing.requirement().
 			stage.yields_per_unit = factor
 			stage.loss_pct = _n(doc, "cutting_reject_pct", native=native)
-		elif name in ("Propagation", "Sprouting", "Cooling", "Roots"):
+		elif name in ROOTING_LOSSES:
 			# Raising bought or cut material to something plantable. What is lost is
 			# what fails to root and what fails to establish.
 			stage.yields_per_unit = 1
@@ -674,7 +687,10 @@ def _field_stages(doc):
 	elif first:
 		out.append(("Planted to first harvest", 0, first))
 	if life > first:
-		out.append(("Harvesting", first, life))
+		out.append(("Harvesting to uproot", first, life))
+	turn = cint(doc.get("custom_sf_turnaround_weeks"))
+	if life and turn:
+		out.append(("Uproot to replant", life, life + turn))
 	return out
 
 
@@ -811,6 +827,81 @@ def fill_native_gaps(doc):
 		doc.custom_sf_weeks_to_max_pc = cint(doc.get("custom_sf_ramp_weeks"))
 
 
+# ---------------------------------------------------------------------------
+# What the plant does in the field
+# ---------------------------------------------------------------------------
+
+ACTIVITY_FIELD = "custom_sf_field_activities"
+# Rows the system keeps in the table and dates itself. Planting is week 0 by
+# definition; harvesting and uprooting are read off the flush schedule.
+FIXED_ROLES = ("Planting", "Harvesting", "Uprooting")
+
+
+def _activity_for(role):
+	return frappe.db.get_value("Field Activity", {"role": role}, "name")
+
+
+def _activity_rows(doc):
+	rows = doc.get(ACTIVITY_FIELD) or []
+	for r in rows:
+		# fetch_from only fills on the client; a row added in code has no role yet.
+		if r.activity and not r.role:
+			r.role = frappe.db.get_value("Field Activity", r.activity, "role") or ""
+	return rows
+
+
+def set_pinch_from_activities(doc):
+	"""Not every crop is pinched -- some are bent, most are planted and cut -- so
+	what a plant does in the field is a table, and weeks to pinch is read off its
+	Pinching row. Everything downstream still reads weeks_to_pinch.
+
+	A protocol from before the table is given rows from the figures it already
+	holds, so its pinch survives the first save.
+	"""
+	if not doc.get(ACTIVITY_FIELD):
+		seed_field_activities(doc)
+	pinches = sorted((r for r in _activity_rows(doc) if r.role == "Pinching"),
+	                 key=lambda r: cint(r.weeks_from_planting))
+	doc.weeks_to_pinch = cint(pinches[0].weeks_from_planting) if pinches else 0
+
+
+def seed_field_activities(doc):
+	for role, weeks in (("Planting", 0),
+	                    ("Pinching", cint(doc.get("weeks_to_pinch"))),
+	                    ("Harvesting", cint(doc.get("custom_sf_first_harvest_offset_weeks"))),
+	                    ("Uprooting", cint(doc.get("total_weeks_in_ground")))):
+		if role == "Pinching" and not weeks:
+			continue
+		activity = _activity_for(role)
+		if activity:
+			doc.append(ACTIVITY_FIELD, {"activity": activity, "role": role,
+			                            "weeks_from_planting": weeks})
+
+
+def fill_field_activities(doc):
+	"""Date the rows the system owns, after derive() has worked out the harvest."""
+	rows = list(_activity_rows(doc))
+	weeks = {"Planting": 0,
+	         "Harvesting": cint(doc.get("custom_sf_first_harvest_offset_weeks")),
+	         "Uprooting": cint(doc.get("total_weeks_in_ground"))}
+	for role in FIXED_ROLES:
+		mine = [r for r in rows if r.role == role]
+		if not mine:
+			activity = _activity_for(role)
+			if not activity:
+				continue
+			mine = [doc.append(ACTIVITY_FIELD, {"activity": activity, "role": role})]
+			rows.append(mine[0])
+		for r in mine:
+			r.weeks_from_planting = weeks[role]
+	# In the order they happen; planting first and uprooting last on a tie.
+	rank = {"Planting": 0, "Uprooting": 2}
+	rows.sort(key=lambda r: (cint(r.weeks_from_planting), rank.get(r.role, 1)))
+	for i, r in enumerate(rows, start=1):
+		r.idx = i
+	doc.set(ACTIVITY_FIELD, rows)
+
+
 def on_update(doc, method=None):
 	"""When the workflow reaches Approved, write the snapshot.
 
@@ -855,6 +946,18 @@ def validate(doc, method=None):
 	# that, so it is squared away before anything is derived.
 	if cint(doc.get("custom_sf_ramp_weeks")):
 		doc.custom_sf_weeks_to_max_pc = cint(doc.get("custom_sf_ramp_weeks"))
+	from upande_summer_flowers.summer_flowers import route_methods as rm
+	from upande_summer_flowers.summer_flowers import route_ways as rw
+
+	# The ways in are what the user enters. A protocol from before them still has
+	# its methods and route, and gets its ways read off those once.
+	if not rw.has_ways(doc):
+		rm.check_shares(doc)
+		rm.sync_route_from_methods(doc)
+		rw.ways_from_route(doc)
+	if rw.has_ways(doc):
+		rw.sync_route_from_ways(doc)
+	set_pinch_from_activities(doc)
 	number_flushes(doc)
 	derive(doc)
 	check_route(doc)
@@ -863,21 +966,28 @@ def validate(doc, method=None):
 	set_harvest_is_scheduled(doc)
 	check_lifts(doc)
 	set_route_quantities(doc)
+	rm.sync_methods_from_route(doc)
+	rw.fill_way_stages(doc)
 	fill_native_gaps(doc)
 	set_status(doc)
 	set_growth_stages(doc)
 	set_length_distribution(doc)
 	set_native_flush_schedule(doc)
+	fill_field_activities(doc)
 
 # ---------------------------------------------------------------------------
 # Approval, and the snapshot it writes
 # ---------------------------------------------------------------------------
 
-APPROVER_ROLES = ("Agriculture Manager", "Farm Manager", "System Manager")
+def approver_roles():
+	"""Who may approve a protocol: Summer Flower Settings, else the managers."""
+	from upande_summer_flowers.summer_flowers.settings import approver_roles as _roles
+
+	return _roles()
 
 
 def _has_role():
-	return bool(set(APPROVER_ROLES) & set(frappe.get_roles(frappe.session.user)))
+	return bool(set(approver_roles()) & set(frappe.get_roles(frappe.session.user)))
 
 
 def _comparable(doc_or_version, from_protocol):
@@ -921,11 +1031,15 @@ def diff_against_current(doc):
 	return sorted(k for k in mine if mine[k] != theirs[k])
 
 
-POOL_STAGES = ("Motherstock", "Cuttings (Own)", "Roots (Own)", "Tubers (Own)")
+POOL_STAGES = STANDING_STAGES + TAKEN_STAGES
 
 # A lift profile may miss a hundred by this much and still be rounding: three
 # equal lifts are 33.3 each.
-LIFT_SLACK = 0.5
+def lift_slack():
+	"""How far lift shares may be off 100%: Summer Flower Settings, else half a percent."""
+	from upande_summer_flowers.summer_flowers.settings import lift_share_tolerance
+
+	return lift_share_tolerance()
 
 
 def set_raised_from_pool(doc):
@@ -1030,13 +1144,13 @@ def check_lifts(doc):
 
 	for form, mine in sorted(groups.items()):
 		total = sum(flt(r.share_pct) for r in mine)
-		if total > 100 + LIFT_SLACK:
+		if total > 100 + lift_slack():
 			frappe.throw(_(
 				"The {0} lifts come to {1}%. A consignment cannot hand over more "
 				"than all of itself, so take {2}% off somewhere."
 			).format(form, round(total, 2), round(total - 100, 2)),
 				title=_("More than a whole consignment"))
-		if total < 100 - LIFT_SLACK:
+		if total < 100 - lift_slack():
 			frappe.throw(_(
 				"The {0} lifts come to {1}%, so {2}% of every consignment is "
 				"never handed over. Add a lift for it, or raise the shares."
@@ -1074,7 +1188,7 @@ def protocol_lifts(doc, form):
 		return []
 	rows.sort(key=lambda r: cint(r.get("lift_no")))
 	total = sum(flt(r.get("share_pct")) for r in rows) or 1.0
-	scale = 100.0 if abs(total - 100.0) <= LIFT_SLACK else total
+	scale = 100.0 if abs(total - 100.0) <= lift_slack() else total
 	return [(cint(r.get("weeks_after_arrival"))
 	         or cint(r.get("trough_weeks")) + cint(r.get("rooting_weeks")),
 	         flt(r.get("share_pct")) / scale) for r in rows]

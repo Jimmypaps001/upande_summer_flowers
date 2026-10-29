@@ -145,14 +145,14 @@ def _dress_version(plan):
 	rows = [
 		# Option 1: buy plantlets, propagation only hardens them, one for one.
 		("TC", 0, TC_LEAD_WEEKS, 50.0, 0, 0),
-		("Propagation", TC_PROPAGATION_WEEKS, 0, 0.0, 0, 0),
+		("Rooting", TC_PROPAGATION_WEEKS, 0, 0.0, 0, 0),
 		("Plants", 0, 0, 0.0, 0, 0),
 		# Option 2: roots, which are a year in the making before they arrive --
 		# hence the lead, not the weeks: by the time a root reaches the farm the
 		# growing and the lifting have already happened, at the supplier or in
 		# our own block. One root becomes fifteen plants.
 		("Roots", 0, ROOT_LEAD_WEEKS, 50.0, RETURNS_PER_PLANT, 0),
-		("Propagation", ROOT_PROPAGATION_WEEKS, 0, 0.0, 0, 0),
+		("Rooting", ROOT_PROPAGATION_WEEKS, 0, 0.0, 0, 0),
 		("Plants", 0, 0, 0.0, 0, 0),
 	]
 	# The Protocol calls its route custom_sf_material_route and the Version calls

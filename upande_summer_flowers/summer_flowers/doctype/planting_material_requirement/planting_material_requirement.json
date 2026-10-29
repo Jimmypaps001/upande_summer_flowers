@@ -15,6 +15,7 @@
   "qty_at_field",
   "beds",
   "capped",
+  "short_ordered",
   "section_order",
   "method",
   "entry_stage",
@@ -205,6 +206,13 @@
    "fieldname": "notes",
    "fieldtype": "Small Text",
    "label": "Notes"
+  },
+  {
+   "fieldname": "short_ordered",
+   "fieldtype": "Check",
+   "label": "Short Ordered",
+   "read_only": 1,
+   "description": "The order did not stretch this far, so this planting is not fully supplied."
   }
  ],
  "links": [],

@@ -20,7 +20,7 @@ import math
 import frappe
 from frappe import _
 from frappe.model.document import Document
-from frappe.utils import cint, flt, getdate, nowdate
+from frappe.utils import add_days, cint, flt, getdate, nowdate
 
 from upande_summer_flowers.summer_flowers.planning import iso_monday
 
@@ -28,6 +28,432 @@ from upande_summer_flowers.summer_flowers.planning import iso_monday
 class SummerFlowerProcurementPlan(Document):
 	def validate(self):
 		self.set_totals()
+		self.set_purchase_amounts()
+		self.set_allocation_amounts()
+		self.check_sourcing()
+		self.check_purchase()
+		self.check_allocation()
+
+	def propagates(self):
+		"""Whether this plan's material has to be raised before it can be planted.
+
+		A route that buys finished plants has nobody to allocate to. Anything
+		bought earlier than that -- tissue culture, roots, seed, cuttings -- has
+		weeks between the purchase and a plant, and somebody has to do them.
+		"""
+		return bool(cint(self.propagates_here) or (self.in_house_stages or "").strip()
+		            or self.get("propagation_allocation"))
+
+	def units_by_stage(self):
+		"""What each way in has to buy, from the lines that buy it."""
+		out = {}
+		for r in (self.requirements or []):
+			if not cint(r.qty_to_order):
+				continue
+			stage = r.entry_stage or self.entry_stage or ""
+			out[stage] = out.get(stage, 0) + cint(r.qty_to_order)
+		return out
+
+	def plants_by_stage(self):
+		"""What each way in has to become, in plants standing."""
+		out = {}
+		for r in (self.requirements or []):
+			if (r.line_type or "Planting") != "Planting":
+				continue
+			stage = r.entry_stage or self.entry_stage or ""
+			out[stage] = out.get(stage, 0) + cint(r.qty_at_field)
+		if not out:
+			out[self.main_entry_stage() or ""] = cint(self.total_plants_at_field)
+		return out
+
+	def weeks_to_raise(self, stage):
+		"""What the protocol says raising THIS material takes.
+
+		Not the plan's one figure. A crop bought as tissue culture and as roots
+		has two journeys to the ground and they are nothing like the same length,
+		so one number against both says the roots are ready months after they are.
+		"""
+		if not stage or not self.protocol:
+			return cint(self.weeks_to_ground)
+		try:
+			from upande_summer_flowers.summer_flowers import sourcing
+
+			j = sourcing.journey(self.protocol, stage)
+			return cint(j["weeks_to_ground"]) if j else cint(self.weeks_to_ground)
+		except Exception:
+			return cint(self.weeks_to_ground)
+
+	def set_purchase_amounts(self):
+		"""Who sells each way in, and what that commits.
+
+		Buying and raising are two decisions and the document carried only one of
+		them: a single supplier field, so a crop bought as tissue culture from two
+		laboratories had nowhere to say so, and a crop bought AND propagated could
+		allocate the propagating and not the buying.
+
+		A share here is a share of ITS OWN way in, not of the whole order. On a
+		crop bought 82% as tissue culture and 18% as roots, "60%" against a lab
+		means 60% of the tissue culture -- which is what anybody ordering would
+		mean by it.
+		"""
+		totals = self.units_by_stage()
+		first_need = {}
+		for r in (self.requirements or []):
+			if not r.required_at_site_date:
+				continue
+			stage = r.entry_stage or self.entry_stage or ""
+			d = getdate(r.required_at_site_date)
+			if stage not in first_need or d < first_need[stage]:
+				first_need[stage] = d
+		only = next(iter(totals), None) if len(totals) == 1 else None
+
+		for row in self.get("purchase_allocation") or []:
+			if not row.entry_stage:
+				row.entry_stage = only or self.main_entry_stage()
+			if row.supplier and not cint(row.lead_weeks):
+				row.lead_weeks = cint(frappe.db.get_value(
+					"Supplier", row.supplier, "custom_sf_propagation_weeks"))
+			if not cint(row.lead_weeks):
+				row.lead_weeks = cint(self.lead_weeks)
+			total = cint(totals.get(row.entry_stage, 0))
+			row.units = int(round(total * flt(row.share_pct) / 100.0))
+			row.amount = cint(row.units) * flt(row.rate)
+			arrives = first_need.get(row.entry_stage)
+			row.arrives = arrives
+			row.order_by = (add_days(arrives, -7 * cint(row.lead_weeks))
+			                if arrives else None)
+
+		# The header's supplier is the table's answer, not a second question. It
+		# was asked twice -- pick a seller in the grid and the field above it was
+		# still empty, and the plan still said nothing named where this is bought.
+		named = [r.supplier for r in (self.get("purchase_allocation") or [])
+		         if r.supplier]
+		if named:
+			self.supplier = named[0] if len(set(named)) == 1 else None
+
+		# And the lines the orders are grouped on. They were written with
+		# whatever the header said when the plan was built, so clearing the
+		# table left a stale name behind and the plan went on believing it knew
+		# where this is bought.
+		if self.get("purchase_allocation"):
+			sole = {}
+			for row in self.purchase_allocation:
+				stage = row.entry_stage or ""
+				if stage not in sole:
+					sole[stage] = row.supplier
+				elif sole[stage] != row.supplier:
+					sole[stage] = None
+			for r in (self.requirements or []):
+				stage = r.entry_stage or self.entry_stage or ""
+				if stage in sole:
+					r.supplier = sole[stage]
+		elif not self.supplier:
+			for r in (self.requirements or []):
+				r.supplier = None
+
+	def check_purchase(self):
+		"""Every way in has to be bought from somebody, and bought once.
+
+		Only checked where there is something to buy: a route taking its material
+		off the farm's own crop has no sellers and wants none.
+		"""
+		rows = self.get("purchase_allocation") or []
+		if self.method != "Purchase" or not rows:
+			return
+		# A blank line is what "Choose Suppliers" hands you to fill in, so it
+		# cannot be refused on the save that creates it. It is refused at
+		# approval, where an order with no seller is a real problem.
+		blank = [r.idx for r in rows if not r.supplier]
+		if blank:
+			msg = _("Row(s) {0} have no supplier yet.").format(
+				", ".join(str(i) for i in blank))
+			if self.docstatus == 1 or self.flags.in_submit:
+				frappe.throw(msg, title=_("Nobody is selling this"))
+			frappe.msgprint(msg, indicator="orange", alert=True)
+		by_stage = {}
+		for r in rows:
+			if not r.supplier:
+				continue
+			by_stage.setdefault(r.entry_stage or "", 0)
+			by_stage[r.entry_stage or ""] += flt(r.share_pct)
+		for stage, share in by_stage.items():
+			if round(share, 2) > 100.5:
+				frappe.throw(_("The sellers of {0} add up to {1}% of it.")
+				             .format(stage or _("the material"), round(share, 2)))
+			if round(share, 2) < 99.5:
+				msg = _("{0}% of the {1} has no seller against it.").format(
+					round(100 - share, 2), stage or _("material"))
+				if self.docstatus == 1 or self.flags.in_submit:
+					frappe.throw(msg, title=_("Not all of it is bought"))
+				frappe.msgprint(msg, indicator="orange", alert=True)
+
+	@frappe.whitelist()
+	def raising_choices(self):
+		"""Units, propagators and what is already chosen, for the form's dialog."""
+		from upande_summer_flowers.summer_flowers.root_line import raising_choices
+
+		return raising_choices(self.production_plan)
+
+	@frappe.whitelist()
+	def set_raising(self, rows):
+		"""Replace who raises this plan's material with what the dialog shows."""
+		from upande_summer_flowers.summer_flowers.root_line import set_raising
+
+		return set_raising(self.production_plan, rows)
+
+	@frappe.whitelist()
+	def ways_in(self):
+		"""The materials this plan has to raise, for the grid to offer."""
+		stages = [s for s in self.plants_by_stage() if s]
+		return stages or [self.main_entry_stage() or ""]
+
+	@frappe.whitelist()
+	def propose_purchase(self):
+		"""One seller per way in, to start from.
+
+		The plan already names a supplier where one was chosen, so the table opens
+		on that rather than on a blank somebody has to fill twice.
+		"""
+		if self.method != "Purchase":
+			frappe.throw(_("This plan buys nothing, so there is nobody to buy from."))
+		totals = self.units_by_stage() or {self.main_entry_stage() or "": 0}
+		self.set("purchase_allocation", [])
+		for stage in totals:
+			self.append("purchase_allocation", {
+				"entry_stage": stage, "supplier": self.supplier,
+				"share_pct": 100, "lead_weeks": cint(self.lead_weeks)})
+		self.save()
+		return {"ways": len(totals), "stages": list(totals)}
+
+	def suppliers_for(self, stage):
+		"""The sellers of one way in, with their shares, biggest first."""
+		rows = [r for r in (self.get("purchase_allocation") or [])
+		        if (r.entry_stage or "") == (stage or "") and r.supplier]
+		rows.sort(key=lambda r: -flt(r.share_pct))
+		return rows
+
+	def set_allocation_amounts(self):
+		"""Who raises the plants, and when that means we get them.
+
+		Buying the material and raising it are two decisions, not one: a crop
+		bought as tissue culture is bought from a laboratory and raised by a unit
+		or a propagator, and the second half used to go unrecorded, so the plan
+		said what was ordered and nothing about when it became a plant.
+
+		Our own unit takes what the protocol says propagation takes. A propagator
+		takes the notice their own record gives. Either way the plants are wanted
+		on the planting date, so that date less the weeks is when the sticking --
+		or the order -- has to happen.
+		"""
+		receiving = None
+		if self.farm and frappe.get_meta("Farm").get_field("custom_sf_plant_receiving_warehouse"):
+			receiving = frappe.db.get_value("Farm", self.farm, "custom_sf_plant_receiving_warehouse")
+
+		first, last = self.planting_window()
+		plants = self.plants_by_stage()
+		only = next(iter(plants)) if len(plants) == 1 else None
+		main = self.main_entry_stage()
+
+		for r in self.get("propagation_allocation") or []:
+			# Which material this row raises. Rows written before the column
+			# existed raised whatever the plan mostly buys, which is what they
+			# were always taken to mean.
+			if not r.raises:
+				r.raises = only or main
+			stage = r.raises or main or _("the material bought")
+			# Rows written before the Type column existed named one party or the
+			# other, so the type can be read back off them rather than guessed at.
+			if not r.alloc_type:
+				r.alloc_type = "Outside Propagator" if r.supplier else "Own Unit"
+			outside = r.alloc_type == "Outside Propagator"
+
+			if outside:
+				r.propagation_unit = None
+				sup = frappe.db.get_value(
+					"Supplier", r.supplier,
+					["custom_sf_propagation_weeks", "custom_sf_rate_per_plant"],
+					as_dict=True) if r.supplier else None
+				if sup and not cint(r.lead_weeks):
+					r.lead_weeks = cint(sup.custom_sf_propagation_weeks)
+				if sup and not flt(r.rate_per_plant):
+					r.rate_per_plant = flt(sup.custom_sf_rate_per_plant)
+				if not r.deliver_to:
+					r.deliver_to = receiving
+				r.ready_basis = _(
+					"{0} needs {1} weeks' notice, so plants ordered on the start "
+					"date land on the planting date."
+				).format(r.supplier or _("The propagator"), cint(r.lead_weeks))
+			else:
+				r.supplier = None
+				r.rate_per_plant = 0
+				r.deliver_to = None
+				# The protocol already answers this: the journey from what was
+				# bought to a plant standing in a bed, which on our own bench is
+				# exactly the propagation -- and it is asked of the material this
+				# row actually raises.
+				r.lead_weeks = self.weeks_to_raise(stage)
+				r.ready_basis = _(
+					"The protocol gives {0} weeks from {1} to a plant in the "
+					"ground, raised on our own bench."
+				).format(cint(r.lead_weeks), stage)
+
+			r.party = r.supplier or r.propagation_unit
+			# A share is a share of the material it raises, not of the season.
+			if flt(r.share_pct) and not cint(r.plants):
+				r.plants = int(round(cint(plants.get(stage, 0))
+				                     * flt(r.share_pct) / 100.0))
+			r.amount = cint(r.plants) * flt(r.rate_per_plant)
+			r.plants_from, r.plants_to = first, last
+			r.start_by = (add_days(first, -7 * cint(r.lead_weeks)) if first else None)
+
+	def planting_window(self):
+		"""First and last planting this plan has to have plants for.
+
+		The cohort lines answer it where there are any. A plan that buys once and
+		propagates writes none -- the plantings are the propagation plan's to
+		schedule -- so the weeks come from the production plan's blocks, which
+		decided them.
+		"""
+		dates = [getdate(r.planting_date) for r in (self.requirements or [])
+		         if (r.line_type or "Planting") == "Planting" and r.planting_date]
+		if not dates and self.production_plan:
+			dates = [iso_monday(cint(b.planting_year), cint(b.planting_week))
+			         for b in frappe.get_all(
+				         "Summer Flower Plan Block",
+				         filters={"parent": self.production_plan, "is_new_planting": 1},
+				         fields=["planting_year", "planting_week"])
+			         if cint(b.planting_week) and cint(b.planting_year)]
+		return (min(dates), max(dates)) if dates else (None, None)
+
+	@frappe.whitelist()
+	def write_planting_plan(self):
+		"""Write the plantings this plan has not written yet.
+
+		Approval used to be the only moment this ran, and it ran once: a cohort
+		with no block when the plan was approved never got an entry, because an
+		approved plan cannot be approved again. Blocks are allocated on the
+		production plan, usually afterwards, so that was most of them -- 236 of
+		274 cohorts on this bench had no entry and nothing to make one.
+		"""
+		if self.docstatus != 1:
+			frappe.throw(_("Approve this plan before writing its plantings."))
+		before = frappe.db.count("Planting Calendar",
+		                         {"variety": self.variety, "farm": self.farm})
+		self.build_planting_plan()
+		after = frappe.db.count("Planting Calendar",
+		                        {"variety": self.variety, "farm": self.farm})
+		return {"written": after - before}
+
+	@frappe.whitelist()
+	def resize_order(self, units):
+		"""Re-plan this order at a quantity someone has decided on.
+
+		The lever is the same whichever way the crop is got, and the consequence
+		is not: on a pool route a smaller order is a smaller motherstock cutting
+		less every week, and on a direct one it is simply plantings that get no
+		plants. Both are worked out by re-planning, so the document cannot hold a
+		quantity that its own lines were never sized for.
+		"""
+		units = cint(units)
+		if units <= 0:
+			frappe.throw(_("Give the number of units to order."))
+		if self.docstatus != 0:
+			frappe.throw(_("{0} is approved. Cancel it before changing what it buys.")
+			             .format(self.name))
+		pool = cint(self.pool_plants) > 0
+		build(self.production_plan, method=self.method,
+		      entry_stage=(self.entry_stage if " + " not in (self.entry_stage or "")
+		                   else None),
+		      supplier=self.supplier,
+		      cycles=(cint(self.multiplication_cycles) if pool else None),
+		      tc_qty=(units if pool else None),
+		      units_qty=(None if pool else units))
+		return self.name
+
+	def check_sourcing(self):
+		"""Where the material is bought, said as plainly as who raises it.
+
+		Half the answer is useless: a plan that names the propagator but not the
+		laboratory cannot order anything, and one that names the laboratory but
+		not the propagator has plantlets arriving at a farm with no bench booked.
+		A route bought more than one way names its seller per line, so the lines
+		answer for themselves where the header cannot.
+		"""
+		if self.method != "Purchase":
+			return
+		# The purchase allocation is the answer where there is one: it names a
+		# seller per way in, which is more than the single field above it can say.
+		if any(r.supplier for r in (self.get("purchase_allocation") or [])):
+			return
+		if self.supplier or any(r.supplier for r in (self.requirements or [])):
+			return
+		msg = _("Nothing says where this plan buys its {0}. Name the supplier."
+		        ).format(self.main_entry_stage() or _("material"))
+		if self.docstatus == 1 or self.flags.in_submit:
+			frappe.throw(msg, title=_("No seller named"))
+		if not (self.is_new() or self.flags.get("rebuilding")):
+			frappe.msgprint(msg, indicator="orange", alert=True)
+
+	def check_allocation(self):
+		"""Nobody raising the plants is not a plan, so it cannot be saved as one.
+
+		Asked only of a plan that has something to raise, and not of a brand new
+		one -- the plan is created from the production plan before anyone has been
+		offered the units to choose from.
+		"""
+		# Re-planning rewrites the order, not the allocation, and it runs before
+		# anyone has been offered the units. Judging the allocation on that save
+		# refuses to re-plan an order over rows the re-plan does not touch.
+		if not self.propagates() or self.flags.get("rebuilding"):
+			return
+		rows = self.get("propagation_allocation") or []
+		if not rows and not self.is_new():
+			frappe.throw(_("This plan buys {0} and the plants are weeks away from "
+			               "it. Say who raises them -- our own unit, an outside "
+			               "propagator, or both -- under Who Raises It.")
+			             .format(self.main_entry_stage() or _("material")),
+			             title=_("Nobody is raising these plants"))
+
+		for r in rows:
+			if r.alloc_type == "Outside Propagator":
+				if not r.supplier:
+					frappe.throw(_("Row {0} is raised outside, so it needs the "
+					               "propagator's name.").format(r.idx))
+				if not cint(r.lead_weeks):
+					frappe.throw(_("{0} has no propagation lead time, so this plan "
+					               "cannot say when the plants arrive. Set Weeks To "
+					               "Raise A Plant on the supplier, or type the weeks "
+					               "on row {1}.").format(r.supplier, r.idx),
+					             title=_("No lead time"))
+			elif not r.propagation_unit:
+				frappe.throw(_("Row {0} is raised here, so it needs the unit that "
+				               "raises it.").format(r.idx))
+
+		# Per way in. A crop bought as tissue culture and as roots has both to
+		# raise, and a unit taking all the tissue culture does not mean the roots
+		# are covered -- counted together, 100% could be the whole of one and
+		# none of the other.
+		plants = self.plants_by_stage()
+		by_stage = {}
+		for r in rows:
+			by_stage.setdefault(r.raises or "", 0)
+			by_stage[r.raises or ""] += flt(r.share_pct)
+		for stage in plants:
+			share = by_stage.get(stage, 0)
+			if round(share, 2) > 100.5:
+				frappe.throw(_("The units and propagators raising the {0} add up "
+				               "to {1}% of it.").format(stage or _("material"),
+				                                        round(share, 2)))
+			if round(share, 2) < 99.5:
+				short = _("{0}% of the {1} -- about {2} plants -- has nobody "
+				          "raising it.").format(
+					round(100 - share, 2), stage or _("material"),
+					"{:,}".format(int(cint(plants[stage]) * (100 - share) / 100)))
+				if self.docstatus == 1 or self.flags.in_submit:
+					frappe.throw(short + " " + _("Say who raises the rest before "
+					                             "approving."),
+					             title=_("Not all of it is raised"))
+				frappe.msgprint(short, indicator="orange", alert=True)
 
 	def on_submit(self):
 		self.db_set("status", "Approved")
@@ -39,6 +465,9 @@ class SummerFlowerProcurementPlan(Document):
 		# can want both, and this one does.
 		if self.method == "Purchase":
 			self.raise_material_requests()
+		# Plants raised by an outside propagator are bought from them: one order
+		# each, at their charge per plant, for their share of the season.
+		self.raise_propagator_orders()
 		# An allocation is itself the statement that this is raised here, so it
 		# carries the same weight as the flag. Without this, choosing units and
 		# then approving produced no propagation plans at all and said nothing.
@@ -75,6 +504,75 @@ class SummerFlowerProcurementPlan(Document):
 				frappe.utils.get_link_to_form("Summer Flower Season Plan", name)),
 			indicator="green", title=_("Season planting plan"))
 
+	def raise_propagator_orders(self):
+		"""A draft Purchase Order per outside propagator on the allocation.
+
+		The TC or seed is bought from its seller (raise_material_requests); the
+		plants an outside propagator raises from it are bought again, from the
+		propagator, at what they charge per plant. Their delivery is received as a
+		Plant Consignment against this order, and the order is what gets invoiced.
+		Left as drafts: submitting one commits money, approving a plan does not.
+		"""
+		item = frappe.db.get_value("Item", self.variety, "name")
+		rows = [r for r in (self.get("propagation_allocation") or [])
+		        if r.supplier and cint(r.plants) > 0 and not r.purchase_order]
+		if not rows:
+			return
+		if not item:
+			frappe.msgprint(_("No Item called {0}, so no order could be raised for the "
+			                  "outside propagators.").format(self.variety), indicator="orange")
+			return
+		today = getdate(nowdate())
+		dates = [getdate(r.required_at_site_date) for r in (self.requirements or [])
+		         if r.required_at_site_date]
+		if not dates:
+			first, _last = self.planting_window()
+			dates = [first] if first else []
+		when = max(min(dates) if dates else today, today)
+		made, failed = [], []
+		for r in rows:
+			# Into the warehouse the plants are actually delivered to. Never a
+			# guess: an order booked into the wrong store puts stock where nobody
+			# will find it, so with nowhere named the order is not raised.
+			warehouse = r.deliver_to
+			if not warehouse:
+				failed.append(_("{0}: no warehouse to deliver to. Set Plant Receiving "
+				                "Warehouse on farm {1}, or Deliver To on the allocation "
+				                "row.").format(r.supplier, self.farm))
+				continue
+			po = frappe.new_doc("Purchase Order")
+			po.supplier = r.supplier
+			po.company = self.company
+			po.transaction_date = today
+			po.schedule_date = when
+			if po.meta.get_field("set_warehouse"):
+				po.set_warehouse = warehouse
+			row = {"item_code": item, "qty": cint(r.plants), "rate": flt(r.rate_per_plant),
+			       "schedule_date": when, "warehouse": warehouse,
+			       "description": _("{0} plants raised by {1} for {2}").format(
+				       self.variety, r.supplier, self.get("season") or self.name)}
+			if frappe.get_meta("Purchase Order Item").get_field("custom_purpose"):
+				row["custom_purpose"] = _("{0} propagation, {1}").format(
+					self.variety, self.get("season") or self.name)
+			po.append("items", row)
+			po.flags.ignore_permissions = True
+			try:
+				po.insert()
+			except Exception as e:
+				frappe.log_error(frappe.get_traceback(),
+				                 "Propagator order for %s (%s)" % (self.name, r.supplier))
+				failed.append("%s: %s" % (r.supplier, str(e).split("\n")[0][:160]))
+				continue
+			r.db_set("purchase_order", po.name, update_modified=False)
+			made.append("%s (%s)" % (po.name, r.supplier))
+		if made:
+			frappe.msgprint(_("Raised as drafts for the outside propagators: {0}").format(
+				", ".join(made)), indicator="green", title=_("Propagator orders"))
+		if failed:
+			frappe.msgprint(_("Could not raise: {0}. The error is in the log; raise these by "
+			                  "hand.").format("; ".join(failed)), indicator="orange",
+			                title=_("Propagator orders"))
+
 	def raise_material_requests(self):
 		"""One Material Request per supplier per week the material is needed.
 
@@ -90,12 +588,35 @@ class SummerFlowerProcurementPlan(Document):
 			                .format(self.variety), indicator="orange")
 			return
 
+		# Split each line between the sellers of its own way in. Grouping on the
+		# line's own supplier sent the whole order to one of them, which is the
+		# single supplier field the purchase allocation exists to replace -- a
+		# crop bought from two laboratories got one request and the second lab
+		# never heard about it.
 		groups = defaultdict(list)
 		for r in self.requirements:
 			if not cint(r.qty_to_order) or r.source_doc:
 				continue
 			when = getdate(r.required_at_site_date) if r.required_at_site_date else None
-			groups[(r.supplier, when)].append(r)
+			sellers = self.suppliers_for(r.entry_stage or self.entry_stage)
+			if not sellers:
+				groups[(r.supplier, when)].append(r)
+				continue
+			shares = [flt(x.share_pct) for x in sellers]
+			qty, taken = cint(r.qty_to_order), 0
+			for i, seller in enumerate(sellers):
+				part = (qty - taken if i == len(sellers) - 1
+				        else int(round(qty * shares[i] / 100.0)))
+				taken += part
+				if part <= 0:
+					continue
+				# A copy of the line carrying one seller's share. The line on the
+				# document is untouched: it is what the plan asked for, and this
+				# is how it was bought.
+				share_of = frappe._dict(r.as_dict())
+				share_of.qty_to_order = part
+				share_of.supplier = seller.supplier
+				groups[(seller.supplier, when)].append(share_of)
 
 		made, overdue, failed = [], [], []
 		today = getdate(nowdate())
@@ -163,6 +684,10 @@ class SummerFlowerProcurementPlan(Document):
 				r.db_set("source_doctype", "Material Request", update_modified=False)
 				r.db_set("source_doc", mr.name, update_modified=False)
 			made.append(mr.name)
+			for row in self.get("purchase_allocation") or []:
+				if row.supplier == supplier and not row.material_request:
+					row.db_set("material_request", mr.name, update_modified=False)
+					break
 
 		if made:
 			frappe.msgprint(_("{0} raised as drafts: {1}").format(
@@ -218,128 +743,8 @@ class SummerFlowerProcurementPlan(Document):
 
 
 	def build_planting_plan(self):
-		"""Turn the cohorts into Planting Calendar entries, whichever way they came.
-
-		The calendar is what the farm works from, and it is the same document
-		whether the plants were bought or raised here -- only seedling_source,
-		and the supplier or batch beside it, differ.
-		"""
-		plan = frappe.get_doc("Summer Flower Production Plan", self.production_plan)
-		# What the bench can actually deliver, week by week. The production plan says
-		# what the market wants stuck; the propagation plan says what there are
-		# cuttings for. Writing the first into the calendar as though it were the
-		# second is how a farm comes to expect plants that were never raised.
-		covered = self._propagation_coverage()
-		# What the farm plants is what came off its own bench whenever anything is
-		# raised here, even though the tissue culture behind it was bought. The
-		# supplier delivered a plantlet, not a plant.
-		source = ("In-house Propagation" if cint(self.propagates_here)
-		          else "Purchased from Breeder")
-		made, skipped, at_risk, refused, already = [], 0, [], [], 0
-		# Off the production plan's own plantings. The requirement lines are the
-		# purchase, and on a buy-once route there are none per cohort -- reading the
-		# calendar off them wrote nothing at all for exactly the crops that need it.
-		for row in [b for b in plan.plan_blocks if b.is_new_planting]:
-			r = next((x for x in self.requirements if x.cohort == row.name), None)
-			plants_here = cint(r.qty_at_field) if r else cint(row.plants)
-			if not plants_here:
-				continue
-			if not row.block:
-				# No block yet. The calendar is a place as well as a date, so it
-				# cannot be written until allocation has happened.
-				skipped += 1
-				continue
-			if row.existing_planting and frappe.db.exists("Planting Calendar",
-			                                              row.existing_planting):
-				already += 1
-				continue
-			short, asked = covered.get((cint(row.sticking_year), cint(row.sticking_week)),
-			                           (0, 0))
-			shortfall_note = None
-			if short and asked:
-				shortfall_note = _(
-					"The propagation plan is {0} cuttings short of the {1} this week "
-					"needs, so this planting may go in smaller than {2} plants or "
-					"later than {3}."
-				).format(f"{short:,}", f"{asked:,}", f"{plants_here:,}",
-				         row.planting_date)
-			cal = frappe.get_doc({
-				"doctype": "Planting Calendar",
-				"block": row.block,
-				"farm": self.farm,
-				"variety": self.variety,
-				"crop_protocol_version": self.protocol,
-				"company": self.company,
-				"beds": cint(row.beds),
-				"plants": plants_here,
-				# The delivery date is the planting date only where what arrives IS
-				# the plant. Where the farm propagates, the delivery is tissue
-				# culture months earlier, and planting on it put the crop in the
-				# ground before it existed.
-				"planting_date": (row.planting_date if cint(self.propagates_here) or not r
-				                  else (r.expected_delivery_date or row.planting_date)),
-				"sticking_date": row.sticking_date if row.get("sticking_date") else None,
-				"seedling_source": source,
-				"supplier": (self.supplier if self.method == "Purchase"
-				             and not cint(self.propagates_here) else None),
-			})
-			if shortfall_note:
-				cal.notes = ((cal.get("notes") or "") + "\n" + shortfall_note).strip() \
-					if cal.meta.has_field("notes") else cal.get("notes")
-				at_risk.append(row.planting_date)
-			cal.flags.ignore_permissions = True
-			cal.flags.built_in_bulk = True
-			# One cohort the calendar refuses -- a protocol version that takes effect
-			# after the planting date, a block rule this module knows nothing about --
-			# must not cost the farm the other twenty-five and the propagation plan
-			# built moments ago. Record which, and carry on.
-			try:
-				cal.insert()
-			except Exception as e:
-				frappe.log_error(frappe.get_traceback(),
-				                 "Planting calendar for %s" % self.name)
-				refused.append("%s: %s" % (row.planting_date,
-				                           str(e).split("\n")[0][:160]))
-				continue
-			row.db_set("existing_planting", cal.name, update_modified=False)
-			made.append(cal.name)
-
-		if made:
-			frappe.msgprint(_("{0} planting calendar entries created.").format(len(made)),
-			                indicator="green", title=_("Planting plan"))
-		# Saying nothing is what an approval did when every cohort already had its
-		# entry: no calendar appeared, none was needed, and the reader was left to
-		# work out which of those it was.
-		if already and not made:
-			frappe.msgprint(
-				_("All {0} plantings already have a calendar entry, so nothing new "
-				  "was written. They are on the Planting Calendar for {1} at {2}."
-				  ).format(already, self.variety, self.farm),
-				indicator="blue", title=_("Planting plan"))
-		elif already:
-			frappe.msgprint(
-				_("{0} plantings already had an entry and were left alone.").format(
-					already), indicator="blue", title=_("Planting plan"))
-		if refused:
-			frappe.msgprint(_(
-				"{0} planting(s) were refused by the calendar and have no entry: {1}. "
-				"Everything else is written, and the propagation plan is built. Fix "
-				"what was objected to and approve an amendment for those cohorts."
-			).format(len(refused), "; ".join(refused[:3])), indicator="red",
-				title=_("Plantings not written"))
-		if at_risk:
-			frappe.msgprint(_(
-				"{0} of these plantings fall in weeks the propagation plan cannot "
-				"fully supply, the first on {1}. They are written to the calendar "
-				"because that is the plan; what is short is on each entry and on "
-				"the propagation plan's own weeks."
-			).format(len(at_risk), min(at_risk)), indicator="orange",
-				title=_("Not all of it can be stuck"))
-		if skipped:
-			frappe.msgprint(_("{0} cohorts have no block allocated, so no planting "
-			                  "calendar entry could be written for them. Allocate "
-			                  "blocks and approve again.").format(skipped),
-			                indicator="orange", title=_("Planting plan"))
+		return write_plantings(
+			frappe.get_doc("Summer Flower Production Plan", self.production_plan), self)
 
 	@frappe.whitelist()
 	def allocation_pool(self):
@@ -350,6 +755,12 @@ class SummerFlowerProcurementPlan(Document):
 		the production plan's weekly plantings summed -- or the two ways of
 		filling the same table would disagree with each other.
 		"""
+		# What THIS plan buys, not what the production plan wanted. An order cut
+		# to 4,000 was still divided against the 6,000 the plantings asked for,
+		# so a unit taking everything the plan actually buys read as 67%.
+		if cint(self.plants_from_order):
+			return {"season_plants": cint(self.plants_from_order),
+			        "basis": _("what this order makes")}
 		try:
 			from upande_propagation.allocation import plan_weeks
 		except ImportError:
@@ -401,26 +812,33 @@ class SummerFlowerProcurementPlan(Document):
 
 		if isinstance(units, str):
 			units = frappe.parse_json(units)
-		if not units:
-			units = frappe.get_all("Warehouse",
-			                       filters={"custom_prop_is_unit": 1, "disabled": 0,
-			                                "company": self.company} if self.get("company")
-			                       else {"custom_prop_is_unit": 1, "disabled": 0},
-			                       pluck="name")
-		if not units:
+		if isinstance(suppliers, str):
+			suppliers = frappe.parse_json(suppliers)
+
+		rates = {}
+		if not units and not suppliers:
+			# Our own units are the warehouses of the propagation unit type (set in
+			# Summer Flower Settings) -- the one rule the board and forms use too.
+			from upande_summer_flowers.summer_flowers.settings import propagation_unit_type
+
+			f = {"warehouse_type": propagation_unit_type(), "disabled": 0, "is_group": 0}
+			if self.get("company"):
+				f["company"] = self.company
+			units = frappe.get_all("Warehouse", filters=f, pluck="name")
+		if not units and not suppliers:
 			frappe.throw(_("No propagation unit is marked on any warehouse, so there "
 			               "is nobody to allocate to."))
 
-		# Outside propagators take what our benches cannot. Given none, the
-		# plan's own supplier stands for the market, because a shortfall has to
-		# be somebody's to raise -- reporting it as unallocated only hides it.
-		if isinstance(suppliers, str):
-			suppliers = frappe.parse_json(suppliers)
+		# Outside propagators take what our benches cannot, when they are named --
+		# on the protocol or here. The plan's own supplier is NOT one of them: that
+		# is who sells the TC or seed, and a lab is not a propagator. What nobody
+		# can take is reported as left to raise, not handed to the seller.
 		if suppliers:
 			suppliers = [{"supplier": x} if isinstance(x, str) else x
 			             for x in suppliers]
-		elif self.supplier:
-			suppliers = [{"supplier": self.supplier, "share_pct": 100.0}]
+			# A charge per plant given with the propagator is its charge.
+			rates.update({x["supplier"]: flt(x.get("rate_per_plant")) for x in suppliers
+			              if x.get("supplier") and flt(x.get("rate_per_plant"))})
 
 		# Two ways to decide, and they answer different questions.
 		#
@@ -433,7 +851,7 @@ class SummerFlowerProcurementPlan(Document):
 		# bench free. That is a decision about the business, not about the
 		# troughs, so it is obeyed and the troughs then report what the share
 		# actually costs in surplus.
-		want_shares = any(flt((x or {}).get("share_pct")) for x in (units or [])
+		want_shares = any(flt((x or {}).get("share_pct")) for x in (units or []) + (suppliers or [])
 		                  if isinstance(x, dict))
 		if want_shares:
 			dests = []
@@ -455,10 +873,12 @@ class SummerFlowerProcurementPlan(Document):
 			                             suppliers=suppliers,
 			                             form=self.main_entry_stage() or "Roots",
 			                             version=self.protocol)
+		form = self.main_entry_stage() or "Roots"
 		self.set("propagation_allocation", [])
 		for d in res["destinations"]:
 			if d.get("kind") == "own unit":
 				self.append("propagation_allocation", {
+					"alloc_type": "Own Unit", "raises": form,
 					"propagation_unit": d["unit"], "plants": d["plants"],
 					"share_pct": d["share_pct"], "planted": d.get("planted"),
 					"surplus": d.get("surplus"), "troughs_used": d.get("troughs_used"),
@@ -471,8 +891,10 @@ class SummerFlowerProcurementPlan(Document):
 				# so a plan that sent 80% of its season outside showed only the
 				# 20% it kept.
 				self.append("propagation_allocation", {
+					"alloc_type": "Outside Propagator", "raises": form,
 					"supplier": d.get("supplier"), "plants": d["plants"],
 					"share_pct": d["share_pct"],
+					"rate_per_plant": rates.get(d.get("supplier"), 0),
 					"note": _("Raised off the farm · {0} weeks · {1} weeks' lead")
 						.format(d.get("weeks"), d.get("lead_weeks")),
 				})
@@ -497,7 +919,8 @@ class SummerFlowerProcurementPlan(Document):
 			)
 
 		allocated = [r for r in (self.get("propagation_allocation") or [])
-		             if r.propagation_unit and cint(r.plants) > 0]
+		             if r.alloc_type != "Outside Propagator"
+		             and r.propagation_unit and cint(r.plants) > 0]
 		if allocated:
 			return self._build_allocated_plans(allocated, build_from_plan)
 
@@ -609,6 +1032,287 @@ class SummerFlowerProcurementPlan(Document):
 			r.late = 1 if (r.order_by_date and getdate(r.order_by_date) < today) else 0
 		self.orders_late = sum(1 for r in rows if r.late)
 		self.capped_by_space = 1 if any(cint(r.capped) for r in rows) else 0
+
+
+def trim_to_order(built, budget, ppb):
+	"""Serve a smaller order through the plantings, earliest first.
+
+	A plan that buys plants or roots one per plant has nothing to multiply, so
+	buying fewer is not a smaller pool -- it is fewer plantings. They are served
+	in planting order, which is what the farm does with a short delivery and the
+	same rule the ground shortage already follows: the early weeks go in full and
+	what runs out runs out at the end of the season.
+
+	Returns what the order plants, what it leaves unplanted, and how many
+	plantings it cannot fill.
+	"""
+	wanted = sum(cint(line.qty_at_field) for line, _pu in built)
+	# A route bought two ways is still bought in its own shares when less of it
+	# is bought. Serving the lines in one queue let the first cohort's tissue
+	# culture swallow the whole order and left 217 roots against 14,903 -- a
+	# route nobody chose, arrived at by the order the lines happen to sit in.
+	ways, order = {}, []
+	for line, per_unit in built:
+		key = line.entry_stage or ""
+		if key not in ways:
+			ways[key] = []
+			order.append(key)
+		ways[key].append((line, per_unit))
+	asked = {k: sum(cint(l.qty_to_order) for l, _pu in v) for k, v in ways.items()}
+	total_asked = sum(asked.values()) or 1
+	budgets, given = {}, 0
+	for i, k in enumerate(order):
+		budgets[k] = (cint(budget) - given if i == len(order) - 1
+		              else int(round(cint(budget) * asked[k] / float(total_asked))))
+		given += budgets[k]
+
+	made, short_cohorts = 0, set()
+	for k in order:
+		left = max(0, budgets[k])
+		for line, per_unit in ways[k]:
+			want_units = cint(line.qty_to_order)
+			take = max(0, min(want_units, left))
+			left -= take
+			if take < want_units:
+				short_cohorts.add(line.cohort)
+				line.qty_to_order = take
+				line.qty_at_field = int(take * flt(per_unit)) if per_unit else 0
+				line.short_ordered = 1
+			made += cint(line.qty_at_field)
+	# Beds follow the plants, not the other way round: a cohort that gets half
+	# its plants fills half its beds, and leaving the original count there books
+	# ground that nothing is going into.
+	first_of = {}
+	plants_of = {}
+	for line, _pu in built:
+		plants_of[line.cohort] = plants_of.get(line.cohort, 0) + cint(line.qty_at_field)
+		first_of.setdefault(line.cohort, line)
+	if ppb:
+		for cohort, line in first_of.items():
+			if line.cohort in short_cohorts:
+				line.beds = int(math.ceil(plants_of[cohort] / float(ppb)))
+	return {"wanted": wanted, "made": made, "short": max(0, wanted - made),
+	        "cohorts_short": len(short_cohorts)}
+
+
+def write_plantings(plan, proc=None):
+	"""Turn a plan's cohorts into Planting Calendar entries.
+
+	The calendar is what the farm works from, and it is the same document
+	whichever way the plants were got -- only seedling_source, and the supplier
+	or batch beside it, differ.
+
+	`proc` is the approved procurement plan where there is one. A route that
+	takes its material off the farm's own crop -- own roots, own tubers, own
+	cuttings -- has nothing to buy and therefore no procurement plan, and those
+	crops still have to be planted. Writing this on the procurement plan alone
+	left them with no writer at all.
+	"""
+	# What the bench can actually deliver, week by week. The production plan says
+	# what the market wants stuck; the propagation plan says what there are
+	# cuttings for. Writing the first into the calendar as though it were the
+	# second is how a farm comes to expect plants that were never raised.
+	covered = proc._propagation_coverage() if proc else {}
+	# What the farm plants is what came off its own bench whenever anything is
+	# raised here, even though the tissue culture behind it was bought. The
+	# supplier delivered a plantlet, not a plant.
+	source = ("In-house Propagation" if (not proc or cint(proc.propagates_here))
+	          else "Purchased from Breeder")
+	made, skipped, at_risk, refused, already, moved = [], 0, [], [], 0, []
+	# A block on a plan row is a claim made when the row was allocated, and
+	# nothing re-checks it. Approve in September, let another plan take the
+	# beds in October, and the calendar is the only thing that notices -- by
+	# refusing thirty-two of thirty-eight plantings. So the claim is tested
+	# here, against what holds the beds now, and a cohort whose block has
+	# gone is given another one rather than lost.
+	from upande_summer_flowers.summer_flowers.doctype \
+		.summer_flower_production_plan.summer_flower_production_plan import (
+			BlockCalendar,
+		)
+
+	protocol = (proc.protocol if proc else plan.protocol)
+	if not protocol:
+		frappe.throw(_("{0} names no protocol version, so there is nothing to "
+		               "say how long a planting holds its block. Re-plan it "
+		               "from the demand.").format(plan.name),
+		             title=_("No protocol"))
+	v = frappe.get_cached_doc("Crop Protocol Version", protocol)
+	life = datetime.timedelta(weeks=cint(v.total_weeks_in_ground))
+	cal = BlockCalendar(plan.farm, plan.variety)
+
+	# Off the production plan's own plantings. The requirement lines are the
+	# purchase, and on a buy-once route there are none per cohort -- reading the
+	# calendar off them wrote nothing at all for exactly the crops that need it.
+	rows = [b for b in plan.plan_blocks if b.is_new_planting]
+	rows.sort(key=lambda b: getdate(b.planting_date or nowdate()))
+	for row in rows:
+		r = next((x for x in (proc.requirements if proc else [])
+		         if x.cohort == row.name), None)
+		plants_here = cint(r.qty_at_field) if r else cint(row.plants)
+		if not plants_here:
+			continue
+		if row.existing_planting and frappe.db.exists("Planting Calendar",
+		                                              row.existing_planting):
+			already += 1
+			continue
+		if not row.planting_date:
+			skipped += 1
+			continue
+		start = getdate(row.planting_date)
+		end = start + life
+		beds_wanted = cint(row.beds) or 1
+		block = row.block
+		if block and cal.get(block) and cal.free_beds(cal.get(block), start, end) >= beds_wanted:
+			cal.reserve(cal.get(block), start, end, beds_wanted)
+		else:
+			# Either never allocated, or allocated to beds somebody else now
+			# holds. Same answer either way: find beds that are free now.
+			fresh = cal.place(beds_wanted, start, end)
+			if not fresh:
+				skipped += 1
+				continue
+			if block and fresh != block:
+				moved.append((row.name, block, fresh))
+			block = fresh
+			row.db_set("block", block, update_modified=False)
+			row.db_set("not_placed", 0, update_modified=False)
+		short, asked = covered.get((cint(row.sticking_year), cint(row.sticking_week)),
+		                           (0, 0))
+		shortfall_note = None
+		if short and asked:
+			shortfall_note = _(
+				"The propagation plan is {0} cuttings short of the {1} this week "
+				"needs, so this planting may go in smaller than {2} plants or "
+				"later than {3}."
+			).format(f"{short:,}", f"{asked:,}", f"{plants_here:,}",
+			         row.planting_date)
+		entry = frappe.get_doc({
+			"doctype": "Planting Calendar",
+			"block": block,
+			"farm": plan.farm,
+			"variety": plan.variety,
+			"crop_protocol_version": protocol,
+			"company": plan.company,
+			"beds": cint(row.beds),
+			"plants": plants_here,
+			# The delivery date is the planting date only where what arrives IS
+			# the plant. Where the farm propagates, the delivery is tissue
+			# culture months earlier, and planting on it put the crop in the
+			# ground before it existed.
+			"planting_date": (row.planting_date if (not proc or cint(proc.propagates_here)) or not r
+			                  else (r.expected_delivery_date or row.planting_date)),
+			"sticking_date": row.sticking_date if row.get("sticking_date") else None,
+			"seedling_source": source,
+			"supplier": (proc.supplier if proc and proc.method == "Purchase"
+		             and not cint(proc.propagates_here) else None),
+		})
+		if shortfall_note:
+			entry.notes = ((entry.get("notes") or "") + "\n" + shortfall_note).strip() \
+				if entry.meta.has_field("notes") else entry.get("notes")
+			at_risk.append(row.planting_date)
+		entry.flags.ignore_permissions = True
+		entry.flags.built_in_bulk = True
+		# One cohort the calendar refuses -- a protocol version that takes effect
+		# after the planting date, a block rule this module knows nothing about --
+		# must not cost the farm the other twenty-five and the propagation plan
+		# built moments ago. Record which, and carry on.
+		try:
+			entry.insert()
+		except Exception as e:
+			# The calendar is the authority on its own beds, and the two counts
+			# can still part company at an edge -- a planting that ends on the day
+			# another starts. Rather than argue, take its answer and ask it for
+			# somewhere else once; what it refuses twice is genuinely full.
+			again = (cal.place(beds_wanted, start, end)
+			         if "beds" in str(e) else None)
+			if again and again != block:
+				entry.block = again
+				try:
+					entry.insert()
+					moved.append((row.name, block, again))
+					block = again
+				except Exception:
+					again = None
+			if not again or entry.get("__islocal"):
+				frappe.log_error(frappe.get_traceback(),
+				                 "Planting calendar for %s" % plan.name)
+				refused.append("%s: %s" % (row.planting_date,
+				                           str(e).split("\n")[0][:160]))
+				continue
+		if block != row.block:
+			row.db_set("block", block, update_modified=False)
+		row.db_set("existing_planting", entry.name, update_modified=False)
+		made.append(entry.name)
+
+	if made:
+		frappe.msgprint(_("{0} planting calendar entries created.").format(len(made)),
+		                indicator="green", title=_("Planting plan"))
+	# Saying nothing is what an approval did when every cohort already had its
+	# entry: no calendar appeared, none was needed, and the reader was left to
+	# work out which of those it was.
+	if already and not made:
+		frappe.msgprint(
+			_("All {0} plantings already have a calendar entry, so nothing new "
+			  "was written. They are on the Planting Calendar for {1} at {2}."
+			  ).format(already, plan.variety, plan.farm),
+			indicator="blue", title=_("Planting plan"))
+	elif already:
+		frappe.msgprint(
+			_("{0} plantings already had an entry and were left alone.").format(
+				already), indicator="blue", title=_("Planting plan"))
+	if refused:
+		frappe.msgprint(_(
+			"{0} planting(s) were refused by the calendar and have no entry: {1}. "
+			"Everything else is written, and the propagation plan is built. Fix "
+			"what was objected to and approve an amendment for those cohorts."
+		).format(len(refused), "; ".join(refused[:3])), indicator="red",
+			title=_("Plantings not written"))
+	if at_risk:
+		frappe.msgprint(_(
+			"{0} of these plantings fall in weeks the propagation plan cannot "
+			"fully supply, the first on {1}. They are written to the calendar "
+			"because that is the plan; what is short is on each entry and on "
+			"the propagation plan's own weeks."
+		).format(len(at_risk), min(at_risk)), indicator="orange",
+			title=_("Not all of it can be stuck"))
+	if moved:
+		frappe.msgprint(_(
+			"{0} planting(s) had to move: the beds they were allocated are held "
+			"by something else now. {1}. The plan rows carry the new blocks."
+		).format(len(moved), "; ".join("%s -> %s" % (a, b)
+		                               for _r, a, b in moved[:3])),
+			indicator="blue", title=_("Blocks re-allocated"))
+	if skipped:
+		frappe.msgprint(_(
+			"{0} planting(s) could not be written: there are no beds free at "
+			"{1} for the whole of their life. Find more ground, or move them."
+		).format(skipped, plan.farm), indicator="orange",
+			title=_("Nowhere to put them"))
+
+@frappe.whitelist()
+
+
+@frappe.whitelist()
+def write_plantings_for(production_plan):
+	"""The planting plan for a production plan, however its material is got.
+
+	With an approved procurement plan, that plan writes it -- it is the only
+	document that knows the source, the supplier and what each cohort's order
+	actually delivers. Without one, because the route takes its material off the
+	farm's own crop, the plan is written from the cohorts alone.
+	"""
+	plan = frappe.get_doc("Summer Flower Production Plan", production_plan)
+	if plan.docstatus != 1:
+		frappe.throw(_("Approve {0} before writing its plantings.").format(plan.name))
+	q = frappe.db.get_value("Summer Flower Procurement Plan",
+	                        {"production_plan": plan.name, "docstatus": 1}, "name")
+	proc = frappe.get_doc("Summer Flower Procurement Plan", q) if q else None
+	before = frappe.db.count("Planting Calendar",
+	                         {"variety": plan.variety, "farm": plan.farm})
+	write_plantings(plan, proc)
+	after = frappe.db.count("Planting Calendar",
+	                        {"variety": plan.variety, "farm": plan.farm})
+	return {"written": after - before, "bought_through": q}
 
 
 def space_at(farm):
@@ -837,6 +1541,11 @@ def overview(name):
 			"cycles": cycles,
 			"pool": cint(q.pool_plants),
 			"weekly_draw": cint(q.weekly_draw),
+			"makes": cint(q.plants_from_order),
+			"plants_short": cint(q.plants_short),
+			"cuttings_short": cint(q.cuttings_short),
+			"weeks_short": cint(q.weeks_short),
+			"covers": cint(q.order_covers_season),
 			"order_by": str(est.order_by_date or "") if est else str(q.first_order_by or ""),
 			"order_late": bool(cint(q.orders_late)),
 			"propagates_here": cint(q.propagates_here),
@@ -878,6 +1587,22 @@ def overview(name):
 			"last_harvest_week": max(firsts) if firsts else None,
 		},
 		"propagation": (dict(prop) if prop else None),
+		"raised_by": [{
+			"type": r.alloc_type or ("Outside Propagator" if r.supplier else "Own Unit"),
+			"party": r.party or r.supplier or r.propagation_unit,
+			"share_pct": flt(r.share_pct),
+			"plants": cint(r.plants),
+			"rate": flt(r.rate_per_plant),
+			"amount": flt(r.amount),
+			"lead_weeks": cint(r.lead_weeks),
+			"start_by": str(r.start_by or ""),
+			"plants_from": str(r.plants_from or ""),
+			"plants_to": str(r.plants_to or ""),
+			"basis": r.ready_basis,
+			"note": r.note,
+			"propagation_plan": r.propagation_plan,
+			"purchase_order": r.purchase_order,
+		} for r in (q.propagation_allocation or [])],
 		"arrivals": arrivals,
 	}
 
@@ -984,7 +1709,8 @@ def tc_options(production_plan, cycles=None, tc_qty=None):
 
 @frappe.whitelist()
 def build(production_plan, method=None, entry_stage=None, supplier=None,
-          fit_to_space=1, cycles=None, tc_qty=None, replace=0, divert_weeks=None):
+          fit_to_space=1, cycles=None, tc_qty=None, replace=0, divert_weeks=None,
+          units_qty=None):
 	"""Turn a plan's plantings into one requirement line each, and price the order.
 
 	`divert_weeks` is how the order is sized on a route through a motherstock:
@@ -1142,8 +1868,24 @@ def build(production_plan, method=None, entry_stage=None, supplier=None,
 		need["overridden"] = cint(tc_qty) and cint(tc_qty) != cint(pick["buy"])
 		if cint(tc_qty):
 			need["units"] = cint(tc_qty)
-		need["pool"] = cint(pick["pool"])
-		need["order_by_date"] = pick["order_by"]
+		# Sized from the quantity actually ordered, not from the one the sum
+		# suggested. Buying fewer plantlets buys a smaller pool, a smaller pool
+		# cuts less every week, and the weeks it cannot cover are a shortfall --
+		# which used to go unsaid, because the pool, the weekly draw and the
+		# dates were all read off the suggestion whatever was bought instead.
+		sched = psol.peak_schedule(p, sizing, cycles=need["cycles"],
+		                           tc=need["units"])
+		if sched:
+			need["pool"] = cint(sched.get("peak_pool"))
+			need["order_by_date"] = sched.get("order_by") or pick["order_by"]
+			need["to_field"] = cint(sched.get("to_field"))
+			need["cuttings_short"] = cint(sched.get("shortfall"))
+			need["weeks_short"] = max(0, cint(sched.get("weeks"))
+			                          - cint(sched.get("weeks_met")))
+			need["covers"] = 1 if sched.get("covers") else 0
+		else:
+			need["pool"] = cint(pick["pool"])
+			need["order_by_date"] = pick["order_by"]
 		need["peak"] = sizing
 		need["basis"] = _(
 			"The busiest sticking week is {0}, which needs {1} cuttings -- and that "
@@ -1219,6 +1961,7 @@ def build(production_plan, method=None, entry_stage=None, supplier=None,
 
 	beds_left = beds_available if (fit_to_space and beds_available) else None
 	trimmed = 0
+	built = []
 	# A procurement plan is the purchase and nothing else. Where the material is
 	# bought once and propagated -- tissue culture into a motherstock -- there is
 	# one thing to buy, and the cohorts are not it: when each planting gets its
@@ -1257,7 +2000,7 @@ def build(production_plan, method=None, entry_stage=None, supplier=None,
 			order_by = None if standing else (
 				required - datetime.timedelta(weeks=way["notice_weeks"])
 				if required else None)
-			doc.append("requirements", {
+			line = doc.append("requirements", {
 				"line_type": "Planting",
 				"drawn_from_pool": 1 if standing else 0,
 				"cohort": b.name,
@@ -1284,6 +2027,7 @@ def build(production_plan, method=None, entry_stage=None, supplier=None,
 				# same fact and the calendar keys on the second.
 				"expected_delivery_date": required,
 			})
+			built.append((line, way["per_unit"]))
 
 	if standing:
 		# One line for the one purchase, dated back through the function that knows
@@ -1332,11 +2076,59 @@ def build(production_plan, method=None, entry_stage=None, supplier=None,
 		doc.flags.write_motherstock_plan = True
 		doc.calculated_units = cint(need.get("calculated_units"))
 		doc.units_overridden = 1 if need.get("overridden") else 0
+		doc.plants_from_order = cint(need.get("to_field"))
+		doc.cuttings_short = cint(need.get("cuttings_short"))
+		doc.weeks_short = cint(need.get("weeks_short"))
+		doc.order_covers_season = cint(need.get("covers"))
+		# The same question the direct route answers, asked of the pool: what the
+		# plan wanted standing, less what this order actually sends to the field.
+		doc.plants_short = max(0, cint(p.new_plants_required)
+		                       - cint(need.get("to_field")))
 		doc.sizing_basis = (need.get("basis") or "") + (
 			_(" Ordered {0} instead of the {1} the sum asks for.").format(
 				"{:,}".format(cint(need.get("units"))),
 				"{:,}".format(cint(need.get("calculated_units"))))
-			if need.get("overridden") else "")
+			if need.get("overridden") else "") + (
+			_(" At {0} plantlets the line stands {1} mothers at its peak and "
+			  "sends {2} plants to the field, which is {3} cuttings short across "
+			  "{4} of {5} sticking weeks. The demand is not reduced by this.")
+			.format("{:,}".format(cint(need.get("units"))),
+			        "{:,}".format(cint(need.get("pool"))),
+			        "{:,}".format(cint(need.get("to_field"))),
+			        "{:,}".format(cint(need.get("cuttings_short"))),
+			        cint(need.get("weeks_short")),
+			        cint(need.get("weeks_short"))
+			        + cint((sched or {}).get("weeks_met")))
+			if cint(need.get("cuttings_short")) else "")
+
+	# A hand-set order on a route that buys one unit per plant. The pool route
+	# answers this in the solver above; here there is no pool, so the answer is
+	# simply which plantings the order reaches.
+	if not standing:
+		planted = sum(cint(line.qty_at_field) for line, _pu in built)
+		doc.calculated_units = sum(cint(line.qty_to_order) for line, _pu in built)
+		if cint(units_qty) and cint(units_qty) < doc.calculated_units:
+			cut = trim_to_order(built, cint(units_qty), ppb)
+			doc.units_overridden = 1
+			doc.plants_from_order = cint(cut["made"])
+			doc.plants_short = cint(cut["short"])
+			doc.weeks_short = cint(cut["cohorts_short"])
+			doc.order_covers_season = 0
+			doc.sizing_basis = _(
+				"Ordered {0} instead of the {1} the plantings ask for. That plants "
+				"{2} of {3}, so {4} plants across {5} planting(s) have nothing to "
+				"put in the ground. Served in planting order, so the shortfall "
+				"falls at the end of the season. The demand is not reduced by this."
+			).format("{:,}".format(cint(units_qty)),
+			         "{:,}".format(cint(doc.calculated_units)),
+			         "{:,}".format(cint(cut["made"])), "{:,}".format(cint(cut["wanted"])),
+			         "{:,}".format(cint(cut["short"])), cint(cut["cohorts_short"]))
+		else:
+			doc.units_overridden = 0
+			doc.plants_from_order = planted
+			doc.plants_short = 0
+			doc.weeks_short = 0
+			doc.order_covers_season = 1
 
 	wanted_beds = sum(cint(b.beds) for b in rows)
 	if standing:
@@ -1351,6 +2143,10 @@ def build(production_plan, method=None, entry_stage=None, supplier=None,
 			"reduced by this -- it still asks for {0} beds. Either find more land, "
 			"or accept that this much of the season cannot be grown here."
 		).format(wanted_beds, p.farm, beds_available, short, trimmed, len(rows))
+	# Re-planning writes the order before anyone has been offered the units to
+	# raise it, so the allocation cannot be demanded on this save -- only on the
+	# next one, when it is a person saving rather than the planner.
+	doc.flags.rebuilding = True
 	if doc.is_new():
 		doc.insert(ignore_permissions=True)
 	else:

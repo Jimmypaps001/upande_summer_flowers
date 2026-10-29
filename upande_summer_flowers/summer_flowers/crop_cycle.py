@@ -24,19 +24,19 @@ import json
 import frappe
 from frappe import _
 from frappe.utils import add_days, cint, flt, getdate, now_datetime, nowdate
+from upande_summer_flowers.summer_flowers import settings as _settings
 
 from upande_agriculture.upande_agriculture.doctype.crop_cycle.crop_cycle import CropCycle
 
 from upande_summer_flowers.summer_flowers.planning import iso_year_week
 
-APPROVER_ROLES = ("Farm Manager", "Agriculture Manager", "System Manager")
-TARGET_ROLES = ("Production Manager", "Farm Manager", "Agriculture Manager",
-                "System Manager")
 
 ENDED_STATES = ("Ended",)
 
 
-def _has_role(roles=APPROVER_ROLES):
+def _has_role(roles=None):
+	# Who counts is set in Summer Flower Settings, not here.
+	roles = _settings.approver_roles() if roles is None else roles
 	return bool(set(roles) & set(frappe.get_roles(frappe.session.user)))
 
 
@@ -334,6 +334,26 @@ class SummerFlowerCropCycle(CropCycle):
 		                             "custom_net_area_ha"))
 		area_sqm = ha * 10_000
 		self.custom_block_area_sqm = area_sqm
+
+		# The doctype names itself after its greenhouse, which a block cycle
+		# deliberately has not got -- so every one of them read "Variety @ None".
+		# A block cycle is named after its block.
+		self.title = "{0} @ {1}".format(self.variety or self.get("custom_sf_variety"),
+		                                self.custom_block)
+		# planted_area is summed from the bed rows, and a block cycle recorded by
+		# bed COUNT has none -- so the native area sat at zero beside a custom
+		# field holding the real figure. Where the beds are not itemised, the
+		# area this planting actually occupies is the answer.
+		if not self.get("beds") and flt(self.get("custom_area_planted_sqm")):
+			self.planted_area = flt(self.custom_area_planted_sqm)
+			# And the figure derived from it. The agriculture controller works
+			# implied_plants out before this hook runs, off an area that is still
+			# zero at that point, so it reported none against a cycle standing
+			# 27,100 plants.
+			density = flt(self.get("custom_planting_density_per_sqm")) or flt(
+				self.get("plants_per_sqm"))
+			if density:
+				self.implied_plants = int(round(self.planted_area * density))
 
 		if not flt(self.custom_planting_density_per_sqm):
 			# _version is resolved further down validate(), after the summer flower
@@ -868,7 +888,7 @@ class SummerFlowerCropCycle(CropCycle):
 	@frappe.whitelist()
 	def validate_targets(self):
 		"""Production Manager signs off the weekly targets."""
-		if not _has_role(TARGET_ROLES):
+		if not _has_role(_settings.target_roles()):
 			frappe.throw(_("Only a Production Manager can validate weekly targets."))
 		if self.custom_targets_status != "Pending Validation":
 			frappe.throw(_("Submit the targets for validation first."))
@@ -880,7 +900,7 @@ class SummerFlowerCropCycle(CropCycle):
 
 	@frappe.whitelist()
 	def reject_targets(self, reason=None):
-		if not _has_role(TARGET_ROLES):
+		if not _has_role(_settings.target_roles()):
 			frappe.throw(_("Only a Production Manager can reject weekly targets."))
 		if not (reason or "").strip():
 			frappe.throw(_("A rejection reason is required."))

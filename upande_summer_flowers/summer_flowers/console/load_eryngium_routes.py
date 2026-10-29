@@ -79,10 +79,10 @@ def main(apply=0):
 		doc.set("custom_sf_material_route", [])
 		for stage, weeks, buy, lead, share in (
 			("TC", 0, 1, TC_LEAD, tc_pct),
-			("Propagation", TC_HARDEN, 0, 0, None),
+			("Rooting", TC_HARDEN, 0, 0, None),
 			("Plants", 0, 0, 0, None),
 			("Roots", 0, 1, ROOT_LEAD, root_pct),
-			("Propagation", ROOT_HARDEN, 0, 0, None),
+			("Rooting", ROOT_HARDEN, 0, 0, None),
 			("Plants", 0, 0, 0, None),
 		):
 			doc.append("custom_sf_material_route", {

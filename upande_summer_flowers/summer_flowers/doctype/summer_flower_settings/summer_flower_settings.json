@@ -23,8 +23,6 @@
   "propagation_capacity_plants",
   "max_weekly_intake_plants",
   "cb_prop_cap",
-  "tc_loss_pct",
-  "roots_loss_pct",
   "propagation_loss_pct",
   "propagation_hold_weeks",
   "bench_section",
@@ -36,9 +34,26 @@
   "default_input_purpose",
   "bio_section",
   "biological_asset_item",
+  "plants_section",
+  "plant_item_groups",
+  "plant_quality_inspection_template",
+  "cb_plants",
+  "plant_delivery_tolerance_pct",
+  "require_inspection_on_invoice",
+  "plant_delivery_notify_role",
   "season_curve_build",
   "season_curve_tail",
-  "propagation_warehouse"
+  "propagation_warehouse",
+  "tc_loss_pct",
+  "roots_loss_pct",
+  "rules_section",
+  "propagation_unit_type",
+  "approver_roles",
+  "target_roles",
+  "cb_rules",
+  "lift_share_tolerance_pct",
+  "second_ways_section",
+  "second_ways"
  ],
  "fields": [
   {
@@ -137,7 +152,8 @@
    "description": "The fallback, used for any form that does not state its own above. A provision, not a measurement: it sits at zero until somebody sets it.",
    "fieldname": "propagation_loss_pct",
    "fieldtype": "Percent",
-   "label": "Allowance For Losses"
+   "label": "Allowance For Losses",
+   "hidden": 1
   },
   {
    "default": "0",
@@ -271,20 +287,71 @@
    "fieldname": "tc_loss_pct",
    "fieldtype": "Percent",
    "label": "Losses On Tissue Culture",
-   "description": "Of the plantlets a lab delivers, the share that never reaches the field. The Eryngium delivery book measures 11.3% across 4.4m plantlets. Left at zero this falls back to the figure below."
+   "description": "Of the plantlets a lab delivers, the share that never reaches the field. The Eryngium delivery book measures 11.3% across 4.4m plantlets. Left at zero this falls back to the figure below.",
+   "hidden": 1
   },
   {
    "fieldname": "roots_loss_pct",
    "fieldtype": "Percent",
    "label": "Losses On Roots",
-   "description": "The same for roots, which lose more: 13.0% across 2.8m in the same book. Left at zero this falls back to the figure below."
+   "description": "The same for roots, which lose more: 13.0% across 2.8m in the same book. Left at zero this falls back to the figure below.",
+   "hidden": 1
+  },
+  {
+   "fieldname": "rules_section",
+   "fieldtype": "Section Break",
+   "label": "Rules"
+  },
+  {
+   "fieldname": "propagation_unit_type",
+   "fieldtype": "Link",
+   "options": "Warehouse Type",
+   "label": "Propagation Unit Warehouse Type",
+   "default": "Propagation Unit",
+   "description": "Warehouses of this type are our own propagation units."
+  },
+  {
+   "fieldname": "approver_roles",
+   "fieldtype": "Table MultiSelect",
+   "options": "Summer Flower Approver Role",
+   "label": "Approver Roles",
+   "description": "Who may approve crop protocols, blocks, block changes, crop cycles and block budgets. Empty: Farm Manager, Agriculture Manager and System Manager."
+  },
+  {
+   "fieldname": "target_roles",
+   "fieldtype": "Table MultiSelect",
+   "options": "Summer Flower Approver Role",
+   "label": "Crop Cycle Target Roles",
+   "description": "Who may set a crop cycle's weekly targets. Empty: Production Manager, Farm Manager, Agriculture Manager and System Manager."
+  },
+  {
+   "fieldname": "cb_rules",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "lift_share_tolerance_pct",
+   "fieldtype": "Float",
+   "label": "Lift Share Tolerance (%)",
+   "default": "0.5",
+   "description": "How far a route's lift shares may be off 100% and still count as whole."
+  },
+  {
+   "fieldname": "second_ways_section",
+   "fieldtype": "Section Break",
+   "label": "Second Ways In"
+  },
+  {
+   "fieldname": "second_ways",
+   "fieldtype": "Table",
+   "options": "Summer Flower Second Way",
+   "label": "Varieties Bought a Second Way"
   }
  ],
  "grid_page_length": 50,
  "index_web_pages_for_search": 1,
  "issingle": 1,
  "links": [],
- "modified": "2026-09-09 00:00:00.000000",
+ "modified": "2026-10-28 22:30:00.000000",
  "modified_by": "Administrator",
  "module": "Summer Flowers",
  "name": "Summer Flower Settings",

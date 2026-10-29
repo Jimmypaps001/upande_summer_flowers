@@ -30,6 +30,12 @@ class SummerFlowerBudget(Document):
 				row.fiscal_year = fiscal_year_for(row.month_start, self.company)
 
 	def value_months(self):
+		# The variety Item's valuation; refreshed while the budget is a draft so it
+		# follows stock rather than whatever was true when it was built.
+		if self.docstatus == 0 and self.variety:
+			from upande_summer_flowers.summer_flowers.valuation import stem_price
+
+			self.price_per_stem = stem_price(self.variety, self.company)
 		rate = flt(self.price_per_stem)
 		for row in self.budget_months:
 			row.value = flt(row.stems) * rate
@@ -287,7 +293,9 @@ def build_from_plan(production_plan):
 	doc.farm = plan.farm
 	doc.company = plan.company
 	doc.currency = plan.currency
-	doc.price_per_stem = plan.price_per_stem
+	from upande_summer_flowers.summer_flowers.valuation import stem_price
+
+	doc.price_per_stem = stem_price(plan.variety, plan.company)
 	doc.budget_account = default_income_account(plan.company)
 	doc.cost_center = frappe.db.get_value("Company", plan.company, "cost_center")
 

@@ -21,8 +21,6 @@
   "growing_cycle",
   "route_summary",
   "material_route",
-  "lift_section",
-  "lifts",
   "climate_note",
   "version_section",
   "version",
@@ -136,7 +134,9 @@
   "ready_cutting_price",
   "weeks_to_max_production",
   "plants_per_block",
-  "beds_per_block"
+  "beds_per_block",
+  "lift_section",
+  "lifts"
  ],
  "fields": [
   {
@@ -911,7 +911,8 @@
   {
    "fieldname": "ready_cutting_price",
    "fieldtype": "Currency",
-   "label": "Ready Cutting Price"
+   "label": "Ready Cutting Price",
+   "hidden": 1
   },
   {
    "default": "20",
@@ -947,7 +948,7 @@
  "grid_page_length": 50,
  "index_web_pages_for_search": 1,
  "links": [],
- "modified": "2026-08-07 09:00:00.000000",
+ "modified": "2026-10-28 20:00:00.000000",
  "modified_by": "Administrator",
  "module": "Summer Flowers",
  "name": "Crop Protocol Version",

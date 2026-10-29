@@ -67,7 +67,7 @@ def batch_plan(plan, allocations, lead_weeks=None, to_ground_weeks=None,
 	# lab can promise. Lead times were respected and capacity was not, so four
 	# deliveries of a season put half a million plants into one week against a
 	# unit whose largest intake ever recorded is 185,000.
-	keep = survival()
+	keep = survival("Tissue Culture", version=plan.protocol)
 	limits = capacity_limits()
 	# Material occupies the unit until the LAST lift comes off it. A unit that
 	# states six weeks of hardening is stating when the first lift is ready, not
@@ -682,24 +682,17 @@ def handover_waves(form="Tissue Culture", supplier=None, default_weeks=0,
 	return [(cint(r.weeks_after_arrival), flt(r.share_pct) / scale) for r in mine]
 
 
-LOSS_FIELD = {"Tissue Culture": "tc_loss_pct", "Roots": "roots_loss_pct"}
-
-
-def survival(form="Tissue Culture"):
+def survival(form="Tissue Culture", version=None):
 	"""The share of a consignment of `form` expected to reach the field.
 
-	A provision, not a measurement, and it sits at zero until somebody sets it.
-	Per form, because the two do not lose alike: across the Eryngium delivery
-	book tissue culture loses 11.3% of 4.4m plantlets and roots lose 13.0% of
-	2.8m, and one figure for both understates whichever it is not. A form with
-	nothing set falls back to the single provision, which is what every site
-	had before there were two.
+	The protocol's: each route on it states what it loses before planting, so
+	tissue culture and roots -- which do not lose alike -- each carry their own
+	figure, crop by crop. A protocol with no route delivered as `form` loses
+	nothing on it, because it does not buy it.
 	"""
-	loss = flt(frappe.db.get_single_value(
-		"Summer Flower Settings", LOSS_FIELD.get(form) or "propagation_loss_pct"))
-	if not loss:
-		loss = flt(frappe.db.get_single_value(
-			"Summer Flower Settings", "propagation_loss_pct"))
+	from upande_summer_flowers.summer_flowers.route_ways import route_loss
+
+	loss = flt(route_loss(version, form)) if version else 0.0
 	return max(0.0, min(1.0, 1.0 - loss / 100.0)) or 1.0
 
 

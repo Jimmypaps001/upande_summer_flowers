@@ -57,7 +57,7 @@ LOSSES = [
 # above, which is what the ordering engine reads.
 ROOTING_SUCCESS = 88.0
 WEIGHTED_LOSS = 12.0
-PROPAGATION = "Propagation"
+PROPAGATION = "Rooting"
 
 
 def main(apply=0, force=0, variety="Eryngium", protocols=1):

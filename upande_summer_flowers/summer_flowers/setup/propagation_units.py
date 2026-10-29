@@ -90,3 +90,19 @@ def install():
 	if not frappe.db.table_exists("Warehouse"):
 		return
 	create_custom_fields(FIELDS, update=True)
+
+
+def mark_unit(doc, method=None):
+	"""A warehouse of type Propagation Unit is one of our own propagation units.
+
+	The type is what people choose; the two older flags that different parts of the
+	planner still read are kept agreeing with it. Choosing another type does not
+	clear them, so a unit flagged by hand before the type existed is left alone.
+	"""
+	from upande_summer_flowers.summer_flowers.settings import propagation_unit_type
+
+	if not doc.get("warehouse_type") or doc.get("warehouse_type") != propagation_unit_type():
+		return
+	for flag in ("custom_sf_is_propagation_unit", "custom_prop_is_unit"):
+		if doc.meta.has_field(flag):
+			doc.set(flag, 1)

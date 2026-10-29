@@ -34,89 +34,89 @@
    "in_list_view": 0,
    "label": "Row",
    "options": "Stage\nStep",
-   "reqd": 1,
-   "read_only": 1
+   "read_only": 1,
+   "reqd": 1
   },
   {
+   "columns": 2,
    "depends_on": "eval:doc.row_type=='Step'",
+   "description": "A phase inside the stage above, for a route that needs the detail. Most do not.",
    "fieldname": "step",
    "fieldtype": "Select",
    "in_list_view": 1,
    "label": "Step",
    "mandatory_depends_on": "eval:doc.row_type=='Step'",
-   "options": "\nOrder to arrival\nTray\nHardening\nPot\nSticking\nRooting\nGermination\nGrowing on\nBulking\nDivision\nCooling\nStorage\nField establishment",
-   "columns": 2,
-   "description": "A phase inside the stage above, for a route that needs the detail. Most do not."
+   "options": "\nOrder to arrival\nTray\nHardening\nPot\nSticking\nRooting\nGermination\nGrowing on\nBulking\nDivision\nCooling\nStorage\nField establishment"
   },
   {
+   "columns": 2,
    "depends_on": "eval:doc.row_type!='Step'",
+   "description": "What the material IS at this point. Leave it empty and name a step instead to add a phase inside the stage above.",
    "fieldname": "stage",
-   "fieldtype": "Select",
+   "fieldtype": "Link",
    "in_list_view": 1,
    "label": "Stage",
    "mandatory_depends_on": "eval:doc.row_type!='Step'",
-   "options": "\nTC\nSeeds\nCuttings (Own)\nRoots (Own)\nTubers (Own)\nBudwoods\nBought-in Plants\nMotherstock\nRoots\nTubers\nSprouting\nCooling\nPropagation\nPlants",
-   "columns": 2,
-   "description": "What the material IS at this point. Leave it empty and name a step instead to add a phase inside the stage above."
+   "options": "Material Stage"
   },
   {
+   "columns": 1,
    "description": "How long this stage takes, off the protocol's own timings: tray plus pot for a motherstock, sticking to planting for a propagation stage. A stage with steps under it is the sum of them. Change the weeks on the protocol, not here.",
    "fieldname": "weeks",
    "fieldtype": "Int",
    "in_list_view": 1,
    "label": "Weeks",
    "non_negative": 1,
-   "read_only": 1,
-   "columns": 1
+   "read_only": 1
   },
   {
+   "columns": 1,
    "description": "Material lost at this stage. Worked out from the protocol's own loss fields -- the TC order allowance, the cutting reject rate, rooting and field establishment. Change it on the protocol.",
    "fieldname": "loss_pct",
    "fieldtype": "Percent",
    "in_list_view": 1,
    "label": "Loss %",
-   "read_only": 1,
-   "columns": 1
+   "read_only": 1
   },
   {
    "fieldname": "column_break_main",
    "fieldtype": "Column Break"
   },
   {
+   "columns": 1,
    "default": "0",
    "depends_on": "eval:doc.row_type!='Step'",
    "description": "Ticked on the first stage that comes from outside the farm -- TC, Seeds, Tubers, Budwoods, Bought-in Plants. What the stage is decides this; there is nothing to choose.",
    "fieldname": "is_purchase",
    "fieldtype": "Check",
-   "label": "Bought at this stage",
-   "read_only": 1,
    "in_list_view": 1,
-   "columns": 1
+   "label": "Bought at this stage",
+   "read_only": 1
   },
   {
+   "columns": 1,
    "depends_on": "eval:doc.is_purchase",
    "description": "Order to arrival, when bought at this stage.",
    "fieldname": "lead_weeks",
    "fieldtype": "Int",
-   "label": "Supplier Lead (weeks)",
-   "non_negative": 1,
    "in_list_view": 1,
-   "columns": 1
+   "label": "Supplier Lead (weeks)",
+   "non_negative": 1
   },
   {
+   "depends_on": "eval:doc.is_purchase",
+   "description": "What share of this variety's material is bought in this form. A crop bought one way leaves it blank and takes the lot. Eryngium is bought as tissue culture AND as roots in the same year, from different suppliers, with different lead times -- so each entry stage carries its share and the two order dates fall out of it.",
    "fieldname": "share_pct",
    "fieldtype": "Percent",
-   "label": "Share Of The Order",
-   "depends_on": "eval:doc.is_purchase",
-   "description": "What share of this variety's material is bought in this form. A crop bought one way leaves it blank and takes the lot. Eryngium is bought as tissue culture AND as roots in the same year, from different suppliers, with different lead times -- so each entry stage carries its share and the two order dates fall out of it."
+   "label": "Share Of The Order"
   },
   {
    "depends_on": "eval:doc.is_purchase",
    "description": "Unused. Costing reads its prices from the TC price bands and the purchase documents, not from here.",
    "fieldname": "rate",
    "fieldtype": "Currency",
-   "label": "Rate per unit",
-   "hidden": 1
+   "hidden": 1,
+   "label": "Rate per unit"
   },
   {
    "default": "1",
@@ -129,19 +129,19 @@
    "read_only": 1
   },
   {
+   "depends_on": "eval:doc.is_standing || doc.yields_per_week || doc.max_cycles",
+   "description": "Material here is established once and cut from week after week -- a motherstock. It is not consumed by one planting, so it is bought once and sized from the busiest week, not from the season's total.",
    "fieldname": "is_standing",
    "fieldtype": "Check",
-   "label": "Stands and is cut from",
-   "description": "Material here is established once and cut from week after week -- a motherstock. It is not consumed by one planting, so it is bought once and sized from the busiest week, not from the season's total.",
-   "depends_on": "eval:doc.is_standing || doc.yields_per_week || doc.max_cycles"
+   "label": "Stands and is cut from"
   },
   {
+   "depends_on": "eval:doc.is_standing || doc.yields_per_week || doc.max_cycles",
+   "description": "What one standing unit hands on each week -- cuttings off one mother plant. Derived from the protocol's Cuttings Per Plant Per Week.",
    "fieldname": "yields_per_week",
    "fieldtype": "Float",
    "label": "Yields per unit per week",
    "precision": "3",
-   "description": "What one standing unit hands on each week -- cuttings off one mother plant. Derived from the protocol's Cuttings Per Plant Per Week.",
-   "depends_on": "eval:doc.is_standing || doc.yields_per_week || doc.max_cycles",
    "read_only": 1
   },
   {
@@ -177,7 +177,7 @@
  "index_web_pages_for_search": 1,
  "istable": 1,
  "links": [],
- "modified": "2026-08-17 09:00:00.000000",
+ "modified": "2026-10-28 22:00:00.000000",
  "modified_by": "Administrator",
  "module": "Summer Flowers",
  "name": "Crop Material Stage",

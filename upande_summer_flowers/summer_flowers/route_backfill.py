@@ -26,6 +26,7 @@ it twice and the second run does nothing.
 
 import frappe
 from frappe.utils import cint, flt
+from upande_summer_flowers.summer_flowers import stages as _stages
 
 from upande_summer_flowers.summer_flowers.crop_protocol import (
 	PROTOCOL_DOCTYPE,
@@ -77,7 +78,7 @@ def plan_for(doc):
 	# The build-up to full capacity. The mother exists but is not yet yielding what
 	# it will, and that wait is what "establishment" has always silently included --
 	# which is why the column read four weeks longer than the transit steps did.
-	multiplier = next((s for s in stages if s.stage in ("Motherstock", "Sprouting")), None)
+	multiplier = next((s for s in stages if s.stage in _stages.StageSet(flag="multiplies")), None)
 	if multiplier is not None and (g("ramp_weeks") or g("weeks_to_max_pc")):
 		steps.setdefault(multiplier.name, []).append(
 			{"step": "Bulking", "weeks": g("ramp_weeks") or g("weeks_to_max_pc")})
@@ -99,7 +100,7 @@ def plan_for(doc):
 		on_stage.setdefault(entry.name, {})["loss_pct"] = flt(
 			doc.get("custom_sf_tc_order_loss_pct"))
 	for s in stages:
-		if s.stage in ("Motherstock", "Sprouting") and g("max_multiplication_cycles"):
+		if s.stage in _stages.StageSet(flag="multiplies") and g("max_multiplication_cycles"):
 			on_stage.setdefault(s.name, {})["max_cycles"] = g("max_multiplication_cycles")
 
 	# A step with nothing to say is not written. An empty row is a row someone has

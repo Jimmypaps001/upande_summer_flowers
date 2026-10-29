@@ -1,0 +1,131 @@
+{
+ "actions": [],
+ "allow_bulk_edit": 1,
+ "autoname": "field:stage_name",
+ "creation": "2026-10-28 21:11:42.073694",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "stage_name",
+  "kind",
+  "multiplies",
+  "ready_to_plant",
+  "takes_rooting_losses",
+  "cb1",
+  "lift_form",
+  "bought_item_suffix",
+  "default_lead_weeks"
+ ],
+ "fields": [
+  {
+   "fieldname": "stage_name",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Stage",
+   "reqd": 1,
+   "unique": 1
+  },
+  {
+   "description": "Bought: ordered from a supplier. Taken from own crop: cut or lifted off our own plants. Motherstock: a standing pool cut week after week. Propagation: raised to a plant (rooting, sprouting). Conditioning: held before planting (cooling). End: the plant that goes in the ground.",
+   "fieldname": "kind",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Kind",
+   "options": "Bought\nTaken from own crop\nMotherstock\nPropagation\nConditioning\nEnd",
+   "reqd": 1
+  },
+  {
+   "default": "0",
+   "description": "Can be run round again to multiply material: motherstock generations, tuber division.",
+   "fieldname": "multiplies",
+   "fieldtype": "Check",
+   "label": "Multiplies"
+  },
+  {
+   "default": "0",
+   "description": "Bought ready to plant, so nothing may follow it on a route.",
+   "fieldname": "ready_to_plant",
+   "fieldtype": "Check",
+   "label": "Already a Plant"
+  },
+  {
+   "fieldname": "takes_rooting_losses",
+   "fieldtype": "Check",
+   "label": "Takes Rooting Losses",
+   "description": "Living material that loses what fails to root and to establish (the protocol's rooting success and field establishment %)."
+  },
+  {
+   "fieldname": "cb1",
+   "fieldtype": "Column Break"
+  },
+  {
+   "description": "Set if a consignment of this material is handed over in lifts, e.g. Tissue Culture, Roots.",
+   "fieldname": "lift_form",
+   "fieldtype": "Data",
+   "label": "Delivered in Lifts As"
+  },
+  {
+   "description": "Bought as ' ' when that Item exists, e.g. Roots. Empty: the variety Item.",
+   "fieldname": "bought_item_suffix",
+   "fieldtype": "Data",
+   "label": "Bought Item Suffix"
+  },
+  {
+   "depends_on": "eval:doc.kind=='Bought'",
+   "fieldname": "default_lead_weeks",
+   "fieldtype": "Int",
+   "label": "Default Supplier Lead (weeks)"
+  }
+ ],
+ "grid_page_length": 50,
+ "index_web_pages_for_search": 1,
+ "links": [],
+ "modified": "2026-10-28 21:40:00.000000",
+ "modified_by": "Administrator",
+ "module": "Summer Flowers",
+ "name": "Material Stage",
+ "naming_rule": "By fieldname",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Agriculture Manager",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Agriculture User"
+  }
+ ],
+ "row_format": "Dynamic",
+ "rows_threshold_for_grid_search": 20,
+ "sort_field": "creation",
+ "sort_order": "DESC",
+ "states": [],
+ "title_field": "stage_name"
+}
