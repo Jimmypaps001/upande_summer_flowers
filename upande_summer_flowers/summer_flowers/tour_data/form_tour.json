@@ -308,30 +308,6 @@
    },
    {
     "child_doctype": null,
-    "description": "Used to value the budget produced once the plan is approved. Leave it empty and the plan still builds; only the money is missing.",
-    "element_selector": null,
-    "fieldname": "price_per_stem",
-    "fieldtype": "Currency",
-    "has_next_condition": 0,
-    "hide_buttons": 0,
-    "is_table_field": 0,
-    "label": "Price Per Stem",
-    "modal_trigger": 0,
-    "next_form_tour": null,
-    "next_on_click": 0,
-    "next_step_condition": null,
-    "offset_x": 0,
-    "offset_y": 0,
-    "ondemand_description": null,
-    "parent_element_selector": null,
-    "parent_fieldname": null,
-    "popover_element": 0,
-    "position": "Bottom",
-    "title": "3. Price per stem",
-    "ui_tour": 0
-   },
-   {
-    "child_doctype": null,
     "description": "Demand is entered progressively. This is how many years beyond today the register should always reach; the horizon figures below measure it against what has actually been entered, and Extend Horizon closes the gap.",
     "element_selector": null,
     "fieldname": "target_years_ahead",
@@ -351,7 +327,7 @@
     "parent_fieldname": null,
     "popover_element": 0,
     "position": "Bottom",
-    "title": "4. How far ahead to plan",
+    "title": "3. How far ahead to plan",
     "ui_tour": 0
    },
    {
@@ -375,7 +351,7 @@
     "parent_fieldname": null,
     "popover_element": 0,
     "position": "Bottom",
-    "title": "5. The weekly demand",
+    "title": "4. The weekly demand",
     "ui_tour": 0
    },
    {
@@ -399,7 +375,7 @@
     "parent_fieldname": null,
     "popover_element": 0,
     "position": "Bottom",
-    "title": "6. Reading it back",
+    "title": "5. Reading it back",
     "ui_tour": 0
    }
   ],

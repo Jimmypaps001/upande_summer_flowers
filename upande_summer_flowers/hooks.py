@@ -42,18 +42,6 @@ fixtures = [
 		"filters": [["name", "in", ["Propagation Unit"]]],
 	},
 	{
-		# The walkthroughs behind the help icon. Shipped rather than typed on each
-		# site: they explain the order the fields are meant to be filled in, which is
-		# a property of the app, not of a site's data. They also carry the wording
-		# that used to sit under every field as a description -- read once, then in
-		# the way for good.
-		"dt": "Form Tour",
-		"filters": [["name", "in", [
-			"Crop Protocol Walkthrough",
-			"Market Demand Walkthrough",
-		]]],
-	},
-	{
 		# All three workflows this module owns, not just the plan's. The other two
 		# govern doctypes this app defines, and widening them for the manager roles
 		# would not have travelled to another site while only one was listed.
@@ -190,6 +178,7 @@ before_migrate = "upande_summer_flowers.summer_flowers.customization_check.befor
 #   return; this comes back every migrate, and everything it does is idempotent.
 after_migrate = [
 	"upande_summer_flowers.summer_flowers.protocol_merge.after_migrate",
+    "upande_summer_flowers.summer_flowers.tours.sync_form_tours",
 	# The plant inspection template and its parameters are records, not schema, so
 	# they cannot ship in a fixture without a fixture force-overwriting thresholds
 	# a farm has since corrected. This creates what is missing and leaves the rest.
