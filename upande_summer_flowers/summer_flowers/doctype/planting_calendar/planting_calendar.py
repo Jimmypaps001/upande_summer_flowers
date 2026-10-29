@@ -234,13 +234,26 @@ class PlantingCalendar(Document):
 			        "actual_planting_date", "planned_uproot_date",
 			        "actual_uproot_date"],
 		)
-		holders, held = [], 0
+		# The most beds held at any one moment, not the sum of everything that
+		# touches this window. Summing double counts plantings that follow one
+		# another: two twenty-bed cohorts six months apart in a forty-bed block
+		# use twenty beds, not forty, and summing them refused a third planting
+		# onto ground that was free the whole time. The allocator has always
+		# counted the peak, and this is the same rule -- which is what makes the
+		# two agree, rather than one proposing what the other then refuses.
+		overlapping = []
 		for o in others:
 			other_end = getdate(o.actual_uproot_date or o.planned_uproot_date)
 			other_start = getdate(o.actual_planting_date or o.planting_date)
 			if mine_start <= other_end and other_start <= mine_end:
-				held += cint(o.beds)
-				holders.append((o, other_start, other_end))
+				overlapping.append((o, max(other_start, mine_start),
+				                    min(other_end, mine_end)))
+		held, at_peak, peak_on = 0, [], None
+		for point in sorted({mine_start} | {s for _o, s, _e in overlapping}):
+			standing = [(o, s, e) for o, s, e in overlapping if s <= point <= e]
+			at = sum(cint(o.beds) for o, _s, _e in standing)
+			if at > held:
+				held, at_peak, peak_on = at, standing, point
 		if not total or held + cint(self.beds) <= total:
 			return
 
@@ -248,12 +261,14 @@ class PlantingCalendar(Document):
 			_("{0} ({1}) holds {2} beds to {3}").format(
 				o.name, o.variety, cint(o.beds),
 				frappe.format(end, {"fieldtype": "Date"}))
-			for o, _st, end in holders[:4])
+			for o, _st, end in at_peak[:4])
 		frappe.throw(
-			_("Block {0} has {1} beds and {2} are already held over this period, so "
-			  "there is no room for {3} more. {4}. Uproot one of them earlier, or "
-			  "put this planting in another block."
-			  ).format(self.block, total, held, cint(self.beds), who),
+			_("Block {0} has {1} beds and {2} are held over {3}, the fullest week "
+			  "this planting would cross, so there is no room for {4} more. {5}. "
+			  "Uproot one of them earlier, or put this planting in another block."
+			  ).format(self.block, total, held,
+			           frappe.format(peak_on, {"fieldtype": "Date"}),
+			           cint(self.beds), who),
 			title=_("Not enough beds free"))
 
 	def bed_state(self):
@@ -474,6 +489,13 @@ class PlantingCalendar(Document):
 		cycle.company = self.company
 
 		cycle.custom_is_summer_flower_cycle = 1
+		# The doctype serves roses too and Rose is the first option, so a cycle
+		# that never set this was filed as a rose -- and nothing downstream that
+		# filters on crop class would have found it.
+		cycle.custom_crop_class = "Summer Flower"
+		cycle.variety = self.variety
+		cycle.crop_protocol = frappe.db.get_value(
+			"Crop Protocol Version", self.crop_protocol_version, "crop_protocol")
 		# Say the scope outright. is_block_scoped() reads custom_cycle_scope first and
 		# only falls back to "has a block", so leaving it unset left the cycle looking
 		# greenhouse-scoped -- and greenhouse-scoped cycles must carry a greenhouse,
@@ -488,23 +510,55 @@ class PlantingCalendar(Document):
 		cycle.custom_market_demand = frappe.db.get_value(
 			"Summer Flower Market Demand",
 			{"variety": self.variety, "farm": self.farm}, "name")
-		cycle.custom_seedling_source = self.seedling_source
+		# Where the plants came from. A calendar written before the source was
+		# recorded leaves this blank, and the cycle then says nothing about how
+		# its crop was got -- so it is read off the plan that bought it.
+		source = self.seedling_source
+		if not source:
+			q = frappe.db.get_value(
+				"Summer Flower Procurement Plan",
+				{"variety": self.variety, "farm": self.farm, "docstatus": 1},
+				["propagates_here", "method"], as_dict=True)
+			source = ("In-house Propagation"
+			          if (not q or cint(q.propagates_here))
+			          else "Purchased from Breeder")
+		cycle.custom_seedling_source = source
+		cycle.seedling_source = source
 		cycle.custom_supplier = self.supplier
 		cycle.custom_propagation_batch = self.propagation_batch
 		cycle.custom_sf_cycle_status = "Active"
 		# The date the crop actually went in. A cycle dated from the plan would put
 		# its age, its flushes and its uprooting on a day that did not happen.
 		cycle.custom_planting_date = self.effective_planting_date()
-		cycle.custom_live_plant_count = self.plants
+		# The doctype's own fields, not only the summer flower twins beside them.
+		# They are what the rest of ERPNext reads, and a cycle that carried 27,100
+		# plants in one field and zero in the other was two answers to one
+		# question -- planting_date is mandatory, and only ignore_mandatory let
+		# this save at all.
+		cycle.planting_date = cycle.custom_planting_date
+		cycle.title = "{0} @ {1}".format(self.variety, self.block or self.farm)
+		# What actually went in, not what was asked for. A cycle opened on the
+		# planned figure counts stems off plants that were never delivered: 900
+		# of this planting's 28,000 did not arrive, and every flush, every grade
+		# and the whole season's yield would have been worked out as though they
+		# had.
+		cycle.custom_live_plant_count = (cint(self.plants_received)
+		                                 or cint(self.plants))
+		cycle.custom_plants_planned = cint(self.plants)
 		cycle.custom_beds_planted = self.beds
 		cycle.custom_area_planted_sqm = flt(self.net_area_sqm)
 		cycle.custom_planting_density_per_sqm = v.plants_per_sqm_net
 		if v.plants_per_sqm_net:
 			cycle.plants_per_sqm = v.plants_per_sqm_net
+		cycle.qty_planted = cycle.custom_live_plant_count
+		cycle.plants_standing = cycle.custom_live_plant_count
+		cycle.planted_area = flt(self.net_area_sqm)
 		# The subclass derives pinch, uproot, age, the flush schedule and the
 		# per-grade weekly targets from the protocol on save.
+		# No ignore_mandatory. A cycle that cannot pass its own doctype's checks
+		# is one nobody could have made through the form, and writing it anyway
+		# is how a Rose-classed summer flower with no planting date came to exist.
 		cycle.flags.ignore_permissions = True
-		cycle.flags.ignore_mandatory = True
 		cycle.insert()
 
 		self.db_set("crop_cycle", cycle.name)

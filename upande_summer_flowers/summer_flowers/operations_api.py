@@ -20,7 +20,7 @@ from frappe.utils import cint, flt, getdate, nowdate
 
 from upande_summer_flowers.summer_flowers.planning import (
 	season_year,
-	SEASON_FIRST_WEEK,
+	season_first_week,
 	iso_monday,
 	iso_year_week,
 )
@@ -50,7 +50,7 @@ ALLOWED_ACTIONS = {
 	               "submit_targets_for_validation", "validate_targets",
 	               "reject_targets", "record_cuttings", "end_cycle"),
 	"Summer Flower Budget": ("post_to_accounts",),
-	"Summer Flower Production Plan": ("create_plantings", "regenerate"),
+	"Summer Flower Production Plan": ("regenerate",),
 	"Summer Flower Propagation Plan": ("submit_for_approval", "approve", "reject",
 	                                   "create_motherstock_batch",
 	                                   "create_seedling_requests"),
@@ -533,8 +533,15 @@ def chain_status(variety=None, farm=None, demand=None, plan=None, season=None):
 	d = frappe.db.get_value(
 		"Summer Flower Market Demand", demand,
 		["name", "variety", "farm", "weeks_covered", "total_demand_stems",
-		 "horizon_start", "horizon_end", "horizon_status", "price_per_stem",
-		 "currency"], as_dict=True)
+		 "horizon_start", "horizon_end", "horizon_status", "company"], as_dict=True)
+	if d:
+		from upande_summer_flowers.summer_flowers.valuation import stem_price
+
+		# The register holds no price and no currency: the stem is valued at the
+		# variety's valuation, in its company's currency.
+		d["price_per_stem"] = stem_price(d.variety, d.company)
+		d["currency"] = frappe.get_cached_value("Company", d.company, "default_currency") \
+			if d.company else None
 
 	# Scoped to the financial year when one is chosen, because the rest of this
 	# card already is: every step after the register describes one plan, and a plan
@@ -547,7 +554,7 @@ def chain_status(variety=None, farm=None, demand=None, plan=None, season=None):
 			from `tabSummer Flower Demand Week` where parent = %s
 			  and ((year = %s and week_no >= %s) or (year = %s and week_no < %s))
 			order by year, week_no""",
-			(demand, start, SEASON_FIRST_WEEK, start + 1, SEASON_FIRST_WEEK),
+			(demand, start, season_first_week(), start + 1, season_first_week()),
 			as_dict=True)
 		d["weeks_covered"] = len(rows)
 		d["total_demand_stems"] = sum(cint(r.demand_stems) for r in rows)
@@ -745,7 +752,7 @@ def process_overview(variety=None, farm=None, plan=None, season=None):
 			from `tabSummer Flower Demand Week` where parent = %s
 			  and ((year = %s and week_no >= %s) or (year = %s and week_no < %s))
 			order by year, week_no""",
-			(d.name, start, SEASON_FIRST_WEEK, start + 1, SEASON_FIRST_WEEK),
+			(d.name, start, season_first_week(), start + 1, season_first_week()),
 			as_dict=True)
 		d.weeks_covered = len(wk)
 		d.total_demand_stems = sum(cint(r.demand_stems) for r in wk)
@@ -1593,12 +1600,16 @@ def _chain_after_agreement(production_plan):
 		return r if isinstance(r, dict) else {"name": r}
 
 	def plantings():
-		p = frappe.get_doc("Summer Flower Production Plan", production_plan)
-		if cint(p.docstatus) != 1:
-			# create_plantings refuses a plan that is not approved, and that is a
-			# state of the plan rather than a failure of the agreement.
-			return {"skipped": _("the production plan is not approved yet")}
-		return p.create_plantings()
+		# Written by the procurement plan, which is the only thing that knows how
+		# the material was got -- and therefore what each entry's source, supplier
+		# and plant count are. The production plan used to write a second, thinner
+		# version of the same document from its own button.
+		from upande_summer_flowers.summer_flowers.doctype \
+			.summer_flower_procurement_plan.summer_flower_procurement_plan import (
+				write_plantings_for,
+			)
+
+		return write_plantings_for(production_plan)
 
 	return [(_("Procurement Plan"), procurement),
 	        (_("Propagation Plan"), propagation),

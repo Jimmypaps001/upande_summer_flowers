@@ -68,31 +68,29 @@ frappe.ui.form.on("Summer Flower Production Plan", {
 			// line now and is written when the line is agreed, so there is
 			// nothing left here to decide -- only something to look at.
 			decided_buttons(frm, ACTIONS);
-			frm.add_custom_button(__("Create Plantings"), () =>
-				frm
-					.call({
-						doc: frm.doc,
-						method: "create_plantings",
-						freeze: true,
-						freeze_message: __("Creating plantings..."),
-					})
-					.then((r) => {
-						const m = r.message || {};
-						frappe.msgprint({
-							title: __("Plantings"),
-							indicator: (m.created || []).length ? "green" : "orange",
-							message:
-								__("Created {0}.", [(m.created || []).length]) +
-								((m.skipped || []).length
-									? "<br><br>" +
-									  __("Skipped {0}:", [m.skipped.length]) +
-									  "<br>" +
-									  m.skipped.join("<br>")
-									: ""),
-						});
-						frm.reload_doc();
-					}),
-				ACTIONS
+			// One writer for the planting calendar. Where there is an approved
+			// procurement plan it supplies the source, the supplier and what the
+			// order actually delivers; a route that takes its material off the
+			// farm's own crop has no procurement plan, and is written from the
+			// cohorts alone rather than left with no writer at all.
+			frm.add_custom_button(__("Write Planting Plan"), () =>
+				frappe.call({
+					method: "upande_summer_flowers.summer_flowers.doctype."
+						+ "summer_flower_procurement_plan.summer_flower_procurement_plan"
+						+ ".write_plantings_for",
+					args: { production_plan: frm.doc.name },
+					freeze: true,
+					freeze_message: __("Writing the planting plan..."),
+				}).then((r) => {
+					const n = ((r || {}).message || {}).written || 0;
+					frappe.show_alert({
+						indicator: n ? "green" : "blue",
+						message: n
+							? __("{0} plantings written to the calendar.", [n])
+							: __("Nothing new to write."),
+					});
+					frm.reload_doc();
+				}), ACTIONS
 			);
 		}
 
