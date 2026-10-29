@@ -1237,6 +1237,13 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
   border:1px solid var(--border);margin-bottom:10px}
 .gseg{display:grid;place-items:center;font-size:.68rem;font-weight:600;color:#fff;
   line-height:1.25;text-align:center}
+.pl-notes{display:grid;gap:10px;margin-top:10px;
+  grid-template-columns:repeat(auto-fit,minmax(360px,1fr));align-items:start}
+.pl-notes .pl-callout{margin-top:0;max-width:none;height:100%}
+.pl-callout.is-info{background:var(--surface-2);
+  border-color:var(--border)}
+.pl-callout.is-bad{background:color-mix(in srgb,var(--critical) 10%,transparent);
+  border-color:color-mix(in srgb,var(--critical) 45%,transparent)}
 .pl-callout{margin-top:10px;background:color-mix(in srgb,var(--warning) 12%,transparent);
   border:1px solid color-mix(in srgb,var(--warning) 45%,transparent);border-radius:7px;
   padding:9px 11px;font-size:.75rem;line-height:1.5}
@@ -4815,10 +4822,6 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
     if (!plan) return;
     Promise.all([callRl("selling_choices", { production_plan: plan }), loadSuppliers()])
       .then(([c]) => {
-        if (!c.procurement_plan) {
-          toast("Save the material plan first — there is no draft procurement plan to buy on.");
-          return;
-        }
         S.sell = c;
         S.sellRows = (c.chosen || []).map((x) => ({
           entry_stage: x.entry_stage, supplier: x.supplier,
@@ -4850,7 +4853,10 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
 
     host.innerHTML = `<div class="pl-callout">
       <div style="margin-bottom:6px"><b>Who sells it</b>` +
-      ` <span class="text-muted">· ${esc(c.procurement_plan)}</span></div>
+      (c.procurement_plan
+        ? ` <span class="text-muted">· ${esc(c.procurement_plan)}</span>`
+        : ` <span class="text-muted">· kept until you save the plan, then written ` +
+          `onto the procurement plan it creates</span>`) + `</div>
       <table class="pl-t"><thead><tr><th>Bought as</th><th>Supplier</th>
         <th class="n">Share</th><th class="n">Units</th><th class="n">Price</th>
         <th class="n">Lead wk</th><th></th></tr></thead><tbody>` +
@@ -4962,7 +4968,10 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
 
     host.innerHTML = `<div class="pl-callout">
       <div style="margin-bottom:6px"><b>Who raises it</b>` +
-      (r.procurement_plan ? ` <span class="text-muted">· ${esc(r.procurement_plan)}</span>` : "") +
+      (r.procurement_plan
+        ? ` <span class="text-muted">· ${esc(r.procurement_plan)}</span>`
+        : ` <span class="text-muted">· kept until you save the plan, then written ` +
+          `onto the procurement plan it creates</span>`) +
       `</div>
       <table class="pl-t"><thead><tr><th>Where</th><th>Raises</th>
         <th>Unit / propagator</th><th class="n">Share</th><th class="n">Plants</th><th></th>
@@ -5107,54 +5116,60 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
       `<div class="v"${x.c ? ` style="color:var(${x.c})"` : ""}>` +
       `${esc(String(x.v))}</div><div class="m">${esc(x.m || "")}</div></div>`).join("");
 
-    const notes = [`<b>${esc(t.reason || "This crop has no motherstock.")}</b>`];
+    // The route, said once. The figures beside it are the explanation.
+    const notes = [{ kind: "info", html:
+      `<b>${esc(m.primary_stage || "")}</b>` +
+      (wayTwo(m) ? ` + <b>${esc(wayTwo(m))}</b>` : "") +
+      ` — ${esc((m.route_summary || t.route_summary || "").replace(/ -> /g, " → "))}` }];
     if (sg.tc != null && !m.asked) {
       notes.unshift(`<b>Suggested: ${num(sg.tc)} TC and ${num(sg.roots)} roots</b>` +
         ` — from ${esc(sg.from || "the plan")}. Change either box to try another.`);
     }
     const a = m.asked;
-    if (a) {
-      notes.unshift(`<b>Two orders, placed at different times.</b> ` +
-        `${num(a.tc_qty)} TC become ${num(a.plants_from_tc)} plants; ` +
-        `${num(a.roots_qty)} roots become ${num(a.plants_from_roots)}. ` +
-        `That is ${num(a.plants_covered)} against ${num(m.plants_total)} wanted` +
-        (a.short_by ? ` — <b style="color:var(--critical)">short by ` +
-          `${num(a.short_by)}</b>.`
-         : a.over_by ? ` — ${num(a.over_by)} over.` : `, exactly covered.`));
+    if (a && (a.short_by || a.over_by)) {
+      // Only the gap. What each way in buys is on the tiles above.
+      notes.unshift({ kind: a.short_by ? "bad" : "info", html:
+        `${num(a.plants_covered)} of ${num(m.plants_total)} plants — ` +
+        (a.short_by ? `<b>short by ${num(a.short_by)}</b>` : `${num(a.over_by)} over`) });
     }
     const cm = m.committed;
     if (cm) {
       const dl = (dt, n) => `<a href="/app/${dt}/${encodeURIComponent(n)}">` +
         `${esc(n)}</a>`;
-      notes.unshift(`<b>This plan is saved.</b> ${num(cm.tc)} TC and ` +
-        `${num(cm.roots)} roots agreed` +
-        (cm.order_by ? `, first order ${fdate(cm.order_by)}` : "") + `.` +
+      notes.unshift(`<b>Saved</b> · ${num(cm.tc)} ${esc((wayOne(m) || "TC").toLowerCase())}` +
+        (wayTwo(m) ? ` + ${num(cm.roots)} ${esc(wayTwo(m).toLowerCase())}` : "") +
+        (cm.order_by ? ` · first order ${fdate(cm.order_by)}` : "") +
         // An agreement is a figure written down, not one recomputed. If the plan
         // has been rebuilt since, the order on file is for a season that has
         // changed under it, and only saying both numbers makes that visible.
         (cm.stale
-          ? ` <b style="color:var(--critical)">It covers ${num(cm.plants_agreed)} ` +
-            `plants and the plan now needs ${num(cm.plants_now)} — save it again ` +
-            `to bring the documents across.</b>`
+          ? ` · <b style="color:var(--critical)">covers ${num(cm.plants_agreed)}, ` +
+            `plan needs ${num(cm.plants_now)} — save again</b>`
           : "") +
         (cm.procurement_plan
-          ? ` Procurement ${dl("summer-flower-procurement-plan", cm.procurement_plan)}.`
-          : "") +
+          ? ` · ${dl("summer-flower-procurement-plan", cm.procurement_plan)}` : "") +
         (cm.propagation_plan
-          ? ` Propagation ${dl("summer-flower-propagation-plan", cm.propagation_plan)}.`
-          : ""));
+          ? ` · ${dl("summer-flower-propagation-plan", cm.propagation_plan)}` : ""));
     }
     if (m.blocked) {
-      notes.unshift(`<b style="color:var(--critical)">${esc(m.blocked)}</b>`);
+      notes.unshift({ kind: "bad",
+                      html: `<b>${esc(m.blocked)}</b>` });
     }
     if ((m.roots_in_store || {}).qty) {
       notes.push(`${num(m.roots_in_store.qty)} roots of ` +
         `${esc(m.roots_in_store.item)} are already in store and have been ` +
         `netted off before anything was ordered.`);
     } else if ((m.roots_in_store || {}).note && wayTwo(m)) {
-      notes.push(esc(m.roots_in_store.note));
+      notes.push({ kind: "warn", html: esc(m.roots_in_store.note) });
     }
-    note.innerHTML = notes.map((n) => `<div class="pl-callout">${n}</div>`).join("");
+    // A note is information, a caution or a problem, and painting all three in
+    // warning amber made a saved plan look like a fault. Laid out across the
+    // width rather than in one narrow column with the page empty beside it.
+    note.innerHTML = `<div class="pl-notes">` + notes.map((n) => {
+      const html = (n && n.html) || n;
+      const kind = (n && n.kind) || (String(html).indexOf("--critical") >= 0 ? "bad" : "info");
+      return `<div class="pl-callout is-${kind}">${html}</div>`;
+    }).join("") + `</div>`;
 
     // The two ways in are two different jobs, and showing them interleaved by
     // order week made neither of them followable. Tissue culture is a run of
@@ -5187,6 +5202,7 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
           `${v > 0 ? "+" : ""}${v ? num(v) : "—"}</td></tr>`;
       }).join("") + `</tbody></table>`;
 
+    renderRaisedBy(m);
     adoptCommitted(t, m);
     renderSuppliers(m);
     refreshSupplierList("");
@@ -5198,6 +5214,103 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
   // once from a block grown for it, they keep in a coldroom, and they come out
   // as the plantings need them. So the block reads: one order, one arrival,
   // then a withdrawal for every week that wants plants.
+  // Who raises each way in. The companion to the supplier block above it: one
+  // says where the material is bought, this says who sticks it once it lands.
+  function renderRaisedBy(m) {
+    let host = $("tc-raised-by");
+    if (!host) {
+      host = document.createElement("div");
+      host.id = "tc-raised-by";
+      const after = $("tc-root-plan") || $("tc-weeks");
+      if (!after) return;
+      after.parentNode.insertBefore(host, after.nextSibling);
+    }
+    const rows = m.raised_by || [];
+    const ways = [wayOne(m), wayTwo(m)].filter(Boolean);
+    const byWay = {};
+    rows.forEach((r) => { (byWay[r.raises || ways[0]] ||= []).push(r); });
+    const pending = rows.length && rows[0].pending;
+
+    host.innerHTML =
+      `<div class="text-muted small" style="text-transform:uppercase;` +
+      `letter-spacing:.05em;margin:14px 0 4px">Who raises it</div>` +
+      (rows.length
+        ? `<table class="pl-t"><thead><tr><th>Raises</th><th>Where</th>` +
+          `<th>Unit / propagator</th><th class="n">Share</th>` +
+          `<th class="n">Plants</th><th class="n">Lead</th><th>Starts</th>` +
+          `</tr></thead><tbody>` +
+          ways.map((w) => (byWay[w] || []).map((r) =>
+            `<tr><td>${esc(w)}</td><td class="text-muted">${esc(r.type || "")}</td>` +
+            `<td>${esc(r.party || "—")}</td>` +
+            `<td class="n">${(+r.share_pct || 0).toFixed(1)}%</td>` +
+            `<td class="n">${r.plants ? num(r.plants) : "—"}</td>` +
+            `<td class="n text-muted">${r.lead_weeks ? r.lead_weeks + " wk" : "—"}</td>` +
+            `<td class="text-muted">${r.start_by ? fdate(r.start_by) : "—"}</td></tr>`
+          ).join("") || `<tr><td>${esc(w)}</td>` +
+            `<td colspan="6" style="color:var(--critical)">nobody yet</td></tr>`).join("") +
+          `</tbody></table>` +
+          (pending ? `<div class="text-muted small" style="margin-top:4px">` +
+            `kept until you save the plan</div>` : "")
+        : `<p class="pl-note">Nobody is raising this yet. ` +
+          `<b>Choose propagation unit</b> on the card above.</p>`);
+  }
+
+  function renderRootBatches(m, ro, batches, box) {
+    // One table, not twelve. Each withdrawal is a group of three lift rows, and
+    // the withdrawal's own figures sit on its first row rather than in a heading
+    // above a table of its own -- twelve stacked tables with wrapping headers is
+    // the same information nobody can read across.
+    const late = batches.reduce((a, b) =>
+      a + (b.lifts || []).reduce((x, L) => x + (+L.short || 0), 0), 0);
+    const wanted = batches.reduce((a, b) =>
+      a + (b.lifts || []).reduce((x, L) => x + (+L.asked || 0), 0), 0);
+
+    const rows = batches.map((b, i) => (b.lifts || []).map((L, j) => {
+      const first = j === 0;
+      const covers = (L.covers || []).map((w) => w.week_iso).join(", ") || "—";
+      return `<tr${first && i ? ' style="border-top:2px solid var(--border)"' : ""}>` +
+        (first
+          ? `<td rowspan="${b.lifts.length}" style="vertical-align:top"><b>${i + 1}</b></td>` +
+            `<td rowspan="${b.lifts.length}" style="vertical-align:top">` +
+            `${fdate(b.out_of_store)}<br><span class="text-muted">${esc(b.out_iso)}</span></td>` +
+            `<td rowspan="${b.lifts.length}" class="n" style="vertical-align:top">` +
+            `${num(b.plant_roots || b.roots)}</td>` +
+            `<td rowspan="${b.lifts.length}" class="n" style="vertical-align:top">` +
+            `${num(b.cuttings || 0)}</td>`
+          : "") +
+        `<td class="n text-muted">${L.lift_no}</td>` +
+        `<td>${fdate(L.on)}</td>` +
+        `<td class="text-muted">${esc(L.on_iso)}</td>` +
+        `<td class="n text-muted">${L.weeks_after}</td>` +
+        `<td class="n text-muted">${(+L.share_pct || 0).toFixed(0)}%</td>` +
+        `<td class="n">${num(L.asked)}</td>` +
+        `<td class="n">${num(L.plants)}</td>` +
+        `<td class="n">${L.short
+          ? `<span style="color:var(--critical)">${num(L.short)}</span>` : "—"}</td>` +
+        `<td class="text-muted">${esc(covers)}</td></tr>`;
+    }).join("")).join("");
+
+    box.innerHTML =
+      `<div class="text-muted small" style="text-transform:uppercase;` +
+      `letter-spacing:.05em;margin:14px 0 4px">Roots — out of the coldroom, ` +
+      `lifted to demand</div>` +
+      `<p class="pl-note"><b>${num(ro.roots)} plant roots</b> · ordered ` +
+      `${fdate(ro.week)} · in store ${fdate(ro.arrives)} (${m.root_lead_weeks} wk lead) ` +
+      `· ${batches.length} withdrawal${batches.length === 1 ? "" : "s"} · ` +
+      `${m.returns_per_plant} cuttings a root · ` +
+      `${(batches[0] && batches[0].lifts || []).length} lifts · ${num(wanted)} plants wanted` +
+      (late ? ` · <span style="color:var(--critical)">${num(late)} lifted late</span>`
+            : ` · none late`) + `</p>` +
+      `<table class="pl-t"><thead><tr>` +
+      `<th class="n">#</th><th>Out of coldroom</th>` +
+      `<th class="n">Plant roots</th><th class="n">Cuttings</th>` +
+      `<th class="n">Lift</th><th>Lifted on</th><th>Week</th>` +
+      `<th class="n">Age</th><th class="n">Share</th>` +
+      `<th class="n">Wanted</th><th class="n">Lifted</th><th class="n">Late</th>` +
+      `<th>Weeks it covers</th>` +
+      `</tr></thead><tbody>${rows}</tbody></table>`;
+  }
+
   function renderRoots(m) {
     // NOT "tc-roots": that id is the Roots quantity box at the top of the card,
     // and writing a table into it would have replaced the input somebody types
@@ -5207,6 +5320,11 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
     const ro = (m.root_order_schedule || [])[0];
     const pulls = m.root_withdrawals || [];
     if (!ro || !pulls.length) { box.innerHTML = ""; return; }
+    // A trough is filled once and grows as one, so what comes out of store is a
+    // trough's worth, not a week's worth. The weeks it serves are lifts off that
+    // same trough -- which is the thing the farm can actually do.
+    const batches = m.root_batches || [];
+    if (batches.length) { renderRootBatches(m, ro, batches, box); return; }
     const byWeek = {};
     (m.weeks || []).forEach((w) => {
       if (w.root_out_week) byWeek[w.root_out_week] = w;

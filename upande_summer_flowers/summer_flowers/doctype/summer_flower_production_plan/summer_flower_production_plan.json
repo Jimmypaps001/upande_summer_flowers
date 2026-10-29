@@ -96,7 +96,9 @@
   "unmet_stems",
   "blocks_used",
   "peak_concurrent_beds",
-  "peak_beds_week"
+  "peak_beds_week",
+  "sf_pending_selling",
+  "sf_pending_raising"
  ],
  "fields": [
   {
@@ -675,6 +677,22 @@
    "fieldtype": "Data",
    "label": "Peak Beds Week",
    "read_only": 1
+  },
+  {
+   "fieldname": "sf_pending_selling",
+   "fieldtype": "Long Text",
+   "label": "Sellers Chosen Before Saving",
+   "hidden": 1,
+   "read_only": 1,
+   "description": "Who sells each way in, chosen on the card before the plan was saved. Applied to the procurement plan the moment one exists, then cleared."
+  },
+  {
+   "fieldname": "sf_pending_raising",
+   "fieldtype": "Long Text",
+   "label": "Raisers Chosen Before Saving",
+   "hidden": 1,
+   "read_only": 1,
+   "description": "Who raises each way in, chosen on the card before the plan was saved. Applied to the procurement plan the moment one exists, then cleared."
   }
  ],
  "grid_page_length": 50,

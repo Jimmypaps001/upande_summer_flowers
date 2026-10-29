@@ -464,6 +464,11 @@ def arrival_plan(plan, tc_share=None, returns_per_plant=None,
 		"blocked": blocked,
 		"asked": asked or None,
 		"ways": len(ways),
+		"route_summary": v.get("route_summary"),
+		# Who raises each way in, beside who sells it. Choosing a lab answers
+		# half the question; the other half -- who sticks what the lab sends, and
+		# who roots the plant roots -- was a button away on another document.
+		"raised_by": _raised_by(plan),
 		"primary_stage": ways[0] if ways else "TC",
 		"secondary_stage": ways[1] if len(ways) > 1 else None,
 		# What was agreed, if anything was. A saved plan that opens as a blank
@@ -488,6 +493,16 @@ def arrival_plan(plan, tc_share=None, returns_per_plant=None,
 		# consignment, placed a lead time before the first week any of them has
 		# to come out of store.
 		"root_order_schedule": _root_order(root_pulls, root_lead),
+		# Out of store in trough-fulls, lifted out to the weeks that want them.
+		"root_batches": _root_batches(
+			weeks, ordered, per_root, root_weeks,
+			# The ROOTS lifts. A protocol carries a lift table per form, and
+			# mixing them gave a trough five lifts across two different crops'
+			# worth of timings.
+			[{"weeks_after": cint(L.weeks_after_arrival), "share_pct": flt(L.share_pct)}
+			 for L in (v.get("lifts") or [])
+			 if (L.form or "").strip().lower().startswith("root")]),
+
 		# And what comes back out of the coldroom, week by week.
 		"root_withdrawals": [{"week": k, "week_iso": iso(k), "roots": v}
 		                     for k, v in sorted(root_pulls.items())],
@@ -634,6 +649,80 @@ def _survival(form="Tissue Culture", version=None):
 	from upande_summer_flowers.summer_flowers import tc_supply as ts
 
 	return max(0.01, ts.survival(form, version=version))
+
+
+def _root_batches(weeks, ordered, per_root, root_weeks, lifts):
+	"""When roots come out of the coldroom, and what each lift delivers.
+
+	Planning asks one question of the roots: does what comes out of store, lifted
+	on the protocol's dates, meet the demand? So the weeks the field wants plants
+	are grouped by what ONE sticking can serve -- its first lift to its last --
+	and that group comes out of store once, early enough for the first lift to
+	land on the first week it serves.
+
+	Capacity is not asked here. How many troughs that fills, whether the last one
+	is part empty, which bench has room -- those are the propagation plan's, and
+	deciding them at planning time made the plan refuse quantities the market had
+	actually asked for.
+	"""
+	want = [(k, cint(weeks[k]["roots_needed"]), cint(weeks[k]["by_roots"]))
+	        for k in ordered if cint(weeks[k].get("roots_needed"))]
+	if not want:
+		return []
+	sched = sorted([L for L in (lifts or []) if cint(L.get("weeks_after")) >= 0],
+	               key=lambda L: cint(L["weeks_after"]))
+	if not sched:
+		sched = [{"weeks_after": cint(root_weeks), "share_pct": 100.0}]
+	first_at = cint(sched[0]["weeks_after"])
+	span = cint(sched[-1]["weeks_after"]) - first_at
+
+	batches, cur = [], None
+	for land, roots, plants in want:
+		if cur is not None and (getdate(land) - getdate(cur["first"])).days // 7 > span:
+			batches.append(cur)
+			cur = None
+		if cur is None:
+			cur = {"first": land, "weeks": [], "roots": 0, "plants": 0}
+		cur["weeks"].append({"week": str(land), "week_iso": iso(land), "plants": plants})
+		cur["roots"] += roots
+		cur["plants"] += plants
+	if cur:
+		batches.append(cur)
+
+	out = []
+	for b in batches:
+		stick = add_days(getdate(b["first"]), -7 * first_at)
+		rows, used, carry = [], 0, 0
+		for i, L in enumerate(sched):
+			qty = (b["plants"] - used) if i == len(sched) - 1 else int(
+				round(b["plants"] * flt(L.get("share_pct") or 0) / 100.0))
+			used += qty
+			on = add_days(stick, 7 * cint(L["weeks_after"]))
+			nxt = (add_days(stick, 7 * cint(sched[i + 1]["weeks_after"]))
+			       if i + 1 < len(sched) else None)
+			covers = [w for w in b["weeks"]
+			          if getdate(w["week"]) >= on and (not nxt or getdate(w["week"]) < nxt)]
+			asked = sum(cint(w["plants"]) for w in covers)
+			have = qty + carry
+			carry = max(0, have - asked)
+			rows.append({
+				"lift_no": i + 1, "weeks_after": cint(L["weeks_after"]),
+				"share_pct": flt(L.get("share_pct") or 0),
+				"on": str(on), "on_iso": iso(on),
+				"plants": qty, "covers": covers, "asked": asked,
+				"in_hand": have, "surplus": carry,
+				"short": max(0, asked - have),
+			})
+		out.append({
+			"out_of_store": str(stick), "out_iso": iso(stick),
+			"plant_roots": b["roots"], "roots": b["roots"],
+			"cuttings": int(round(b["roots"] * flt(per_root))),
+			"cuttings_per_root": flt(per_root),
+			"plants": b["plants"],
+			"serves_from": b["weeks"][0]["week"], "serves_to": b["weeks"][-1]["week"],
+			"lifts": rows,
+		})
+	return out
 
 
 def _root_order(pulls, lead_weeks):
@@ -841,8 +930,10 @@ def _after_material_agreement(production_plan, tc):
 		# bought one unit per plant -- and passing only the first is why a crop
 		# bought as plants was agreed at 4,000 and its procurement plan went on
 		# saying 6,000.
-		return {"name": build(production_plan, replace=1,
-		                      tc_qty=tc or None, units_qty=tc or None)}
+		name = build(production_plan, replace=1,
+		             tc_qty=tc or None, units_qty=tc or None)
+		apply_held_choices(production_plan)
+		return {"name": name}
 
 	def propagation():
 		r = build_from_plan(production_plan, as_dict=True)
@@ -868,6 +959,97 @@ def propagation_units(farm=None):
 	return rows
 
 
+def _raised_by(plan):
+	"""The raising allocation as it stands, from the plan or from what is held."""
+	q = frappe.db.get_value("Summer Flower Procurement Plan",
+	                        {"production_plan": plan.name, "docstatus": ["<", 2]},
+	                        "name", order_by="creation desc")
+	if q:
+		doc = frappe.get_doc("Summer Flower Procurement Plan", q)
+		return [{"raises": r.raises, "type": r.alloc_type, "party": r.party,
+		         "share_pct": flt(r.share_pct), "plants": cint(r.plants),
+		         "lead_weeks": cint(r.lead_weeks), "start_by": str(r.start_by or ""),
+		         "plan": r.propagation_plan, "pending": 0}
+		        for r in doc.propagation_allocation]
+	return [{"raises": r.get("raises"),
+	         "type": "Outside Propagator" if r.get("supplier") else "Own Unit",
+	         "party": r.get("supplier") or r.get("unit"),
+	         "share_pct": flt(r.get("share_pct")), "plants": 0,
+	         "lead_weeks": 0, "start_by": "", "plan": None, "pending": 1}
+	        for r in _held(plan, "sf_pending_raising")]
+
+
+def _held(plan, field):
+	"""What was chosen on the card before there was a plan to write it on."""
+	raw = plan.get(field)
+	if not raw:
+		return []
+	try:
+		rows = frappe.parse_json(raw)
+	except Exception:
+		return []
+	return rows if isinstance(rows, list) else []
+
+
+def _hold(production_plan, field, rows):
+	rows = frappe.parse_json(rows) if isinstance(rows, str) else (rows or [])
+	frappe.db.set_value("Summer Flower Production Plan", production_plan, field,
+	                    frappe.as_json(rows), update_modified=False)
+	frappe.clear_document_cache("Summer Flower Production Plan", production_plan)
+
+
+def apply_held_choices(production_plan):
+	"""Carry the card's choices onto the procurement plan that now exists.
+
+	Choosing a seller or a bench is a decision about the season, not about a
+	document: a planner makes it while looking at the demand, which is before
+	the plan is saved and the procurement plan written. So the choice is held
+	and applied here, and the card can change it afterwards as usual.
+	"""
+	plan = frappe.get_doc("Summer Flower Production Plan", production_plan)
+	sell, raise_ = _held(plan, "sf_pending_selling"), _held(plan, "sf_pending_raising")
+	q = frappe.db.get_value("Summer Flower Procurement Plan",
+	                        {"production_plan": production_plan, "docstatus": 0}, "name")
+	if q and (sell or raise_):
+		# Both tables in ONE save. Writing the sellers first left the plan with
+		# nobody raising it for the length of that save, and the guard that
+		# refuses exactly that threw -- taking the procurement plan with it.
+		doc = frappe.get_doc("Summer Flower Procurement Plan", q)
+		if sell:
+			doc.set("purchase_allocation", [])
+			for r in sell:
+				doc.append("purchase_allocation", {
+					"entry_stage": r.get("entry_stage"),
+					"supplier": r.get("supplier") or None,
+					"share_pct": flt(r.get("share_pct")),
+					"rate": flt(r.get("rate")) or 0,
+					"lead_weeks": cint(r.get("lead_weeks")) or 0})
+		if raise_:
+			doc.set("propagation_allocation", [])
+			for r in raise_:
+				if not (r.get("unit") or r.get("supplier")):
+					continue
+				doc.append("propagation_allocation", {
+					"alloc_type": ("Outside Propagator" if r.get("supplier")
+					               else "Own Unit"),
+					"raises": r.get("raises"),
+					"propagation_unit": r.get("unit") or None,
+					"supplier": r.get("supplier") or None,
+					"share_pct": flt(r.get("share_pct")),
+					"rate_per_plant": flt(r.get("rate")) or 0})
+		# The planner is still mid-flight: this is the same write that built the
+		# plan, not a person saving a half-filled one.
+		doc.flags.rebuilding = True
+		doc.flags.ignore_permissions = True
+		doc.save()
+	if sell or raise_:
+		frappe.db.set_value("Summer Flower Production Plan", production_plan,
+		                    {"sf_pending_selling": None, "sf_pending_raising": None},
+		                    update_modified=False)
+		frappe.clear_document_cache("Summer Flower Production Plan", production_plan)
+	return {"selling": len(sell), "raising": len(raise_)}
+
+
 @frappe.whitelist()
 def selling_choices(production_plan):
 	"""Who sells each way in, and what is already chosen, for the card.
@@ -883,8 +1065,15 @@ def selling_choices(production_plan):
 	                        {"production_plan": production_plan, "docstatus": 0},
 	                        "name")
 	if not q:
-		return {"procurement_plan": None, "ways": [], "units_by_way": {},
-		        "chosen": []}
+		# Nothing bought yet, but the choice is still worth making: the card can
+		# say who sells it before the plan is saved, and the choice is held until
+		# there is a procurement plan to carry it.
+		plan = frappe.get_doc("Summer Flower Production Plan", production_plan)
+		return {"procurement_plan": None, "pending": 1,
+		        "ways": _ways_in(frappe.get_cached_doc(
+			        "Crop Protocol Version", plan.protocol)) if plan.protocol else [],
+		        "units_by_way": {},
+		        "chosen": _held(plan, "sf_pending_selling")}
 	doc = frappe.get_doc("Summer Flower Procurement Plan", q)
 	return {
 		"procurement_plan": q,
@@ -911,8 +1100,8 @@ def set_selling(production_plan, rows):
 	                        {"production_plan": production_plan, "docstatus": 0},
 	                        "name")
 	if not q:
-		frappe.throw(_("There is no draft procurement plan to buy on. Save the "
-		               "material plan first."))
+		_hold(production_plan, "sf_pending_selling", rows)
+		return selling_choices(production_plan)
 	doc = frappe.get_doc("Summer Flower Procurement Plan", q)
 	doc.set("purchase_allocation", [])
 	for r in rows:
@@ -969,6 +1158,12 @@ def raising_choices(production_plan):
 		        "custom_sf_rate_per_plant as rate"], order_by="name")
 
 	chosen, ways, plants = [], [], {}
+	if not doc:
+		# Held on the production plan until there is a procurement plan.
+		chosen = _held(plan, "sf_pending_raising")
+		if plan.protocol:
+			ways = _ways_in(frappe.get_cached_doc("Crop Protocol Version", plan.protocol))
+			plants = {w: 0 for w in ways}
 	if doc:
 		plants = doc.plants_by_stage()
 		ways = doc.ways_in()
@@ -995,8 +1190,8 @@ def set_raising(production_plan, rows):
 	                        {"production_plan": production_plan, "docstatus": 0},
 	                        "name")
 	if not q:
-		frappe.throw(_("There is no draft procurement plan to allocate on. Save "
-		               "the material plan first."))
+		_hold(production_plan, "sf_pending_raising", rows)
+		return raising_choices(production_plan)
 	doc = frappe.get_doc("Summer Flower Procurement Plan", q)
 	doc.set("propagation_allocation", [])
 	for r in rows:
