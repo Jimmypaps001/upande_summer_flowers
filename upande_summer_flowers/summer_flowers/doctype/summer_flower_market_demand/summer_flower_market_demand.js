@@ -3,7 +3,6 @@
 
 frappe.ui.form.on("Summer Flower Market Demand", {
 	refresh(frm) {
-		frm.set_query("variety", () => ({ filters: { item_group: "Summer Flowers" } }));
 		// What the fields mean, behind the "i" icon, instead of a paragraph under
 		// each one.
 		upande_summer_flowers.walkthrough.attach(frm, "Market Demand Walkthrough");

@@ -3,20 +3,17 @@
  "allow_bulk_edit": 1,
  "allow_rename": 1,
  "autoname": "format:{variety}-{farm}",
- "creation": "2026-07-29 14:05:07.451190",
+ "creation": "2026-10-28 20:50:30.072676",
  "description": "Living weekly demand register for one variety at one farm. Extended progressively so the horizon always reaches the target years ahead.",
  "doctype": "DocType",
  "editable_grid": 1,
  "engine": "InnoDB",
  "field_order": [
-  "details_tab",
   "identification_section",
   "variety",
   "farm",
   "cb_ident",
   "company",
-  "currency",
-  "price_per_stem",
   "horizon_section",
   "target_years_ahead",
   "horizon_start",
@@ -32,19 +29,12 @@
   "cb_totals",
   "peak_weekly_demand",
   "average_weekly_demand",
-  "weeks_tab",
   "weeks_section",
   "demand_weeks",
   "calendar_section",
-  "calendar_html",
-  "grades_tab"
+  "calendar_html"
  ],
  "fields": [
-  {
-   "fieldname": "details_tab",
-   "fieldtype": "Tab Break",
-   "label": "Details"
-  },
   {
    "fieldname": "identification_section",
    "fieldtype": "Section Break"
@@ -78,18 +68,6 @@
    "options": "Company"
   },
   {
-   "fieldname": "currency",
-   "fieldtype": "Link",
-   "label": "Currency",
-   "options": "Currency"
-  },
-  {
-   "fieldname": "price_per_stem",
-   "fieldtype": "Currency",
-   "label": "Price Per Stem",
-   "options": "currency"
-  },
-  {
    "fieldname": "horizon_section",
    "fieldtype": "Section Break",
    "label": "Rolling Horizon"
@@ -102,50 +80,54 @@
    "reqd": 1
   },
   {
+   "depends_on": "eval:!doc.__islocal",
    "fieldname": "horizon_start",
    "fieldtype": "Data",
    "label": "Horizon Start",
    "read_only": 1,
-   "depends_on": "eval:!doc.__islocal"
+   "hidden": 1
   },
   {
+   "depends_on": "eval:!doc.__islocal",
    "fieldname": "horizon_end",
    "fieldtype": "Data",
    "label": "Horizon End",
    "read_only": 1,
-   "depends_on": "eval:!doc.__islocal"
+   "hidden": 1
   },
   {
    "fieldname": "cb_horizon",
    "fieldtype": "Column Break"
   },
   {
+   "depends_on": "eval:!doc.__islocal",
    "fieldname": "weeks_covered",
    "fieldtype": "Int",
    "label": "Weeks Covered",
-   "read_only": 1,
-   "depends_on": "eval:!doc.__islocal"
+   "read_only": 1
   },
   {
+   "depends_on": "eval:!doc.__islocal",
    "fieldname": "weeks_ahead_of_today",
    "fieldtype": "Int",
    "label": "Weeks Ahead Of Today",
    "read_only": 1,
-   "depends_on": "eval:!doc.__islocal"
+   "hidden": 1
   },
   {
+   "depends_on": "eval:!doc.__islocal",
    "fieldname": "horizon_gap_weeks",
    "fieldtype": "Int",
    "label": "Horizon Shortfall (weeks)",
    "read_only": 1,
-   "depends_on": "eval:!doc.__islocal"
+   "hidden": 1
   },
   {
+   "depends_on": "eval:!doc.__islocal",
    "fieldname": "horizon_status",
    "fieldtype": "Data",
    "label": "Status",
-   "read_only": 1,
-   "depends_on": "eval:!doc.__islocal"
+   "read_only": 1
   },
   {
    "fieldname": "totals_section",
@@ -153,46 +135,42 @@
    "label": "Totals"
   },
   {
+   "depends_on": "eval:!doc.__islocal",
    "fieldname": "total_demand_stems",
    "fieldtype": "Int",
    "label": "Total Demand (stems)",
-   "read_only": 1,
-   "depends_on": "eval:!doc.__islocal"
+   "read_only": 1
   },
   {
+   "depends_on": "eval:doc.firm_demand_stems",
    "fieldname": "firm_demand_stems",
    "fieldtype": "Int",
    "label": "Firm Demand (stems)",
-   "read_only": 1,
-   "depends_on": "eval:!doc.__islocal"
+   "read_only": 1
   },
   {
    "fieldname": "cb_totals",
    "fieldtype": "Column Break"
   },
   {
+   "depends_on": "eval:!doc.__islocal",
    "fieldname": "peak_weekly_demand",
    "fieldtype": "Int",
    "label": "Peak Weekly Demand",
-   "read_only": 1,
-   "depends_on": "eval:!doc.__islocal"
+   "read_only": 1
   },
   {
+   "depends_on": "eval:!doc.__islocal",
    "fieldname": "average_weekly_demand",
    "fieldtype": "Float",
    "label": "Average Weekly Demand",
    "precision": "0",
-   "read_only": 1,
-   "depends_on": "eval:!doc.__islocal"
-  },
-  {
-   "fieldname": "weeks_tab",
-   "fieldtype": "Tab Break",
-   "label": "Demand Weeks"
+   "read_only": 1
   },
   {
    "fieldname": "weeks_section",
-   "fieldtype": "Section Break"
+   "fieldtype": "Section Break",
+   "label": "Demand Weeks"
   },
   {
    "fieldname": "demand_weeks",
@@ -201,27 +179,22 @@
    "options": "Summer Flower Demand Week"
   },
   {
+   "collapsible": 1,
    "fieldname": "calendar_section",
    "fieldtype": "Section Break",
-   "label": "Demand Calendar",
-   "collapsible": 1
+   "label": "Demand Calendar"
   },
   {
    "fieldname": "calendar_html",
    "fieldtype": "HTML",
    "label": "Calendar"
-  },
-  {
-   "fieldname": "grades_tab",
-   "fieldtype": "Tab Break",
-   "label": "Grade Split"
   }
  ],
  "grid_page_length": 50,
  "index_web_pages_for_search": 1,
  "links": [],
- "modified": "2026-08-05 13:00:00.000000",
- "modified_by": "Administrator",
+ "modified": "2026-10-28 20:30:00.000000",
+ "modified_by": "james@upande.com",
  "module": "Summer Flowers",
  "name": "Summer Flower Market Demand",
  "naming_rule": "Expression (old style)",
