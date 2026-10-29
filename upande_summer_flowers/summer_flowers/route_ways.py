@@ -332,7 +332,11 @@ def route_info(route):
 	stages = ROUTES.get(route) or []
 	entry = stages[0] if stages else None
 	return {"rows": route_stages(route), "bought": 1 if entry in BOUGHT_STAGES else 0,
-	        "lifts": 1 if entry in LIFT_FORM else 0}
+	        "lifts": 1 if entry in LIFT_FORM else 0,
+	        # What a consignment down this route hands over. The card shows it
+	        # and stamps it on the lifts it adds, so nobody is asked a question
+	        # the route has already answered.
+	        "lift_form": LIFT_FORM.get(entry)}
 
 
 def route_loss(protocol_or_version, lift_form):

@@ -98,6 +98,7 @@ frappe.ui.form.on("Crop Protocol", {
 
 		const lift_rows = lifts.map((l) => `<tr>
 			<td style="width:70px">${num(l.doctype, l.name, "lift_no", cint(l.lift_no), false)}</td>
+			<td class="text-muted" style="width:120px">${esc(l.form || info.lift_form || "")}</td>
 			<td>${num(l.doctype, l.name, "trough_weeks", cint(l.trough_weeks), false)}</td>
 			<td>${num(l.doctype, l.name, "rooting_weeks", cint(l.rooting_weeks), false)}</td>
 			<td class="text-right">${cint(l.trough_weeks) + cint(l.rooting_weeks)}</td>
@@ -109,10 +110,11 @@ frappe.ui.form.on("Crop Protocol", {
 		const lifts_block = info.lifts
 			? `<div class="mt-3"><b>${__("Lifts")}</b> <span class="text-muted small">${__("only if a consignment is handed over in parts; shares add up to 100%")}</span>
 				${lifts.length ? `<table class="table table-sm table-bordered mt-1 mb-1"><thead><tr>
-					<th>${__("Lift")}</th><th>${__("Weeks on trough")}</th><th>${__("Rooting weeks")}</th>
+					<th>${__("Lift")}</th><th>${__("Hands over")}</th>
+					<th>${__("Weeks on trough")}</th><th>${__("Rooting weeks")}</th>
 					<th class="text-right">${__("Delivered (week)")}</th><th>${__("Share %")}</th><th>${__("Notes")}</th><th></th>
 				</tr></thead><tbody>${lift_rows}</tbody></table>` : `<div class="text-muted small">${__("No lifts: the consignment comes in whole.")}</div>`}
-				${ro ? "" : `<button class="btn btn-xs btn-default sf-add-lift" data-route="${esc(w.route)}">${__("Add lift")}</button>`}
+				${ro ? "" : `<button class="btn btn-xs btn-default sf-add-lift" data-route="${esc(w.route)}" data-form="${esc(info.lift_form || "")}">${__("Add lift")}</button>`}
 			</div>`
 			: "";
 
@@ -161,7 +163,8 @@ frappe.ui.form.on("Crop Protocol", {
 			const route = $(this).data("route");
 			const mine = (frm.doc[LIFTS] || []).filter((r) => r.route === route);
 			const next = mine.reduce((a, r) => Math.max(a, cint(r.lift_no)), 0) + 1;
-			frm.add_child(LIFTS, { route, lift_no: next, share_pct: mine.length ? 0 : 100 });
+			frm.add_child(LIFTS, { route, lift_no: next, form: $(this).data("form") || "",
+			                       share_pct: mine.length ? 0 : 100 });
 			frm.dirty();
 			ways.render(frm);
 		});

@@ -1134,11 +1134,21 @@ def check_lifts(doc):
 	rows = doc.get("custom_sf_lifts") or []
 	if not rows:
 		return
+	from upande_summer_flowers.summer_flowers.route_ways import LIFT_FORM, ROUTES
+
 	groups = {}
 	for r in rows:
+		# The route already says which material is being lifted -- a route that
+		# starts at TC hands over tissue culture, one that starts at Roots hands
+		# over roots. The card adds lifts against a route and has no column for
+		# the form, so demanding it refused a save over a question with only one
+		# possible answer and nowhere to give it.
+		if not r.form and r.route:
+			r.form = LIFT_FORM.get((ROUTES.get(r.route) or [None])[0])
 		if not r.form:
-			frappe.throw(_("Row {0} of the lifts does not say which material it "
-			               "is for.").format(r.idx))
+			frappe.throw(_("Row {0} of the lifts is not against a route, so there "
+			               "is nothing to say which material it hands over. Add it "
+			               "from the route it belongs to.").format(r.idx))
 		r.weeks_after_arrival = cint(r.trough_weeks) + cint(r.rooting_weeks)
 		groups.setdefault(r.form, []).append(r)
 
