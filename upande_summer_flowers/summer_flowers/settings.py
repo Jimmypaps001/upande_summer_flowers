@@ -13,7 +13,17 @@ DOCTYPE = "Summer Flower Settings"
 
 
 def _get(field, default):
+	"""The site's figure, or the one the code carried before.
+
+	Asked of the meta first. get_single_value queues "Field X does not exist"
+	into the message log BEFORE it raises, so catching the exception is not
+	enough -- the message still reaches the browser, and a dashboard carrying a
+	red error about a setting nobody has set is worse than the default it
+	silently falls back to.
+	"""
 	try:
+		if not frappe.get_meta(DOCTYPE).has_field(field):
+			return default
 		v = frappe.db.get_single_value(DOCTYPE, field)
 	except Exception:
 		return default
@@ -98,3 +108,14 @@ def target_roles(default=("Production Manager", "Farm Manager", "Agriculture Man
 def lift_share_tolerance(default=0.5):
 	"""How far lift shares may be off 100% and still count as a whole consignment."""
 	return flt(_get("lift_share_tolerance_pct", default))
+
+
+def part_trough_pct(default=25):
+	"""How much of a trough is too little to be worth sticking.
+
+	A batch that runs a little over a trough does not open another one for the
+	remainder: a nearly empty trough costs a bench, a stick and a lift for a few
+	hundred plants. The overflow is taken off an older or an upcoming lift, and
+	where neither has room the planting simply goes short.
+	"""
+	return flt(_get("part_trough_pct", default))

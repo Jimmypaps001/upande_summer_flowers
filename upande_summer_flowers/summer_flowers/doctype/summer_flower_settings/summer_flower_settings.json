@@ -53,7 +53,8 @@
   "cb_rules",
   "lift_share_tolerance_pct",
   "second_ways_section",
-  "second_ways"
+  "second_ways",
+  "part_trough_pct"
  ],
  "fields": [
   {
@@ -171,7 +172,7 @@
    "description": "Physical ceiling on the motherstock pool. Without it, diverting cuttings every week compounds without bound.",
    "fieldname": "max_bench_sqm",
    "fieldtype": "Float",
-   "label": "Available Bench (m²)",
+   "label": "Available Bench (m\u00b2)",
    "precision": "1"
   },
   {
@@ -345,6 +346,13 @@
    "fieldtype": "Table",
    "options": "Summer Flower Second Way",
    "label": "Varieties Bought a Second Way"
+  },
+  {
+   "fieldname": "part_trough_pct",
+   "fieldtype": "Percent",
+   "label": "Worth A Trough Of Its Own",
+   "default": "25",
+   "description": "A batch that runs over a whole number of troughs does not open another one for a remainder smaller than this. The overflow is taken off a neighbouring lift, or the planting goes short."
   }
  ],
  "grid_page_length": 50,
