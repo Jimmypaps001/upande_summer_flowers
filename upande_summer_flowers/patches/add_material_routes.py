@@ -25,6 +25,10 @@ def execute():
 
 	if not frappe.db.has_column("Crop Protocol", "custom_is_summer_flower"):
 		return
+	from upande_summer_flowers.patches._sf_customisations import ensure
+
+	if not ensure("Crop Protocol", "custom_sf_ways", "custom_sf_way_stages"):
+		return
 	from upande_summer_flowers.summer_flowers import route_ways as rw
 
 	done = set(frappe.get_all("Crop Protocol Way", filters={"parenttype": "Crop Protocol"},

@@ -17,6 +17,10 @@ ACTIVITIES = (("Planting", "Planting"), ("Pinching", "Pinching"), ("Bending", ""
 def execute():
 	frappe.reload_doc("summer_flowers", "doctype", "field_activity")
 	frappe.reload_doc("summer_flowers", "doctype", "crop_field_activity")
+	from upande_summer_flowers.patches._sf_customisations import ensure
+
+	if not ensure("Crop Protocol", "custom_sf_field_activities"):
+		return
 	for name, role in ACTIVITIES:
 		if not frappe.db.exists("Field Activity", name):
 			frappe.get_doc({"doctype": "Field Activity", "activity_name": name,

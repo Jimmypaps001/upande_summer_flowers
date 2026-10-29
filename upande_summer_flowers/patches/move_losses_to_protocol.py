@@ -12,6 +12,10 @@ from frappe.utils import flt
 
 def execute():
 	frappe.reload_doc("summer_flowers", "doctype", "crop_protocol_way")
+	from upande_summer_flowers.patches._sf_customisations import ensure
+
+	if not ensure("Crop Protocol", "custom_sf_ways"):
+		return
 	if not frappe.db.table_exists("Crop Protocol Way"):
 		return
 	from upande_summer_flowers.summer_flowers import stages
