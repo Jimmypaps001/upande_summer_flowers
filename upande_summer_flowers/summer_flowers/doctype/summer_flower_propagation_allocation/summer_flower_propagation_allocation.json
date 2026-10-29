@@ -5,37 +5,76 @@
  "editable_grid": 1,
  "engine": "InnoDB",
  "field_order": [
+  "alloc_type",
+  "raises",
+  "party",
   "propagation_unit",
   "supplier",
   "plants",
   "share_pct",
+  "rate_per_plant",
+  "amount",
+  "deliver_to",
+  "note",
   "column_break_a",
+  "lead_weeks",
+  "start_by",
+  "plants_from",
+  "plants_to",
+  "ready_basis",
+  "column_break_b",
   "planted",
   "surplus",
   "troughs_used",
   "plantings",
-  "column_break_b",
   "propagation_plan",
-  "note"
+  "purchase_order"
  ],
  "fields": [
+  {
+   "fieldname": "alloc_type",
+   "fieldtype": "Select",
+   "label": "Type",
+   "options": "Own Unit\nOutside Propagator",
+   "default": "Own Unit",
+   "reqd": 1,
+   "in_list_view": 1,
+   "columns": 1,
+   "description": "Raised on one of our own units, or bought in raised by a propagator."
+  },
+  {
+   "fieldname": "raises",
+   "fieldtype": "Select",
+   "label": "Raises",
+   "in_list_view": 1,
+   "columns": 2,
+   "description": "Which material this one raises. A crop bought as tissue culture and as roots has both to raise, and they are not the same job, the same bench or the same number of weeks."
+  },
+  {
+   "fieldname": "party",
+   "fieldtype": "Data",
+   "label": "Unit / Propagator",
+   "read_only": 1,
+   "in_list_view": 1,
+   "columns": 2
+  },
   {
    "fieldname": "propagation_unit",
    "fieldtype": "Link",
    "options": "Warehouse",
    "label": "Propagation Unit",
-   "in_list_view": 1,
+   "in_list_view": 0,
    "columns": 2,
    "reqd": 0,
-   "depends_on": "eval:!doc.supplier"
+   "depends_on": "eval:doc.alloc_type!=\"Outside Propagator\""
   },
   {
    "fieldname": "supplier",
    "fieldtype": "Link",
    "options": "Supplier",
    "label": "Outside Propagator",
-   "depends_on": "eval:!doc.propagation_unit",
-   "description": "Raised off the farm. The row names a unit or a propagator, not both."
+   "depends_on": "eval:doc.alloc_type==\"Outside Propagator\"",
+   "description": "Raised off the farm, charged per plant."
   },
   {
    "fieldname": "plants",
@@ -53,7 +92,73 @@
    "columns": 1
   },
   {
+   "fieldname": "rate_per_plant",
+   "fieldtype": "Currency",
+   "label": "Charge per Plant",
+   "depends_on": "eval:doc.alloc_type==\"Outside Propagator\"",
+   "in_list_view": 1,
+   "columns": 1
+  },
+  {
+   "fieldname": "amount",
+   "fieldtype": "Currency",
+   "label": "Amount",
+   "read_only": 1,
+   "depends_on": "eval:doc.alloc_type==\"Outside Propagator\""
+  },
+  {
+   "fieldname": "deliver_to",
+   "fieldtype": "Link",
+   "options": "Warehouse",
+   "label": "Deliver To",
+   "depends_on": "eval:doc.alloc_type==\"Outside Propagator\"",
+   "description": "Where the outside propagator delivers the plants; the purchase order is raised into it."
+  },
+  {
+   "fieldname": "note",
+   "fieldtype": "Small Text",
+   "label": "Notes",
+   "in_list_view": 1,
+   "columns": 1
+  },
+  {
    "fieldname": "column_break_a",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "lead_weeks",
+   "fieldtype": "Int",
+   "label": "Weeks To Plants",
+   "description": "Our own unit: what the protocol says the propagation takes. A propagator: the notice they need, off their record."
+  },
+  {
+   "fieldname": "start_by",
+   "fieldtype": "Date",
+   "label": "Start / Order By",
+   "read_only": 1
+  },
+  {
+   "fieldname": "plants_from",
+   "fieldtype": "Date",
+   "label": "First Plants",
+   "read_only": 1,
+   "in_list_view": 1,
+   "columns": 1
+  },
+  {
+   "fieldname": "plants_to",
+   "fieldtype": "Date",
+   "label": "Last Plants",
+   "read_only": 1
+  },
+  {
+   "fieldname": "ready_basis",
+   "fieldtype": "Small Text",
+   "label": "How That Date Was Got",
+   "read_only": 1
+  },
+  {
+   "fieldname": "column_break_b",
    "fieldtype": "Column Break"
   },
   {
@@ -68,7 +173,7 @@
    "fieldtype": "Int",
    "label": "Surplus",
    "read_only": 1,
-   "in_list_view": 1,
+   "in_list_view": 0,
    "columns": 1
   },
   {
@@ -84,28 +189,27 @@
    "read_only": 1
   },
   {
-   "fieldname": "column_break_b",
-   "fieldtype": "Column Break"
-  },
-  {
    "fieldname": "propagation_plan",
    "fieldtype": "Link",
    "options": "Summer Flower Propagation Plan",
    "label": "Propagation Plan",
    "read_only": 1,
-   "in_list_view": 1,
+   "in_list_view": 0,
    "columns": 2
   },
   {
-   "fieldname": "note",
-   "fieldtype": "Small Text",
-   "label": "Note"
+   "fieldname": "purchase_order",
+   "fieldtype": "Link",
+   "label": "Purchase Order",
+   "options": "Purchase Order",
+   "read_only": 1,
+   "depends_on": "eval:doc.alloc_type==\"Outside Propagator\""
   }
  ],
  "index_web_pages_for_search": 1,
  "istable": 1,
  "links": [],
- "modified": "2026-10-20 00:00:00.000000",
+ "modified": "2026-10-28 09:00:00.000000",
  "modified_by": "Administrator",
  "module": "Summer Flowers",
  "name": "Summer Flower Propagation Allocation",

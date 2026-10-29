@@ -49,6 +49,11 @@
   "cycles_suggested",
   "pool_plants",
   "weekly_draw",
+  "plants_from_order",
+  "order_covers_season",
+  "plants_short",
+  "cuttings_short",
+  "weeks_short",
   "motherstock_plan",
   "divert_weeks",
   "multiplication_cycles",
@@ -59,6 +64,8 @@
   "first_order_by",
   "last_order_by",
   "orders_late",
+  "section_purchase",
+  "purchase_allocation",
   "section_allocation",
   "propagation_allocation",
   "section_lines",
@@ -191,7 +198,9 @@
    "fieldtype": "Link",
    "label": "Supplier",
    "options": "Supplier",
-   "depends_on": "eval:doc.method=='Purchase'"
+   "depends_on": "eval:doc.method=='Purchase'",
+   "read_only_depends_on": "eval:(doc.purchase_allocation||[]).length",
+   "description": "Taken from Who Sells It below. Where more than one seller supplies the same way in, this stays blank and the table is the answer."
   },
   {
    "fieldname": "column_break_method",
@@ -443,6 +452,57 @@
    "no_copy": 1,
    "print_hide": 1,
    "read_only": 1
+  },
+  {
+   "fieldname": "plants_from_order",
+   "fieldtype": "Int",
+   "label": "Plants The Order Makes",
+   "read_only": 1,
+   "depends_on": "eval:doc.plants_from_order",
+   "description": "Walked week by week from the quantity actually ordered, not from the one the sum suggested."
+  },
+  {
+   "fieldname": "order_covers_season",
+   "fieldtype": "Check",
+   "label": "Order Covers The Season",
+   "read_only": 1,
+   "depends_on": "eval:doc.plants_from_order"
+  },
+  {
+   "fieldname": "cuttings_short",
+   "fieldtype": "Int",
+   "label": "Cuttings It Cannot Make",
+   "read_only": 1,
+   "depends_on": "eval:doc.cuttings_short",
+   "description": "Only a route that cuts from a pool has cuttings to be short of."
+  },
+  {
+   "fieldname": "weeks_short",
+   "fieldtype": "Int",
+   "label": "Weeks Not Covered",
+   "read_only": 1,
+   "depends_on": "eval:doc.weeks_short",
+   "description": "Sticking weeks on a route that builds a pool; planting weeks on one that buys a unit per plant."
+  },
+  {
+   "fieldname": "plants_short",
+   "fieldtype": "Int",
+   "label": "Plants The Order Cannot Make",
+   "read_only": 1,
+   "depends_on": "eval:doc.plants_short"
+  },
+  {
+   "fieldname": "section_purchase",
+   "fieldtype": "Section Break",
+   "label": "Who Sells It",
+   "description": "Where each way in is bought. One seller takes the lot unless you say otherwise; a crop bought two ways has a line of sellers for each."
+  },
+  {
+   "fieldname": "purchase_allocation",
+   "fieldtype": "Table",
+   "options": "Summer Flower Purchase Allocation",
+   "label": "Purchase Allocation",
+   "depends_on": "eval:doc.method==\"Purchase\""
   }
  ],
  "links": [],

@@ -335,22 +335,30 @@ def arrival_plan(plan, tc_share=None, returns_per_plant=None,
 	# What is expected to reach the field out of what is ordered. A provision,
 	# sitting at zero until somebody sets it: ordering a plant for every plant
 	# wanted is a decision about losses, not the absence of one.
-	keep = _survival("Tissue Culture")
-	keep_roots = _survival("Roots")
+	keep = _survival("Tissue Culture", plan.get("protocol"))
+	keep_roots = _survival("Roots", plan.get("protocol"))
 
 	asked = {}
 	# Where the split came from, because the card has been calling all three
 	# "the protocol's own split" -- including 44.3% derived from an agreed pair
 	# on a protocol that states 82.18%, which is the sort of sentence that
 	# sends somebody to the protocol looking for a number that was never there.
+	# A crop bought one way has no second way for the rest to come down. What is
+	# not covered by the one way in is SHORT, and calling it roots told a farm
+	# buying 4,000 plants of a 6,000-plant plan that a third of its season was
+	# coming through roots -- off a route with no roots in it, and then that the
+	# protocol would not say what those roots become.
+	ways = _ways_in(v)
+	one_way = len(ways) < 2
+
 	origin = "protocol"
 	if cint(tc_qty) or cint(roots_qty):
 		from_tc = int(cint(tc_qty) * keep)
 		from_roots = (int(cint(roots_qty) * per_root * keep_roots)
 		              if per_root > 0 else 0)
 		covered = from_tc + from_roots
-		share = (float(from_tc) / wanted) if wanted else 1.0
-		share = max(0.0, min(1.0, share))
+		share = (1.0 if one_way
+		         else max(0.0, min(1.0, (float(from_tc) / wanted) if wanted else 1.0)))
 		asked = {
 			"tc_qty": from_tc, "roots_qty": cint(roots_qty),
 			"plants_from_tc": from_tc, "plants_from_roots": from_roots,
@@ -360,11 +368,12 @@ def arrival_plan(plan, tc_share=None, returns_per_plant=None,
 		}
 		origin = "agreed" if cint(plan.get("tc_choice_committed")) else "quantities"
 	elif tc_share not in (None, ""):
-		share = flt(tc_share)
+		share = 1.0 if one_way else flt(tc_share)
 		origin = "asked"
 	else:
-		share = _tc_share(rows)
-		origin = "protocol" if _states_a_split(rows) else "default"
+		share = 1.0 if one_way else _tc_share(rows)
+		origin = ("single" if one_way else
+		          "protocol" if _states_a_split(rows) else "default")
 
 	tc_weeks = _weeks_for(rows, "TC")
 	root_weeks = _weeks_for(rows, LIFT_STAGE)
@@ -395,8 +404,11 @@ def arrival_plan(plan, tc_share=None, returns_per_plant=None,
 
 	for land, w in weeks.items():
 		by_tc = share_by_week[land]
-		by_root = w["plants"] - by_tc
-		roots = int(math.ceil(by_root / per_root)) if per_root > 0 else None
+		# On a one-way crop the rest of the week is not a second way in, it is
+		# simply not bought. Leaving it here made the Total column add up to the
+		# week's demand however little was ordered.
+		by_root = 0 if one_way else w["plants"] - by_tc
+		roots = int(math.ceil(by_root / per_root)) if (per_root > 0 and by_root) else None
 		w.update({"by_tc": by_tc, "by_roots": by_root, "roots_needed": roots})
 		# Each way counted back from the SAME landing week.
 		#
@@ -422,7 +434,7 @@ def arrival_plan(plan, tc_share=None, returns_per_plant=None,
 	# not a plan, it is a blank. Say so, rather than printing a confident zero
 	# beside "50% as roots".
 	blocked = None
-	if share < 1.0 and per_root <= 0:
+	if not one_way and share < 1.0 and per_root <= 0:
 		pct = round((1 - share) * 100, 1)
 		# "Set the field" is the wrong instruction once the field IS set and the
 		# plan is simply reading an older snapshot of it. A plan keeps the version
@@ -442,9 +454,18 @@ def arrival_plan(plan, tc_share=None, returns_per_plant=None,
 			            "per plant at lift' on the Roots row of the material "
 			            "route and approve it — until then only the tissue "
 			            "culture half can be ordered.").format(pct)
+	# What this crop is ACTUALLY bought as. The card was written for Eryngium,
+	# which comes as tissue culture and as roots, and those two names were
+	# written into it -- so a crop bought as plants, as seed or as tubers read
+	# as tissue culture on the dashboard. The figures were always its own; the
+	# labels were somebody else's.
+	ways = _ways_in(v)
 	return {
 		"blocked": blocked,
 		"asked": asked or None,
+		"ways": len(ways),
+		"primary_stage": ways[0] if ways else "TC",
+		"secondary_stage": ways[1] if len(ways) > 1 else None,
 		# What was agreed, if anything was. A saved plan that opens as a blank
 		# card reads as a plan that was never saved, and the next thing somebody
 		# does is save it again -- so the agreement comes back with the figures.
@@ -602,7 +623,7 @@ def _apportion(weeks, share, exact=None):
 	return out
 
 
-def _survival(form="Tissue Culture"):
+def _survival(form="Tissue Culture", version=None):
 	"""The share of what is ordered that is expected to reach the field.
 
 	Per form: tissue culture and roots are hardened differently and lose
@@ -612,7 +633,7 @@ def _survival(form="Tissue Culture"):
 	"""
 	from upande_summer_flowers.summer_flowers import tc_supply as ts
 
-	return max(0.01, ts.survival(form))
+	return max(0.01, ts.survival(form, version=version))
 
 
 def _root_order(pulls, lead_weeks):
@@ -712,6 +733,19 @@ def _tc_share(rows):
 	return (tc / (tc + root)) if (tc + root) else 1.0
 
 
+def _ways_in(version):
+	"""The stages this crop's material is bought at, biggest share first."""
+	from upande_summer_flowers.summer_flowers import sourcing
+
+	try:
+		ways = sourcing.entry_ways(version) or []
+	except Exception:
+		return []
+	ways = [w for w in ways if w.get("stage")]
+	ways.sort(key=lambda w: -flt(w.get("share_pct") or 0))
+	return [w["stage"] for w in ways]
+
+
 def _weeks_for(rows, stage):
 	"""Weeks from that stage arriving to a plant standing in the field."""
 	seen, weeks = False, 0
@@ -802,7 +836,13 @@ def _after_material_agreement(production_plan, tc):
 		)
 
 	def procurement():
-		return {"name": build(production_plan, replace=1, tc_qty=tc or None)}
+		# Both levers, because which one bites depends on the route and the card
+		# does not need to know. tc_qty sizes a pool; units_qty trims an order
+		# bought one unit per plant -- and passing only the first is why a crop
+		# bought as plants was agreed at 4,000 and its procurement plan went on
+		# saying 6,000.
+		return {"name": build(production_plan, replace=1,
+		                      tc_qty=tc or None, units_qty=tc or None)}
 
 	def propagation():
 		r = build_from_plan(production_plan, as_dict=True)
@@ -810,6 +850,206 @@ def _after_material_agreement(production_plan, tc):
 
 	return [(_("Procurement Plan"), procurement),
 	        (_("Propagation Plan"), propagation)]
+
+
+@frappe.whitelist()
+def propagation_units(farm=None):
+	"""The benches that could raise this plan's material."""
+	if frappe.session.user == "Guest":
+		frappe.throw(_("Please sign in."), frappe.PermissionError)
+	f = {"custom_sf_is_propagation_unit": 1}
+	rows = frappe.get_all("Warehouse", filters=f, order_by="name",
+	                      fields=["name", "custom_farm as farm",
+	                              "custom_sf_capacity_plants as capacity"])
+	# The farm's own benches first: a unit on the farm the crop is grown at is
+	# nearly always the answer, and on a site with several it is the one that
+	# needs no scrolling.
+	rows.sort(key=lambda r: (0 if farm and r.farm == farm else 1, r.name))
+	return rows
+
+
+@frappe.whitelist()
+def selling_choices(production_plan):
+	"""Who sells each way in, and what is already chosen, for the card.
+
+	The companion to raising_choices. The card had a supplier allocator of its
+	own, writing quantities onto the production plan, while the orders were
+	raised off a table on the procurement plan -- two places to answer one
+	question, and only one of them was read.
+	"""
+	if frappe.session.user == "Guest":
+		frappe.throw(_("Please sign in."), frappe.PermissionError)
+	q = frappe.db.get_value("Summer Flower Procurement Plan",
+	                        {"production_plan": production_plan, "docstatus": 0},
+	                        "name")
+	if not q:
+		return {"procurement_plan": None, "ways": [], "units_by_way": {},
+		        "chosen": []}
+	doc = frappe.get_doc("Summer Flower Procurement Plan", q)
+	return {
+		"procurement_plan": q,
+		"ways": list(doc.units_by_stage()) or doc.ways_in(),
+		"units_by_way": {k: cint(v) for k, v in doc.units_by_stage().items()},
+		"lead_weeks": cint(doc.lead_weeks),
+		"chosen": [{"entry_stage": r.entry_stage, "supplier": r.supplier,
+		            "share_pct": flt(r.share_pct), "units": cint(r.units),
+		            "rate": flt(r.rate), "amount": flt(r.amount),
+		            "lead_weeks": cint(r.lead_weeks),
+		            "order_by": str(r.order_by or ""),
+		            "arrives": str(r.arrives or "")}
+		           for r in doc.purchase_allocation],
+	}
+
+
+@frappe.whitelist()
+def set_selling(production_plan, rows):
+	"""Replace who sells this plan's material with what the card shows."""
+	if frappe.session.user == "Guest":
+		frappe.throw(_("Please sign in."), frappe.PermissionError)
+	rows = frappe.parse_json(rows) if isinstance(rows, str) else (rows or [])
+	q = frappe.db.get_value("Summer Flower Procurement Plan",
+	                        {"production_plan": production_plan, "docstatus": 0},
+	                        "name")
+	if not q:
+		frappe.throw(_("There is no draft procurement plan to buy on. Save the "
+		               "material plan first."))
+	doc = frappe.get_doc("Summer Flower Procurement Plan", q)
+	doc.set("purchase_allocation", [])
+	for r in rows:
+		doc.append("purchase_allocation", {
+			"entry_stage": r.get("entry_stage"),
+			"supplier": r.get("supplier") or None,
+			"share_pct": flt(r.get("share_pct")),
+			"rate": flt(r.get("rate")) or 0,
+			"lead_weeks": cint(r.get("lead_weeks")) or 0})
+	doc.flags.ignore_permissions = True
+	doc.save()
+	return selling_choices(production_plan)
+
+
+@frappe.whitelist()
+def raising_choices(production_plan):
+	"""Everything the "who raises it" chooser needs, in one call.
+
+	What is already chosen comes back with it. A chooser that opens blank over
+	an allocation that exists invites somebody to make a second one, and the
+	first they ever hear of the first is the share totalling 200%.
+	"""
+	if frappe.session.user == "Guest":
+		frappe.throw(_("Please sign in."), frappe.PermissionError)
+	plan = frappe.get_doc("Summer Flower Production Plan", production_plan)
+	q = frappe.db.get_value("Summer Flower Procurement Plan",
+	                        {"production_plan": plan.name, "docstatus": 0}, "name")
+	doc = frappe.get_doc("Summer Flower Procurement Plan", q) if q else None
+
+	units = []
+	for w in frappe.get_all(
+			"Warehouse", filters={"custom_sf_is_propagation_unit": 1},
+			order_by="name",
+			fields=["name", "custom_farm as farm",
+			        "custom_sf_capacity_plants as capacity",
+			        "custom_sf_weekly_intake_plants as weekly"]):
+		# What this bench is already carrying for everyone else. A capacity with
+		# nothing taken off it is the number that gets over-allocated.
+		taken = frappe.db.sql("""
+			select ifnull(sum(a.plants), 0)
+			from `tabSummer Flower Propagation Allocation` a
+			join `tabSummer Flower Procurement Plan` p on p.name = a.parent
+			where a.propagation_unit = %s and p.docstatus < 2
+			  and p.name != %s""", (w.name, q or ""))[0][0]
+		w["committed"] = cint(taken)
+		w["free"] = max(0, cint(w.capacity) - cint(taken))
+		w["here"] = 1 if (plan.farm and w.farm == plan.farm) else 0
+		units.append(w)
+	units.sort(key=lambda u: (-u["here"], -u["free"], u["name"]))
+
+	propagators = frappe.get_all(
+		"Supplier", filters={"custom_sf_is_propagator": 1, "disabled": 0},
+		fields=["name", "custom_sf_propagation_weeks as lead_weeks",
+		        "custom_sf_rate_per_plant as rate"], order_by="name")
+
+	chosen, ways, plants = [], [], {}
+	if doc:
+		plants = doc.plants_by_stage()
+		ways = doc.ways_in()
+		for r in doc.propagation_allocation:
+			chosen.append({"idx": r.idx, "type": r.alloc_type, "raises": r.raises,
+			               "unit": r.propagation_unit, "supplier": r.supplier,
+			               "party": r.party, "share_pct": flt(r.share_pct),
+			               "plants": cint(r.plants), "rate": flt(r.rate_per_plant),
+			               "lead_weeks": cint(r.lead_weeks),
+			               "start_by": str(r.start_by or ""),
+			               "plan": r.propagation_plan})
+	return {"procurement_plan": q, "units": units, "propagators": propagators,
+	        "chosen": chosen, "ways": ways,
+	        "plants_by_way": {k: cint(v) for k, v in plants.items()}}
+
+
+@frappe.whitelist()
+def set_raising(production_plan, rows):
+	"""Replace who raises this plan's material with what the chooser shows."""
+	if frappe.session.user == "Guest":
+		frappe.throw(_("Please sign in."), frappe.PermissionError)
+	rows = frappe.parse_json(rows) if isinstance(rows, str) else (rows or [])
+	q = frappe.db.get_value("Summer Flower Procurement Plan",
+	                        {"production_plan": production_plan, "docstatus": 0},
+	                        "name")
+	if not q:
+		frappe.throw(_("There is no draft procurement plan to allocate on. Save "
+		               "the material plan first."))
+	doc = frappe.get_doc("Summer Flower Procurement Plan", q)
+	doc.set("propagation_allocation", [])
+	for r in rows:
+		if not (r.get("unit") or r.get("supplier")):
+			continue
+		doc.append("propagation_allocation", {
+			"alloc_type": ("Outside Propagator" if r.get("supplier") else "Own Unit"),
+			"raises": r.get("raises"),
+			"propagation_unit": r.get("unit") or None,
+			"supplier": r.get("supplier") or None,
+			"share_pct": flt(r.get("share_pct")),
+			"rate_per_plant": flt(r.get("rate")) or 0})
+	doc.flags.ignore_permissions = True
+	doc.save()
+	return raising_choices(production_plan)
+
+
+@frappe.whitelist()
+def set_propagation_unit(production_plan, unit=None, supplier=None, share_pct=100):
+	"""Say who raises this plan's material, from the dashboard.
+
+	The card could decide the quantity and who sells it and then had nowhere to
+	say who raises what arrives -- that answer lived only on the procurement
+	plan, which is a document away from the person making the decision.
+	"""
+	if frappe.session.user == "Guest":
+		frappe.throw(_("Please sign in."), frappe.PermissionError)
+	if not (unit or supplier):
+		frappe.throw(_("Name a unit or a propagator."))
+	q = frappe.db.get_value("Summer Flower Procurement Plan",
+	                        {"production_plan": production_plan, "docstatus": 0},
+	                        "name")
+	if not q:
+		frappe.throw(_("There is no draft procurement plan to allocate on. Save "
+		               "the material plan first."))
+	doc = frappe.get_doc("Summer Flower Procurement Plan", q)
+	stage = doc.main_entry_stage()
+	rows = [r for r in (doc.get("propagation_allocation") or [])
+	        if (r.raises or stage) == stage]
+	for r in rows:
+		doc.remove(r)
+	doc.append("propagation_allocation", {
+		"alloc_type": "Outside Propagator" if supplier else "Own Unit",
+		"raises": stage, "propagation_unit": unit, "supplier": supplier,
+		"share_pct": flt(share_pct)})
+	doc.flags.ignore_permissions = True
+	doc.save()
+	doc.reload()
+	r = doc.propagation_allocation[-1]
+	return {"procurement_plan": doc.name, "raises": r.raises,
+	        "party": r.party, "share_pct": flt(r.share_pct),
+	        "plants": cint(r.plants), "lead_weeks": cint(r.lead_weeks),
+	        "start_by": str(r.start_by or ""), "basis": r.ready_basis}
 
 
 @frappe.whitelist()
