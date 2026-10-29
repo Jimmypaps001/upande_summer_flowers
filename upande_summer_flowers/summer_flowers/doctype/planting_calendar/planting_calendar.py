@@ -138,7 +138,28 @@ class PlantingCalendar(Document):
 	# --------------------------------------------------------------------- size
 	def set_size(self):
 		v = self.version
-		self.plants = (self.beds or 0) * (v.plants_per_bed or 0)
+		# Derived only where nothing was given. A planting written from a plan
+		# arrives knowing its own plant count, worked out from the demand and the
+		# cohort it belongs to; recomputing it from beds x the protocol's density
+		# silently replaced it -- and where that density is wrong, catastrophically
+		# so. One Eryngium plan standing 572,928 plants became 288, across
+		# eighteen plantings that all reported as written, because its protocol
+		# says a bed is 0 m2 and so holds 16 plants.
+		per_bed = cint(v.plants_per_bed)
+		derived = cint(self.beds or 0) * per_bed
+		if not cint(self.plants):
+			self.plants = derived
+		elif derived and abs(cint(self.plants) - derived) > max(1, derived * 0.5):
+			# Kept, and said out loud. The two disagree by more than half, which
+			# is a protocol whose bed density is wrong rather than a rounding.
+			frappe.msgprint(_(
+				"{0} was planned with {1} plants on {2} bed(s), but {3} says a bed "
+				"holds {4} -- which would make it {5}. The planned figure is kept. "
+				"Check the plants per bed on the protocol."
+			).format(self.name or _("This planting"), "{:,}".format(cint(self.plants)),
+			         cint(self.beds), v.name, "{:,}".format(per_bed),
+			         "{:,}".format(derived)),
+				indicator="orange", title=_("Plants per bed disagree"))
 		self.net_area_sqm = (self.beds or 0) * (v.sqm_net_per_bed or 0)
 		self.net_area_ha = ((self.beds or 0) * (v.sqm_net_per_bed or 0)) / 10_000
 
