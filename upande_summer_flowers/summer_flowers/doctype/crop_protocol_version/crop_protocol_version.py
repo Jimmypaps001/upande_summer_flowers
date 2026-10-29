@@ -14,6 +14,7 @@ import frappe
 from frappe import _
 from frappe.model.document import Document
 from frappe.utils import add_days, cint, flt, getdate, now_datetime, nowdate
+from upande_summer_flowers.summer_flowers import stages as _stages
 
 WEEKS_PER_YEAR = 52
 
@@ -23,6 +24,12 @@ WEEKS_PER_YEAR = 52
 # by half: the farm plans against the ground it has, not against the bed it would
 # have if the ground were all bed.
 BED_SQM_PER_HA = 6667
+
+
+def bed_sqm_per_ha():
+	from upande_summer_flowers.summer_flowers.settings import bed_sqm_per_ha as _b
+
+	return _b(BED_SQM_PER_HA)
 
 
 class CropProtocolVersion(Document):
@@ -276,7 +283,7 @@ class CropProtocolVersion(Document):
 		# Cycles a stage may be run round again: motherstock generations, or the
 		# times a tuber clump is divided.
 		mult = next((st for st, _ in blocks
-		             if st.stage in ("Motherstock", "Sprouting")), None)
+		             if st.stage in _stages.StageSet(flag="multiplies")), None)
 		if mult and cint(mult.max_cycles):
 			self.max_multiplication_cycles = cint(mult.max_cycles)
 
@@ -363,12 +370,12 @@ class CropProtocolVersion(Document):
 		self.set_per_hectare(years)
 
 	def set_per_hectare(self, years):
-		# Per hectare means per hectare of GROUND, of which BED_SQM_PER_HA is bed.
+		# Per hectare means per hectare of GROUND, of which bed_sqm_per_ha() is bed.
 		# There is one area in this app -- the ground the crop occupies -- and every
 		# per-hectare figure is quoted against it. Carrying a second, larger area
 		# alongside invited every yield to be read against whichever one the reader
 		# assumed.
-		plants_per_ha = (self.plants_per_sqm_net or 0) * BED_SQM_PER_HA
+		plants_per_ha = (self.plants_per_sqm_net or 0) * bed_sqm_per_ha()
 		self.plants_per_net_ha = int(round(plants_per_ha))
 		self.stems_per_ha_life = (self.total_stems_per_plant_life or 0) * plants_per_ha
 		self.stems_per_ha_year = (self.stems_per_ha_life / years) if years else 0

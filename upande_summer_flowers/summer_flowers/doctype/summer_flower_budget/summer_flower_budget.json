@@ -125,9 +125,11 @@
   {
    "fieldname": "price_per_stem",
    "fieldtype": "Currency",
-   "label": "Price Per Stem",
+   "label": "Price Per Stem (item valuation)",
    "options": "currency",
-   "reqd": 1
+   "reqd": 1,
+   "read_only": 1,
+   "description": "The variety Item's valuation rate, read from stock. Not typed."
   },
   {
    "fieldname": "total_stems",
@@ -210,7 +212,7 @@
  "grid_page_length": 50,
  "index_web_pages_for_search": 1,
  "links": [],
- "modified": "2026-07-29 14:13:05.472911",
+ "modified": "2026-10-28 20:00:00.000000",
  "modified_by": "Administrator",
  "module": "Summer Flowers",
  "name": "Summer Flower Budget",

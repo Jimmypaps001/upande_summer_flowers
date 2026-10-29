@@ -26,7 +26,11 @@ import frappe
 from frappe import _
 from frappe.utils import cint, flt, getdate
 
-from upande_summer_flowers.summer_flowers.crop_protocol import ROUTE_END, ROUTE_ENTRY
+from upande_summer_flowers.summer_flowers.crop_protocol import (
+	ROUTE_END,
+	ROUTE_ENTRY,
+	TAKEN_STAGES as OWN_STAGES,
+)
 
 
 def _blocks(version):
@@ -118,11 +122,6 @@ def journey(version, from_stage):
 	}
 
 
-# Entry stages the farm takes off its own crop rather than buying. Nothing is
-# ordered for these, so a route starting at one has no purchase in it at all.
-# Not Cuttings (Own): a cutting is a draw from a motherstock that was bought as
-# tissue culture, so it is never where a route begins. See crop_protocol.ROUTE_ENTRY.
-OWN_STAGES = ("Roots (Own)", "Tubers (Own)")
 
 
 @frappe.whitelist()

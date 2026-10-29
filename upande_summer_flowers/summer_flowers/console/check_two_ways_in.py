@@ -25,10 +25,10 @@ def main(protocol="Eryngium Magnetar Questar-Carzan MR"):
 	doc.set("custom_sf_material_route", [])
 	for stage, weeks, buy, lead, share in (
 		("TC", TC_HARDEN, 1, TC_LEAD, 82),
-		("Propagation", 0, 0, 0, 0),
+		("Rooting", 0, 0, 0, 0),
 		("Plants", 0, 0, 0, 0),
 		("Roots", ROOT_HARDEN, 1, ROOT_LEAD, 18),
-		("Propagation", 0, 0, 0, 0),
+		("Rooting", 0, 0, 0, 0),
 		("Plants", 0, 0, 0, 0),
 	):
 		doc.append("custom_sf_material_route", {

@@ -36,6 +36,12 @@ app_license = "mit"
 
 fixtures = [
 	{
+		# Our own propagation units are warehouses of this type; route cards, the
+		# procurement plan and the board offer only these as "our unit".
+		"dt": "Warehouse Type",
+		"filters": [["name", "in", ["Propagation Unit"]]],
+	},
+	{
 		# The walkthroughs behind the help icon. Shipped rather than typed on each
 		# site: they explain the order the fields are meant to be filled in, which is
 		# a property of the app, not of a site's data. They also carry the wording
@@ -156,7 +162,7 @@ app_include_js = [
 
 # Crop Protocol belongs to another app, so this is where its form script lives.
 doctype_js = {
-	"Crop Protocol": "public/js/crop_protocol_walkthrough.js",
+	"Crop Protocol": ["public/js/crop_protocol_walkthrough.js", "public/js/crop_protocol_ways.js"],
 	# Crop Cycle belongs to upande_agriculture. The plants a cycle stands on were
 	# bought and are still stock until something consumes them, and this is the
 	# document a grower opens when the crop is in the ground.
@@ -337,6 +343,10 @@ doc_events = {
 		# The workflow moves the status; this turns reaching Approved into an actual
 		# snapshot, which is the only thing that creates a Crop Protocol Version.
 		"on_update": "upande_summer_flowers.summer_flowers.crop_protocol.on_update",
+	},
+	# A warehouse of type Propagation Unit is one of our own propagation units.
+	"Warehouse": {
+		"validate": "upande_summer_flowers.summer_flowers.setup.propagation_units.mark_unit",
 	},
 	"Block": {
 		"validate": "upande_summer_flowers.summer_flowers.block.validate_block",

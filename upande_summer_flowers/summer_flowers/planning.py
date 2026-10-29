@@ -24,7 +24,14 @@ MONTH_NAMES = [
 # W1-W26 to the next. Everything that has to agree about which season a week is in
 # reads this, because deriving it twice is how a plan came to open a week after the
 # register it was built from.
+#: The default. Summer Flower Settings overrides it; season_first_week() reads both.
 SEASON_FIRST_WEEK = 27
+
+
+def season_first_week():
+	from upande_summer_flowers.summer_flowers.settings import season_first_week as _w
+
+	return _w(SEASON_FIRST_WEEK)
 
 
 def season_year(value, default=0):

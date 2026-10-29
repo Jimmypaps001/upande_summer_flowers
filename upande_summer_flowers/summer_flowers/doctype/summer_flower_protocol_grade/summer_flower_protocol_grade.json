@@ -34,15 +34,16 @@
    "columns": 3,
    "fieldname": "price_per_stem",
    "fieldtype": "Currency",
-   "in_list_view": 1,
-   "label": "Price Per Stem"
+   "in_list_view": 0,
+   "label": "Price Per Stem",
+   "hidden": 1
   }
  ],
  "grid_page_length": 50,
  "index_web_pages_for_search": 1,
  "istable": 1,
  "links": [],
- "modified": "2026-07-29 14:00:52.253077",
+ "modified": "2026-10-28 20:00:00.000000",
  "modified_by": "Administrator",
  "module": "Summer Flowers",
  "name": "Summer Flower Protocol Grade",
