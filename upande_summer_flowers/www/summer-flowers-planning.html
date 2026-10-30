@@ -6112,7 +6112,7 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
         `<span class="pl-actions" style="margin-left:auto">` +
         (S.planTransitions || []).map((a) =>
           `<button type="button" class="pl-btn${a === "Approve" ? " primary" : ""}" ` +
-          `data-plan="${esc(a)}">${esc(a)}</button>`).join(" ") +
+          `data-plan-action="${esc(a)}">${esc(a)}</button>`).join(" ") +
         `</span></div><div class="rv-det"><span class="bf-meta">` +
         `Approving a plan posts the budget and its monthly distributions.</span></div></div>`
       : '<p class="pl-empty">No production plan in scope.</p>';
@@ -7977,13 +7977,16 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
       return `<div class="pl-callout${o.short_by ? " is-bad" : " is-info"}" ` +
         `style="margin-bottom:6px">` +
         `<b>${esc(o.supplier_name || o.supplier || "")}</b> \u00b7 ` +
-        `<a href="/app/purchase-order/${encodeURIComponent(o.purchase_order)}">` +
-        `${esc(o.purchase_order)}</a> \u00b7 ${esc(o.status)}` +
+        (o.purchase_order
+          ? `<a href="/app/purchase-order/${encodeURIComponent(o.purchase_order)}">` +
+            `${esc(o.purchase_order)}</a> \u00b7 `
+          : "") + `${esc(o.status)}` +
         (o.confirmation_date
           ? ` \u00b7 confirmed ${fdate(o.confirmation_date)}`
           : " \u00b7 not confirmed yet") +
         `</div>` +
-        `<table class="pl-t" data-order="${esc(o.purchase_order)}"><thead><tr>` +
+        `<table class="pl-t" data-order="${esc(o.purchase_order || o.requirement_of)}" ` +
+        `data-req="${o.requirement_of ? "1" : ""}"><thead><tr>` +
         `<th>Week</th><th class="r">We asked</th>` +
         `<th class="r">${esc(o.unit || "Units")} they will send</th>` +
         `<th>On</th><th>\u00a0</th><th class="r">Received</th>` +
@@ -7998,11 +8001,15 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
         (ro ? `<p class="pl-note">Confirmed. The schedule above is what both sides ` +
               `agreed to; changing it now is a change to a live order.</p>`
             : `<div style="margin:8px 0 18px">` +
-              `<button class="btn btn-xs btn-default dc-save" data-o="${esc(o.purchase_order)}">` +
-              `Save</button> ` +
-              `<button class="btn btn-xs btn-primary dc-confirm" data-o="${esc(o.purchase_order)}">` +
-              `Confirm this schedule</button> ` +
-              `<span class="pl-dim">Confirming submits the order.</span></div>`);
+              `<button class="btn btn-xs btn-default dc-save" ` +
+              `data-o="${esc(o.purchase_order || o.requirement_of)}">Save</button> ` +
+              `<button class="btn btn-xs btn-primary dc-confirm" ` +
+              `data-o="${esc(o.purchase_order || o.requirement_of)}">` +
+              `${o.requirement_of ? "Confirm and raise the order" : "Confirm this schedule"}` +
+              `</button> <span class="pl-dim">` +
+              `${o.requirement_of
+                 ? "Nothing is ordered until this is confirmed \u2014 what is raised is what the supplier agreed to."
+                 : "Confirming submits the order."}</span></div>`);
     }).join("");
     bindDeliveries();
   }
@@ -8018,11 +8025,18 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
   function bindDeliveries() {
     const box = $("pc-deliveries");
     if (!box) return;
+    // Before an order exists the figures are written onto the plan's own
+    // requirement lines; afterwards onto the order. Same table, same two
+    // columns, different home for the answer.
+    const saveCall = (t, name) => t.dataset.req
+      ? callDc("save_requirements", { procurement_plan: name,
+                                      lines: JSON.stringify(dcRows(t)) })
+      : callDc("save_schedule", { purchase_order: name,
+                                  lines: JSON.stringify(dcRows(t)) });
     box.querySelectorAll(".dc-save").forEach((b) => b.addEventListener("click", () => {
       const t = box.querySelector(`table[data-order="${b.dataset.o}"]`);
       b.disabled = true;
-      callDc("save_schedule", { purchase_order: b.dataset.o,
-                                lines: JSON.stringify(dcRows(t)) })
+      saveCall(t, b.dataset.o)
         .then((r) => { S.dc = r; renderDeliveries(); })
         .catch((e) => { b.disabled = false; frappe.msgprint(esc(e.message)); });
     }));
@@ -8031,13 +8045,19 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
       // Confirming is agreeing to what is on screen, so what is on screen is
       // saved first. Submitting an order that still held yesterday's figures
       // because nobody pressed Save is the one mistake this must not allow.
+      const req = !!t.dataset.req;
       frappe.confirm(
-        __("Submit this order? It becomes the schedule the supplier delivers to."),
+        req
+          ? __("Confirm this schedule and raise the order for it? The request "
+               + "and the purchase order carry these quantities, and the "
+               + "planting plan is rebuilt from them.")
+          : __("Submit this order? It becomes the schedule the supplier delivers to."),
         () => {
           b.disabled = true;
-          callDc("save_schedule", { purchase_order: b.dataset.o,
-                                    lines: JSON.stringify(dcRows(t)) })
-            .then(() => callDc("confirm", { purchase_order: b.dataset.o }))
+          saveCall(t, b.dataset.o)
+            .then(() => req
+              ? callDc("confirm_and_raise", { procurement_plan: b.dataset.o })
+              : callDc("confirm", { purchase_order: b.dataset.o }))
             .then((r) => { S.dc = r; renderDeliveries(); loadProcurement(); })
             .catch((e) => { b.disabled = false; frappe.msgprint(esc(e.message)); });
         });
@@ -8331,9 +8351,14 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
         });
         return;
       }
-      const pa = ev.target.closest("[data-plan]");
+      // data-plan-action, not data-plan. The allocation editor on the
+      // procurement tab carries data-plan too -- the procurement plan's NAME --
+      // so every click inside it was read as a workflow transition and thrown
+      // back as "SFPROC-... is not available on SFPP-...". That editor is where
+      // suppliers and propagators are chosen, so choosing one was impossible.
+      const pa = ev.target.closest("[data-plan-action]");
       if (pa && S.dv && S.dv.plan) {
-        run("plan_action", { plan: S.dv.plan, action: pa.dataset.plan }, (r) => {
+        run("plan_action", { plan: S.dv.plan, action: pa.dataset.planAction }, (r) => {
           toast(`Plan ${r.plan} → ${r.state}` + (r.budget ? `, budget ${r.budget}` : ""));
           S.planState = r.state; S.planBudget = r.budget;
           S.planTransitions = r.transitions;

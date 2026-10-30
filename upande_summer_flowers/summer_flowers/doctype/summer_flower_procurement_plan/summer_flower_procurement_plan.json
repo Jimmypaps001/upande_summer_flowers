@@ -27,6 +27,7 @@
   "route_verdict",
   "entry_stage",
   "supplier",
+  "deliveries_confirmed",
   "column_break_method",
   "route_summary",
   "weeks_to_ground",
@@ -201,6 +202,13 @@
    "depends_on": "eval:doc.method=='Purchase'",
    "read_only_depends_on": "eval:(doc.purchase_allocation||[]).length",
    "description": "Taken from Who Sells It below. Where more than one seller supplies the same way in, this stays blank and the table is the answer."
+  },
+  {
+   "fieldname": "deliveries_confirmed",
+   "fieldtype": "Check",
+   "label": "Deliveries Confirmed",
+   "read_only": 1,
+   "description": "A supplier has said what they can send, week by week. The request and the order are raised from that, not from what the plan asked for."
   },
   {
    "fieldname": "column_break_method",
@@ -506,7 +514,7 @@
   }
  ],
  "links": [],
- "modified": "2026-09-17 00:00:00.000000",
+ "modified": "2026-10-30 17:00:00.000000",
  "modified_by": "Administrator",
  "module": "Summer Flowers",
  "name": "Summer Flower Procurement Plan",

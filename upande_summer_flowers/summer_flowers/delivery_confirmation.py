@@ -92,6 +92,15 @@ def schedule_for(procurement_plan):
 		if r.source_doctype == "Material Request" and r.source_doc:
 			asked.setdefault(r.source_doc, []).append(r)
 
+	# Before anything is raised, the thing to confirm against is the plan's own
+	# requirement lines: what the farm wants, week by week. There is no order
+	# yet and there should not be -- what is ordered is what a supplier agreed
+	# to, and nobody has been asked. Once the schedule IS agreed the order
+	# carries it, and this reads that instead.
+	if not _plan_orders(plan.name):
+		return {"plan": plan.name, "variety": plan.variety, "farm": plan.farm,
+		        "orders": [_from_requirements(plan)]}
+
 	out = []
 	for o in _plan_orders(plan.name):
 		if not frappe.db.exists("Purchase Order", o.purchase_order):
@@ -133,6 +142,106 @@ def schedule_for(procurement_plan):
 		})
 	return {"plan": plan.name, "variety": plan.variety, "farm": plan.farm,
 	        "orders": out}
+
+
+def _from_requirements(plan):
+	"""The plan's own wants, shaped like an order so one table draws both."""
+	lines, asked, qty = [], 0, 0
+	for r in plan.requirements:
+		if not cint(r.qty_to_order):
+			continue
+		want = cint(r.qty_to_order)
+		# What has been keyed so far, or the ask where nothing has.
+		agreed = cint(r.confirmed_qty) if cint(r.get("delivery_confirmed")) else want
+		asked += want
+		qty += agreed
+		lines.append({
+			"name": r.name, "item_code": plan.variety,
+			"asked_qty": want,
+			"asked_week": _week_of(r.required_at_site_date),
+			"qty": agreed,
+			# The date keyed so far, else the one the plan asked for.
+			"schedule_date": str(r.expected_delivery_date
+			                     or r.required_at_site_date or "") or None,
+			"week": r.confirmed_delivery_week or _week_of(r.required_at_site_date),
+			"received_qty": 0,
+		})
+	stage = next((r.entry_stage for r in plan.requirements if r.entry_stage), None)
+	return {
+		"purchase_order": None, "requirement_of": plan.name,
+		"supplier": plan.supplier,
+		"supplier_name": plan.supplier or _("not chosen yet"),
+		"status": _("Not ordered"), "docstatus": 0, "editable": 1,
+		"unit": stage or plan.entry_stage or _("units"),
+		"confirmation_no": None, "confirmation_date": None,
+		"lines": lines, "asked_total": asked, "qty_total": qty,
+		"short_by": max(0, asked - qty),
+	}
+
+
+@frappe.whitelist()
+def save_requirements(procurement_plan, lines):
+	"""Write what the supplier says they can send onto the plan's own lines.
+
+	Before an order exists this is where a confirmation lives. Nothing is
+	ordered by saving it: the quantities are the farm's record of what was
+	agreed, and raising the documents is a separate, deliberate step.
+	"""
+	if isinstance(lines, str):
+		lines = frappe.parse_json(lines)
+	doc = frappe.get_doc("Summer Flower Procurement Plan", procurement_plan)
+	frappe.has_permission("Summer Flower Procurement Plan", "write", doc, throw=True)
+	by_name = {x.get("name"): x for x in (lines or [])}
+	today = getdate(nowdate())
+	for r in doc.requirements:
+		given = by_name.get(r.name)
+		if not given:
+			continue
+		if given.get("qty") not in (None, ""):
+			r.db_set("confirmed_qty", max(0, cint(given.get("qty"))),
+			         update_modified=False)
+		when = given.get("schedule_date")
+		if when:
+			when = max(getdate(when), today)
+			r.db_set("confirmed_delivery_week", _week_of(when),
+			         update_modified=False)
+			r.db_set("expected_delivery_date", when, update_modified=False)
+		r.db_set("delivery_confirmed", 1, update_modified=False)
+		r.db_set("short_ordered",
+		         1 if cint(r.confirmed_qty) < cint(r.qty_to_order) else 0,
+		         update_modified=False)
+	return schedule_for(doc.name)
+
+
+@frappe.whitelist()
+def confirm_and_raise(procurement_plan):
+	"""Agree the schedule, then raise the request and the order for it.
+
+	The order of these two is the whole point. The documents carry what a
+	supplier said they would send, so nothing has to be amended the first time
+	a lab says no -- and the plan is told, because a planting fed by a short
+	delivery is a smaller planting.
+	"""
+	doc = frappe.get_doc("Summer Flower Procurement Plan", procurement_plan)
+	frappe.has_permission("Summer Flower Procurement Plan", "write", doc, throw=True)
+	if not any(cint(r.get("delivery_confirmed")) for r in doc.requirements):
+		frappe.throw(_("Nothing has been confirmed yet. Key in what the supplier "
+		               "can send, week by week, and save it first."),
+		             title=_("Nothing to raise"))
+	doc.db_set("deliveries_confirmed", 1, update_modified=False)
+	doc.reload()
+	doc.raise_material_requests()
+	# A short confirmation makes a smaller planting, and the plan has to be
+	# rebuilt from it or the calendar goes on believing what was asked for.
+	from upande_summer_flowers.summer_flowers.doctype \
+		.summer_flower_procurement_plan.summer_flower_procurement_plan import (
+			write_plantings,
+		)
+
+	plan = frappe.get_doc("Summer Flower Production Plan", doc.production_plan)
+	write_plantings(plan, doc)
+	frappe.db.commit()
+	return schedule_for(doc.name)
 
 
 @frappe.whitelist()

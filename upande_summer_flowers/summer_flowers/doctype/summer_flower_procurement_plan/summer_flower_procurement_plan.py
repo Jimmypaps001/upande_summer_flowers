@@ -463,7 +463,14 @@ class SummerFlowerProcurementPlan(Document):
 		# nothing saying what to stick or when. The purchase is where the route
 		# starts; propagation is every stage between there and the ground. A route
 		# can want both, and this one does.
-		if self.method == "Purchase":
+		# NOT here. What the farm buys is what a supplier has agreed to send, and
+		# nobody has been asked yet: approving the plan is the farm settling what
+		# it wants, not the supplier settling what is coming. The request and the
+		# order are raised from the confirmed schedule -- see
+		# delivery_confirmation.confirm -- so the quantities on them are the ones
+		# that will actually arrive, rather than a wish that has to be corrected
+		# by amendment the first time a lab says no.
+		if self.method == "Purchase" and cint(self.get("deliveries_confirmed")):
 			self.raise_material_requests()
 		# Plants raised by an outside propagator are bought from them: one order
 		# each, at their charge per plant, for their share of the season.
@@ -639,6 +646,22 @@ class SummerFlowerProcurementPlan(Document):
 		"""
 		from collections import defaultdict
 
+		today = getdate(nowdate())
+
+		def confirmed_or_asked(row):
+			"""What goes on the request: what a supplier agreed to, where one
+			has. Raising the ask after the answer is in would order a quantity
+			nobody promised and leave it to be corrected by amendment."""
+			if cint(row.get("delivery_confirmed")):
+				return cint(row.get("confirmed_qty"))
+			return cint(row.qty_to_order)
+
+		def wanted_on(row):
+			when = (row.get("expected_delivery_date")
+			        if cint(row.get("delivery_confirmed")) else None)
+			when = when or row.required_at_site_date
+			return getdate(when) if when else today
+
 		item = frappe.db.get_value("Item", self.variety, "name")
 		if not item:
 			frappe.msgprint(_("No Item called {0}, so nothing can be requested for it.")
@@ -652,14 +675,14 @@ class SummerFlowerProcurementPlan(Document):
 		# never heard about it.
 		groups = defaultdict(list)
 		for r in self.requirements:
-			if not cint(r.qty_to_order) or r.source_doc:
+			if not confirmed_or_asked(r) or r.source_doc:
 				continue
 			sellers = self.suppliers_for(r.entry_stage or self.entry_stage)
 			if not sellers:
 				groups[r.supplier].append(r)
 				continue
 			shares = [flt(x.share_pct) for x in sellers]
-			qty, taken = cint(r.qty_to_order), 0
+			qty, taken = confirmed_or_asked(r), 0
 			for i, seller in enumerate(sellers):
 				part = (qty - taken if i == len(sellers) - 1
 				        else int(round(qty * shares[i] / 100.0)))
@@ -681,11 +704,6 @@ class SummerFlowerProcurementPlan(Document):
 				groups[seller.supplier].append(share_of)
 
 		made, ordered, overdue, failed = [], [], [], []
-		today = getdate(nowdate())
-		def wanted_on(row):
-			return (getdate(row.required_at_site_date)
-			        if row.required_at_site_date else today)
-
 		for supplier, rows in sorted(
 			groups.items(), key=lambda kv: min(wanted_on(r) for r in kv[1])
 		):
@@ -714,7 +732,7 @@ class SummerFlowerProcurementPlan(Document):
 			for r in rows:
 				row = {
 					"item_code": item,
-					"qty": cint(r.qty_to_order),
+					"qty": confirmed_or_asked(r),
 					# The delivery this line is for. One order, many dates: this
 					# is the whole of the staggered delivery, and ERPNext carries
 					# it to the Purchase Order Item without being asked.
@@ -780,10 +798,9 @@ class SummerFlowerProcurementPlan(Document):
 				title=_("Material Requests"))
 		if ordered:
 			frappe.msgprint(_(
-				"{0} drafted and waiting to be confirmed: {1}. Each carries one line "
-				"a delivery. Confirm what the supplier can actually send, week by "
-				"week, on the plan's Procurement tab -- submitting the order is the "
-				"act of agreeing that schedule."
+				"{0} drafted from the confirmed schedule: {1}. Each carries one line "
+				"a delivery, at the quantity and in the week the supplier agreed to. "
+				"Check it and submit it to place the order."
 			).format(len(ordered), ", ".join(ordered)), indicator="blue",
 				title=_("Purchase Orders"))
 		if failed:
