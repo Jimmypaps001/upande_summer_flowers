@@ -7819,20 +7819,27 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
           <th>Plants ready</th><th class="r">Plants now</th><th></th>
         </tr></thead><tbody>${mine.map((x) => allocRow(x, p)).join("")}</tbody></table>
         <div class="pl-alloc-actions" style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px">
-          <input class="pl-add-unit" list="pl-unit-list" placeholder="+ our propagation unit…" style="min-width:240px">
-          <input class="pl-add-sup" list="pl-sup-list" placeholder="+ outside propagator (supplier)…" style="min-width:240px">
+          <span class="pl-combo"><input class="pl-add-unit" autocomplete="off" ` +
+          `spellcheck="false" role="combobox" aria-autocomplete="list" ` +
+          `aria-expanded="false" placeholder="+ our propagation unit…" ` +
+          `style="min-width:240px"><ul class="pl-ac" role="listbox" hidden></ul></span>
+          <span class="pl-combo"><input class="pl-add-sup" autocomplete="off" ` +
+          `spellcheck="false" role="combobox" aria-autocomplete="list" ` +
+          `aria-expanded="false" placeholder="+ outside propagator (supplier)…" ` +
+          `style="min-width:240px"><ul class="pl-ac" role="listbox" hidden></ul></span>
           <button class="pl-btn pl-alloc-protocol">Propose by unit capacity</button>
           <button class="pl-btn pl-btn-primary pl-alloc-save">Save allocation</button>
           <span class="pl-note pl-alloc-msg"></span>
         </div>
       </div>`;
-    }).join("") + `<datalist id="pl-sup-list">${
-      PROP_CHOICES.suppliers.map((x) => `<option value="${esc(x)}">`).join("")}</datalist>` +
-      `<datalist id="pl-unit-list">${
-      PROP_CHOICES.units.map((x) => `<option value="${esc(x)}">`).join("")}</datalist>`;
+    }).join("");
 
     box.querySelectorAll(".pl-alloc-edit").forEach((ed) => {
       const plan = ed.dataset.plan;
+      ed.querySelectorAll(".pl-combo").forEach((c) => attachCombo(
+        c.querySelector("input"), c.querySelector(".pl-ac"),
+        () => (c.querySelector(".pl-add-unit") ? PROP_CHOICES.units
+                                               : PROP_CHOICES.suppliers)));
       const tbody = ed.querySelector("tbody");
       const msg = ed.querySelector(".pl-alloc-msg");
       const add = (x) => { tbody.insertAdjacentHTML("beforeend", allocRow(x)); };
@@ -7929,8 +7936,11 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
       const u = Math.round(tot * (+x.share_pct || 0) / 100);
       return `<tr data-stage="${esc(x.entry_stage || "")}">` +
       `<td>${esc(x.entry_stage || "—")}</td>` +
-      `<td><input class="sl-sup" list="pc-sup-list" style="min-width:230px" ` +
-      `value="${esc(x.supplier || "")}" placeholder="who sells it…"></td>` +
+      `<td class="pl-combo"><input class="sl-sup" autocomplete="off" ` +
+      `spellcheck="false" role="combobox" aria-autocomplete="list" ` +
+      `aria-expanded="false" style="min-width:230px" ` +
+      `value="${esc(x.supplier || "")}" placeholder="who sells it…">` +
+      `<ul class="pl-ac" role="listbox" hidden></ul></td>` +
       `<td class="r"><input class="sl-share" type="number" step="0.01" ` +
       `style="width:80px" value="${(+x.share_pct || 0).toFixed(2)}"></td>` +
       // The share as a quantity. A percentage of a total nobody shows is a
@@ -7953,10 +7963,16 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
         `+ another seller for ${esc(st || "this way")}</button>`).join(" ") +
       `<button class="pl-btn pl-btn-primary sl-save">Save sellers</button>` +
       `<span class="pl-note sl-msg"></span></div>` +
-      `<datalist id="pc-sup-list">${
-        sc.suppliers.map((x) => `<option value="${esc(x)}">`).join("")}</datalist>`;
+      "";
 
     const tbody = box.querySelector("#pc-sell tbody");
+    // Type and it filters, the way the variety field does. A datalist offers no
+    // filtering a reader can see and renders as a native dropdown that the
+    // browser lays out wherever it likes; this is the page's own link control.
+    const wireSup = (tr) => attachCombo(tr.querySelector(".sl-sup"),
+                                        tr.querySelector(".pl-ac"),
+                                        () => sc.suppliers);
+    tbody.querySelectorAll("tr").forEach(wireSup);
     const msg = box.querySelector(".sl-msg");
     box.addEventListener("click", (e) => {
       const del = e.target.closest(".sl-del");
@@ -7965,6 +7981,7 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
       if (add) {
         tbody.insertAdjacentHTML("beforeend",
           sellRow({ entry_stage: add.dataset.stage, supplier: "", share_pct: 0, rate: 0 }));
+        wireSup(tbody.lastElementChild);
         return;
       }
       if (e.target.closest(".sl-save")) {
