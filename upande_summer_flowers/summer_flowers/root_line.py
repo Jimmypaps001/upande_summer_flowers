@@ -411,6 +411,16 @@ def arrival_plan(plan, tc_share=None, returns_per_plant=None,
 	share_by_week = _apportion(
 		weeks, share, cint(asked["plants_from_tc"]) if asked else None)
 
+	# What one bought unit of the first way becomes, and what survives the first
+	# loss on the way there. Worked out once: it is the same walk every week.
+	per_unit_one = _plants_per_unit_from(rows, primary)
+	account = _loss_account(v, rows, primary)
+	# Germination is the first of the two percentages the protocol states, and
+	# it only means anything where the route actually raises what it buys. A
+	# crop bought as plants loses nothing to rooting, and a column saying so
+	# would be a column of the same number twice.
+	first_pct = (flt(account["stated"]["rooting_success_pct"])
+	             if account.get("rooting_applies") else 0.0)
 	for land, w in weeks.items():
 		by_tc = share_by_week[land]
 		# On a one-way crop the rest of the week is not a second way in, it is
@@ -418,7 +428,17 @@ def arrival_plan(plan, tc_share=None, returns_per_plant=None,
 		# week's demand however little was ordered.
 		by_root = 0 if one_way else w["plants"] - by_tc
 		roots = int(math.ceil(by_root / per_root)) if (per_root > 0 and by_root) else None
-		w.update({"by_tc": by_tc, "by_roots": by_root, "roots_needed": roots})
+		# The week's own order, and what is left of it after each loss. The
+		# table used to print the PLANTS under the name of the thing bought, so
+		# a week needing 40,000 plants read "40,000 seeds" on a protocol that
+		# loses 44% of them. Rounded up a week at a time, which is how the
+		# procurement plan rounds, so the two agree to the seed.
+		units_one = (int(math.ceil(by_tc / per_unit_one))
+		             if (by_tc and per_unit_one > 0) else 0)
+		w.update({"by_tc": by_tc, "by_roots": by_root, "roots_needed": roots,
+		          "units_tc": units_one,
+		          "germinated_tc": (int(round(units_one * first_pct / 100.0))
+		                            if first_pct else 0)})
 		# Each way counted back from the SAME landing week.
 		#
 		# Tissue culture is ordered for the week it feeds: a lab sends batch
@@ -496,14 +516,22 @@ def arrival_plan(plan, tc_share=None, returns_per_plant=None,
 		# stand them up. They are the same number only while the losses are zero,
 		# which is how a tile reading "1,187,200 Seeds" for 1,187,200 plants went
 		# unnoticed on a protocol that loses 44% of them before planting.
-		"tc_units_total": _units_for(
-			sum(weeks[k]["by_tc"] for k in ordered), rows, primary),
+		# Summed off the weeks rather than divided out of the season total: the
+		# order is placed a week at a time and each week rounds up, so the season
+		# figure is the sum of those roundings. Dividing once reported five seeds
+		# fewer than the procurement plan went on to order.
+		"tc_units_total": (sum(cint(weeks[k].get("units_tc")) for k in ordered)
+		                   if _units_for(1, rows, primary) is not None
+		                   else None),
+		"tc_germinated_total": sum(cint(weeks[k].get("germinated_tc"))
+		                           for k in ordered),
+		"tc_first_loss_pct": first_pct,
 		"tc_plants_per_unit": round(_plants_per_unit_from(rows, primary), 6),
 		# How the order got bigger than the planting. The card could already be
 		# read two ways -- a reader who knew the protocol saw the gross-up and a
 		# reader who did not saw a number that did not match the plantings -- and
 		# the figures that explain it were a tab away on another document.
-		"losses": _loss_account(v, rows, primary),
+		"losses": account,
 		"roots_total": sum(cint(weeks[k]["roots_needed"]) for k in ordered),
 		"weeks": [dict(week=str(k), **weeks[k]) for k in ordered],
 		# "tc" not "plantlets": the farm buys tissue culture, and calling it
@@ -869,6 +897,7 @@ def _loss_account(v, rows, stage):
 
 	root = flt(v.get("rooting_success_pct"))
 	field = flt(v.get("field_establishment_pct"))
+	rooting_applies = False
 	steps = []
 	survival, seen = 1.0, False
 	for r in rows:
@@ -891,6 +920,7 @@ def _loss_account(v, rows, stage):
 					flt(v.get("cutting_reject_pct")))
 			elif st in ROOTING_LOSSES:
 				src = _("{0}% root x {1}% establish").format(root, field)
+				rooting_applies = True
 			elif cint(r.get("is_purchase")):
 				src = _("{0}% allowed on the order").format(
 					flt(v.get("tc_order_loss_pct")))
@@ -909,6 +939,8 @@ def _loss_account(v, rows, stage):
 		},
 		"steps": steps,
 		"survival_pct": round(survival * 100, 2),
+		# Whether the two stated percentages bite on this way in at all.
+		"rooting_applies": rooting_applies,
 	}
 
 

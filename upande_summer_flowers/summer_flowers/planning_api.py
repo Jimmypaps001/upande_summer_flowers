@@ -1611,6 +1611,29 @@ def simulate_lifecycle(version, tc_qty, order_date, num_cycles=None, to_prop_pct
 	return res
 
 
+def _standing_plants(block, rows, used, basis, register):
+	"""How many plants are standing on this block.
+
+	Three sources, in the order of how much they are worth. A planting calendar
+	entry is a plan that has been written down and says what it put in; a bed
+	record says what the bed holds; and the block's own varieties_grown register
+	says what is growing there. The first two are kept patchily -- four bed
+	records out of 4,789 say Planted -- and where neither has anything, a block
+	carrying a season of Eryngium reported nothing planted while its own
+	register said 723,200 plants. The register is the fallback, not the
+	override: where a planting exists it is the more specific answer and it
+	knows which plan put the crop there.
+	"""
+	from_plantings = sum(cint(r.get("plants")) for r in rows
+	                     if r.get("calendar_status") not in ("Uprooted", "Cancelled"))
+	if basis == "plantings" and from_plantings:
+		return from_plantings
+	from_beds = sum(x["plants"] for x in used)
+	if from_beds:
+		return from_beds
+	return cint((register.get(block.name) or {}).get("plants"))
+
+
 @frappe.whitelist()
 def block_forecast(plan=None, variety=None, farm=None, blocks=None):
 	"""Per-block weekly forecast to the end of each cycle, plus uprooting dates.
@@ -1635,6 +1658,23 @@ def block_forecast(plan=None, variety=None, farm=None, blocks=None):
 	)
 	if blocks:
 		all_blocks = [b for b in all_blocks if b.name in blocks]
+
+	# What each block says is standing on it, variety by variety. The block keeps
+	# its own register -- varieties_grown, with the plants and the beds each one
+	# holds -- and it is the only place the standing crop is actually written
+	# down here: 4.7 million plants across fourteen rows, against 94,000 in the
+	# Plants Standing field the dashboard was reading. A plan whose variety has
+	# three quarters of a million plants in the ground read as nothing planted.
+	standing = {}
+	if all_blocks:
+		gfilters = {"parenttype": "Block", "parent": ["in", [b.name for b in all_blocks]]}
+		if variety:
+			gfilters["variety"] = variety
+		for g in frappe.get_all("Greenhouse Variety", filters=gfilters,
+		                        fields=["parent", "variety", "plants", "beds"]):
+			k = standing.setdefault(g.parent, {"plants": 0, "beds": 0})
+			k["plants"] += cint(g.plants)
+			k["beds"] += cint(g.beds)
 
 	pfilters = {"calendar_status": ["not in", ("Cancelled",)]}
 	if variety:
@@ -1731,11 +1771,7 @@ def block_forecast(plan=None, variety=None, farm=None, blocks=None):
 				"net_sqm_free": round(net_total - net_used, 1),
 				"beds_measured": measured,
 				"area_complete": bool(beds) and measured == len(beds),
-				"plants_standing": (sum(cint(r.get("plants")) for r in rows
-				                        if r.get("calendar_status")
-				                        not in ("Uprooted", "Cancelled"))
-				                    if basis == "plantings"
-				                    else sum(x["plants"] for x in used)),
+				"plants_standing": _standing_plants(b, rows, used, basis, standing),
 			},
 		}
 		for pl in rows:

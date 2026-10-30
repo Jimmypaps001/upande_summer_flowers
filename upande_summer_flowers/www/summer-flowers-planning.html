@@ -626,7 +626,6 @@
              element away took that table with it. -->
         <div id="tc-gens"></div>
         <div id="tc-weeks" class="pl-scroll"></div>
-        <div id="tc-dvp" class="pl-scroll"></div>
       </div>
       <!-- The TC lifecycle card stood here: build-up cycles, a standing
            "% diverted to propagation", a Prop-MS column and weeks counted
@@ -5233,9 +5232,17 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
       `letter-spacing:.05em;margin:10px 0 4px">Plants to the farm — ` +
       (wayTwo(m) ? "both ways in, " : "") +
       `against what each week needs</div>` +
+      // The week read left to right as the crop meets it: what has to be
+      // bought, what is left after each loss, and what finally goes in the
+      // ground. The column under the name of the thing bought used to hold the
+      // PLANTS, so a week needing 10,000 plants read "10,000 seeds" on a
+      // protocol that loses 44% of them before planting.
       `<table class="pl-t"><thead><tr><th>Wanted</th><th>Week</th>` +
       `<th class="n">Plants needed</th>` +
-      `<th class="n">From ${esc(wayOne(m).toLowerCase())}</th>` +
+      `<th class="n">${esc(wayOne(m))} to buy</th>` +
+      (m.tc_first_loss_pct
+        ? `<th class="n">After germination ${m.tc_first_loss_pct}%</th>` : "") +
+      `<th class="n">To plant</th>` +
       (wayTwo(m) ? `<th class="n">From ${esc(wayTwo(m).toLowerCase())}</th>` : "") +
       `<th class="n">Total</th><th class="n">Variance</th>` +
       `</tr></thead><tbody>` +
@@ -5245,19 +5252,31 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
         return `<tr><td>${fdate(w.week)}</td>` +
           `<td class="text-muted">${esc(w.week_iso || "")}</td>` +
           `<td class="n">${num(w.plants)}</td>` +
+          `<td class="n">${w.units_tc ? num(w.units_tc) : ""}</td>` +
+          (m.tc_first_loss_pct
+            ? `<td class="n text-muted">${w.germinated_tc ? num(w.germinated_tc) : ""}</td>`
+            : "") +
           `<td class="n">${w.by_tc ? num(w.by_tc) : ""}</td>` +
           (wayTwo(m) ? `<td class="n">${w.by_roots ? num(w.by_roots) : ""}</td>` : "") +
           `<td class="n">${num(got)}</td>` +
           `<td class="n"${v < 0 ? ' style="color:var(--critical)"' : ""}>` +
           `${v > 0 ? "+" : ""}${v ? num(v) : "—"}</td></tr>`;
-      }).join("") + `</tbody></table>`;
+      }).join("") +
+      `<tfoot><tr><th colspan="2">Season</th>` +
+      `<th class="n">${num(m.plants_total)}</th>` +
+      `<th class="n">${num(m.tc_units_total)}</th>` +
+      (m.tc_first_loss_pct
+        ? `<th class="n">${num(m.tc_germinated_total)}</th>` : "") +
+      `<th class="n">${num(m.tc_total)}</th>` +
+      (wayTwo(m) ? `<th class="n">${num(m.roots_total)}</th>` : "") +
+      `<th colspan="2"></th></tr></tfoot>` +
+      `</tbody></table>`;
 
     renderRaisedBy(m);
     adoptCommitted(t, m);
     renderSuppliers(m);
     refreshSupplierList("");
     renderBatches();
-    renderDemandVsProduction(m);
   }
 
   // Roots are not ordered the way tissue culture is ordered. They are lifted
@@ -5409,50 +5428,11 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
       }).join("") + `</tbody></table>`;
   }
 
-  // What the ordering is FOR. Material is a means; the question is whether the
-  // stems arrive in the weeks the market wants them.
-  function renderDemandVsProduction(m) {
-    const box = $("tc-dvp");
-    if (!box) return;
-    const rows = m.demand_vs_production || [];
-    if (!rows.length) { box.innerHTML = ""; return; }
-    const dem = rows.reduce((a, r) => a + r.demand, 0);
-    const got = rows.reduce((a, r) => a + r.production, 0);
-    // The band the planting programme was solved against. A week is judged
-    // against it rather than against its demand exactly, because a crop cut over
-    // many weeks cannot hit a weekly figure on the nose and pretending otherwise
-    // is what used to have the planner buying twice the plants it needed.
-    const band = m.variance_band_pct || 10;
-    const out = rows.filter((r) => r.demand &&
-      Math.abs(r.variance) > r.demand * band / 100 + 1);
-    const inBand = (r) => !r.demand ||
-      Math.abs(r.variance) <= r.demand * band / 100 + 1;
-    box.innerHTML =
-      `<div class="text-muted small" style="text-transform:uppercase;` +
-      `letter-spacing:.05em;margin:10px 0 4px">Demand against what this plan ` +
-      `grows</div>` +
-      `<p class="pl-note">Season: ${num(dem)} stems wanted, ${num(got)} grown` +
-      `${dem ? ` — ${Math.round(got / dem * 100)}%` : ""}. ` +
-      (out.length
-        ? `<b style="color:var(--critical)">${out.length} of ${rows.length} ` +
-          `weeks outside ±${band}%.</b>`
-        : `Every week inside ±${band}%.`) + `</p>` +
-      `<table class="pl-t"><thead><tr><th>Week</th><th>ISO</th>` +
-      `<th class="n">Demand</th><th class="n">Grown</th>` +
-      `<th class="n">Variance</th><th class="n">Cumulative</th>` +
-      `</tr></thead><tbody>` +
-      rows.map((r) => `<tr${inBand(r) ? "" : ' class="ls-arrive"'}>` +
-        `<td>${fdate(r.week_start)}</td>` +
-        `<td class="text-muted">${esc(r.week_iso)}</td>` +
-        `<td class="n">${num(r.demand)}</td>` +
-        `<td class="n">${num(r.production)}</td>` +
-        `<td class="n"${inBand(r) ? "" : ' style="color:var(--critical)"'}>` +
-        `${r.variance > 0 ? "+" : ""}${num(r.variance)}` +
-        `${r.demand ? ` <span class="text-muted">` +
-          `${(r.variance / r.demand * 100).toFixed(1)}%</span>` : ""}</td>` +
-        `<td class="n">${r.cumulative > 0 ? "+" : ""}${num(r.cumulative)}</td>` +
-        `</tr>`).join("") + `</tbody></table>`;
-  }
+  // The table that stood here -- "Demand against what this plan grows" -- is
+  // gone. It restated the demand chart a tab away, under a second function of
+  // the same name as the one that draws it; being declared later it won, so
+  // every call meant for the chart landed here instead and #dp-chart has been
+  // blank. One name, one function, and the chart draws again.
 
   function agreeMaterial() {
     const m = S.mat, t = S.tc;
