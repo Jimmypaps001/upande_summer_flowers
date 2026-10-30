@@ -5229,9 +5229,9 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
 
     wk.innerHTML =
       `<div class="text-muted small" style="text-transform:uppercase;` +
-      `letter-spacing:.05em;margin:10px 0 4px">Plants to the farm — ` +
-      (wayTwo(m) ? "both ways in, " : "") +
-      `against what each week needs</div>` +
+      `letter-spacing:.05em;margin:10px 0 4px">What to buy, what to plant, ` +
+      `what stands — ` + (wayTwo(m) ? "both ways in, " : "") +
+      `week by week</div>` +
       // The week read left to right as the crop meets it: what has to be
       // bought, what is left after each loss, and what finally goes in the
       // ground. The column under the name of the thing bought used to hold the
@@ -5240,12 +5240,14 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
       `<table class="pl-t"><thead><tr><th>Wanted</th><th>Week</th>` +
       `<th class="n">Plants needed</th>` +
       `<th class="n">${esc(wayOne(m))} to buy</th>` +
-      (m.tc_first_loss_pct
-        ? `<th class="n">After germination ${m.tc_first_loss_pct}%</th>` : "") +
+      (m.tc_first_loss_pct && m.tc_first_loss_pct < 100
+        ? `<th class="n">Lost germinating ` +
+          `${(100 - m.tc_first_loss_pct).toFixed(0)}%</th>` : "") +
+      (m.tc_first_loss_pct ? `<th class="n">To plant</th>` : "") +
       (m.tc_second_loss_pct && m.tc_second_loss_pct < 100
         ? `<th class="n">Lost establishing ` +
           `${(100 - m.tc_second_loss_pct).toFixed(0)}%</th>` : "") +
-      `<th class="n">To plant</th>` +
+      `<th class="n">Plants standing</th>` +
       (wayTwo(m) ? `<th class="n">From ${esc(wayTwo(m).toLowerCase())}</th>` : "") +
       `<th class="n">Total</th><th class="n">Variance</th>` +
       `</tr></thead><tbody>` +
@@ -5256,9 +5258,12 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
           `<td class="text-muted">${esc(w.week_iso || "")}</td>` +
           `<td class="n">${num(w.plants)}</td>` +
           `<td class="n">${w.units_tc ? num(w.units_tc) : ""}</td>` +
-          (m.tc_first_loss_pct
-            ? `<td class="n text-muted">${w.germinated_tc ? num(w.germinated_tc) : ""}</td>`
+          (m.tc_first_loss_pct && m.tc_first_loss_pct < 100
+            ? `<td class="n" style="color:var(--critical)">` +
+              `${w.lost_germinating_tc ? "−" + num(w.lost_germinating_tc) : ""}</td>`
             : "") +
+          (m.tc_first_loss_pct
+            ? `<td class="n">${w.to_plant_tc ? num(w.to_plant_tc) : ""}</td>` : "") +
           (m.tc_second_loss_pct && m.tc_second_loss_pct < 100
             ? `<td class="n" style="color:var(--critical)">` +
               `${w.lost_establishing_tc ? "−" + num(w.lost_establishing_tc) : ""}</td>`
@@ -5272,8 +5277,11 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
       `<tfoot><tr><th colspan="2">Season</th>` +
       `<th class="n">${num(m.plants_total)}</th>` +
       `<th class="n">${num(m.tc_units_total)}</th>` +
+      (m.tc_first_loss_pct && m.tc_first_loss_pct < 100
+        ? `<th class="n" style="color:var(--critical)">` +
+          `−${num(m.tc_lost_germinating_total)}</th>` : "") +
       (m.tc_first_loss_pct
-        ? `<th class="n">${num(m.tc_germinated_total)}</th>` : "") +
+        ? `<th class="n">${num(m.tc_to_plant_total)}</th>` : "") +
       (m.tc_second_loss_pct && m.tc_second_loss_pct < 100
         ? `<th class="n" style="color:var(--critical)">` +
           `−${num(m.tc_lost_establishing_total)}</th>` : "") +

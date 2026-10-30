@@ -441,13 +441,23 @@ def arrival_plan(plan, tc_share=None, returns_per_plant=None,
 		# procurement plan rounds, so the two agree to the seed.
 		units_one = (int(math.ceil(by_tc / per_unit_one))
 		             if (by_tc and per_unit_one > 0) else 0)
-		germinated = (int(round(units_one * first_pct / 100.0))
-		              if first_pct else 0)
+		# The week as a ladder down from what is bought to what is left
+		# standing. Planting is not the end of it: a plant is put in the ground
+		# and SOME of them take, so what goes in is more than what the plan
+		# needs -- 14,286 planted to be left with 10,000 -- and the table has to
+		# say which number is which or it reads as though the plan asked for
+		# exactly what it buys.
+		to_plant = (int(round(units_one * first_pct / 100.0))
+		            if first_pct else 0)
 		w.update({"by_tc": by_tc, "by_roots": by_root, "roots_needed": roots,
-		          "units_tc": units_one, "germinated_tc": germinated,
-		          # What the field takes of what the bench handed over.
-		          "lost_establishing_tc": (max(0, germinated - by_tc)
-		                                   if germinated else 0)})
+		          "units_tc": units_one,
+		          # kept under the old name: what reaches planting out
+		          "germinated_tc": to_plant,
+		          "to_plant_tc": to_plant,
+		          "lost_germinating_tc": (max(0, units_one - to_plant)
+		                                  if to_plant else 0),
+		          "lost_establishing_tc": (max(0, to_plant - by_tc)
+		                                   if to_plant else 0)})
 		# Each way counted back from the SAME landing week.
 		#
 		# Tissue culture is ordered for the week it feeds: a lab sends batch
@@ -538,6 +548,10 @@ def arrival_plan(plan, tc_share=None, returns_per_plant=None,
 		"tc_second_loss_pct": second_pct,
 		"tc_lost_establishing_total": sum(cint(weeks[k].get("lost_establishing_tc"))
 		                                  for k in ordered),
+		"tc_lost_germinating_total": sum(cint(weeks[k].get("lost_germinating_tc"))
+		                                 for k in ordered),
+		"tc_to_plant_total": sum(cint(weeks[k].get("to_plant_tc"))
+		                         for k in ordered),
 		"tc_plants_per_unit": round(_plants_per_unit_from(rows, primary), 6),
 		# How the order got bigger than the planting. The card could already be
 		# read two ways -- a reader who knew the protocol saw the gross-up and a
