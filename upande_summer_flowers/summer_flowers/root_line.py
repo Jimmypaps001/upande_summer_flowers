@@ -375,10 +375,19 @@ def arrival_plan(plan, tc_share=None, returns_per_plant=None,
 		origin = ("single" if one_way else
 		          "protocol" if _states_a_split(rows) else "default")
 
-	tc_weeks = _weeks_for(rows, "TC")
-	root_weeks = _weeks_for(rows, LIFT_STAGE)
-	tc_lead = _lead_for(rows, "TC")
-	root_lead = _lead_for(rows, LIFT_STAGE)
+	# Asked of the stages this crop is actually bought at. The card was written
+	# for Eryngium and put these four questions to "TC" and "Roots" by name, so a
+	# crop bought as seed -- whose entry stage is Seeds -- was told it had no
+	# supplier lead and no time to the ground, and the tile read "0 wk lead + 0 wk
+	# to ground" over a route that plainly states thirteen and five. The labels
+	# beside them have come from the route since _ways_in was written; only the
+	# numbers were still somebody else's crop.
+	primary = ways[0] if ways else "TC"
+	secondary = ways[1] if len(ways) > 1 else LIFT_STAGE
+	tc_weeks = _weeks_for(rows, primary)
+	root_weeks = _weeks_for(rows, secondary)
+	tc_lead = _lead_for(rows, primary)
+	root_lead = _lead_for(rows, secondary)
 
 	weeks, tc_orders, root_pulls = {}, {}, {}
 	for b in plan.plan_blocks:
@@ -483,6 +492,18 @@ def arrival_plan(plan, tc_share=None, returns_per_plant=None,
 		"root_head_start_weeks": (root_lead + root_weeks) - (tc_lead + tc_weeks),
 		"plants_total": sum(weeks[k]["plants"] for k in ordered),
 		"tc_total": sum(weeks[k]["by_tc"] for k in ordered),
+		# Plants are what the field wants; units are what has to be bought to
+		# stand them up. They are the same number only while the losses are zero,
+		# which is how a tile reading "1,187,200 Seeds" for 1,187,200 plants went
+		# unnoticed on a protocol that loses 44% of them before planting.
+		"tc_units_total": _units_for(
+			sum(weeks[k]["by_tc"] for k in ordered), rows, primary),
+		"tc_plants_per_unit": round(_plants_per_unit_from(rows, primary), 6),
+		# How the order got bigger than the planting. The card could already be
+		# read two ways -- a reader who knew the protocol saw the gross-up and a
+		# reader who did not saw a number that did not match the plantings -- and
+		# the figures that explain it were a tab away on another document.
+		"losses": _loss_account(v, rows, primary),
 		"roots_total": sum(cint(weeks[k]["roots_needed"]) for k in ordered),
 		"weeks": [dict(week=str(k), **weeks[k]) for k in ordered],
 		# "tc" not "plantlets": the farm buys tissue culture, and calling it
@@ -833,6 +854,88 @@ def _ways_in(version):
 	ways = [w for w in ways if w.get("stage")]
 	ways.sort(key=lambda w: -flt(w.get("share_pct") or 0))
 	return [w["stage"] for w in ways]
+
+
+def _loss_account(v, rows, stage):
+	"""The losses between buying and a plant standing, and where each is stated.
+
+	`stated` is the Grades & Losses tab -- the only place a person enters any of
+	this. `steps` is what the route made of it, stage by stage, which is what
+	actually sizes the order. They are shown together on purpose: a reader who
+	has just been told the order is 1.79x the planting should be able to see the
+	two percentages it came from without opening the protocol.
+	"""
+	from upande_summer_flowers.summer_flowers.crop_protocol import ROOTING_LOSSES
+
+	root = flt(v.get("rooting_success_pct"))
+	field = flt(v.get("field_establishment_pct"))
+	steps = []
+	survival, seen = 1.0, False
+	for r in rows:
+		st = r.get("stage") or ""
+		if st == stage and not seen:
+			seen = True
+		if not seen:
+			continue
+		if st == "Plants":
+			break
+		loss = flt(r.get("loss_pct"))
+		if loss:
+			# Where this stage's figure came from. Listing every percentage on
+			# the tab instead said "10% of cuttings rejected" on a seed route,
+			# which has no cutting to reject -- a figure that is stated and not
+			# applied reads as one that is, and the arithmetic then does not add
+			# up for the reader checking it.
+			if cint(r.get("is_standing")):
+				src = _("{0}% of cuttings rejected").format(
+					flt(v.get("cutting_reject_pct")))
+			elif st in ROOTING_LOSSES:
+				src = _("{0}% root x {1}% establish").format(root, field)
+			elif cint(r.get("is_purchase")):
+				src = _("{0}% allowed on the order").format(
+					flt(v.get("tc_order_loss_pct")))
+			else:
+				src = None
+			steps.append({"stage": st or r.get("step"),
+			              "loss_pct": round(loss, 4), "from": src})
+		survival *= 1.0 - loss / 100.0
+	return {
+		"stated": {
+			"rooting_success_pct": flt(v.get("rooting_success_pct")),
+			"field_establishment_pct": flt(v.get("field_establishment_pct")),
+			"cutting_reject_pct": flt(v.get("cutting_reject_pct")),
+			"tc_order_loss_pct": flt(v.get("tc_order_loss_pct")),
+			"cuttings_per_plant_required": flt(v.get("cuttings_per_plant_required")),
+		},
+		"steps": steps,
+		"survival_pct": round(survival * 100, 2),
+	}
+
+
+def _units_for(plants, rows, stage):
+	"""How many units of `stage` to buy to stand `plants` plants up.
+
+	None where the route passes a pool. A motherstock is bought once and cut
+	every week, so what one plantlet becomes is a season of cuttings and not a
+	number of plants -- dividing by it here would size the order the way the
+	procurement plan refuses to, many times too small. sourcing.requirement is
+	the only thing that sizes a standing route, and it is not this card's job.
+	"""
+	if not plants:
+		return 0
+	seen = False
+	for r in rows:
+		st = r.get("stage") or ""
+		if st == stage and not seen:
+			seen = True
+		if not seen:
+			continue
+		if st == "Plants":
+			break
+		if cint(r.get("is_standing")):
+			return None
+	per_unit = _plants_per_unit_from(rows, stage)
+	return int(math.ceil(plants / per_unit)) if per_unit > 0 else None
 
 
 def _weeks_for(rows, stage):

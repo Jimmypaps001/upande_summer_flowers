@@ -28,11 +28,13 @@
   "late",
   "section_delivery",
   "expected_delivery_date",
+  "confirmed_qty",
   "confirmed_delivery_week",
   "actual_delivery_week",
   "column_break_c",
   "source_doctype",
   "source_doc",
+  "source_row",
   "notes"
  ],
  "fields": [
@@ -171,6 +173,13 @@
    "description": "When the material is expected on the farm. Ordering on the order-by date lands it here."
   },
   {
+   "fieldname": "confirmed_qty",
+   "fieldtype": "Int",
+   "label": "Confirmed",
+   "read_only": 1,
+   "description": "What the supplier agreed to send for this delivery. Short of To Buy means fewer plants stand up that week."
+  },
+  {
    "allow_on_submit": 1,
    "fieldname": "confirmed_delivery_week",
    "fieldtype": "Data",
@@ -202,6 +211,14 @@
    "options": "source_doctype"
   },
   {
+   "fieldname": "source_row",
+   "fieldtype": "Data",
+   "label": "Raised As (row)",
+   "read_only": 1,
+   "hidden": 1,
+   "description": "The request line this one became, so the order line that answers it can be found again."
+  },
+  {
    "allow_on_submit": 1,
    "fieldname": "notes",
    "fieldtype": "Small Text",
@@ -216,7 +233,7 @@
   }
  ],
  "links": [],
- "modified": "2026-09-17 00:00:00.000000",
+ "modified": "2026-10-30 10:30:00.000000",
  "modified_by": "Administrator",
  "module": "Summer Flowers",
  "name": "Planting Material Requirement",

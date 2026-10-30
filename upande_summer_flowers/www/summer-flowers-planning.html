@@ -347,6 +347,13 @@
       </div>
       <div class="pl-card">
         <div class="pl-card-head">
+          <div><h2>{{ _("What the supplier will send") }}</h2>
+               <p class="pl-note">{{ _("The order is drafted from the plan and waits here. Key in what the supplier can actually send, week by week -- anyone may, the supplier or the buyer -- and confirm it. Confirming submits the order, and that schedule is what the farm then plans against.") }}</p></div>
+        </div>
+        <div id="pc-deliveries" class="pl-scroll"></div>
+      </div>
+      <div class="pl-card">
+        <div class="pl-card-head">
           <div><h2>{{ _("Who raises it") }}</h2>
                <p class="pl-note">{{ _("Our own propagation units raise it free; an outside propagator delivers plants and charges per plant, and gets a purchase order when the procurement plan is approved.") }}</p></div>
         </div>
@@ -1336,6 +1343,20 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
     setTimeout(() => fin(rej, new Error("Timed out: " + m)), 45000);
     try {
       frappe.call({ method: RL + m, args: a || {},
+        callback: (r) => fin(res, r && r.message),
+        error: (r) => fin(rej, new Error(m + ": " + ((r && r.responseJSON &&
+          (r.responseJSON.exc_type || r.responseJSON.message)) || "failed"))) });
+    } catch (e) { fin(rej, e); }
+  });
+
+  // The delivery schedule is its own module: everything else here reads a plan,
+  // this one writes an agreement onto an order.
+  const DCM = "upande_summer_flowers.summer_flowers.delivery_confirmation.";
+  const callDc = (m, a) => new Promise((res, rej) => {
+    let done = false; const fin = (f, v) => { if (!done) { done = true; f(v); } };
+    setTimeout(() => fin(rej, new Error("Timed out: " + m)), 45000);
+    try {
+      frappe.call({ method: DCM + m, args: a || {},
         callback: (r) => fin(res, r && r.message),
         error: (r) => fin(rej, new Error(m + ": " + ((r && r.responseJSON &&
           (r.responseJSON.exc_type || r.responseJSON.message)) || "failed"))) });
@@ -5096,9 +5117,15 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
     const one = wayOne(m), two = wayTwo(m);
     const tiles = [
       { k: "Plants needed", v: num(m.plants_total), m: "for the whole season" },
+      // Units to buy, and the plants they are bought to stand up. The two part
+      // company the moment a protocol states a loss -- 2,120,000 seeds for
+      // 1,187,200 plants at 80% rooting by 70% establishment -- and the tile
+      // used to print the plants under the name of the thing being bought.
       { k: `As ${one}`, v: `${tcPct}%`,
-        m: `${num(m.tc_total)} ${one} · ${m.tc_lead_weeks} wk lead + ` +
-           `${m.tc_weeks_to_ground} wk to ground` },
+        m: (m.tc_units_total != null && m.tc_units_total !== m.tc_total
+              ? `${num(m.tc_units_total)} ${one.toLowerCase()} for ${num(m.tc_total)} plants · `
+              : `${num(m.tc_total)} ${one} · `) +
+           `${m.tc_lead_weeks} wk lead + ${m.tc_weeks_to_ground} wk to ground` },
     ];
     if (two) {
       tiles.push({ k: `As ${two.toLowerCase()}`, v: `${rootPct}%`,
@@ -5121,6 +5148,29 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
       `<b>${esc(m.primary_stage || "")}</b>` +
       (wayTwo(m) ? ` + <b>${esc(wayTwo(m))}</b>` : "") +
       ` — ${esc((m.route_summary || t.route_summary || "").replace(/ -> /g, " → "))}` }];
+
+    // How the order got bigger than the planting. The tile gives the answer;
+    // this gives the arithmetic, in the order a person would check it: the two
+    // percentages somebody typed, what the route made of them, and what that
+    // does to the quantity. Without it the card states a number 1.79x the
+    // plantings and offers nothing to reconcile it against.
+    const ls = m.losses;
+    if (ls && ls.survival_pct != null && ls.survival_pct < 100) {
+      const st = ls.stated || {};
+      // Each loss beside the figures that produced it, and only those: a
+      // percentage the route never applies does not belong in a sum the reader
+      // is being invited to check.
+      const chain = (ls.steps || []).map((x) =>
+        `${esc(x.stage)} loses <b>${x.loss_pct}%</b>` +
+        (x.from ? ` (${esc(x.from)})` : "")).join(", ");
+      notes.push({ kind: "info", html:
+        `<b>Losses</b> — ${chain || "none stated"}. ` +
+        `<b>${ls.survival_pct}%</b> of what is bought stands up, so ` +
+        `${num(m.plants_total)} plants need ` +
+        `${num(m.tc_units_total)} ${esc((m.primary_stage || "unit").toLowerCase())}` +
+        (st.cuttings_per_plant_required
+          ? ` — ${st.cuttings_per_plant_required} a plant.` : ".") });
+    }
     if (sg.tc != null && !m.asked) {
       notes.unshift(`<b>Suggested: ${num(sg.tc)} TC and ${num(sg.roots)} roots</b>` +
         ` — from ${esc(sg.from || "the plan")}. Change either box to try another.`);
@@ -7788,7 +7838,14 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
   function loadProcurement() {
     const a = { variety: S.variety, farm: S.farm, plan: S.plan || null };
     return call("procurement_detail", a)
-      .then((r) => { S.pc = r; renderProcurement(); })
+      .then((r) => {
+        S.pc = r;
+        renderProcurement();
+        // The schedule hangs off the procurement plan, not the production plan:
+        // it is that plan's orders being confirmed.
+        const first = ((r && r.plans) || [])[0];
+        return loadDeliveries(first && first.name);
+      })
       .catch((e) => { S.pc = { error: e.message }; renderProcurement(); });
   }
 
@@ -7827,6 +7884,117 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
             ? esc(x.material_request || x.purchase_order) : "—"}</td></tr>`).join("") +
         `</tbody></table>`;
     }).join("");
+  }
+
+  // The delivery schedule, one card per drafted order. Two columns can be
+  // typed into and nothing else: how many, and which week. Everything else on
+  // screen is there so the person typing can see what they are answering.
+  function loadDeliveries(procurementPlan) {
+    const box = $("pc-deliveries");
+    if (!box) return Promise.resolve();
+    if (!procurementPlan) { box.innerHTML = ""; return Promise.resolve(); }
+    return callDc("schedule_for", { procurement_plan: procurementPlan })
+      .then((r) => { S.dc = r; renderDeliveries(); })
+      .catch((e) => { box.innerHTML = `<p class="pl-empty">${esc(e.message)}</p>`; });
+  }
+
+  function renderDeliveries() {
+    const box = $("pc-deliveries");
+    if (!box) return;
+    const orders = (S.dc && S.dc.orders) || [];
+    if (!orders.length) {
+      box.innerHTML = `<p class="pl-empty">${esc(
+        "No order has been drafted yet. Approving the procurement plan raises the " +
+        "request and drafts the order to confirm against.")}</p>`;
+      return;
+    }
+    box.innerHTML = orders.map((o) => {
+      const ro = !o.editable;
+      const unit = (o.unit || "units").toLowerCase();
+      const rows = o.lines.map((L) => {
+        const moved = L.week && L.asked_week && L.week !== L.asked_week;
+        const short = L.qty < L.asked_qty;
+        return `<tr data-line="${esc(L.name)}">` +
+          `<td>${esc(L.asked_week || "\u2014")}</td>` +
+          `<td class="r">${num(L.asked_qty)}</td>` +
+          `<td class="r">${ro ? num(L.qty)
+            : `<input class="dc-q" type="number" min="0" step="1" value="${L.qty}" ` +
+              `style="width:9em;text-align:right">`}</td>` +
+          `<td>${ro ? fdate(L.schedule_date)
+            : `<input class="dc-d" type="date" value="${esc(L.schedule_date || "")}">`}</td>` +
+          `<td>${short ? `<span style="color:var(--critical)">short ${num(L.asked_qty - L.qty)}</span>`
+                : moved ? `<span style="color:var(--warning)">moved to ${esc(L.week)}</span>`
+                : `<span class="pl-dim">as asked</span>`}</td>` +
+          `<td class="r">${L.received_qty ? num(L.received_qty) : "\u2014"}</td></tr>`;
+      }).join("");
+      return `<div class="pl-callout${o.short_by ? " is-bad" : " is-info"}" ` +
+        `style="margin-bottom:6px">` +
+        `<b>${esc(o.supplier_name || o.supplier || "")}</b> \u00b7 ` +
+        `<a href="/app/purchase-order/${encodeURIComponent(o.purchase_order)}">` +
+        `${esc(o.purchase_order)}</a> \u00b7 ${esc(o.status)}` +
+        (o.confirmation_date
+          ? ` \u00b7 confirmed ${fdate(o.confirmation_date)}`
+          : " \u00b7 not confirmed yet") +
+        `</div>` +
+        `<table class="pl-t" data-order="${esc(o.purchase_order)}"><thead><tr>` +
+        `<th>Week</th><th class="r">We asked</th>` +
+        `<th class="r">${esc(o.unit || "Units")} they will send</th>` +
+        `<th>On</th><th>\u00a0</th><th class="r">Received</th>` +
+        `</tr></thead><tbody>${rows}</tbody>` +
+        `<tfoot><tr><th>Total</th><th class="r">${num(o.asked_total)}</th>` +
+        `<th class="r">${num(o.qty_total)}</th><th colspan="2">` +
+        (o.short_by
+          ? `<span style="color:var(--critical)">short ${num(o.short_by)} ${esc(unit)}` +
+            ` \u2014 fewer plants stand up those weeks</span>`
+          : `<span style="color:var(--good)">the whole plan is covered</span>`) +
+        `</th><th></th></tr></tfoot></table>` +
+        (ro ? `<p class="pl-note">Confirmed. The schedule above is what both sides ` +
+              `agreed to; changing it now is a change to a live order.</p>`
+            : `<div style="margin:8px 0 18px">` +
+              `<button class="btn btn-xs btn-default dc-save" data-o="${esc(o.purchase_order)}">` +
+              `Save</button> ` +
+              `<button class="btn btn-xs btn-primary dc-confirm" data-o="${esc(o.purchase_order)}">` +
+              `Confirm this schedule</button> ` +
+              `<span class="pl-dim">Confirming submits the order.</span></div>`);
+    }).join("");
+    bindDeliveries();
+  }
+
+  function dcRows(table) {
+    return [...table.querySelectorAll("tbody tr")].map((tr) => ({
+      name: tr.dataset.line,
+      qty: flt((tr.querySelector(".dc-q") || {}).value),
+      schedule_date: (tr.querySelector(".dc-d") || {}).value || null,
+    }));
+  }
+
+  function bindDeliveries() {
+    const box = $("pc-deliveries");
+    if (!box) return;
+    box.querySelectorAll(".dc-save").forEach((b) => b.addEventListener("click", () => {
+      const t = box.querySelector(`table[data-order="${b.dataset.o}"]`);
+      b.disabled = true;
+      callDc("save_schedule", { purchase_order: b.dataset.o,
+                                lines: JSON.stringify(dcRows(t)) })
+        .then((r) => { S.dc = r; renderDeliveries(); })
+        .catch((e) => { b.disabled = false; frappe.msgprint(esc(e.message)); });
+    }));
+    box.querySelectorAll(".dc-confirm").forEach((b) => b.addEventListener("click", () => {
+      const t = box.querySelector(`table[data-order="${b.dataset.o}"]`);
+      // Confirming is agreeing to what is on screen, so what is on screen is
+      // saved first. Submitting an order that still held yesterday's figures
+      // because nobody pressed Save is the one mistake this must not allow.
+      frappe.confirm(
+        __("Submit this order? It becomes the schedule the supplier delivers to."),
+        () => {
+          b.disabled = true;
+          callDc("save_schedule", { purchase_order: b.dataset.o,
+                                    lines: JSON.stringify(dcRows(t)) })
+            .then(() => callDc("confirm", { purchase_order: b.dataset.o }))
+            .then((r) => { S.dc = r; renderDeliveries(); loadProcurement(); })
+            .catch((e) => { b.disabled = false; frappe.msgprint(esc(e.message)); });
+        });
+    }));
   }
 
   function renderProcurement() {

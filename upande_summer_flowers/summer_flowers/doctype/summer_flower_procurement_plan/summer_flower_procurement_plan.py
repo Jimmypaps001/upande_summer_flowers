@@ -573,12 +573,69 @@ class SummerFlowerProcurementPlan(Document):
 			                  "hand.").format("; ".join(failed)), indicator="orange",
 			                title=_("Propagator orders"))
 
-	def raise_material_requests(self):
-		"""One Material Request per supplier per week the material is needed.
+	def _draft_order(self, mr, supplier, failed):
+		"""Submit the request and draft the order it becomes. Returns its name.
 
-		Not one per cohort: ten cohorts a week apart from one supplier are ten
-		deliveries, not ten requests. They are left as drafts -- submitting one is
-		a person committing money, and approving a plan is not that.
+		ERPNext maps a Material Request to a Purchase Order only from a
+		submitted request, so the request is submitted here. Nothing is
+		promised by that -- a submitted request is the farm asking for the
+		material, and the order it drafts is where money is committed, which is
+		why the order stays a DRAFT. Submitting the order is the confirmation:
+		it is what the supplier has agreed to send and when, and until somebody
+		has that from them there is nothing to submit.
+
+		The dates come across by themselves. get_schedule_dates on the order
+		reads each line's required-by off the request line it was mapped from,
+		so a request with fourteen deliveries in it drafts an order with
+		fourteen, each on its own week.
+		"""
+		from erpnext.stock.doctype.material_request.material_request import (
+			make_purchase_order,
+		)
+
+		if not supplier:
+			# Nobody to buy from. The request stands as the record of what is
+			# needed; who sells it is the purchase allocation's answer and it has
+			# not been given yet.
+			return None
+		try:
+			mr.submit()
+		except Exception as e:
+			frappe.log_error(frappe.get_traceback(),
+			                 "Submitting %s for %s" % (mr.name, self.name))
+			failed.append(_("{0} could not be submitted: {1}").format(
+				mr.name, str(e).split("\n")[0][:120]))
+			return None
+		try:
+			po = make_purchase_order(mr.name)
+			po.supplier = supplier
+			if not po.get("schedule_date"):
+				po.schedule_date = mr.schedule_date
+			po.flags.ignore_permissions = True
+			po.insert()
+			return po.name
+		except Exception as e:
+			frappe.log_error(frappe.get_traceback(),
+			                 "Drafting an order from %s" % mr.name)
+			failed.append(_("no order could be drafted from {0}: {1}").format(
+				mr.name, str(e).split("\n")[0][:120]))
+			return None
+
+	def raise_material_requests(self):
+		"""One Material Request per supplier, with a line per delivery.
+
+		Not one per cohort, and no longer one per week either. A season bought
+		from one supplier is one order with twenty-six deliveries in it, and
+		that is a thing Material Request and Purchase Order already model: each
+		item row carries its own schedule_date, PurchaseOrder.get_schedule_dates
+		copies it across from the request line it came from, and
+		validate_schedule_date sets the header to the earliest of them. Raising
+		one request a week instead produced twenty-six requests and twenty-six
+		orders for one supplier and one crop, and a buyer chasing a lab had to
+		open all of them to see the season.
+
+		They are left as drafts -- submitting one is a person committing money,
+		and approving a plan is not that.
 		"""
 		from collections import defaultdict
 
@@ -597,10 +654,9 @@ class SummerFlowerProcurementPlan(Document):
 		for r in self.requirements:
 			if not cint(r.qty_to_order) or r.source_doc:
 				continue
-			when = getdate(r.required_at_site_date) if r.required_at_site_date else None
 			sellers = self.suppliers_for(r.entry_stage or self.entry_stage)
 			if not sellers:
-				groups[(r.supplier, when)].append(r)
+				groups[r.supplier].append(r)
 				continue
 			shares = [flt(x.share_pct) for x in sellers]
 			qty, taken = cint(r.qty_to_order), 0
@@ -616,27 +672,41 @@ class SummerFlowerProcurementPlan(Document):
 				share_of = frappe._dict(r.as_dict())
 				share_of.qty_to_order = part
 				share_of.supplier = seller.supplier
-				groups[(seller.supplier, when)].append(share_of)
+				# The row on the document this copy speaks for. A copy is a plain
+				# dict and has no db_set, so writing the request back onto it threw
+				# away the link on every crop bought from more than one seller --
+				# and then failed outright, because db_set on a _dict is None and
+				# None is not callable.
+				share_of._line = r
+				groups[seller.supplier].append(share_of)
 
-		made, overdue, failed = [], [], []
+		made, ordered, overdue, failed = [], [], [], []
 		today = getdate(nowdate())
-		for (supplier, when), rows in sorted(
-			groups.items(), key=lambda kv: (kv[0][1] or getdate(nowdate()))
+		def wanted_on(row):
+			return (getdate(row.required_at_site_date)
+			        if row.required_at_site_date else today)
+
+		for supplier, rows in sorted(
+			groups.items(), key=lambda kv: min(wanted_on(r) for r in kv[1])
 		):
+			rows.sort(key=wanted_on)
 			mr = frappe.new_doc("Material Request")
 			mr.material_request_type = "Purchase"
 			mr.company = self.company
 			mr.transaction_date = today
 			# A Material Request refuses a required-by date before its transaction
-			# date, and the whole approval used to die on it -- so a plan whose first
-			# order date had passed could not be approved at all, which is exactly the
-			# plan someone most needs to approve and chase. The date it wanted is kept
-			# on the requirement line; what goes on the request is the soonest it can
-			# honestly be asked for, and the plan says which rows were already late.
-			wanted = when or today
-			if wanted < today:
-				overdue.append((wanted, rows))
-			mr.schedule_date = max(wanted, today)
+			# date -- per row, not just on the header -- and the whole approval used
+			# to die on it, so a plan whose first order date had passed could not be
+			# approved at all, which is exactly the plan someone most needs to
+			# approve and chase. The date each line wanted is kept on its requirement
+			# row; what goes on the request is the soonest it can honestly be asked
+			# for, and the plan says which were already late.
+			late = [r for r in rows if wanted_on(r) < today]
+			if late:
+				overdue.extend((wanted_on(r), r) for r in late)
+			# Set here only so the field is filled before the mandatory check;
+			# validate_schedule_date works out the same earliest-of-the-lines.
+			mr.schedule_date = max(min(wanted_on(r) for r in rows), today)
 			if mr.meta.get_field("custom_farm"):
 				mr.custom_farm = self.farm
 			if mr.meta.get_field("custom_purpose"):
@@ -645,7 +715,10 @@ class SummerFlowerProcurementPlan(Document):
 				row = {
 					"item_code": item,
 					"qty": cint(r.qty_to_order),
-					"schedule_date": mr.schedule_date,
+					# The delivery this line is for. One order, many dates: this
+					# is the whole of the staggered delivery, and ERPNext carries
+					# it to the Purchase Order Item without being asked.
+					"schedule_date": max(wanted_on(r), today),
 					"warehouse": frappe.db.get_value("Warehouse",
 					                                 {"company": self.company,
 					                                  "is_group": 0}, "name"),
@@ -680,19 +753,39 @@ class SummerFlowerProcurementPlan(Document):
 				                 "Material Request for %s" % self.name)
 				failed.append(str(e).split("\n")[0][:200])
 				continue
-			for r in rows:
-				r.db_set("source_doctype", "Material Request", update_modified=False)
-				r.db_set("source_doc", mr.name, update_modified=False)
+			# Paired by position: the item rows were appended from `rows` in this
+			# order, and one requirement line is one delivery is one request line.
+			for src, item in zip(rows, mr.items):
+				line = src.get("_line") if isinstance(src, dict) else None
+				line = line if line is not None else src
+				if not hasattr(line, "db_set"):
+					continue
+				line.db_set("source_doctype", "Material Request", update_modified=False)
+				line.db_set("source_doc", mr.name, update_modified=False)
+				line.db_set("source_row", item.name, update_modified=False)
 			made.append(mr.name)
+			order = self._draft_order(mr, supplier, failed)
+			if order:
+				ordered.append(order)
 			for row in self.get("purchase_allocation") or []:
 				if row.supplier == supplier and not row.material_request:
 					row.db_set("material_request", mr.name, update_modified=False)
+					if order:
+						row.db_set("purchase_order", order, update_modified=False)
 					break
 
 		if made:
 			frappe.msgprint(_("{0} raised as drafts: {1}").format(
 				len(made), ", ".join(made)), indicator="green",
 				title=_("Material Requests"))
+		if ordered:
+			frappe.msgprint(_(
+				"{0} drafted and waiting to be confirmed: {1}. Each carries one line "
+				"a delivery. Confirm what the supplier can actually send, week by "
+				"week, on the plan's Procurement tab -- submitting the order is the "
+				"act of agreeing that schedule."
+			).format(len(ordered), ", ".join(ordered)), indicator="blue",
+				title=_("Purchase Orders"))
 		if failed:
 			frappe.msgprint(_(
 				"{0} material request(s) could not be raised: {1}. The plan is still "
@@ -711,7 +804,10 @@ class SummerFlowerProcurementPlan(Document):
 				"are still on the requirement lines."
 			).format(len(overdue), first), indicator="orange",
 				title=_("Ordered late"))
-		else:
+		# Hung off `if overdue` until now, so a plan that raised its orders and had
+		# nothing late said "Nothing to order" in the same breath as "3 raised as
+		# drafts". Nothing to order is a statement about what was raised.
+		if not made and not failed:
 			frappe.msgprint(_("Nothing to order: every line is already raised, or "
 			                  "has no quantity."), indicator="orange")
 
