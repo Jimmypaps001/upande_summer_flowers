@@ -5181,15 +5181,28 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
       const os = m.own_stock;
       if (os) {
         const unit = (os.stage || "material").toLowerCase();
-        notes.unshift({ kind: os.short_by ? "bad" : "info", html: os.short_by
-          ? `<b>Nothing to cut from</b> — this crop is taken as ${esc(unit)} off ` +
-            `the farm's own standing crop, and ${os.plants_standing
+        // Short, and there is a bought form of it: the difference is on the
+        // procurement plan as an order, so this is a cost to know about rather
+        // than a plan that cannot be run. Short with no bought form is the
+        // second, and stays red.
+        const canBuy = os.short_by && os.buy_stage;
+        notes.unshift({ kind: !os.short_by ? "info" : canBuy ? "warn" : "bad",
+          html: os.short_by
+          ? `<b>${canBuy ? `${num(os.short_by)} ${esc(unit)} short, and bought`
+                         : "Nothing to cut from"}</b> — this crop is taken as ` +
+            `${esc(unit)} off the farm's own standing crop, and ${os.plants_standing
               ? `${num(os.plants_standing)} plants standing give only ` +
                 `${num(os.units_available)}`
               : `there is none standing at ${esc(m.farm)}`} ` +
             `against the ${num(os.units_needed)} this plan needs. ` +
-            `<b>${num(os.short_by)} ${esc(unit)} have to be bought</b> — add a ` +
-            `bought way to the protocol, or plant a crop to take them off first.`
+            (canBuy
+              ? `The difference goes on the procurement plan as ` +
+                `<b>${num(os.short_by)} ${esc(os.buy_stage)}</b> to buy, with ` +
+                `${os.buy_lead_weeks || 0} wk of supplier lead. The cohorts dig ` +
+                `what is standing first, so it is the later weeks that are bought.`
+              : `<b>${num(os.short_by)} ${esc(unit)} have to be bought</b>, and ` +
+                `nothing says what they are bought as. Name the bought form on ` +
+                `the Material Stage record, or plant a crop to take them off first.`)
           : `<b>Taken from our own crop</b> — ${num(os.plants_standing)} plants ` +
             `standing at ${esc(m.farm)} give ${num(os.units_available)} ` +
             `${esc(unit)}, and this plan needs ${num(os.units_needed)}. ` +
@@ -5197,7 +5210,7 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
             // Two records of one crop, and they disagree often enough that the
             // figure is worth attributing.
             (os.basis ? ` Counted from ${esc(os.basis)}` +
-              (os.from_block_register !== os.from_plantings
+              (os.from_plantings && os.from_block_register !== os.from_plantings
                 ? ` — the calendar accounts for ${num(os.from_plantings)} of them.`
                 : ".") : "") });
       }

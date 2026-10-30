@@ -9,6 +9,7 @@
  "field_order": [
   "stage_name",
   "kind",
+  "bought_as",
   "multiplies",
   "ready_to_plant",
   "takes_rooting_losses",
@@ -37,6 +38,14 @@
    "reqd": 1
   },
   {
+   "depends_on": "eval:doc.kind=='Taken from own crop'",
+   "description": "The stage this one is bought at when the farm has not got enough of its own standing. Tubers lifted off our own crop are bought as Tubers.",
+   "fieldname": "bought_as",
+   "fieldtype": "Link",
+   "label": "Bought as",
+   "options": "Material Stage"
+  },
+  {
    "default": "0",
    "description": "Can be run round again to multiply material: motherstock generations, tuber division.",
    "fieldname": "multiplies",
@@ -51,10 +60,10 @@
    "label": "Already a Plant"
   },
   {
+   "description": "Living material that loses what fails to root and to establish (the protocol's rooting success and field establishment %).",
    "fieldname": "takes_rooting_losses",
    "fieldtype": "Check",
-   "label": "Takes Rooting Losses",
-   "description": "Living material that loses what fails to root and to establish (the protocol's rooting success and field establishment %)."
+   "label": "Takes Rooting Losses"
   },
   {
    "fieldname": "cb1",

@@ -26,6 +26,7 @@ import frappe
 from frappe import _
 from frappe.utils import cint, flt, getdate
 
+from upande_summer_flowers.summer_flowers import stages as _stages
 from upande_summer_flowers.summer_flowers.crop_protocol import (
 	ROUTE_END,
 	ROUTE_ENTRY,
@@ -294,8 +295,23 @@ def own_stock(version, farm, variety, on_date, exclude=None):
 	              if (st.get("stage") or "") in OWN_STAGES), None)
 	per_plant = flt(stage.get("returns_per_plant")) if stage else 0.0
 	per_plant = per_plant if per_plant > 0 else 1.0
+	# And where the difference comes from when there is not enough standing. The
+	# supplier's lead is the stage record's, not the route's: the bought form of
+	# own material is by definition not ON the route -- that is why it is being
+	# bought -- so there is no row to read a lead time off.
+	own_stage = stage.stage if stage else None
+	buy_stage = _stages.bought_as(own_stage) if own_stage else None
+	# The stage's usual lead, and failing that the one this crop's protocol
+	# states. Nobody has ever had to type a lead time for material the farm digs
+	# itself, so the stage record carries none for most of them -- and a zero
+	# there reads as "order it the day you plant it".
+	buy_lead = cint(_stages.info(buy_stage).get("default_lead_weeks")) if buy_stage else 0
+	if buy_stage and not buy_lead:
+		buy_lead = cint(version.get("supplier_lead_weeks"))
 	return {
-		"stage": stage.stage if stage else None,
+		"stage": own_stage,
+		"buy_stage": buy_stage,
+		"buy_lead_weeks": buy_lead,
 		"plantings": len(rows),
 		"plants_standing": plants,
 		"from_plantings": from_plantings,

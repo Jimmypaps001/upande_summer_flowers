@@ -34,9 +34,13 @@ SEED = {
 	"Tubers": dict(kind=BOUGHT),
 	"Budwoods": dict(kind=BOUGHT),
 	"Bought-in Plants": dict(kind=BOUGHT, ready_to_plant=1),
-	"Roots (Own)": dict(kind=TAKEN),
+	# What each of these is bought as on the season the farm has not got enough
+	# of its own standing. Cuttings have no bought form here -- nobody sells an
+	# unrooted cutting of these crops -- so the gap on that route is reported and
+	# not quietly turned into an order for something else.
+	"Roots (Own)": dict(kind=TAKEN, bought_as="Roots"),
 	"Cuttings (Own)": dict(kind=TAKEN),
-	"Tubers (Own)": dict(kind=TAKEN),
+	"Tubers (Own)": dict(kind=TAKEN, bought_as="Tubers"),
 	"Motherstock": dict(kind=MOTHERSTOCK, multiplies=1),
 	"Rooting": dict(takes_rooting_losses=1, kind=PROPAGATION),
 	"Propagation": dict(takes_rooting_losses=1, kind=PROPAGATION),
@@ -45,8 +49,8 @@ SEED = {
 	"Plants": dict(kind=END),
 }
 
-FIELDS = ("kind", "multiplies", "ready_to_plant", "takes_rooting_losses", "lift_form",
-          "bought_item_suffix", "default_lead_weeks")
+FIELDS = ("kind", "bought_as", "multiplies", "ready_to_plant", "takes_rooting_losses",
+          "lift_form", "bought_item_suffix", "default_lead_weeks")
 
 
 def all_stages():
@@ -94,6 +98,30 @@ def lift_form(stage):
 def lift_forms():
 	"""{stage: lift form} for every stage whose deliveries come in lifts."""
 	return {s: i["lift_form"] for s, i in all_stages().items() if i.get("lift_form")}
+
+
+def bought_as(stage):
+	"""The stage an own-crop stage is BOUGHT at when the farm is short of it.
+
+	A crop cut off the farm's own stock is cut off a crop the farm has. Where
+	there is not enough of it standing, the difference has to come from a
+	supplier -- and it comes as the same material under a name somebody sells:
+	own tubers are bought as Tubers. Stated on the stage record rather than
+	worked out from the name, because "Roots (Own)" happening to start with
+	"Roots" is a spelling, not a fact about the crop.
+
+	Falls back to the name while a site has not been told, so the one site
+	already running does not have to be edited before this works. Nothing is
+	returned where the bought form does not exist, and then the gap is reported
+	rather than filled.
+	"""
+	named = info(stage).get("bought_as")
+	if named:
+		return named
+	if not stage or not stage.endswith(" (Own)"):
+		return None
+	plain = stage[: -len(" (Own)")].strip()
+	return plain if kind(plain) == BOUGHT else None
 
 
 def bought_item_suffix(stage):

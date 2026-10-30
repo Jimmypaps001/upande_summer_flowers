@@ -153,9 +153,10 @@ def schedule_for(procurement_plan):
 def _from_requirements(plan):
 	"""The plan's own wants, shaped like an order so one table draws both."""
 	lines, asked, qty = [], 0, 0
-	for r in plan.requirements:
-		if not cint(r.qty_to_order):
-			continue
+	# What is bought, and nothing else. A route that digs its material off the
+	# farm's own crop writes a line per cohort too, and listing those here asked
+	# a buyer to confirm a delivery date with a supplier nobody is buying from.
+	for r in plan.purchase_lines():
 		want = cint(r.qty_to_order)
 		# What has been keyed so far, or the ask where nothing has.
 		agreed = cint(r.confirmed_qty) if cint(r.get("delivery_confirmed")) else want
@@ -177,7 +178,10 @@ def _from_requirements(plan):
 			"week": r.confirmed_delivery_week or _week_of(r.required_at_site_date),
 			"received_qty": 0,
 		})
-	stage = next((r.entry_stage for r in plan.requirements if r.entry_stage), None)
+	# Named off the lines being bought. Taking the first stage on the document
+	# labelled a column of Tubers "Tubers (Own)" -- the thing the farm digs,
+	# which is precisely what these are not.
+	stage = next((r.entry_stage for r in plan.purchase_lines() if r.entry_stage), None)
 	sellers = [{"supplier": r.supplier, "share_pct": flt(r.share_pct)}
 	           for r in (plan.get("purchase_allocation") or []) if r.supplier]
 	return {

@@ -44,12 +44,23 @@ class SummerFlowerProcurementPlan(Document):
 		return bool(cint(self.propagates_here) or (self.in_house_stages or "").strip()
 		            or self.get("propagation_allocation"))
 
+	def purchase_lines(self):
+		"""The requirement lines a supplier is actually asked for.
+
+		Not the same as the plan's method. A route taken off the farm's own crop
+		is a Propagate plan, and it still buys whatever the standing crop could
+		not cover -- those lines, and only those, become requests. Reading the
+		header instead meant a plan that was short of its own material raised
+		nothing at all, and the lines that said so sat on the document being
+		read as deliveries nobody had ordered.
+		"""
+		return [r for r in (self.requirements or [])
+		        if (r.method or self.method) == "Purchase" and cint(r.qty_to_order)]
+
 	def units_by_stage(self):
 		"""What each way in has to buy, from the lines that buy it."""
 		out = {}
-		for r in (self.requirements or []):
-			if not cint(r.qty_to_order):
-				continue
+		for r in self.purchase_lines():
 			stage = r.entry_stage or self.entry_stage or ""
 			out[stage] = out.get(stage, 0) + cint(r.qty_to_order)
 		return out
@@ -477,7 +488,7 @@ class SummerFlowerProcurementPlan(Document):
 		# delivery_confirmation.confirm -- so the quantities on them are the ones
 		# that will actually arrive, rather than a wish that has to be corrected
 		# by amendment the first time a lab says no.
-		if self.method == "Purchase" and cint(self.get("deliveries_confirmed")):
+		if self.purchase_lines() and cint(self.get("deliveries_confirmed")):
 			self.raise_material_requests()
 		# Plants raised by an outside propagator are bought from them: one order
 		# each, at their charge per plant, for their share of the season.
@@ -681,7 +692,7 @@ class SummerFlowerProcurementPlan(Document):
 		# crop bought from two laboratories got one request and the second lab
 		# never heard about it.
 		groups = defaultdict(list)
-		for r in self.requirements:
+		for r in self.purchase_lines():
 			if not confirmed_or_asked(r) or r.source_doc:
 				continue
 			# A week that names its own seller goes to that seller whole. The
@@ -1137,7 +1148,7 @@ class SummerFlowerProcurementPlan(Document):
 		# is mother plants standing on a bench, and adding it to the plants going in
 		# the ground would overstate the crop by the size of the pool.
 		field = [r for r in rows if (r.line_type or "Planting") != "Establishment"]
-		self.total_units_to_order = sum(cint(r.qty_to_order) for r in rows)
+		self.total_units_to_order = sum(cint(r.qty_to_order) for r in self.purchase_lines())
 		if field:
 			self.total_plants_at_field = sum(cint(r.qty_at_field) for r in field)
 			self.beds_required = sum(cint(r.beds) for r in field)
@@ -1948,6 +1959,7 @@ def build(production_plan, method=None, entry_stage=None, supplier=None,
 	p = frappe.get_doc("Summer Flower Production Plan", production_plan)
 	v = frappe.get_cached_doc("Crop Protocol Version", p.protocol)
 	from upande_summer_flowers.summer_flowers import sourcing
+	from upande_summer_flowers.summer_flowers.crop_protocol import TAKEN_STAGES
 	from upande_summer_flowers.summer_flowers.doctype \
 		.summer_flower_production_plan.summer_flower_production_plan import (
 			plants_per_bed_for,
@@ -2034,6 +2046,31 @@ def build(production_plan, method=None, entry_stage=None, supplier=None,
 	if len(ways) < 2:
 		ways = [{"stage": entry_stage, "share_pct": 100.0, "per_unit": per_unit,
 		         "notice_weeks": weeks_to_ground + lead}]
+
+	# A route that buys nothing still has a stage it STARTS at, and on these
+	# routes it is the farm's own crop: tubers dug off a standing block, cuttings
+	# cut off one. The plan used to leave that stage blank and count the cohorts
+	# in plants, which is the one unit nobody lifts -- and, more to the point, it
+	# never asked whether there was a block to dig. Below, the cohorts draw the
+	# material down in planting order and whatever the standing crop cannot cover
+	# is bought.
+	own, own_available = None, 0
+	if method == "Propagate" and (decided.get("first_stage") or "") in TAKEN_STAGES:
+		oj = sourcing.journey(v, decided["first_stage"])
+		if oj:
+			ways = [{"stage": decided["first_stage"], "share_pct": 100.0,
+			         "per_unit": flt(oj["plants_per_unit"]) or 1.0,
+			         "notice_weeks": cint(oj["weeks_to_ground"])}]
+		firsts = [getdate(b.planting_date) for b in p.plan_blocks
+		          if cint(b.is_new_planting) and b.planting_date]
+		if firsts:
+			own = sourcing.own_stock(
+				v, p.farm, p.variety, min(firsts),
+				# A crop cannot be cut from the very plantings this plan is
+				# creating.
+				exclude={b.existing_planting for b in p.plan_blocks
+				         if b.existing_planting})
+			own_available = cint(own.get("units_available"))
 	# A route that passes a motherstock is bought once, not once a cohort. The pool
 	# is established and then cut from every week, so its size is set by the busiest
 	# week's sticking and not by the season's total -- summing the cohorts bought
@@ -2188,6 +2225,9 @@ def build(production_plan, method=None, entry_stage=None, supplier=None,
 	beds_left = beds_available if (fit_to_space and beds_available) else None
 	trimmed = 0
 	built = []
+	# What the standing crop could not cover: bought where there is a bought form
+	# of it, and reported where there is not.
+	bought_short, unbuyable = 0, 0
 	# A procurement plan is the purchase and nothing else. Where the material is
 	# bought once and propagated -- tissue culture into a motherstock -- there is
 	# one thing to buy, and the cohorts are not it: when each planting gets its
@@ -2223,37 +2263,131 @@ def build(production_plan, method=None, entry_stage=None, supplier=None,
 			units = 0 if standing else (
 				int(math.ceil(share / way["per_unit"]))
 				if (share and way["per_unit"]) else 0)
-			order_by = None if standing else (
-				required - datetime.timedelta(weeks=way["notice_weeks"])
-				if required else None)
-			line = doc.append("requirements", {
-				"line_type": "Planting",
-				"drawn_from_pool": 1 if standing else 0,
-				"cohort": b.name,
-				"planting_week": ("%s-W%02d" % (cint(b.planting_year),
-				                                cint(b.planting_week))
-				                  if b.planting_year else None),
-				"planting_date": b.planting_date,
-				"first_harvest_week": ("%s-W%02d" % (cint(b.first_harvest_year),
-				                                     cint(b.first_harvest_week))
-				                       if b.first_harvest_year else None),
-				"qty_at_field": share,
-				# Beds are the cohort's, not the share's: the two ways in fill the
-				# same ground. Counting them on every line would book the block twice.
-				"beds": beds if i == 0 else 0,
-				"capped": capped,
-				"method": method,
-				"entry_stage": way["stage"],
-				"supplier": doc.supplier,
-				"qty_to_order": units,
-				"required_at_site_date": required,
-				"order_by_date": order_by,
-				# What the plan is asking for. A supplier may come back with something
-				# else, and that goes in confirmed_delivery_week -- the two are not the
-				# same fact and the calendar keys on the second.
-				"expected_delivery_date": required,
-			})
-			built.append((line, way["per_unit"]))
+
+			# How this cohort's material is got: one part per source. Normally
+			# that is the one way in. On a route taken off the farm's own crop
+			# it can be two -- what there is to dig and what there is not -- and
+			# the second part is a purchase like any other.
+			#
+			# (stage, method, units ordered, weeks of notice, plants, note)
+			parts = [(way["stage"], method, units, way["notice_weeks"], share, None)]
+			if own and units:
+				# Drawn down in planting order. The earliest cohorts dig what is
+				# standing and the crop runs out somewhere in the middle of the
+				# season, which is what the farm actually does with it -- not a
+				# proportion off every cohort.
+				dug = min(units, own_available)
+				own_available -= dug
+				gap = units - dug
+				if gap and not own.get("buy_stage"):
+					# Nobody sells this material in the form the route takes it.
+					# Saying so beats ordering something else under its name.
+					parts = [(way["stage"], method, 0, way["notice_weeks"], share,
+					          _("{0} {1} short of what this cohort needs and no "
+					            "bought form of it to make the difference up with.")
+					          .format("{:,}".format(gap),
+					                  (way["stage"] or "").lower()))]
+					unbuyable += gap
+				elif gap:
+					# Plants follow the units they come from, so a cohort half dug
+					# and half bought reads as two halves of one planting rather
+					# than two plantings.
+					dug_plants = int(share * dug / units)
+					parts = [x for x in (
+						(way["stage"], method, 0, way["notice_weeks"], dug_plants,
+						 _("{0} {1} dug off the crop standing at {2}.").format(
+							 "{:,}".format(dug), (way["stage"] or "").lower(), p.farm)
+						 if dug else None),
+						(own["buy_stage"], "Purchase", gap,
+						 way["notice_weeks"] + cint(own.get("buy_lead_weeks")),
+						 share - dug_plants,
+						 _("{0} more {1} are needed than {2} has standing, so they "
+						   "are bought as {3}.").format(
+							 "{:,}".format(gap), (way["stage"] or "").lower(),
+							 p.farm, own["buy_stage"])),
+					) if x[2] or x[4]]
+					bought_short += gap
+				else:
+					# Every one of them comes off the farm's own crop.
+					parts = [(way["stage"], method, 0, way["notice_weeks"], share,
+					          _("{0} {1} dug off the crop standing at {2}.").format(
+						          "{:,}".format(dug), (way["stage"] or "").lower(),
+						          p.farm))]
+
+			for j, (stage_name, how, order_units, notice, at_field, note) in \
+					enumerate(parts):
+				order_by = None if standing else (
+					required - datetime.timedelta(weeks=notice)
+					if required else None)
+				line = doc.append("requirements", {
+					"line_type": "Planting",
+					"drawn_from_pool": 1 if standing else 0,
+					"cohort": b.name,
+					"planting_week": ("%s-W%02d" % (cint(b.planting_year),
+					                                cint(b.planting_week))
+					                  if b.planting_year else None),
+					"planting_date": b.planting_date,
+					"first_harvest_week": ("%s-W%02d" % (cint(b.first_harvest_year),
+					                                     cint(b.first_harvest_week))
+					                       if b.first_harvest_year else None),
+					"qty_at_field": at_field,
+					# Beds are the cohort's, not the share's: the two ways in fill the
+					# same ground. Counting them on every line would book the block twice.
+					"beds": beds if (i == 0 and j == 0) else 0,
+					"capped": capped,
+					"method": how,
+					"entry_stage": stage_name,
+					"supplier": doc.supplier if how == "Purchase" else None,
+					"qty_to_order": order_units,
+					"required_at_site_date": required,
+					"order_by_date": order_by,
+					# What the plan is asking for. A supplier may come back with something
+					# else, and that goes in confirmed_delivery_week -- the two are not the
+					# same fact and the calendar keys on the second.
+					"expected_delivery_date": required,
+					"notes": note,
+				})
+				built.append((line, way["per_unit"]))
+
+	# Say it on the plan, not only on a card somebody may not open. A route that
+	# buys nothing has always read "nothing is bought; it is all raised here",
+	# and on a first season of a crop -- or on any season the farm plants more
+	# than it stands -- that sentence was simply untrue.
+	if own and (bought_short or unbuyable):
+		where = _("{0} has {1} plants standing, counted from {2}, which gives "
+		          "{3} {4}.").format(
+			p.farm, "{:,}".format(cint(own.get("plants_standing"))),
+			own.get("basis") or _("the planting calendar"),
+			"{:,}".format(cint(own.get("units_available"))),
+			(own.get("stage") or _("units")).lower())
+		# Replacing the route's own sentence rather than following it. It says
+		# "nothing is bought; it is all raised here", and leaving that standing
+		# in front of an order for 16,400 tubers is a document arguing with
+		# itself.
+		route_says = _("{0} takes its material off its own crop -- while the farm "
+		               "has one standing.").format(v.name)
+		if bought_short:
+			doc.route_verdict = _(
+				"{0} {1} Short by {2}, which is bought as {3}.").format(
+				route_says, where, "{:,}".format(bought_short), own["buy_stage"])
+			# The plan does buy something after all, so it has a stage it is
+			# bought at -- the one the gap is ordered in.
+			doc.entry_stage = own["buy_stage"]
+			doc.lead_weeks = cint(own.get("buy_lead_weeks"))
+			frappe.msgprint(
+				_("{0} {1} more than {2} has standing. They are on the plan as "
+				  "{3} to buy.").format(
+					"{:,}".format(bought_short), (own.get("stage") or "").lower(),
+					p.farm, own["buy_stage"]),
+				indicator="orange", alert=True)
+		if unbuyable:
+			doc.route_verdict = _(
+				"{0} {1} Short by {2}, and nothing says what {3} are bought as, "
+				"so the gap cannot be ordered -- name the bought form on the "
+				"Material Stage record, or plant less.").format(
+				route_says, where, "{:,}".format(unbuyable),
+				(own.get("stage") or "").lower())
+			frappe.msgprint(doc.route_verdict, indicator="red")
 
 	if standing:
 		# One line for the one purchase, dated back through the function that knows
