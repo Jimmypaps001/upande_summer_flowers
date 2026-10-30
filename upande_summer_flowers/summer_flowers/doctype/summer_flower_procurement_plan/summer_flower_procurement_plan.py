@@ -1296,6 +1296,7 @@ def write_plantings(plan, proc=None):
 	from upande_summer_flowers.summer_flowers.doctype \
 		.summer_flower_production_plan.summer_flower_production_plan import (
 			BlockCalendar,
+			plants_standing_from,
 		)
 
 	protocol = (proc.protocol if proc else plan.protocol)
@@ -1389,6 +1390,11 @@ def write_plantings(plan, proc=None):
 			"company": plan.company,
 			"beds": beds_wanted if cut_by else cint(row.beds),
 			"plants": plants_here,
+			# What goes in, and what is left once it has taken. The two are not
+			# the same number and the second is the crop the beds carry -- read
+			# as one, a planting of 16,977 reported 16,977 standing where 11,884
+			# will, overstating the ground by the whole establishment loss.
+			"plants_expected_standing": plants_standing_from(v, plants_here),
 			# The delivery date is the planting date only where what arrives IS
 			# the plant. Where the farm propagates, the delivery is tissue
 			# culture months earlier, and planting on it put the crop in the

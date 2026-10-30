@@ -1687,7 +1687,11 @@ def _standing_plants(block, rows, used, basis, register):
 	override: where a planting exists it is the more specific answer and it
 	knows which plan put the crop there.
 	"""
-	from_plantings = sum(cint(r.get("plants")) for r in rows
+	# What a planting LEAVES standing, not what went into it. plants is the
+	# number put in the ground and a share of it never takes, so counting it as
+	# the standing crop reported every block fuller than it is.
+	from_plantings = sum(cint(r.get("plants_expected_standing")) or cint(r.get("plants"))
+	                     for r in rows
 	                     if r.get("calendar_status") not in ("Uprooted", "Cancelled"))
 	if basis == "plantings" and from_plantings:
 		return from_plantings
@@ -1744,7 +1748,8 @@ def block_forecast(plan=None, variety=None, farm=None, blocks=None):
 		pfilters["variety"] = variety
 	plantings = frappe.get_all(
 		"Planting Calendar", filters=pfilters,
-		fields=["name", "block", "variety", "beds", "plants", "planting_date",
+		fields=["name", "block", "variety", "beds", "plants",
+		        "plants_expected_standing", "planting_date",
 		        "pinch_date", "planned_uproot_date", "actual_uproot_date",
 		        "calendar_status", "expected_stems_life", "crop_protocol_version"],
 	)
