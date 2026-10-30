@@ -1693,12 +1693,15 @@ def _standing_plants(block, rows, used, basis, register):
 	from_plantings = sum(cint(r.get("plants_expected_standing")) or cint(r.get("plants"))
 	                     for r in rows
 	                     if r.get("calendar_status") not in ("Uprooted", "Cancelled"))
-	if basis == "plantings" and from_plantings:
-		return from_plantings
 	from_beds = sum(x["plants"] for x in used)
-	if from_beds:
-		return from_beds
-	return cint((register.get(block.name) or {}).get("plants"))
+	from_register = cint((register.get(block.name) or {}).get("plants"))
+	# The largest of the three, not the first that is non-zero. Preferring a
+	# planting because one exists let a single 816-plant calendar entry stand
+	# for a block the register says carries 757,600, and reported the block as
+	# all but empty. They are three records of one crop, not three crops, so
+	# they cannot be added -- but the smallest of them is never the answer.
+	return max(from_plantings if basis == "plantings" else 0,
+	           from_beds, from_register)
 
 
 @frappe.whitelist()

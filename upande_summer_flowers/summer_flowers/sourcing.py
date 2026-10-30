@@ -270,8 +270,26 @@ def own_stock(version, farm, variety, on_date, exclude=None):
 
 	rows = [r for r in (standing_plantings(farm, variety, on_date) or [])
 	        if not exclude or r.get("name") not in exclude]
-	plants = sum(cint(r.get("plants_expected_standing") or r.get("plants"))
-	             for r in rows)
+	from_plantings = sum(cint(r.get("plants_expected_standing") or r.get("plants"))
+	                     for r in rows)
+	# And what the blocks themselves say is growing. Two records of one crop:
+	# the planner's calendar, which is what was MEANT to go in, and the block's
+	# own varieties_grown register, which is what the farm says is there. They
+	# disagree badly -- one variety reads 816 plants from a single calendar
+	# entry against 757,600 in the register -- and reading only the calendar
+	# would have told a farm to buy three quarters of a million tubers it is
+	# standing on.
+	#
+	# The larger wins, because the two are not additive (they describe the same
+	# ground) and the expensive mistake is the small one: buying what you have.
+	# Which was used is said out loud so nobody reads a figure whose basis they
+	# cannot see.
+	from_register = cint(frappe.db.sql("""
+		select ifnull(sum(gv.plants), 0) from `tabGreenhouse Variety` gv
+		join tabBlock b on b.name = gv.parent
+		where gv.parenttype = 'Block' and gv.variety = %s and b.farm = %s
+	""", (variety, farm))[0][0])
+	plants = max(from_plantings, from_register)
 	stage = next((st for st, _steps in _blocks(version)
 	              if (st.get("stage") or "") in OWN_STAGES), None)
 	per_plant = flt(stage.get("returns_per_plant")) if stage else 0.0
@@ -280,6 +298,10 @@ def own_stock(version, farm, variety, on_date, exclude=None):
 		"stage": stage.stage if stage else None,
 		"plantings": len(rows),
 		"plants_standing": plants,
+		"from_plantings": from_plantings,
+		"from_block_register": from_register,
+		"basis": ("the blocks' own register" if from_register > from_plantings
+		          else "the planting calendar"),
 		"per_plant": per_plant,
 		"units_available": int(plants * per_plant),
 		"as_of": str(on_date),
