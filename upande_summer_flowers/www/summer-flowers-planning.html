@@ -5162,6 +5162,17 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
       const chain = (ls.steps || []).map((x) =>
         `${esc(x.stage)} loses <b>${x.loss_pct}%</b>` +
         (x.from ? ` (${esc(x.from)})` : "")).join(", ");
+      // The harvest loss is a loss of STEMS, not of plants, so it is said
+      // separately: it does not change what one seed becomes, it changes how
+      // many plants the demand needs in the first place.
+      if (st.reject_pct && st.stems_per_plant_life) {
+        const cut = Math.round(m.plants_total * st.stems_per_plant_life);
+        notes.push({ kind: "info", html:
+          `<b>At harvest</b> — ${st.reject_pct}% of cut stems fail grading, so ` +
+          `the ${num(m.plants_total)} plants are grown to cut ${num(cut)} stems ` +
+          `and sell ${num(Math.round(cut * (1 - st.reject_pct / 100)))}. The plan ` +
+          `is sized on what can be sold, so the plants above already carry it.` });
+      }
       notes.push({ kind: "info", html:
         `<b>Losses</b> — ${chain || "none stated"}. ` +
         `<b>${ls.survival_pct}%</b> of what is bought stands up, so ` +

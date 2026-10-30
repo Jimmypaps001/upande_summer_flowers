@@ -119,6 +119,7 @@
   "cb_loss",
   "cuttings_per_plant_required",
   "reject_section",
+  "reject_pct",
   "cutting_reject_pct",
   "supplier_lead_weeks",
   "ramp_weeks",
@@ -828,6 +829,12 @@
    "fieldtype": "Section Break"
   },
   {
+   "fieldname": "reject_pct",
+   "fieldtype": "Percent",
+   "label": "Harvest reject %",
+   "description": "Share of cut stems that fail grading. Taken off the yield, so the plan grows what the market can be sold -- not the same thing as Cutting reject %, which is propagation cuttings thrown away before they are stuck."
+  },
+  {
    "default": "10",
    "description": "Applied when a Production Plan converts extra plants into cuttings.",
    "fieldname": "cutting_reject_pct",
@@ -948,7 +955,7 @@
  "grid_page_length": 50,
  "index_web_pages_for_search": 1,
  "links": [],
- "modified": "2026-10-28 20:00:00.000000",
+ "modified": "2026-10-30 15:00:00.000000",
  "modified_by": "Administrator",
  "module": "Summer Flowers",
  "name": "Crop Protocol Version",

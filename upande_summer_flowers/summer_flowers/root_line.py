@@ -962,6 +962,11 @@ def _loss_account(v, rows, stage):
 			"cutting_reject_pct": flt(v.get("cutting_reject_pct")),
 			"tc_order_loss_pct": flt(v.get("tc_order_loss_pct")),
 			"cuttings_per_plant_required": flt(v.get("cuttings_per_plant_required")),
+			# Not a loss of plants but of what they produce, so it is stated
+			# apart from the chain above: it does not change what one seed
+			# becomes, it changes how many plants the demand needs.
+			"reject_pct": flt(v.get("reject_pct")),
+			"stems_per_plant_life": flt(v.get("total_stems_per_plant_life")),
 		},
 		"steps": steps,
 		"survival_pct": round(survival * 100, 2),

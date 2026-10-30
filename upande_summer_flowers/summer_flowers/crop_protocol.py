@@ -44,6 +44,10 @@ NATIVE = {
 	"total_stems_per_plant_life": "total_stems_per_plant_life",
 	"life_expectancy_years": "life_expectancy_years",
 	"stated_yield_stems_per_ha": "yield_stems_per_ha",
+	# The grading loss. Native to Crop Protocol and named plainly there, so the
+	# snapshot takes it under the same name rather than inventing a summer
+	# flower copy of a field every crop already has.
+	"reject_pct": "reject_pct",
 }
 # The doctype this app's protocol lives on. Back on upande_agriculture's Crop
 # Protocol: variety and farm are re-declared as Custom Fields from this app, so

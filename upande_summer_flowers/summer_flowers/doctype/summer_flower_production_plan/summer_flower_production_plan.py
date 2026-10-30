@@ -916,6 +916,17 @@ def plants_per_bed_for(v):
 
 
 
+def saleable(v):
+	"""The share of cut stems that grade out, as a fraction.
+
+	1.0 where the protocol does not state a reject rate: a loss nobody has
+	measured is better carried as none than invented, and 240 of the site's
+	summer flower protocols say nothing here.
+	"""
+	pct = flt(getattr(v, "reject_pct", 0) or 0)
+	return (1.0 - pct / 100.0) if 0 < pct < 100 else 1.0
+
+
 def establishment(v):
 	"""The share of what is planted that takes, as a fraction. 1.0 when the
 	protocol does not say, because guessing a loss is worse than carrying none."""
@@ -1635,9 +1646,16 @@ def _populate(plan):
 	# them; a crop cut once has a single entry.
 	curve = sorted(offsets, key=lambda o: o[0])
 	anchor = cint(curve[0][0])
+	# Stems that can be SOLD, not stems cut. A share of every harvest fails
+	# grading and the plan was counting it as production, so a crop rejecting a
+	# tenth met its demand on paper and came a tenth short at the packhouse.
+	# Taken off the yield rather than added to the demand, because then the
+	# plan's production and the market's demand are the same kind of stem and
+	# the weekly variance compares like with like.
+	keep = saleable(protocol)
 	rates = [0.0] * (cint(curve[-1][0]) - anchor + 1)
 	for off, spp in curve:
-		rates[cint(off) - anchor] = flt(spp)
+		rates[cint(off) - anchor] = flt(spp) * keep
 	life_weeks = protocol.total_weeks_in_ground or 0
 	stick_weeks = protocol.sticking_to_planting_weeks or 0
 	turnaround = cint(protocol.turnaround_weeks)
@@ -1734,7 +1752,7 @@ def _populate(plan):
 			hy, hw = iso_year_week(hd)
 			family.add(hw)
 			if (hy, hw) in index:
-				stems = int(round(flt(spp) * plants))
+				stems = int(round(flt(spp) * plants * keep))
 				production[(hy, hw)] += stems
 				mine[(hy, hw)] += stems
 				if block:
