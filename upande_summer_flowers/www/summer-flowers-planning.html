@@ -4839,7 +4839,12 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
   // What this crop is bought as, off the route, with the old names as the
   // fallback for a plan built before the server said.
   const wayOne = (m) => (m && m.primary_stage) || "TC";
-  const wayTwo = (m) => (m && m.ways === 1 ? null : (m && m.secondary_stage) || "Roots");
+  // One way in, or none at all. A crop taken off the farm's own stock has no
+  // BOUGHT ways, so ways is 0 -- and testing for exactly 1 sent it down the
+  // two-ways-in branch and invented a second way called Roots: a route summary
+  // reading "Tubers (Own) + Roots", a column of roots nobody buys, and a note
+  // about a Roots row the protocol does not have.
+  const wayTwo = (m) => (!m || (m.ways || 0) < 2 ? null : m.secondary_stage || "Roots");
 
   // Who sells each way in. The twin of the chooser below it, and against the
   // same document: the card used to write a supplier split of its own onto the
@@ -5170,6 +5175,27 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
       const chain = (ls.steps || []).map((x) =>
         `${esc(x.stage)} loses <b>${x.loss_pct}%</b>` +
         (x.from ? ` (${esc(x.from)})` : "")).join(", ");
+      // A crop cut off the farm's own stock needs a crop on the farm. Said
+      // before the losses, because it is not a question of how much is lost on
+      // the way -- it is whether there is anything to set out with.
+      const os = m.own_stock;
+      if (os) {
+        const unit = (os.stage || "material").toLowerCase();
+        notes.unshift({ kind: os.short_by ? "bad" : "info", html: os.short_by
+          ? `<b>Nothing to cut from</b> — this crop is taken as ${esc(unit)} off ` +
+            `the farm's own standing crop, and ${os.plants_standing
+              ? `${num(os.plants_standing)} plants standing give only ` +
+                `${num(os.units_available)}`
+              : `there is none standing at ${esc(m.farm)}`} ` +
+            `against the ${num(os.units_needed)} this plan needs. ` +
+            `<b>${num(os.short_by)} ${esc(unit)} have to be bought</b> — add a ` +
+            `bought way to the protocol, or plant a crop to take them off first.`
+          : `<b>Taken from our own crop</b> — ${num(os.plants_standing)} plants ` +
+            `standing at ${esc(m.farm)} give ${num(os.units_available)} ` +
+            `${esc(unit)}, and this plan needs ${num(os.units_needed)}. ` +
+            `Nothing is bought.` });
+      }
+
       // The harvest loss is a loss of STEMS, not of plants, so it is said
       // separately: it does not change what one seed becomes, it changes how
       // many plants the demand needs in the first place.
@@ -5190,8 +5216,10 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
           ? ` — ${st.cuttings_per_plant_required} a plant.` : ".") });
     }
     if (sg.tc != null && !m.asked) {
-      notes.unshift(`<b>Suggested: ${num(sg.tc)} TC and ${num(sg.roots)} roots</b>` +
-        ` — from ${esc(sg.from || "the plan")}. Change either box to try another.`);
+      notes.unshift(`<b>Suggested: ${num(sg.tc)} ${esc(wayOne(m).toLowerCase())}` +
+        (wayTwo(m) ? ` and ${num(sg.roots)} ${esc(wayTwo(m).toLowerCase())}` : "") +
+        `</b> — from ${esc(sg.from || "the plan")}. Change ` +
+        `${wayTwo(m) ? "either box" : "the box"} to try another.`);
     }
     const a = m.asked;
     if (a && (a.short_by || a.over_by)) {

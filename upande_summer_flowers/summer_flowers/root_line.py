@@ -575,6 +575,10 @@ def arrival_plan(plan, tc_share=None, returns_per_plant=None,
 		# reader who did not saw a number that did not match the plantings -- and
 		# the figures that explain it were a tab away on another document.
 		"losses": account,
+		# A route that takes its material off the farm's own crop can only do
+		# that while the farm has one standing.
+		"own_stock": _own_stock(plan, v, rows, primary,
+		                        sum(cint(weeks[k].get("units_tc")) for k in ordered)),
 		"roots_total": sum(cint(weeks[k]["roots_needed"]) for k in ordered),
 		"weeks": [dict(week=str(k), **weeks[k]) for k in ordered],
 		# "tc" not "plantlets": the farm buys tissue culture, and calling it
@@ -615,12 +619,16 @@ def arrival_plan(plan, tc_share=None, returns_per_plant=None,
 			"tc": int(math.ceil(sum(weeks[k]["by_tc"] for k in ordered) / keep)),
 			"roots": int(math.ceil(
 				sum(cint(weeks[k]["roots_needed"]) for k in ordered) / keep_roots)),
-			"from": _("{0}, {1}% tissue culture").format(
+			# Named from the route. "100% tissue culture" over a crop lifted as
+			# tubers off the farm's own ground is the card describing somebody
+			# else's crop again.
+			"from": _("{0}, {1}% {2}").format(
 				SPLIT_FROM.get(origin, SPLIT_FROM["protocol"]),
-				round(share * 100, 1))
-			+ (_(", grossed up for losses of {0}% on tissue culture and {1}% "
-			     "on roots").format(round((1 - keep) * 100, 1),
-			                        round((1 - keep_roots) * 100, 1))
+				round(share * 100, 1), primary.lower())
+			+ (_(", grossed up for losses of {0}% on {1} and {2}% on {3}")
+			   .format(round((1 - keep) * 100, 1), primary.lower(),
+			           round((1 - keep_roots) * 100, 1),
+			           (secondary or _("the second way")).lower())
 			   if (keep < 1 or keep_roots < 1) else ""),
 		},
 		"split_from": origin,
@@ -932,6 +940,32 @@ def _saleable(v):
 		.summer_flower_production_plan.summer_flower_production_plan import saleable
 
 	return saleable(v)
+
+
+def _own_stock(plan, v, rows, primary, units_needed):
+	"""What the farm has standing to cut this plan's material from, and the gap.
+
+	None where the route buys its material -- the question does not arise. Where
+	it does not, it is the whole question: a crop cut off the farm's own stock
+	needs a crop on the farm, and the plan said "nothing is bought" without ever
+	asking whether there was anything to take it from.
+	"""
+	from upande_summer_flowers.summer_flowers import sourcing
+	from upande_summer_flowers.summer_flowers.crop_protocol import ROUTE_ENTRY
+	import upande_summer_flowers.summer_flowers.stages as _st
+
+	if not primary or _st.kind(primary) != _st.TAKEN:
+		return None
+	dates = [b.planting_date for b in plan.plan_blocks
+	         if cint(b.is_new_planting) and b.planting_date]
+	if not dates:
+		return None
+	# Excluding this plan's own plantings: a crop cannot be cut from itself.
+	mine = {b.existing_planting for b in plan.plan_blocks if b.existing_planting}
+	out = sourcing.own_stock(v, plan.farm, plan.variety, min(dates), exclude=mine)
+	out["units_needed"] = cint(units_needed)
+	out["short_by"] = max(0, cint(units_needed) - cint(out["units_available"]))
+	return out
 
 
 def _loss_account(v, rows, stage):

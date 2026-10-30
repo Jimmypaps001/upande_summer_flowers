@@ -250,6 +250,42 @@ def standing_stage(version, from_stage=None):
 	return None
 
 
+def own_stock(version, farm, variety, on_date, exclude=None):
+	"""What the farm's own standing crop can hand over on `on_date`.
+
+	A route that starts at Tubers (Own), Roots (Own) or Cuttings (Own) buys
+	nothing -- it is cut, lifted or dug off a crop the farm already has. That is
+	only true while the farm HAS one. The plan said "nothing is bought; it is
+	all raised here through to planting" without once asking whether there was
+	anything standing to raise it from, so a first season of a crop the farm has
+	never grown planned itself happily out of a field that does not exist.
+
+	What one standing plant hands over is returns_per_plant on the own stage --
+	a plant lifted for tubers gives several, a stock plant gives cuttings. The
+	plantings this plan is itself creating are excluded: a crop cannot be cut
+	from itself.
+	"""
+	from upande_summer_flowers.summer_flowers.doctype.planting_calendar \
+		.planting_calendar import standing_plantings
+
+	rows = [r for r in (standing_plantings(farm, variety, on_date) or [])
+	        if not exclude or r.get("name") not in exclude]
+	plants = sum(cint(r.get("plants_expected_standing") or r.get("plants"))
+	             for r in rows)
+	stage = next((st for st, _steps in _blocks(version)
+	              if (st.get("stage") or "") in OWN_STAGES), None)
+	per_plant = flt(stage.get("returns_per_plant")) if stage else 0.0
+	per_plant = per_plant if per_plant > 0 else 1.0
+	return {
+		"stage": stage.stage if stage else None,
+		"plantings": len(rows),
+		"plants_standing": plants,
+		"per_plant": per_plant,
+		"units_available": int(plants * per_plant),
+		"as_of": str(on_date),
+	}
+
+
 def standing_pool_capacity(version, on_date):
 	"""Cuttings the motherstock already standing can give in the week of `on_date`.
 
