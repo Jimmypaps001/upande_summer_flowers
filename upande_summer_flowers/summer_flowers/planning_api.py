@@ -2197,6 +2197,103 @@ def _route_chains_payload(version):
 	return out
 
 
+def _end_stage():
+	from upande_summer_flowers.summer_flowers import stages as _stages
+
+	return _stages.end_stage()
+
+
+def _pool_journey(v, lead, estab, cycles, build, to_cut, stick_to_plant,
+                  plant_to_harvest):
+	"""Tissue culture to a motherstock to a cutting in the ground."""
+	journey = [
+		{"week": 0, "label": "Place TC order", "note": None},
+		{"week": lead, "label": "TC arrives", "note": f"{lead}w supplier lead"},
+		{"week": lead + cint(v.weeks_on_tray), "label": "Tray to pot",
+		 "note": f"{cint(v.weeks_on_tray)}w tray"},
+		{"week": lead + cint(v.weeks_on_tray) + cint(v.weeks_on_pot),
+		 "label": "Pot ends, ramp begins", "note": f"{cint(v.weeks_on_pot)}w pot"},
+		{"week": lead + estab, "label": "First generation ready",
+		 "note": f"{estab}w establishment, ramp {v.ramp_profile or ''}"},
+	]
+	if cycles:
+		journey += [
+			{"week": lead + estab + build, "label": "Multiplication done",
+			 "note": f"{cycles} cycles x {cint(v.cycle_time_weeks)}w"},
+			{"week": lead + to_cut, "label": "Motherstock cutting",
+			 "note": f"{estab}w to establish the multiplied generation"},
+		]
+	else:
+		journey.append({"week": lead + to_cut, "label": "Motherstock cutting",
+		                "note": "no build-up"})
+	journey += [
+		{"week": lead + to_cut + stick_to_plant, "label": "Cuttings planted",
+		 "note": f"{stick_to_plant}w sticking to planting"},
+		{"week": lead + to_cut + stick_to_plant + cint(v.weeks_to_pinch),
+		 "label": "Pinch", "note": f"{cint(v.weeks_to_pinch)}w to pinch"},
+		{"week": lead + to_cut + stick_to_plant + plant_to_harvest,
+		 "label": "First harvest",
+		 "note": f"{plant_to_harvest}w planting to first harvest"},
+	]
+	return journey, _("Full TC journey — order to first farm harvest")
+
+
+def _route_journey(v, plant_to_harvest):
+	"""Order to first harvest, read off the route the crop actually takes.
+
+	One step a stage, with the stage's own weeks between them, so a seed route
+	reads order, arrive, root, plant, cut -- and a crop bought as plants reads
+	order, arrive, plant, cut, because that is all that happens to it.
+	"""
+	rows = [r for r in (v.get("material_route") or [])
+	        if (r.get("row_type") or "Stage") == "Stage"]
+	entry = next((r for r in rows if cint(r.get("is_purchase"))), None)
+	start = rows.index(entry) if entry else 0
+	# One way in, not the whole table. A crop bought two ways has its chains one
+	# after another in the same route, and walking to the end of the table put
+	# the roots leg on the end of the tissue culture's journey -- Planted twice,
+	# and a first harvest fifteen weeks after the wrong one. A chain ends at the
+	# planting it leads to.
+	chain = []
+	for r in rows[start:]:
+		chain.append(r)
+		if r.stage == _end_stage():
+			break
+	lead = cint(entry.lead_weeks) if entry else 0
+	name = entry.stage if entry else (chain[0].stage if chain else _("Material"))
+
+	week = 0
+	journey = []
+	if entry:
+		journey.append({"week": 0,
+		                "label": _("Place {0} order").format(name), "note": None})
+		week = lead
+		journey.append({
+			"week": week,
+			# "Seeds arrives" is nobody's English. The stage names are plural as
+			# often as not, so the verb follows the name rather than the other
+			# way round.
+			"label": (_("{0} arrive") if name.endswith("s") else _("{0} arrives"))
+			.format(name),
+			"note": _("{0}w supplier lead").format(lead)})
+	for r in chain[1:]:
+		weeks = cint(r.weeks)
+		week += weeks
+		end = r.stage == _end_stage()
+		journey.append({
+			"week": week,
+			"label": _("Planted") if end else r.stage,
+			# The note is the gap BEFORE this step, the way the pool journey
+			# reads "3w tray" between the tray and the pot. Planting out takes no
+			# time of its own, so it carries none.
+			"note": (_("{0}w {1}").format(weeks, r.stage.lower())
+			         if weeks and not end else None),
+		})
+	journey.append({"week": week + plant_to_harvest, "label": _("First harvest"),
+	                "note": _("{0}w planting to first harvest").format(plant_to_harvest)})
+	return journey, _("Full {0} journey — order to first farm harvest").format(name)
+
+
 @frappe.whitelist()
 def protocol_detail(version=None, variety=None, farm=None, plan=None):
 	"""The whole protocol sheet: inputs, derived values and the journey timelines.
@@ -2309,35 +2406,15 @@ def protocol_detail(version=None, variety=None, farm=None, plan=None):
 	stick_to_plant = cint(v.sticking_to_planting_weeks)
 	plant_to_harvest = cint(v.first_harvest_offset_weeks)
 
-	journey = [
-		{"week": 0, "label": "Place TC order", "note": None},
-		{"week": lead, "label": "TC arrives", "note": f"{lead}w supplier lead"},
-		{"week": lead + cint(v.weeks_on_tray), "label": "Tray to pot",
-		 "note": f"{cint(v.weeks_on_tray)}w tray"},
-		{"week": lead + cint(v.weeks_on_tray) + cint(v.weeks_on_pot),
-		 "label": "Pot ends, ramp begins", "note": f"{cint(v.weeks_on_pot)}w pot"},
-		{"week": lead + estab, "label": "First generation ready",
-		 "note": f"{estab}w establishment, ramp {v.ramp_profile or ''}"},
-	]
-	if cycles:
-		journey += [
-			{"week": lead + estab + build, "label": "Multiplication done",
-			 "note": f"{cycles} cycles x {cint(v.cycle_time_weeks)}w"},
-			{"week": lead + to_cut, "label": "Motherstock cutting",
-			 "note": f"{estab}w to establish the multiplied generation"},
-		]
+	# A crop with no pool does not take the tissue-culture road, and telling it
+	# as one put a tray, a pot, a ramp, a build-up and a motherstock cutting in
+	# front of a seed. Its journey is its own route: order, arrive, raise,
+	# plant, cut -- with the weeks the route itself states.
+	if not _has_pool(v):
+		journey, journey_title = _route_journey(v, plant_to_harvest)
 	else:
-		journey.append({"week": lead + to_cut, "label": "Motherstock cutting",
-		                "note": "no build-up"})
-	journey += [
-		{"week": lead + to_cut + stick_to_plant, "label": "Cuttings planted",
-		 "note": f"{stick_to_plant}w sticking to planting"},
-		{"week": lead + to_cut + stick_to_plant + cint(v.weeks_to_pinch),
-		 "label": "Pinch", "note": f"{cint(v.weeks_to_pinch)}w to pinch"},
-		{"week": lead + to_cut + stick_to_plant + plant_to_harvest,
-		 "label": "First harvest",
-		 "note": f"{plant_to_harvest}w planting to first harvest"},
-	]
+		journey, journey_title = _pool_journey(
+			v, lead, estab, cycles, build, to_cut, stick_to_plant, plant_to_harvest)
 
 	ramp = [
 		{"week": i + 1, "pct": int(round(x * 100))}
@@ -2420,6 +2497,7 @@ def protocol_detail(version=None, variety=None, farm=None, plan=None):
 		            "price": _stem_price(v.variety)} for g in v.grade_allocation],
 		"ramp": ramp,
 		"journey": journey,
+		"journey_title": journey_title,
 		"versions": sibling,
 	}
 

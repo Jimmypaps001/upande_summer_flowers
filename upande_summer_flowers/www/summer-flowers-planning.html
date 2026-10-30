@@ -562,7 +562,7 @@
 
       <div class="pl-card">
         <div class="pl-card-head">
-          <div><h2>{{ _("Full TC journey — order to first farm harvest") }}</h2>
+          <div><h2 id="pr-journey-title">{{ _("Full journey — order to first farm harvest") }}</h2>
                <p class="pl-note" id="pr-journey-sub"></p></div>
         </div>
         <div id="pr-journey" class="pl-tlstrip"></div>
@@ -6846,7 +6846,12 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
     ].map(tile).join("");
 
     // crop growth timeline
-    const segs = [{ w: 0, n: "PLANT", s: "cutting to ground" },
+    // What goes in the ground is a cutting on a motherstock crop, a seedling on
+    // a seed route, a root, a tuber, a bought plant. The route says which; the
+    // timeline used to call it a cutting for all of them.
+    const intoGround = (d.journey_title || "").match(/Full (.+?) journey/);
+    const segs = [{ w: 0, n: "PLANT",
+                    s: `${intoGround ? intoGround[1].toLowerCase() : "material"} to ground` },
       { w: F.weeks_to_pinch, n: "PINCH", s: "wk " + F.weeks_to_pinch }];
     d.flushes.forEach((f) => segs.push({
       w: f.weeks_from_planting, n: "F" + f.flush,
@@ -7039,7 +7044,10 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
       prow("Stated yield", num(F.stated_yield_stems_per_ha), "stems/ha/yr target",
         { field: "stated_yield_stems_per_ha", value: F.stated_yield_stems_per_ha });
 
-    // TC journey
+    const jt = $("pr-journey-title");
+    if (jt && d.journey_title) jt.textContent = d.journey_title;
+
+    // the journey, as this crop's route runs it
     const jsegs = [];
     d.journey.forEach((j, i) => {
       if (i) jsegs.push(`<div class="tgap">${esc(d.journey[i].note || "")}</div>`);
