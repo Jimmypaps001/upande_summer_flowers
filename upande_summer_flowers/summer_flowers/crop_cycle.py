@@ -197,6 +197,15 @@ class SummerFlowerCropCycle(CropCycle):
 			return
 
 		self._version = self._resolve_version()
+		if self._version is None:
+			# Recorded, not planned. The block, the beds and the dates are facts
+			# and they are kept; everything below is a forecast, and a forecast
+			# needs a protocol. The cycle sits in the register as it is and
+			# starts forecasting the day a protocol is approved and named on it.
+			self.set_plant_age()
+			self.check_uproot_deviation()
+			self.sync_cycle_status()
+			return
 		self.protocol = EffectiveProtocol(self._version, self)
 
 		self.check_override_approval()
@@ -293,8 +302,18 @@ class SummerFlowerCropCycle(CropCycle):
 		return bool(self.get("custom_block"))
 
 	def _resolve_version(self):
+		"""The protocol this cycle is planned against, where there is one.
+
+		A crop cycle is two things at once: the record of what is standing on a
+		piece of ground, and the plan for what it will give. Only the second
+		needs a protocol. Refusing the first without one turned a missing plan
+		into a missing crop -- 307 plantings the farm had already made could not
+		be written down, because nobody had yet written a protocol for
+		Delphinium, Limonium, Clematis or Phlox. The ground is a fact whether or
+		not anyone has planned it.
+		"""
 		if not self.get("custom_crop_protocol_version"):
-			frappe.throw(_("A summer flower cycle needs a Crop Protocol Version."))
+			return None
 		return frappe.get_cached_doc("Crop Protocol Version",
 		                            self.custom_crop_protocol_version)
 
