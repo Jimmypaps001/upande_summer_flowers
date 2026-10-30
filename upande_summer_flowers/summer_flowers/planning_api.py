@@ -2981,7 +2981,13 @@ def procurement_detail(plan=None, variety=None, farm=None):
 				fields=["propagation_unit", "supplier", "plants", "share_pct", "raises",
 				        "planted", "surplus", "troughs_used", "plantings",
 				        "propagation_plan", "note", "rate_per_plant", "amount",
-				        "purchase_order"],
+				        "purchase_order",
+				        # What this row raises and when the farm gets it. Both are
+				        # already worked out and stored; the card had no way to say
+				        # either, so a propagator was chosen with nothing on screen
+				        # about what they are raising or when it lands.
+				        "alloc_type", "lead_weeks", "start_by",
+				        "plants_from", "plants_to", "ready_basis"],
 				order_by="idx"):
 			r["procurement_plan"] = pr["name"]
 			r["entry_stage"] = pr["entry_stage"]
@@ -4082,6 +4088,61 @@ def _stem_price(variety):
 # ---------------------------------------------------------------------------
 # Who raises it: own propagation units and outside propagators, from the board
 # ---------------------------------------------------------------------------
+
+@frappe.whitelist()
+def seller_choices(procurement_plan):
+	"""The ways this plan buys, and who could sell each of them.
+
+	The companion to propagator_choices. Buying the material and raising it are
+	two decisions and the dashboard could only make the second: choosing a
+	seller meant leaving the plan, opening the document and pressing a button
+	there, which is why every plan on this site reads "nobody is named as
+	selling this yet".
+	"""
+	_guard()
+	doc = frappe.get_doc("Summer Flower Procurement Plan", procurement_plan)
+	frappe.has_permission("Summer Flower Procurement Plan", "read", doc, throw=True)
+	stages = list(doc.units_by_stage() or {})
+	if not stages:
+		stages = [doc.main_entry_stage() or doc.entry_stage or ""]
+	return {
+		"plan": doc.name,
+		"editable": 1 if doc.docstatus == 0 else 0,
+		"stages": [s for s in stages if s],
+		"suppliers": frappe.get_all("Supplier", filters={"disabled": 0},
+		                            pluck="name", order_by="name", limit=500),
+		"rows": [{"entry_stage": r.entry_stage, "supplier": r.supplier,
+		          "share_pct": flt(r.share_pct), "rate": flt(r.rate)}
+		         for r in (doc.get("purchase_allocation") or [])],
+	}
+
+
+@frappe.whitelist()
+def save_sellers(procurement_plan, rows):
+	"""Who sells each way in, written from the dashboard."""
+	_guard()
+	if isinstance(rows, str):
+		rows = frappe.parse_json(rows)
+	doc = frappe.get_doc("Summer Flower Procurement Plan", procurement_plan)
+	frappe.has_permission("Summer Flower Procurement Plan", "write", doc, throw=True)
+	if doc.docstatus != 0:
+		frappe.throw(_("{0} is not a draft, so who sells it is already settled.")
+		             .format(doc.name))
+	doc.set("purchase_allocation", [])
+	for r in (rows or []):
+		if not r.get("supplier"):
+			continue
+		doc.append("purchase_allocation", {
+			"entry_stage": r.get("entry_stage") or doc.entry_stage,
+			"supplier": r.get("supplier"),
+			"share_pct": flt(r.get("share_pct")),
+			"rate": flt(r.get("rate")),
+			"lead_weeks": cint(doc.lead_weeks),
+		})
+	doc.flags.ignore_permissions = True
+	doc.save()
+	return seller_choices(doc.name)
+
 
 @frappe.whitelist()
 def propagator_choices():

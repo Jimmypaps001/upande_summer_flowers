@@ -240,6 +240,22 @@ def confirm_and_raise(procurement_plan):
 
 	plan = frappe.get_doc("Summer Flower Production Plan", doc.production_plan)
 	write_plantings(plan, doc)
+	# And the bench is told what to raise, now that there is a confirmed figure
+	# to raise. Where an outside propagator has the share instead, the order
+	# raised above is their instruction and the plan carries the week the plants
+	# are due -- plants_from on the allocation, which the card shows.
+	if cint(doc.get("propagates_here")) or doc.get("propagation_allocation"):
+		from upande_summer_flowers.summer_flowers.doctype \
+			.summer_flower_propagation_plan.summer_flower_propagation_plan import (
+				build_from_plan,
+			)
+
+		try:
+			build_from_plan(doc.production_plan)
+		except Exception as e:
+			frappe.msgprint(_("The orders are raised; the propagation plan could "
+			                  "not be built: {0}").format(str(e).split("\n")[0][:160]),
+			                indicator="orange", title=_("Propagation plan"))
 	frappe.db.commit()
 	return schedule_for(doc.name)
 

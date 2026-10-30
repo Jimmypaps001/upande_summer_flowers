@@ -7820,12 +7820,12 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
         <p class="pl-note"><a href="/app/summer-flower-procurement-plan/${encodeURIComponent(p.name)}">${esc(p.name)}</a>
           · ${esc(p.entry_stage || "")} · draft — choose who raises it, then save.</p>
         <table class="pl-t"><thead><tr>
-          <th>Type</th><th>Unit / propagator</th><th class="r">Share %</th>
-          <th class="r">Charge / plant</th><th class="r">Plants now</th><th></th>
-        </tr></thead><tbody>${mine.map((x) => allocRow(x)).join("")}</tbody></table>
+          <th>Type</th><th>Unit / propagator</th><th>Raises</th>
+          <th class="r">Share %</th><th class="r">Charge / plant</th>
+          <th>Plants ready</th><th class="r">Plants now</th><th></th>
+        </tr></thead><tbody>${mine.map((x) => allocRow(x, p)).join("")}</tbody></table>
         <div class="pl-alloc-actions" style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px">
-          <select class="pl-add-unit"><option value="">+ our propagation unit…</option>${
-            PROP_CHOICES.units.map((u) => `<option>${esc(u)}</option>`).join("")}</select>
+          <input class="pl-add-unit" list="pl-unit-list" placeholder="+ our propagation unit…" style="min-width:240px">
           <input class="pl-add-sup" list="pl-sup-list" placeholder="+ outside propagator (supplier)…" style="min-width:240px">
           <button class="pl-btn pl-alloc-protocol">Propose by unit capacity</button>
           <button class="pl-btn pl-btn-primary pl-alloc-save">Save allocation</button>
@@ -7833,7 +7833,9 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
         </div>
       </div>`;
     }).join("") + `<datalist id="pl-sup-list">${
-      PROP_CHOICES.suppliers.map((x) => `<option value="${esc(x)}">`).join("")}</datalist>`;
+      PROP_CHOICES.suppliers.map((x) => `<option value="${esc(x)}">`).join("")}</datalist>` +
+      `<datalist id="pl-unit-list">${
+      PROP_CHOICES.units.map((x) => `<option value="${esc(x)}">`).join("")}</datalist>`;
 
     box.querySelectorAll(".pl-alloc-edit").forEach((ed) => {
       const plan = ed.dataset.plan;
@@ -7844,7 +7846,9 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
         if (e.target.classList.contains("pl-alloc-del")) e.target.closest("tr").remove();
       });
       ed.querySelector(".pl-add-unit").addEventListener("change", (e) => {
-        if (e.target.value) add({ propagation_unit: e.target.value, share_pct: 0 });
+        const v = e.target.value.trim();
+        if (v && PROP_CHOICES.units.includes(v)) add({ propagation_unit: v, share_pct: 0 });
+        else if (v) msg.textContent = `${v} is not a propagation unit.`;
         e.target.value = "";
       });
       ed.querySelector(".pl-add-sup").addEventListener("change", (e) => {
@@ -7871,13 +7875,23 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
     });
   }
 
-  function allocRow(x) {
+  function allocRow(x, plan) {
     const out = !!x.supplier && !x.propagation_unit;
+    // What this row is raising, and when the farm gets plants from it. Both
+    // are the allocation's own answers; the table simply never showed them, so
+    // a propagator was chosen with nothing on screen about either.
+    const raises = x.raises || x.entry_stage || (plan && plan.entry_stage) || "—";
+    const ready = x.plants_from
+      ? fdate(x.plants_from) + (x.plants_to && x.plants_to !== x.plants_from
+          ? " → " + fdate(x.plants_to) : "")
+      : (x.lead_weeks ? `${x.lead_weeks} wk after it starts` : "—");
     return `<tr data-unit="${esc(x.propagation_unit || "")}" data-sup="${esc(out ? x.supplier : "")}">
       <td><span class="pill">${out ? "outside" : "our unit"}</span></td>
       <td>${esc(x.propagation_unit || x.supplier)}</td>
+      <td>${esc(raises)}</td>
       <td class="r"><input class="pl-share" type="number" step="0.01" style="width:80px" value="${(+x.share_pct || 0).toFixed(2)}"></td>
       <td class="r">${out ? `<input class="pl-rate" type="number" step="0.01" style="width:80px" value="${+x.rate_per_plant || 0}">` : "free"}</td>
+      <td class="bf-meta">${esc(ready)}</td>
       <td class="r">${x.plants ? num(x.plants) : "\u2014"}</td>
       <td><a class="pl-alloc-del" style="cursor:pointer" title="Remove">✕</a></td></tr>`;
   }
@@ -7899,12 +7913,80 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
   // Who sells each way in. The companion to the allocation below it: one says
   // where the material is bought, the other who raises what arrives, and a crop
   // that is bought AND propagated needs both answered.
+  // Who sells each way in, chosen here. It used to be read-only with a note
+  // saying to open the document and press a button there -- so buying and
+  // raising, two halves of the same decision, were made in two places and only
+  // one of them on this page.
+  let SELLER_CHOICES = null;
+  async function renderSellerEditor(r) {
+    const box = $("pc-buying");
+    if (!box) return;
+    const draft = (r.plans || []).find((p) => p.docstatus === 0);
+    if (!draft) return false;
+    try { SELLER_CHOICES = await call("seller_choices", { procurement_plan: draft.name }); }
+    catch (e) { return false; }
+    const sc = SELLER_CHOICES;
+    const stages = sc.stages.length ? sc.stages : [""];
+    const rows = sc.rows.length ? sc.rows
+      : stages.map((st) => ({ entry_stage: st, supplier: "", share_pct: 100, rate: 0 }));
+    const sellRow = (x) => `<tr data-stage="${esc(x.entry_stage || "")}">` +
+      `<td>${esc(x.entry_stage || "—")}</td>` +
+      `<td><input class="sl-sup" list="pc-sup-list" style="min-width:230px" ` +
+      `value="${esc(x.supplier || "")}" placeholder="who sells it…"></td>` +
+      `<td class="r"><input class="sl-share" type="number" step="0.01" ` +
+      `style="width:80px" value="${(+x.share_pct || 0).toFixed(2)}"></td>` +
+      `<td class="r"><input class="sl-rate" type="number" step="0.01" ` +
+      `style="width:90px" value="${+x.rate || 0}"></td>` +
+      `<td><a class="sl-del text-muted small" href="#">✕</a></td></tr>`;
+    box.innerHTML =
+      `<p class="pl-note">${esc(draft.name)} · draft — say who sells each way in, ` +
+      `then save. What is ordered from them is the confirmed schedule below.</p>` +
+      `<table class="pl-t" id="pc-sell"><thead><tr><th>Bought as</th><th>Supplier</th>` +
+      `<th class="r">Share %</th><th class="r">Price / unit</th><th></th>` +
+      `</tr></thead><tbody>${rows.map(sellRow).join("")}</tbody></table>` +
+      `<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px">` +
+      stages.map((st) => `<button class="pl-btn sl-add" data-stage="${esc(st)}">` +
+        `+ another seller for ${esc(st || "this way")}</button>`).join(" ") +
+      `<button class="pl-btn pl-btn-primary sl-save">Save sellers</button>` +
+      `<span class="pl-note sl-msg"></span></div>` +
+      `<datalist id="pc-sup-list">${
+        sc.suppliers.map((x) => `<option value="${esc(x)}">`).join("")}</datalist>`;
+
+    const tbody = box.querySelector("#pc-sell tbody");
+    const msg = box.querySelector(".sl-msg");
+    box.addEventListener("click", (e) => {
+      const del = e.target.closest(".sl-del");
+      if (del) { e.preventDefault(); del.closest("tr").remove(); return; }
+      const add = e.target.closest(".sl-add");
+      if (add) {
+        tbody.insertAdjacentHTML("beforeend",
+          sellRow({ entry_stage: add.dataset.stage, supplier: "", share_pct: 0, rate: 0 }));
+        return;
+      }
+      if (e.target.closest(".sl-save")) {
+        const out = [...tbody.querySelectorAll("tr")].map((tr) => ({
+          entry_stage: tr.dataset.stage,
+          supplier: tr.querySelector(".sl-sup").value.trim(),
+          share_pct: +tr.querySelector(".sl-share").value || 0,
+          rate: +tr.querySelector(".sl-rate").value || 0,
+        })).filter((x) => x.supplier);
+        const bad = out.find((x) => !sc.suppliers.includes(x.supplier));
+        if (bad) { msg.textContent = `${bad.supplier} is not a supplier.`; return; }
+        msg.textContent = "Saving…";
+        call("save_sellers", { procurement_plan: draft.name,
+                                  rows: JSON.stringify(out) })
+          .then(() => { msg.textContent = ""; loadProcurement(); })
+          .catch((err) => { msg.textContent = err.message; });
+      }
+    });
+    return true;
+  }
+
   function renderBuying(rows) {
     const box = $("pc-buying");
     if (!box) return;
     if (!rows.length) {
-      box.innerHTML = `<p class="pl-empty">Nobody is named as selling this yet. ` +
-        `Open the procurement plan and press <b>Choose Suppliers</b>.</p>`;
+      box.innerHTML = `<p class="pl-empty">Nobody is named as selling this yet.</p>`;
       return;
     }
     const byStage = {};
@@ -8115,7 +8197,9 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
 
     if (plans.some((p) => p.docstatus === 0)) renderAllocEditor(r);
     else renderAllocation(r.allocations, null, null, "pc-alloc", null);
-    renderBuying(r.buying || []);
+    renderSellerEditor(r).then((edited) => {
+      if (!edited) renderBuying(r.buying || []);
+    });
   }
 
   function setTab(name, fromHash) {

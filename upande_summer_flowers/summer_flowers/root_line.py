@@ -1130,8 +1130,12 @@ def _after_material_agreement(production_plan, tc):
 		r = build_from_plan(production_plan, as_dict=True)
 		return r if isinstance(r, dict) else {"name": r}
 
-	return [(_("Procurement Plan"), procurement),
-	        (_("Propagation Plan"), propagation)]
+	# Agreeing a quantity is a decision about the PLAN. It used to build the
+	# propagation plan here as well, which commits the bench to raising a figure
+	# nobody has agreed to buy yet -- the supplier has not been asked, and what
+	# is raised has to be what arrives. The propagation plan is built where that
+	# is known: when the schedule is confirmed on the Procurement tab.
+	return [(_("Procurement Plan"), procurement)]
 
 
 @frappe.whitelist()
