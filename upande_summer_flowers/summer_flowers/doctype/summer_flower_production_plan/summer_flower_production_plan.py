@@ -916,6 +916,29 @@ def plants_per_bed_for(v):
 
 
 
+def establishment(v):
+	"""The share of what is planted that takes, as a fraction. 1.0 when the
+	protocol does not say, because guessing a loss is worse than carrying none."""
+	pct = flt(getattr(v, "field_establishment_pct", 0) or 0)
+	return (pct / 100.0) if 0 < pct < 100 else 1.0
+
+
+def plants_to_plant(v, standing_required):
+	"""How many to put in the ground to be left with `standing_required`."""
+	take = establishment(v)
+	return int(math.ceil(cint(standing_required) / take)) if take else cint(
+		standing_required)
+
+
+def plants_standing_from(v, planted, at_least=0):
+	"""What a planting of `planted` leaves standing once it has established.
+
+	Never less than what was asked for: the planting was rounded UP to a whole
+	minimum area, so the stand it leaves is at least the one the demand needed.
+	"""
+	return max(cint(at_least), int(round(cint(planted) * establishment(v))))
+
+
 def size_planting(v, plants_required, min_beds=1):
 	"""Turn a flush-true plant requirement into a plantable size.
 
@@ -1670,9 +1693,21 @@ def _populate(plan):
 		# gap is the difference between a workable rotation and a double-booked bed.
 		released = uproot + datetime.timedelta(weeks=turnaround)
 
-		beds, plants, _area = size_planting(protocol, wanted_plants, min_beds)
-		if not plants:
-			plants = wanted_plants
+		# The ground is sized for what goes INTO it, not for what is left
+		# standing in it. Only some of what is planted establishes, so a cohort
+		# that must leave 10,000 standing puts 14,286 in and holds the beds for
+		# 14,286 -- 36 of them, not 25. Sizing on the standing figure booked the
+		# farm 30% less land than the planting needs and the shortfall only
+		# showed up as beds that would not take the plants.
+		to_plant = plants_to_plant(protocol, wanted_plants)
+		beds, planted, _area = size_planting(protocol, to_plant, min_beds)
+		if not planted:
+			planted = to_plant
+		# And what that planting leaves standing, which is what flushes, what the
+		# harvest is worked out from, and what the order is sized against. Taking
+		# the planted figure for this would apply the establishment loss twice --
+		# once here and again in the route -- and buy half as many seeds again.
+		plants = plants_standing_from(protocol, planted, wanted_plants)
 		# What the market needs is not trimmed to fit the ground. A planting larger
 		# than any single block is a real requirement that will be split across
 		# blocks when it is allocated; capping it here made the plan quietly answer
@@ -1719,6 +1754,7 @@ def _populate(plan):
 			"block": block or None,
 			"beds": beds,
 			"plants": plants,
+			"plants_to_plant": planted,
 			"plants_required": wanted_plants,
 			"sticking_year": s_year,
 			"sticking_week": s_week,

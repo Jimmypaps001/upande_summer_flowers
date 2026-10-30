@@ -12,6 +12,7 @@
   "existing_planting",
   "beds",
   "plants",
+  "plants_to_plant",
   "plants_required",
   "sticking_year",
   "sticking_week",
@@ -68,6 +69,13 @@
    "in_list_view": 1,
    "label": "Plants",
    "read_only": 1
+  },
+  {
+   "fieldname": "plants_to_plant",
+   "fieldtype": "Int",
+   "label": "To Plant",
+   "read_only": 1,
+   "description": "What goes into the ground. More than Plants, because only some of what is planted establishes -- the beds are sized for this, the harvest for Plants."
   },
   {
    "description": "The week's shortfall divided by what one plant gives in its first flush -- what the demand implies before anything is rounded. Plants is this rounded up to a whole minimum planting area, so the gap between the two is what the bed grid costs.",
@@ -193,7 +201,7 @@
  "index_web_pages_for_search": 1,
  "istable": 1,
  "links": [],
- "modified": "2026-08-01 11:51:31.249924",
+ "modified": "2026-10-30 14:00:00.000000",
  "modified_by": "Administrator",
  "module": "Summer Flowers",
  "name": "Summer Flower Plan Block",

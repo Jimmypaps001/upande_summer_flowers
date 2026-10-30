@@ -1211,6 +1211,11 @@ def confirmed_plants(lines, planned):
 	if not lines:
 		return planned, 0
 	asked = sum(cint(x.qty_at_field) for x in lines)
+	# The requirement lines count plants the way the order was sized -- what the
+	# plan needs standing. `planned` is what goes in the ground, which is more.
+	# A line confirmed at two thirds means two thirds of the PLANTING, so the
+	# proportion is taken on the lines and applied to the planting.
+	scale = (flt(planned) / asked) if asked else 1.0
 	have = 0
 	for x in lines:
 		if not cint(x.get("delivery_confirmed")):
@@ -1221,7 +1226,8 @@ def confirmed_plants(lines, planned):
 		ordered, agreed = cint(x.qty_to_order), cint(x.confirmed_qty)
 		have += int(cint(x.qty_at_field) * agreed / ordered) if ordered else 0
 	have = max(0, min(asked, have))
-	return have, asked - have
+	in_ground = int(round(have * scale))
+	return in_ground, max(0, cint(planned) - in_ground)
 
 
 def write_plantings(plan, proc=None):
@@ -1280,7 +1286,13 @@ def write_plantings(plan, proc=None):
 		lines = [x for x in (proc.requirements if proc else [])
 		         if x.cohort == row.name]
 		r = lines[0] if lines else None
-		plants_here, cut_by = confirmed_plants(lines, cint(row.plants))
+		# What goes in the ground, which is more than what the plan needs
+		# standing: a planting loses some of itself to establishment, and the
+		# calendar is the record of the planting, not of what survives it.
+		# Cohorts planned before the plan carried the figure fall back to their
+		# standing count, which is what they were planted at.
+		wanted_in_ground = cint(row.get("plants_to_plant")) or cint(row.plants)
+		plants_here, cut_by = confirmed_plants(lines, wanted_in_ground)
 		if not plants_here:
 			# Nothing was confirmed for this week at all. A planting of no plants
 			# is not a planting, and writing one would hold a block all season
