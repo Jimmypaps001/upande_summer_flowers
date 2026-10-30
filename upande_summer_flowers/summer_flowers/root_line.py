@@ -388,7 +388,14 @@ def arrival_plan(plan, tc_share=None, returns_per_plant=None,
 	# to ground" over a route that plainly states thirteen and five. The labels
 	# beside them have come from the route since _ways_in was written; only the
 	# numbers were still somebody else's crop.
-	primary = ways[0] if ways else "TC"
+	# Where this way in starts. A crop taken off the farm's own stock buys
+	# nothing, so _ways_in -- which lists the stages that are BOUGHT -- gives
+	# nothing back, and the card fell through to a literal "TC" that is not on
+	# the route at all: no losses found, survival 100%, and a unit count equal
+	# to the plants while the cohort beside it was grossed up for establishment.
+	# A route that buys nothing still has a beginning, and it is the first stage.
+	primary = (ways[0] if ways else
+	           next((r.stage for r in rows if r.get("stage")), "TC"))
 	secondary = ways[1] if len(ways) > 1 else LIFT_STAGE
 	tc_weeks = _weeks_for(rows, primary)
 	root_weeks = _weeks_for(rows, secondary)
@@ -525,7 +532,9 @@ def arrival_plan(plan, tc_share=None, returns_per_plant=None,
 		# half the question; the other half -- who sticks what the lab sends, and
 		# who roots the plant roots -- was a button away on another document.
 		"raised_by": _raised_by(plan),
-		"primary_stage": ways[0] if ways else "TC",
+		# The same answer the losses and the ladder were worked out from, rather
+		# than a second guess at it: they disagreed on a route that buys nothing.
+		"primary_stage": primary,
 		"secondary_stage": ways[1] if len(ways) > 1 else None,
 		# What was agreed, if anything was. A saved plan that opens as a blank
 		# card reads as a plan that was never saved, and the next thing somebody

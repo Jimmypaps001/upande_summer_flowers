@@ -404,7 +404,14 @@ class SummerFlowerProcurementPlan(Document):
 		# Re-planning rewrites the order, not the allocation, and it runs before
 		# anyone has been offered the units. Judging the allocation on that save
 		# refuses to re-plan an order over rows the re-plan does not touch.
-		if not self.propagates() or self.flags.get("rebuilding"):
+		# Nor of a plan being edited for something else entirely. Choosing who
+		# SELLS the material is a different decision from choosing who raises it
+		# and comes first in the order anybody actually works: you settle what
+		# you are buying and from whom, then who takes delivery of it. Judging
+		# the raiser on that save made the first decision impossible to record
+		# until the second was made, which is backwards.
+		if (not self.propagates() or self.flags.get("rebuilding")
+				or self.flags.get("choosing_sellers")):
 			return
 		rows = self.get("propagation_allocation") or []
 		if not rows and not self.is_new():

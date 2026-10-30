@@ -4149,6 +4149,9 @@ def save_sellers(procurement_plan, rows):
 			"lead_weeks": cint(doc.lead_weeks),
 		})
 	doc.flags.ignore_permissions = True
+	# Saying who sells it is not saying who raises it, and the plan's guard on
+	# the second must not refuse the first.
+	doc.flags.choosing_sellers = True
 	doc.save()
 	return seller_choices(doc.name)
 
