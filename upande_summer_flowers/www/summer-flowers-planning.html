@@ -7638,6 +7638,15 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
         if (lv && !S.versionPicked) lv.value = S.version;
       }
       renderScopeLine();
+      // The open tab is now describing a different crop, so it fetches again.
+      // Its own boxes are cleared first: a quantity typed against the last
+      // variety is not a starting point for this one.
+      S.scopeChanged = true;
+      ["tc-qty", "tc-roots", "tc-share"].forEach((id) => {
+        const el = $(id); if (el) el.value = "";
+      });
+      loadTabData(openTab());
+      S.scopeChanged = false;
 
       buildPeriodPickers();
       const bsel = $("bf-block");
@@ -8268,23 +8277,37 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
       renderDemandVsProduction(scoped().weeks, !!(S.dv && S.dv.tc_committed));
     }
     if (name === "planting" && S.pp) renderPlanting();
+    loadTabData(name);
+  }
+
+  // What an open tab has to fetch for itself. loadScope fetches the things every
+  // tab reads; these are the ones that go and get their own, and they used to
+  // run only when a tab was REVEALED. Change the variety while sitting on one
+  // and the scope bar moved, the plan line moved, and the card below went on
+  // showing the crop you had just navigated away from -- its quantities, its
+  // procurement plan, its suppliers -- with nothing to say it was stale.
+  function loadTabData(name) {
+    const bad = (e) => toast(esc(e.message), true);
     if (name === "motherstock") {
-      loadTc($("tc-qty").value || null)
-        .catch((e) => toast(esc(e.message), true));
+      const q = $("tc-qty");
+      // Not the box's value on a scope change: that figure belongs to the crop
+      // being left behind, and passing it sizes the new one's order to it.
+      loadTc(S.scopeChanged ? null : (q && q.value) || null).catch(bad);
     }
-    // The transactional tabs read live state, so they refetch on reveal rather
-    // than showing whatever was true when the page first loaded.
     if (name === "plan") {
-      Promise.all([loadChain(), loadTc(), loadWhatIf()]).then(renderPlanTab)
-        .catch((e) => toast(esc(e.message), true));
+      Promise.all([loadChain(), loadTc(), loadWhatIf()]).then(renderPlanTab).catch(bad);
     }
-    if (name === "procurement") loadProcurement().catch((e) => toast(esc(e.message), true));
-    if (name === "propagation") loadPropagation().catch((e) => toast(esc(e.message), true));
-    if (name === "harvest") loadCycles().catch((e) => toast(esc(e.message), true));
+    if (name === "procurement") loadProcurement().catch(bad);
+    if (name === "propagation") loadPropagation().catch(bad);
+    if (name === "harvest") loadCycles().catch(bad);
     if (name === "review") {
-      loadReview().then(loadPlanState).then(loadChain)
-        .catch((e) => toast(esc(e.message), true));
+      loadReview().then(loadPlanState).then(loadChain).catch(bad);
     }
+  }
+
+  function openTab() {
+    const b = document.querySelector(".pl-tabs button.is-on");
+    return (b && b.dataset.tab) || "overview";
   }
 
   function toggleGroup(pairs, key, cb) {
