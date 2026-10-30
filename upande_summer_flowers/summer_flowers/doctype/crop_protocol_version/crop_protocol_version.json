@@ -832,14 +832,14 @@
    "fieldname": "reject_pct",
    "fieldtype": "Percent",
    "label": "Harvest reject %",
-   "description": "Share of cut stems that fail grading. Taken off the yield, so the plan grows what the market can be sold -- not the same thing as Cutting reject %, which is propagation cuttings thrown away before they are stuck."
+   "description": "Share of CUT STEMS that fail grading. A loss of what the plants produce, not of the plants: it is taken off the yield once the flushes have been counted, so the plan grows for what can be sold. Compounds with Cutting reject % where both are set."
   },
   {
    "default": "10",
-   "description": "Applied when a Production Plan converts extra plants into cuttings.",
+   "description": "Share of CUT STEMS that fail grading. A loss of what the plants produce, not of the plants: it is taken off the yield once the flushes have been counted, so the plan grows for what can be sold.",
    "fieldname": "cutting_reject_pct",
    "fieldtype": "Percent",
-   "label": "Cutting reject %"
+   "label": "Cutting reject % (stems)"
   },
   {
    "default": "40",
@@ -955,7 +955,7 @@
  "grid_page_length": 50,
  "index_web_pages_for_search": 1,
  "links": [],
- "modified": "2026-10-30 15:00:00.000000",
+ "modified": "2026-10-30 16:00:00.000000",
  "modified_by": "Administrator",
  "module": "Summer Flowers",
  "name": "Crop Protocol Version",

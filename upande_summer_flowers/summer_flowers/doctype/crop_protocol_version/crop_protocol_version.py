@@ -645,13 +645,13 @@ class CropProtocolVersion(Document):
 	def cuttings_for_plants(self, plants):
 		"""Cuttings to stick for a target number of standing plants.
 
-		Applies rooting and field losses, then the cutting reject rate on top.
+		Rooting and field losses only, both of which are inside
+		cuttings_per_plant_required. The cutting reject used to be divided out
+		on top of them, which stuck a tenth more for a loss that happens to
+		STEMS at grading -- it is counted once now, against the yield, where
+		the flushes give it something to be a tenth of.
 		"""
-		needed = plants * (self.cuttings_per_plant_required or 1)
-		reject = (self.cutting_reject_pct or 0) / 100
-		if reject and reject < 1:
-			needed = needed / (1 - reject)
-		return int(math.ceil(needed))
+		return int(math.ceil(plants * (self.cuttings_per_plant_required or 1)))
 
 	# ------------------------------------------------------------- versioning
 	def refresh_current_flag(self):

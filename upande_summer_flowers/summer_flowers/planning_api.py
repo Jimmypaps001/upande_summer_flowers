@@ -414,8 +414,9 @@ def tc_derivation(plan=None, variety=None, farm=None):
 		{"step": "Plants stuck in the peak week", "value": peak_plants, "unit": "plants",
 		 "note": "this is what sizes the motherstock, not the annual total"},
 		{"step": "Cuttings to stick", "value": cuttings, "unit": "cuttings",
-		 "note": f"x{flt(v.cuttings_per_plant_required, 3)} for rooting and field loss, "
-		         f"then {flt(v.cutting_reject_pct)}% reject"},
+		 "note": f"x{flt(v.cuttings_per_plant_required, 3)} for rooting and field "
+		         f"loss. The cutting reject is a grading loss on stems and is "
+		         f"taken off the yield, not added here"},
 		{"step": "Mother plants required", "value": mothers, "unit": "plants",
 		 "note": f"at {per_week:g} cutting per plant per week"},
 	]

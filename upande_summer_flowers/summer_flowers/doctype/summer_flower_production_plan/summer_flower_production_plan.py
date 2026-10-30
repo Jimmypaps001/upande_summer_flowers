@@ -919,12 +919,26 @@ def plants_per_bed_for(v):
 def saleable(v):
 	"""The share of cut stems that grade out, as a fraction.
 
-	1.0 where the protocol does not state a reject rate: a loss nobody has
-	measured is better carried as none than invented, and 240 of the site's
-	summer flower protocols say nothing here.
+	The cutting reject is a loss of STEMS, not of plant material: a tenth
+	rejected is a tenth of what the flushes produce, so it only has a size once
+	the flushes have been counted. It used to be taken off the cuttings instead
+	-- a tenth more stuck, as though the plants were short -- which is the same
+	percentage doing the opposite job, and left the harvest counting rejects as
+	production.
+
+	reject_pct is read as well, because Crop Protocol has carried a field of
+	that name and that meaning for every crop since before this app, and a
+	protocol that states both means them both.
+
+	1.0 where neither is stated: a loss nobody has measured is better carried as
+	none than invented.
 	"""
-	pct = flt(getattr(v, "reject_pct", 0) or 0)
-	return (1.0 - pct / 100.0) if 0 < pct < 100 else 1.0
+	keep = 1.0
+	for field in ("cutting_reject_pct", "reject_pct"):
+		pct = flt(getattr(v, field, 0) or 0)
+		if 0 < pct < 100:
+			keep *= 1.0 - pct / 100.0
+	return keep
 
 
 def establishment(v):

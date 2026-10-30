@@ -524,7 +524,10 @@ def set_route_quantities(doc, native=False):
 			# The two are different facts and the second is not a multiplier on a
 			# single pass through the route -- see sourcing.requirement().
 			stage.yields_per_unit = factor
-			stage.loss_pct = _n(doc, "cutting_reject_pct", native=native)
+			# No loss here. What a pool loses is cuttings that fail to root, and
+			# that is the rooting stage's business; the cutting reject is a
+			# grading loss on harvested stems and is taken off the yield.
+			stage.loss_pct = 0
 		elif name in ROOTING_LOSSES:
 			# Raising bought or cut material to something plantable. What is lost is
 			# what fails to root and what fails to establish.

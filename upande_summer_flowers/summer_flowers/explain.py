@@ -247,8 +247,10 @@ def _m_cpr(v):
 			_step(_("1 ÷ survival"), flt(v.cuttings_per_plant_required)),
 		],
 		"caveats": [
-			_("A separate cutting reject rate of {0}% is applied on top when a plan "
-			  "converts plants into cuttings, so the full uplift is higher than this.")
+			_("This is the whole of the uplift. The cutting reject of {0}% is not "
+			  "part of it: that is a share of CUT STEMS failing grading, taken off "
+			  "the yield once the flushes have been counted, so it changes how "
+			  "many plants the demand needs rather than what one plant costs.")
 			.format(flt(v.cutting_reject_pct)),
 		] if v.cutting_reject_pct else [],
 	}

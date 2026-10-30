@@ -910,6 +910,13 @@ def _ways_in(version):
 	return [w["stage"] for w in ways]
 
 
+def _saleable(v):
+	from upande_summer_flowers.summer_flowers.doctype \
+		.summer_flower_production_plan.summer_flower_production_plan import saleable
+
+	return saleable(v)
+
+
 def _loss_account(v, rows, stage):
 	"""The losses between buying and a plant standing, and where each is stated.
 
@@ -965,7 +972,11 @@ def _loss_account(v, rows, stage):
 			# Not a loss of plants but of what they produce, so it is stated
 			# apart from the chain above: it does not change what one seed
 			# becomes, it changes how many plants the demand needs.
-			"reject_pct": flt(v.get("reject_pct")),
+			# The grading loss, however the protocol spells it. Both fields are
+			# the same kind of loss and a protocol stating both means both, so
+			# the card reports what the yield was actually reduced by rather
+			# than one of the two numbers behind it.
+			"reject_pct": round((1.0 - _saleable(v)) * 100, 4),
 			"stems_per_plant_life": flt(v.get("total_stems_per_plant_life")),
 		},
 		"steps": steps,
