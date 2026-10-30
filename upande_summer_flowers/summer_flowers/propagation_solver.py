@@ -644,10 +644,21 @@ def generation_plan(demand, per_week, per_area, generations):
 	"""
 	levels, carry = [], 0
 	for d in sorted(demand):
-		if cint(demand[d]) > carry:
-			carry = cint(demand[d])
-			levels.append({"by": d, "mothers": round_up_to_area(
-				carry / (flt(per_week) or 1.0), per_area)})
+		if cint(demand[d]) <= carry:
+			continue
+		carry = cint(demand[d])
+		mothers = round_up_to_area(carry / (flt(per_week) or 1.0), per_area)
+		# A step the pool cannot actually take is not a step. Mothers are bought
+		# a whole planting area at a time, so a week wanting 44,340 cuttings and
+		# the week before it wanting 44,220 are the same 45,000 mothers -- and
+		# keeping both made a generation of nothing. That is what had one
+		# multiplication buying exactly what none did: the extra generation was
+		# sized at the difference between two levels that were equal, so the
+		# card offered "45,000 plantlets; 0 more come off them" and the order
+		# did not move until the SECOND multiplication reached a real step.
+		if levels and mothers <= levels[-1]["mothers"]:
+			continue
+		levels.append({"by": d, "mothers": mothers})
 	if not levels:
 		return []
 	g = max(1, cint(generations))
