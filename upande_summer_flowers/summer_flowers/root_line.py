@@ -266,7 +266,12 @@ def compare_ways(plan, returns_per_plant=None, split=None):
 
 
 def _plants_per_unit_from(rows, stage):
-	"""Plants one bought unit becomes, walking the rows after it."""
+	"""Plants one bought unit becomes, walking the rows after it.
+
+	Planting out is part of the walk. It multiplies nothing, but a share of
+	what goes in the ground fails to establish, and stopping before the end
+	stage skipped that loss on every route that carries it there.
+	"""
 	seen, out = False, 1.0
 	for r in rows:
 		st = r.get("stage") or ""
@@ -275,6 +280,7 @@ def _plants_per_unit_from(rows, stage):
 		if not seen:
 			continue
 		if st == "Plants":
+			out *= 1.0 - flt(r.get("loss_pct") or 0) / 100.0
 			break
 		lift = flt(r.get("returns_per_plant") or 0)
 		out *= lift if lift > 0 else flt(r.get("yields_per_unit") or 1)
@@ -426,7 +432,7 @@ def arrival_plan(plan, tc_share=None, returns_per_plant=None,
 	# on the bench, one in the field -- and a reader looking at 14,286 becoming
 	# 10,000 is entitled to be told which of them took the 4,286.
 	second_pct = (flt(account["stated"]["field_establishment_pct"])
-	              if account.get("rooting_applies") else 0.0)
+	              if account.get("establishment_applies") else 0.0)
 	for land, w in weeks.items():
 		by_tc = share_by_week[land]
 		# On a one-way crop the rest of the week is not a second way in, it is
@@ -447,8 +453,10 @@ def arrival_plan(plan, tc_share=None, returns_per_plant=None,
 		# needs -- 14,286 planted to be left with 10,000 -- and the table has to
 		# say which number is which or it reads as though the plan asked for
 		# exactly what it buys.
+		# What reaches planting out. Where nothing is raised -- plants bought
+		# ready, tubers straight out -- that is what was bought.
 		to_plant = (int(round(units_one * first_pct / 100.0))
-		            if first_pct else 0)
+		            if first_pct else units_one)
 		w.update({"by_tc": by_tc, "by_roots": by_root, "roots_needed": roots,
 		          "units_tc": units_one,
 		          # kept under the old name: what reaches planting out
@@ -931,6 +939,7 @@ def _loss_account(v, rows, stage):
 	root = flt(v.get("rooting_success_pct"))
 	field = flt(v.get("field_establishment_pct"))
 	rooting_applies = False
+	establishment_applies = False
 	steps = []
 	survival, seen = 1.0, False
 	for r in rows:
@@ -939,8 +948,7 @@ def _loss_account(v, rows, stage):
 			seen = True
 		if not seen:
 			continue
-		if st == "Plants":
-			break
+		at_end = st == "Plants"
 		loss = flt(r.get("loss_pct"))
 		if loss:
 			# Where this stage's figure came from. Listing every percentage on
@@ -948,20 +956,23 @@ def _loss_account(v, rows, stage):
 			# which has no cutting to reject -- a figure that is stated and not
 			# applied reads as one that is, and the arithmetic then does not add
 			# up for the reader checking it.
-			if cint(r.get("is_standing")):
-				src = _("{0}% of cuttings rejected").format(
-					flt(v.get("cutting_reject_pct")))
+			if at_end:
+				src = _("{0}% establish once planted").format(field)
+				establishment_applies = True
 			elif st in ROOTING_LOSSES:
-				src = _("{0}% root x {1}% establish").format(root, field)
+				src = _("{0}% root").format(root)
 				rooting_applies = True
 			elif cint(r.get("is_purchase")):
 				src = _("{0}% allowed on the order").format(
 					flt(v.get("tc_order_loss_pct")))
 			else:
 				src = None
-			steps.append({"stage": st or r.get("step"),
+			steps.append({"stage": _("Planting out") if at_end
+			              else (st or r.get("step")),
 			              "loss_pct": round(loss, 4), "from": src})
 		survival *= 1.0 - loss / 100.0
+		if at_end:
+			break
 	return {
 		"stated": {
 			"rooting_success_pct": flt(v.get("rooting_success_pct")),
@@ -981,8 +992,11 @@ def _loss_account(v, rows, stage):
 		},
 		"steps": steps,
 		"survival_pct": round(survival * 100, 2),
-		# Whether the two stated percentages bite on this way in at all.
+		# Which of the stated percentages bite on this way in. They are asked
+		# separately because a route can carry one without the other: plants
+		# bought ready are never rooted but still have to establish.
 		"rooting_applies": rooting_applies,
+		"establishment_applies": establishment_applies,
 	}
 
 

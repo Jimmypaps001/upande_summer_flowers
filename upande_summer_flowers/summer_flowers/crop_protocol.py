@@ -513,10 +513,19 @@ def set_route_quantities(doc, native=False):
 		stage.yields_per_week = (_n(doc, "cuttings_per_plant_per_week", native=native)
 		                         if standing else 0)
 		if name == ROUTE_END:
-			# The end of the road multiplies nothing and loses nothing: what arrives
-			# here IS the plant. Establishment loss belongs to the stage that hands it
-			# over, not to the ground it lands in.
-			stage.yields_per_unit, stage.loss_pct = 1, 0
+			# Planting out. The end of the road multiplies nothing, but it is not
+			# free: what is put in the ground does not all take, and that is true
+			# of a crop however its material was got.
+			#
+			# This used to hang on the stage that HANDS OVER the plant, which
+			# meant it only happened on a route with a raising stage. Four of the
+			# seven routes have none -- plants bought ready, tubers off the farm's
+			# own crop, tissue culture planted straight out, anything through a
+			# motherstock -- and those crops lost nothing to establishment at
+			# all, while the planting calendar grossed their plantings up for it
+			# anyway. One is the ground's business and every route reaches it.
+			stage.yields_per_unit = 1
+			stage.loss_pct = round((1 - establishment) * 100, 4)
 			continue
 		if standing:
 			# One plantlet becomes `factor` mother plants over its cycles, and each
@@ -528,17 +537,27 @@ def set_route_quantities(doc, native=False):
 			# that is the rooting stage's business; the cutting reject is a
 			# grading loss on harvested stems and is taken off the yield.
 			stage.loss_pct = 0
-		elif name in ROOTING_LOSSES:
-			# Raising bought or cut material to something plantable. What is lost is
-			# what fails to root and what fails to establish.
-			stage.yields_per_unit = 1
-			stage.loss_pct = round((1 - rooting * establishment) * 100, 4)
 		elif cint(stage.is_purchase):
-			# The allowance on the order itself: order the requirement exactly and it
-			# arrives short by the supplier's own loss rate.
+			# The allowance on the order itself: order the requirement exactly and
+			# it arrives short by the supplier's own loss rate. True of every
+			# bought stage -- seeds, roots, tubers, budwood, plants -- and not
+			# only of tissue culture, which is the one the field was named after.
+			#
+			# Asked BEFORE the raising question, because a stage can be both. Roots
+			# are bought AND take rooting losses, and answering the second first
+			# charged them the rooting loss on arrival and again at the Rooting
+			# stage that follows -- 0.88 twice over for one rooting -- while the
+			# order allowance they should have carried was never applied at all.
+			# What is bought is an arrival; the raising is the stage after it.
 			stage.yields_per_unit = 1
-			stage.loss_pct = (_n(doc, "tc_order_loss_pct", native=native)
-			                  if name == "TC" else flt(stage.loss_pct))
+			stage.loss_pct = _n(doc, "tc_order_loss_pct", native=native)
+		elif name in ROOTING_LOSSES:
+			# Raising bought or cut material to something plantable. What is lost
+			# here is what fails to root; what fails to establish is the ground's
+			# and is taken at planting out, so that a route without a raising
+			# stage still carries it.
+			stage.yields_per_unit = 1
+			stage.loss_pct = round((1 - rooting) * 100, 4)
 		else:
 			stage.yields_per_unit = 1
 		for step in steps:
