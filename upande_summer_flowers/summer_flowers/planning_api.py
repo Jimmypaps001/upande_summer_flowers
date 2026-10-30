@@ -2498,6 +2498,10 @@ def protocol_detail(version=None, variety=None, farm=None, plan=None):
 		"ramp": ramp,
 		"journey": journey,
 		"journey_title": journey_title,
+		# What this crop is bought as, so the card can name it instead of
+		# saying "TC" to a protocol that buys seed.
+		"entry_stage": next((r.stage for r in (v.get("material_route") or [])
+		                     if cint(r.get("is_purchase"))), None),
 		"versions": sibling,
 	}
 

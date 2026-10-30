@@ -6801,6 +6801,10 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
     if (pt) {
       pt.textContent = d.has_motherstock
         ? "Propagation house and bench" : "Propagation timings";
+      // A crop with nothing to say here says nothing. Leaving the card up with
+      // its heading and an empty body reads as a section that failed to load.
+      const card = pt.closest(".pl-card");
+      if (card) card.hidden = !d.has_motherstock;
     }
     $("pr-title").textContent = `${d.variety} — Crop Protocol`;
     $("pr-sub").textContent =
@@ -6842,7 +6846,8 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
       { k: "Flushes / year", v: num(D.harvest_weeks_per_year),
         m: `every ${F.flush_interval_weeks} weeks`, why: "harvest_weeks_per_year" },
       { k: "Order → 1st harvest", v: D.order_to_first_harvest_weeks + "w",
-        m: "TC order to farm harvest", why: "order_to_first_harvest_weeks" },
+        m: `${(d.entry_stage || "TC")} order to farm harvest`,
+        why: "order_to_first_harvest_weeks" },
     ].map(tile).join("");
 
     // crop growth timeline
@@ -6851,8 +6856,13 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
     // timeline used to call it a cutting for all of them.
     const intoGround = (d.journey_title || "").match(/Full (.+?) journey/);
     const segs = [{ w: 0, n: "PLANT",
-                    s: `${intoGround ? intoGround[1].toLowerCase() : "material"} to ground` },
-      { w: F.weeks_to_pinch, n: "PINCH", s: "wk " + F.weeks_to_pinch }];
+                    s: `${intoGround ? intoGround[1].toLowerCase() : "material"} to ground` }];
+    // Pinching is a thing done to some crops and not others, and "wk 0" is how
+    // a protocol says it does not pinch. Drawn anyway, it put a step on the
+    // timeline that never happens, in the same week as the planting.
+    if (F.weeks_to_pinch > 0) {
+      segs.push({ w: F.weeks_to_pinch, n: "PINCH", s: "wk " + F.weeks_to_pinch });
+    }
     d.flushes.forEach((f) => segs.push({
       w: f.weeks_from_planting, n: "F" + f.flush,
       s: f.stems_per_plant + " st/pl" }));
@@ -6902,15 +6912,20 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
             `hard(${F.hardening_weeks}) + pinch(${F.weeks_to_pinch}) + F1(${F.flush_interval_weeks})`,
             null, "cutting_to_harvest_weeks")
         : (d.chains || []).map(liftTable).join("")) +
-      prow("Cuttings per plant per week", F.cuttings_per_plant_per_week,
-        "what one mother plant yields",
-        { field: "cuttings_per_plant_per_week", value: F.cuttings_per_plant_per_week, step: "0.1" }) +
-      prow("Pots per m²", F.pots_per_sqm, "on the bench",
-        { field: "pots_per_sqm", value: F.pots_per_sqm }) +
-      prow("Plants per pot", F.plants_per_pot, null,
-        { field: "plants_per_pot", value: F.plants_per_pot }) +
-      prow("Plants per m² of bench", (D.plants_per_sqm_bench || 0).toFixed(1),
-        `${F.pots_per_sqm} × ${F.plants_per_pot}`);
+      // Mother plants, pots and bench square metres are facts about a pool. A
+      // crop that has none was shown four rows of zeros and an invitation to
+      // type into them.
+      (d.has_motherstock
+        ? prow("Cuttings per plant per week", F.cuttings_per_plant_per_week,
+            "what one mother plant yields",
+            { field: "cuttings_per_plant_per_week", value: F.cuttings_per_plant_per_week, step: "0.1" }) +
+          prow("Pots per m²", F.pots_per_sqm, "on the bench",
+            { field: "pots_per_sqm", value: F.pots_per_sqm }) +
+          prow("Plants per pot", F.plants_per_pot, null,
+            { field: "plants_per_pot", value: F.plants_per_pot }) +
+          prow("Plants per m² of bench", (D.plants_per_sqm_bench || 0).toFixed(1),
+            `${F.pots_per_sqm} × ${F.plants_per_pot}`)
+        : "");
 
     $("pr-density").innerHTML =
       prow("Plants per m² of bed", F.plants_per_sqm_net + " pl/m²",
@@ -7038,7 +7053,8 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
         { field: "field_establishment_pct", value: F.field_establishment_pct }) +
       prow("Cutting reject", F.cutting_reject_pct + "%", null,
         { field: "cutting_reject_pct", value: F.cutting_reject_pct }) +
-      prow("Cuttings per standing plant", D.cuttings_per_plant_required.toFixed(3),
+      prow(`${d.entry_stage || "Cuttings"} per standing plant`,
+        D.cuttings_per_plant_required.toFixed(3),
         "both loss layers", null, "cuttings_per_plant_required") +
 
       prow("Stated yield", num(F.stated_yield_stems_per_ha), "stems/ha/yr target",
