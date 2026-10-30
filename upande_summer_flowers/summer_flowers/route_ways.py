@@ -340,20 +340,44 @@ def route_info(route):
 
 
 def route_loss(protocol_or_version, lift_form):
-	"""What a protocol says is lost before planting on the route delivered as
-	`lift_form` (Tissue Culture, Roots...), as a percentage. None when the
-	protocol has no such route.
+	"""What a protocol loses between a consignment of `lift_form` (Tissue
+	Culture, Roots...) and the field, as a percentage. None when the protocol
+	has no route delivered that way.
 
-	Losses are the protocol's: each route states its own on the route card.
+	Read off the route's own stages, which is where the Grades & Losses tab has
+	already put it: what fails to root, what fails to establish, and the
+	allowance on the order itself. The route card used to carry a second figure
+	typed by hand against each way, and the two disagreed -- a seed protocol
+	said 80% on the card while its rooting stage said 76% -- with only the route
+	ever sizing an order. One fact, stated once, in the tab named after it.
 	"""
-	name = protocol_or_version
-	if name and frappe.db.exists("Crop Protocol Version", name):
-		name = frappe.db.get_value("Crop Protocol Version", name, "crop_protocol")
-	if not name or not frappe.db.exists("Crop Protocol", name):
+	doc = _loss_doc(protocol_or_version)
+	if not doc:
 		return None
-	for w in frappe.get_all("Crop Protocol Way", filters={"parent": name, "parenttype": "Crop Protocol"},
-	                        fields=["route", "loss_pct"], order_by="idx"):
-		entry = (ROUTES.get(w.route) or [None])[0]
-		if entry and _stages.lift_form(entry) == lift_form:
-			return flt(w.loss_pct)
+	for chain in route_chains(doc):
+		entry = chain[0][0].stage
+		if _stages.lift_form(entry) != lift_form:
+			continue
+		# Losses compound down the chain, and a step inside a stage loses on its
+		# own account; survival() in crop_protocol walks them the same way.
+		surviving = 1.0
+		for stage, steps in chain:
+			surviving *= 1.0 - flt(stage.get("loss_pct")) / 100.0
+			for step in steps:
+				surviving *= 1.0 - flt(step.get("loss_pct")) / 100.0
+		return round((1.0 - surviving) * 100.0, 4)
+	return None
+
+
+def _loss_doc(protocol_or_version):
+	"""The document whose route to read: the version if that is what was named,
+	else the protocol. A version is the snapshot a plan was built against, so a
+	plan's losses must come from it and not from a protocol edited since."""
+	name = protocol_or_version
+	if not name:
+		return None
+	if frappe.db.exists("Crop Protocol Version", name):
+		return frappe.get_cached_doc("Crop Protocol Version", name)
+	if frappe.db.exists("Crop Protocol", name):
+		return frappe.get_cached_doc("Crop Protocol", name)
 	return None

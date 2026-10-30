@@ -12,7 +12,6 @@
   "share_pct",
   "lead_weeks",
   "plants_per_unit",
-  "loss_pct",
   "rate"
  ],
  "fields": [
@@ -57,14 +56,6 @@
    "label": "Plants per unit"
   },
   {
-   "fieldname": "loss_pct",
-   "fieldtype": "Percent",
-   "label": "Lost Before Planting %",
-   "in_list_view": 1,
-   "columns": 1,
-   "description": "Share of this route's material that does not reach the field. Sizes the order: what is wanted is grossed up by it."
-  },
-  {
    "columns": 2,
    "fieldname": "rate",
    "fieldtype": "Currency",
@@ -79,7 +70,7 @@
  "index_web_pages_for_search": 1,
  "istable": 1,
  "links": [],
- "modified": "2026-10-28 22:30:00.000000",
+ "modified": "2026-10-30 09:00:00.000000",
  "modified_by": "Administrator",
  "module": "Summer Flowers",
  "name": "Crop Protocol Way",

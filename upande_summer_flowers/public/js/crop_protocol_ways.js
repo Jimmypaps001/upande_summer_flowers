@@ -123,11 +123,10 @@ frappe.ui.form.on("Crop Protocol", {
 				<h5 class="m-0">${__("Route {0}", [i + 1])}: ${esc(w.route)}</h5>
 				${ro ? "" : `<a class="sf-del-way text-muted small" data-name="${w.name}">${__("Remove route")}</a>`}
 			</div>
-			<div class="row mb-3 row-cols-5">
+			<div class="row mb-3 row-cols-4">
 				<div class="col"><label class="small text-muted">${__("Share %")}</label>${num(w.doctype, w.name, "share_pct", flt(w.share_pct), false)}</div>
 				<div class="col"><label class="small text-muted">${__("Supplier lead (weeks)")}</label>${num(w.doctype, w.name, "lead_weeks", cint(w.lead_weeks), not_bought)}</div>
 				<div class="col"><label class="small text-muted">${__("Plants per unit")}</label>${num(w.doctype, w.name, "plants_per_unit", flt(w.plants_per_unit) || 1, false)}</div>
-				<div class="col"><label class="small text-muted">${__("Lost before planting %")}</label>${num(w.doctype, w.name, "loss_pct", flt(w.loss_pct), false)}</div>
 				<div class="col"><label class="small text-muted">${__("Cost per unit (item valuation)")}</label><div class="form-control input-xs" style="background:transparent">${not_bought ? "—" : format_currency(flt(w.rate))}</div></div>
 			</div>
 			<b>${__("Propagation (arrival to planting)")}</b>
@@ -196,8 +195,6 @@ frappe.ui.form.on("Crop Protocol", {
 				  default: used.length ? 0 : 100 },
 				{ fieldname: "lead_weeks", fieldtype: "Int", label: __("Supplier lead (weeks)") },
 				{ fieldname: "plants_per_unit", fieldtype: "Float", label: __("Plants per unit"), default: 1 },
-				{ fieldname: "loss_pct", fieldtype: "Percent", label: __("Lost before planting %"),
-				  description: __("Share of this route's material that does not reach the field.") },
 			],
 			primary_action_label: __("Add"),
 			primary_action: async (v) => {
@@ -206,7 +203,6 @@ frappe.ui.form.on("Crop Protocol", {
 					route: v.route, bought: info.bought, share_pct: v.share_pct,
 					lead_weeks: info.bought ? v.lead_weeks : 0,
 					plants_per_unit: v.plants_per_unit || 1,
-					loss_pct: v.loss_pct || 0,
 				});
 				const kept = {};
 				(frm.doc[STAGES] || []).forEach((r) => (kept[key(r)] = r));

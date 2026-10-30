@@ -24,3 +24,4 @@ upande_summer_flowers.patches.add_field_activities
 upande_summer_flowers.patches.add_material_stages
 upande_summer_flowers.patches.add_material_routes
 upande_summer_flowers.patches.move_losses_to_protocol
+upande_summer_flowers.patches.supplier_lead_from_route

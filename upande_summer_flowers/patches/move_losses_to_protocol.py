@@ -4,6 +4,11 @@ The settings held one loss for tissue culture and one for roots, for every crop.
 Each route on a protocol now states its own. Every route delivered as tissue
 culture or roots is given the figure the settings held, so nothing moves until
 somebody edits a protocol. Written straight to the rows: no protocol is re-saved.
+
+Since superseded. A loss typed against a way was a second opinion on what the
+Grades & Losses tab already said, and only the tab ever sized an order, so the
+column is gone and route_loss reads the route's own stages. The patch stays for
+sites that ran it before that, and does nothing where the column is absent.
 """
 
 import frappe
@@ -17,6 +22,10 @@ def execute():
 	if not ensure("Crop Protocol", "custom_sf_ways"):
 		return
 	if not frappe.db.table_exists("Crop Protocol Way"):
+		return
+	# The column this patch fills no longer exists on a site built since; losses
+	# are the protocol's Grades & Losses figures and are read off the route.
+	if not frappe.db.has_column("Crop Protocol Way", "loss_pct"):
 		return
 	from upande_summer_flowers.summer_flowers import stages
 	from upande_summer_flowers.summer_flowers.crop_routes import ROUTES
