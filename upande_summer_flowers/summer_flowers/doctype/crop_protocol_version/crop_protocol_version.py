@@ -508,28 +508,18 @@ class CropProtocolVersion(Document):
 	def multiplication_factor(self, cycles=None):
 		"""How many mother plants one TC plantlet ends up as.
 
-		GENERATIONS, not cycles. The plantlet itself is the first generation, and
-		each multiplication adds another, so one multiplication is a factor of two
-		and the order halves. In the farm's own words: a peak of 70,000 cuttings is
-		70,000 plantlets if you never multiply, 35,000 if you multiply once and
-		23,333 if you multiply twice -- which is 70,000 over 1, 2 and 3.
-
-		This used to return the cycle count alone, so one multiplication came back
-		as a factor of one and bought the whole 70,000. The docstring argued for it
-		-- that counting the plantlet "divides by five where the farm divides by
-		four" -- but the farm divides by the generations standing, and the plantlet
-		is one of them.
-
-		The per-cycle factor scales what each multiplication yields, for a variety
-		where one round gives more than one generation back; it defaults to 1.
+		The arithmetic is crop_protocol.multiplication_factor and is shared with
+		the route derivation, which used to carry a second and different copy of
+		it: the route said one multiplication changed nothing while the order
+		said it halved, for the same protocol on the same screen.
 		"""
+		from upande_summer_flowers.summer_flowers.crop_protocol import (
+			multiplication_factor,
+		)
+
 		if cycles is None:
 			cycles = self.max_multiplication_cycles or 0
-		cycles = cint(cycles)
-		if not cycles:
-			return 1.0
-		per_cycle = flt(self.multiplication_factor_per_cycle)
-		return 1.0 + cycles * (per_cycle if per_cycle > 0 else 1.0)
+		return multiplication_factor(cycles, self.multiplication_factor_per_cycle)
 
 	def mother_plants_for(self, tc_plants, cycles=None):
 		"""Mother plants a given order of plantlets ends up as. The inverse of

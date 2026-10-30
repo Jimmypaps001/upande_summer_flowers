@@ -73,6 +73,33 @@ def _fields():
 	        if f.fieldtype not in SKIP and f.fieldname not in MACHINERY]
 
 
+def multiplication_factor(cycles, per_cycle=0):
+	"""What one plantlet becomes after `cycles` multiplications.
+
+	Counting starts at zero and each round doubles what is standing: no
+	multiplication buys the whole order, one halves it, two halve the half, and
+	so on. 70,000 cuttings at the peak is 70,000 plantlets, then 35,000, then
+	17,500, then 8,750.
+
+	There were two formulas for this and they did not agree. The route wrote
+	`cycles x per_cycle` onto the motherstock row, which is 1.0 at no
+	multiplication AND 1.0 at one -- so turning the first multiplication on
+	changed nothing at all, and the order only began to move at two. The order
+	itself used `1 + cycles x per_cycle`, which halved once and then slowed to a
+	third, a quarter, a fifth: the right shape for counting generations
+	standing, the wrong one for what each round of multiplication does.
+
+	One function now, and both read it. `per_cycle` is what a single round
+	multiplies by where a variety gives more than double; anything at or below
+	one means it was never set, and the default is two.
+	"""
+	cycles = cint(cycles)
+	if cycles < 1:
+		return 1.0
+	each = flt(per_cycle)
+	return float((each if each > 1 else 2.0) ** cycles)
+
+
 def source_field(fieldname):
 	"""Where a version field's value is held on Crop Protocol."""
 	return NATIVE.get(fieldname, "custom_sf_" + fieldname)
@@ -440,7 +467,7 @@ def set_route_quantities(doc, native=False):
 	# this existed can be brought up to date without a second copy of it.
 	cycles = cint(_n(doc, "max_multiplication_cycles", native=native))
 	per_cycle = _n(doc, "multiplication_factor_per_cycle", native=native)
-	factor = (cycles * (per_cycle if per_cycle > 0 else 1.0)) if cycles else 1.0
+	factor = multiplication_factor(cycles, per_cycle)
 	rooting = _n(doc, "rooting_success_pct", 100, native=native) / 100.0
 	establishment = _n(doc, "field_establishment_pct", 100, native=native) / 100.0
 	rows = (doc.get("material_route") or []) if native else None
