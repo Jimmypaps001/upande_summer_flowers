@@ -4346,6 +4346,20 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
               : "a budget is posted when this is approved") },
     ].map(tile).join("");
 
+    // A crop with no pool has no mothers, no bench and no plantlets, and the
+    // card said all three anyway -- a seed route was shown "Mother plants
+    // 16,003" and a TC order date for seed. The heading and the tiles follow
+    // the route; the step table below already names what is actually bought.
+    const pool = tc.propagates !== false;
+    const msHead = document.querySelector('[data-pane="plan"] .pl-card:last-of-type h2');
+    if (msHead) {
+      msHead.textContent = pool ? "Motherstock check"
+        : `What the order comes to — ${tc.entry_stage || "bought material"}`;
+    }
+    if (!pool) {
+      $("pn-ms").innerHTML = "";
+      $("pn-ms-note").innerHTML = "";
+    } else
     $("pn-ms").innerHTML = [
       { k: "Mother plants", v: num(tc.mothers_required || 0),
         m: `${tc.bench_sqm || 0} m² of bench${wholePlan()}` },

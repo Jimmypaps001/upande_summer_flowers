@@ -388,6 +388,61 @@ def demand_vs_production_by_variety(farm=None, season=None):
 	}
 
 
+def _has_pool(v):
+	"""Whether this crop's material passes through a standing pool."""
+	return any(cint(r.get("is_standing")) for r in (v.get("material_route") or []))
+
+
+def _direct_derivation(dv, v, peak_plants):
+	"""The same question for a crop bought and planted: how big is the order.
+
+	Named for what the route actually buys -- seeds, roots, tubers, plants --
+	and counted down the losses that route carries, which is the ladder the
+	material card shows week by week.
+	"""
+	from upande_summer_flowers.summer_flowers import sourcing
+	from upande_summer_flowers.summer_flowers.doctype \
+		.summer_flower_production_plan.summer_flower_production_plan import (
+			plants_to_plant,
+		)
+
+	entry = next((r.stage for r in (v.get("material_route") or [])
+	              if cint(r.get("is_purchase"))), None)
+	j = sourcing.journey(v, entry) if entry else None
+	per_unit = flt((j or {}).get("plants_per_unit")) or 0
+	to_plant = plants_to_plant(v, peak_plants) if peak_plants else 0
+	units = int(math.ceil(peak_plants / per_unit)) if (peak_plants and per_unit) else 0
+	unit = (entry or _("units")).lower()
+	steps = [
+		{"step": _("Peak weekly demand"),
+		 "value": max((w["demand"] for w in dv["weeks"]), default=0),
+		 "unit": "stems", "note": _("largest single week in the plan")},
+		{"step": _("Stems per plant at flush 1"),
+		 "value": v.flush_offsets()[0][1] if v.flush_schedule else 0,
+		 "unit": "stems/plant", "note": _("first harvest only")},
+		{"step": _("Plants to stand in the peak week"), "value": peak_plants,
+		 "unit": "plants",
+		 "note": _("what the week's demand needs growing, after grading loss")},
+		{"step": _("To plant that week"), "value": to_plant, "unit": "plants",
+		 "note": _("more than will stand: {0}% of what goes in establishes")
+		 .format(flt(v.field_establishment_pct) or 100)},
+		{"step": _("{0} to order").format(entry or _("Units")), "value": units,
+		 "unit": unit,
+		 "note": _("one {0} becomes {1} plants down this route")
+		 .format(unit.rstrip("s"), round(per_unit, 4)) if per_unit
+		 else _("the route does not say what one becomes")},
+	]
+	return {
+		"plan": dv["plan"], "variety": dv["variety"], "farm": dv["farm"],
+		"version": v.name, "steps": steps,
+		# No pool, so nothing to say about mothers, pots or bench.
+		"propagates": False, "entry_stage": entry, "unit": unit,
+		"mothers_required": 0, "pots_required": 0, "bench_sqm": 0,
+		"tc_plants": units, "tc_order_date": None, "tc_on_farm_date": None,
+		"first_sticking_date": None, "tc_late": False, "build_up_cycles": 0,
+	}
+
+
 @frappe.whitelist()
 def tc_derivation(plan=None, variety=None, farm=None):
 	"""Show how the TC order size falls out of demand, step by step."""
@@ -401,6 +456,12 @@ def tc_derivation(plan=None, variety=None, farm=None):
 	# Sized from the planned peak, so the derivation shows a real order for a plan
 	# whose blocks are not settled yet rather than a column of zeros.
 	peak_plants = t.get("peak_weekly_sticking_planned") or t["peak_weekly_sticking"] or 0
+	# A crop with no pool is not a motherstock story and must not be told as one.
+	# This ran whatever the route, so a seed-raised crop was shown mother plants
+	# it does not have, plantlets it does not buy and a TC order date for seed --
+	# every figure arithmetically derived and none of it about this crop.
+	if not _has_pool(v):
+		return _direct_derivation(dv, v, peak_plants)
 	cuttings = v.cuttings_for_plants(peak_plants) if peak_plants else 0
 	per_week = flt(v.cuttings_per_plant_per_week) or 1
 	mothers = int(round(cuttings / per_week)) if cuttings else 0
@@ -525,7 +586,8 @@ def tc_derivation(plan=None, variety=None, farm=None):
 
 	out = {
 		"plan": dv["plan"], "variety": dv["variety"], "farm": dv["farm"],
-		"version": v.name, "steps": steps, "mothers_required": mothers,
+		"version": v.name, "steps": steps, "propagates": True,
+		"mothers_required": mothers,
 		"pots_required": int(round(mothers / (v.plants_per_pot or 1))) if mothers else 0,
 		"bench_sqm": round(mothers / v.plants_per_sqm_bench, 1)
 		if v.plants_per_sqm_bench else 0,
