@@ -5242,6 +5242,9 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
       `<th class="n">${esc(wayOne(m))} to buy</th>` +
       (m.tc_first_loss_pct
         ? `<th class="n">After germination ${m.tc_first_loss_pct}%</th>` : "") +
+      (m.tc_second_loss_pct && m.tc_second_loss_pct < 100
+        ? `<th class="n">Lost establishing ` +
+          `${(100 - m.tc_second_loss_pct).toFixed(0)}%</th>` : "") +
       `<th class="n">To plant</th>` +
       (wayTwo(m) ? `<th class="n">From ${esc(wayTwo(m).toLowerCase())}</th>` : "") +
       `<th class="n">Total</th><th class="n">Variance</th>` +
@@ -5256,6 +5259,10 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
           (m.tc_first_loss_pct
             ? `<td class="n text-muted">${w.germinated_tc ? num(w.germinated_tc) : ""}</td>`
             : "") +
+          (m.tc_second_loss_pct && m.tc_second_loss_pct < 100
+            ? `<td class="n" style="color:var(--critical)">` +
+              `${w.lost_establishing_tc ? "−" + num(w.lost_establishing_tc) : ""}</td>`
+            : "") +
           `<td class="n">${w.by_tc ? num(w.by_tc) : ""}</td>` +
           (wayTwo(m) ? `<td class="n">${w.by_roots ? num(w.by_roots) : ""}</td>` : "") +
           `<td class="n">${num(got)}</td>` +
@@ -5267,6 +5274,9 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
       `<th class="n">${num(m.tc_units_total)}</th>` +
       (m.tc_first_loss_pct
         ? `<th class="n">${num(m.tc_germinated_total)}</th>` : "") +
+      (m.tc_second_loss_pct && m.tc_second_loss_pct < 100
+        ? `<th class="n" style="color:var(--critical)">` +
+          `−${num(m.tc_lost_establishing_total)}</th>` : "") +
       `<th class="n">${num(m.tc_total)}</th>` +
       (wayTwo(m) ? `<th class="n">${num(m.roots_total)}</th>` : "") +
       `<th colspan="2"></th></tr></tfoot>` +
