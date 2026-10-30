@@ -248,16 +248,38 @@ def _write_back(procurement_plan):
 			if i.material_request_item:
 				confirmed[i.material_request_item] = i
 
-	if not confirmed:
+	# Every request that now sits under a confirmed order. A line of one of
+	# these that has NO order line left has been answered too: the supplier
+	# struck that delivery out, and save_schedule dropped it. Without this it
+	# reads as a question nobody answered, and the planting goes in at full
+	# size against a delivery that is never coming.
+	answered = set()
+	for o in _plan_orders(plan.name):
+		if not frappe.db.exists("Purchase Order", o.purchase_order):
+			continue
+		po = frappe.get_doc("Purchase Order", o.purchase_order)
+		if po.docstatus != 1:
+			continue
+		answered.update(i.material_request for i in po.items if i.material_request)
+	if not answered:
 		return
 	# A requirement line reaches its order line through the request line it
 	# became, which raise_material_requests records as it writes them. One
 	# requirement line is one delivery is one request line is one order line,
 	# which is why the grouping puts a line per delivery on the request.
 	for r in plan.requirements:
+		if r.source_doc not in answered:
+			continue
 		row = confirmed.get(r.get("source_row"))
 		if not row:
+			# Struck out. Nothing is coming for this week, and saying so is the
+			# whole point: a planting with no material is not a smaller planting.
+			r.db_set("delivery_confirmed", 1, update_modified=False)
+			r.db_set("confirmed_qty", 0, update_modified=False)
+			r.db_set("confirmed_delivery_week", None, update_modified=False)
+			r.db_set("short_ordered", 1, update_modified=False)
 			continue
+		r.db_set("delivery_confirmed", 1, update_modified=False)
 		r.db_set("confirmed_delivery_week", _week_of(row.schedule_date),
 		         update_modified=False)
 		r.db_set("confirmed_qty", cint(row.qty), update_modified=False)

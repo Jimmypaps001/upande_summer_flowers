@@ -1191,6 +1191,39 @@ def trim_to_order(built, budget, ppb):
 	        "cohorts_short": len(short_cohorts)}
 
 
+def confirmed_plants(lines, planned):
+	"""What a cohort can actually stand up, and how many plants it is short.
+
+	A cohort is one planting however many ways its material is bought, so all
+	of its requirement lines count. Reading only the first wrote a two-way
+	crop's planting at one way's share of it -- Eryngium is 80% tissue culture
+	and 20% roots, and its plantings went in at four fifths.
+
+	Where a line's order has been confirmed, what that line can provide is what
+	the supplier agreed to send, in the proportion it bears to what was ordered:
+	50,000 seeds of the 77,143 asked for is 65% of that line's plants. A line
+	nobody has confirmed yet still counts for what the plan asked, because an
+	unanswered order is not a refused one.
+
+	Capped at the plan's own figure. A supplier sending more than was ordered
+	does not earn the farm more ground than it allocated.
+	"""
+	if not lines:
+		return planned, 0
+	asked = sum(cint(x.qty_at_field) for x in lines)
+	have = 0
+	for x in lines:
+		if not cint(x.get("delivery_confirmed")):
+			# Unanswered is not refused. Plan for what was asked until somebody
+			# says otherwise.
+			have += cint(x.qty_at_field)
+			continue
+		ordered, agreed = cint(x.qty_to_order), cint(x.confirmed_qty)
+		have += int(cint(x.qty_at_field) * agreed / ordered) if ordered else 0
+	have = max(0, min(asked, have))
+	return have, asked - have
+
+
 def write_plantings(plan, proc=None):
 	"""Turn a plan's cohorts into Planting Calendar entries.
 
@@ -1215,6 +1248,8 @@ def write_plantings(plan, proc=None):
 	source = ("In-house Propagation" if (not proc or cint(proc.propagates_here))
 	          else "Purchased from Breeder")
 	made, skipped, at_risk, refused, already, moved = [], 0, [], [], 0, []
+	# Plantings the confirmed order cannot fill, and by how much.
+	short_filled, unplanted = [], []
 	# A block on a plan row is a claim made when the row was allocated, and
 	# nothing re-checks it. Approve in September, let another plan take the
 	# beds in October, and the calendar is the only thing that notices -- by
@@ -1242,10 +1277,16 @@ def write_plantings(plan, proc=None):
 	rows = [b for b in plan.plan_blocks if b.is_new_planting]
 	rows.sort(key=lambda b: getdate(b.planting_date or nowdate()))
 	for row in rows:
-		r = next((x for x in (proc.requirements if proc else [])
-		         if x.cohort == row.name), None)
-		plants_here = cint(r.qty_at_field) if r else cint(row.plants)
+		lines = [x for x in (proc.requirements if proc else [])
+		         if x.cohort == row.name]
+		r = lines[0] if lines else None
+		plants_here, cut_by = confirmed_plants(lines, cint(row.plants))
 		if not plants_here:
+			# Nothing was confirmed for this week at all. A planting of no plants
+			# is not a planting, and writing one would hold a block all season
+			# for a crop that cannot go in it.
+			if cut_by:
+				unplanted.append((row.planting_date, cut_by))
 			continue
 		if row.existing_planting and frappe.db.exists("Planting Calendar",
 		                                              row.existing_planting):
@@ -1257,6 +1298,20 @@ def write_plantings(plan, proc=None):
 		start = getdate(row.planting_date)
 		end = start + life
 		beds_wanted = cint(row.beds) or 1
+		if cut_by:
+			# Fewer plants is fewer beds. Standing the short delivery across the
+			# ground the whole cohort was given plants it at a density the
+			# protocol never described, and holds beds all season that the next
+			# cohort could have had.
+			from upande_summer_flowers.summer_flowers.doctype \
+				.summer_flower_production_plan.summer_flower_production_plan import (
+					plants_per_bed_for,
+				)
+
+			per_bed = cint(plants_per_bed_for(v))
+			if per_bed:
+				beds_wanted = max(1, int(math.ceil(plants_here / float(per_bed))))
+			short_filled.append((row.planting_date, cut_by, plants_here))
 		block = row.block
 		if block and cal.get(block) and cal.free_beds(cal.get(block), start, end) >= beds_wanted:
 			cal.reserve(cal.get(block), start, end, beds_wanted)
@@ -1289,7 +1344,7 @@ def write_plantings(plan, proc=None):
 			"variety": plan.variety,
 			"crop_protocol_version": protocol,
 			"company": plan.company,
-			"beds": cint(row.beds),
+			"beds": beds_wanted if cut_by else cint(row.beds),
 			"plants": plants_here,
 			# The delivery date is the planting date only where what arrives IS
 			# the plant. Where the farm propagates, the delivery is tissue
@@ -1302,6 +1357,16 @@ def write_plantings(plan, proc=None):
 			"supplier": (proc.supplier if proc and proc.method == "Purchase"
 		             and not cint(proc.propagates_here) else None),
 		})
+		if cut_by:
+			note = _(
+				"The supplier confirmed less than this planting was planned for, "
+				"so {0} plants go in rather than {1} -- {2} short -- on {3} beds "
+				"instead of {4}. The plan still says what was asked for; the "
+				"order says what is coming."
+			).format(f"{plants_here:,}", f"{plants_here + cut_by:,}",
+			         f"{cut_by:,}", beds_wanted, cint(row.beds))
+			shortfall_note = ((shortfall_note + "\n" + note) if shortfall_note
+			                  else note)
 		if shortfall_note:
 			entry.notes = ((entry.get("notes") or "") + "\n" + shortfall_note).strip() \
 				if entry.meta.has_field("notes") else entry.get("notes")
@@ -1371,6 +1436,22 @@ def write_plantings(plan, proc=None):
 			"the propagation plan's own weeks."
 		).format(len(at_risk), min(at_risk)), indicator="orange",
 			title=_("Not all of it can be stuck"))
+	if short_filled:
+		lost = sum(c for _d, c, _p in short_filled)
+		frappe.msgprint(_(
+			"{0} planting(s) go in smaller than planned because that is what the "
+			"supplier confirmed: {1} plants short in all, the first on {2}. The "
+			"beds each one holds were cut to match, so the ground the plants "
+			"never arrived for is free for something else."
+		).format(len(short_filled), f"{lost:,}", min(d for d, _c, _p in short_filled)),
+			indicator="orange", title=_("Smaller than planned"))
+	if unplanted:
+		frappe.msgprint(_(
+			"{0} planting(s) have nothing confirmed against them at all and were "
+			"not written: {1} plants were asked for and none agreed. No block is "
+			"held for them."
+		).format(len(unplanted), f"{sum(c for _d, c in unplanted):,}"),
+			indicator="red", title=_("Nothing confirmed"))
 	if moved:
 		frappe.msgprint(_(
 			"{0} planting(s) had to move: the beds they were allocated are held "

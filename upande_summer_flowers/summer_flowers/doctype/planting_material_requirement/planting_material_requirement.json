@@ -28,6 +28,7 @@
   "late",
   "section_delivery",
   "expected_delivery_date",
+  "delivery_confirmed",
   "confirmed_qty",
   "confirmed_delivery_week",
   "actual_delivery_week",
@@ -173,6 +174,13 @@
    "description": "When the material is expected on the farm. Ordering on the order-by date lands it here."
   },
   {
+   "fieldname": "delivery_confirmed",
+   "fieldtype": "Check",
+   "label": "Confirmed",
+   "read_only": 1,
+   "description": "The supplier has answered for this delivery. Without it, a confirmed quantity of nothing cannot be told apart from a question nobody has answered."
+  },
+  {
    "fieldname": "confirmed_qty",
    "fieldtype": "Int",
    "label": "Confirmed",
@@ -233,7 +241,7 @@
   }
  ],
  "links": [],
- "modified": "2026-10-30 10:30:00.000000",
+ "modified": "2026-10-30 12:00:00.000000",
  "modified_by": "Administrator",
  "module": "Summer Flowers",
  "name": "Planting Material Requirement",

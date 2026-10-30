@@ -67,7 +67,8 @@
   "beds_tab",
   "bed_allocation",
   "beds_uprooted",
-  "plants_lost_to_uprooting"
+  "plants_lost_to_uprooting",
+  "notes"
  ],
  "fields": [
   {
@@ -191,12 +192,12 @@
    "label": "Net Area (ha)",
    "precision": "5",
    "read_only": 1,
-   "description": "Net bed area \u2014 the ground the crop occupies, and the only area this app carries."
+   "description": "Net bed area — the ground the crop occupies, and the only area this app carries."
   },
   {
    "fieldname": "net_area_sqm",
    "fieldtype": "Float",
-   "label": "Net Area (m\u00b2)",
+   "label": "Net Area (m²)",
    "precision": "1",
    "read_only": 1
   },
@@ -569,12 +570,19 @@
    "label": "Revised By",
    "read_only": 1,
    "options": "User"
+  },
+  {
+   "fieldname": "notes",
+   "fieldtype": "Small Text",
+   "label": "Notes",
+   "read_only": 1,
+   "description": "Why this planting is not what the plan asked for -- what the supplier confirmed, or what the bench could not raise. Written when the calendar is."
   }
  ],
  "grid_page_length": 50,
  "index_web_pages_for_search": 1,
  "links": [],
- "modified": "2026-09-09 00:00:00.000000",
+ "modified": "2026-10-30 12:30:00.000000",
  "modified_by": "Administrator",
  "module": "Summer Flowers",
  "name": "Planting Calendar",
