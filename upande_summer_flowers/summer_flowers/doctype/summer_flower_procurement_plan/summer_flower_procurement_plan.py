@@ -677,6 +677,13 @@ class SummerFlowerProcurementPlan(Document):
 		for r in self.requirements:
 			if not confirmed_or_asked(r) or r.source_doc:
 				continue
+			# A week that names its own seller goes to that seller whole. The
+			# proportional split below is for lines nobody has decided, and
+			# applying it to a decided one would send 20% of a delivery to a
+			# lab the buyer did not choose for that week.
+			if cint(r.get("delivery_confirmed")) and r.supplier:
+				groups[r.supplier].append(r)
+				continue
 			sellers = self.suppliers_for(r.entry_stage or self.entry_stage)
 			if not sellers:
 				groups[r.supplier].append(r)

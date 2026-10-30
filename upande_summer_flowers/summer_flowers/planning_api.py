@@ -4105,14 +4105,23 @@ def seller_choices(procurement_plan):
 	stages = list(doc.units_by_stage() or {})
 	if not stages:
 		stages = [doc.main_entry_stage() or doc.entry_stage or ""]
+	# What each way in comes to, so a share can be read as a quantity. A share
+	# of a number nobody shows is a number somebody has to work out.
+	by_stage = doc.units_by_stage() or {}
 	return {
 		"plan": doc.name,
 		"editable": 1 if doc.docstatus == 0 else 0,
 		"stages": [s for s in stages if s],
+		"units_by_stage": {k: cint(v) for k, v in by_stage.items()},
+		"unit_label": doc.entry_stage or _("units"),
 		"suppliers": frappe.get_all("Supplier", filters={"disabled": 0},
 		                            pluck="name", order_by="name", limit=500),
 		"rows": [{"entry_stage": r.entry_stage, "supplier": r.supplier,
-		          "share_pct": flt(r.share_pct), "rate": flt(r.rate)}
+		          "share_pct": flt(r.share_pct), "rate": flt(r.rate),
+		          "units": int(round(cint(by_stage.get(r.entry_stage))
+		                             * flt(r.share_pct) / 100.0)),
+		          "amount": round(int(round(cint(by_stage.get(r.entry_stage))
+		                                    * flt(r.share_pct) / 100.0)) * flt(r.rate), 2)}
 		         for r in (doc.get("purchase_allocation") or [])],
 	}
 

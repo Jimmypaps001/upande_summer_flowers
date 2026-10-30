@@ -113,6 +113,7 @@ def schedule_for(procurement_plan):
 				["qty", "schedule_date"], as_dict=True) if i.material_request_item else None
 			lines.append({
 				"name": i.name,
+				"supplier": po.supplier,
 				"item_code": i.item_code,
 				"asked_qty": cint(want.qty) if want else cint(i.qty),
 				"asked_week": _week_of(want.schedule_date) if want else _week_of(i.schedule_date),
@@ -125,6 +126,11 @@ def schedule_for(procurement_plan):
 		qty_total = sum(x["qty"] for x in lines)
 		out.append({
 			"purchase_order": po.name,
+			"requirement_of": None,
+			# The same two keys the requirement-sourced shape carries, so one
+			# renderer draws both without asking which it is looking at.
+			"needs_sellers": 0,
+			"sellers": [po.supplier] if po.supplier else [],
 			"supplier": po.supplier,
 			"supplier_name": po.get("supplier_name") or po.supplier,
 			"status": po.status,
@@ -159,6 +165,11 @@ def _from_requirements(plan):
 			"name": r.name, "item_code": plan.variety,
 			"asked_qty": want,
 			"asked_week": _week_of(r.required_at_site_date),
+			# Which seller this week's delivery comes from. A crop bought from
+			# two labs is not two proportions of every week -- it is some weeks
+			# from one and some from the other -- and that is a thing somebody
+			# decides, week by week, not an arithmetic split.
+			"supplier": r.supplier,
 			"qty": agreed,
 			# The date keyed so far, else the one the plan asked for.
 			"schedule_date": str(r.expected_delivery_date
@@ -167,10 +178,21 @@ def _from_requirements(plan):
 			"received_qty": 0,
 		})
 	stage = next((r.entry_stage for r in plan.requirements if r.entry_stage), None)
+	sellers = [{"supplier": r.supplier, "share_pct": flt(r.share_pct)}
+	           for r in (plan.get("purchase_allocation") or []) if r.supplier]
 	return {
 		"purchase_order": None, "requirement_of": plan.name,
-		"supplier": plan.supplier,
-		"supplier_name": plan.supplier or _("not chosen yet"),
+		# Nothing to confirm against until somebody says who sells it: an order
+		# has to be placed with a supplier, and a schedule agreed with nobody is
+		# not an agreement.
+		"sellers": [x["supplier"] for x in sellers],
+		"needs_sellers": 0 if sellers else 1,
+		"supplier": plan.supplier or (sellers[0]["supplier"] if sellers else None),
+		# Named from the sellers, not from the plan's single supplier field --
+		# which is blank whenever a crop is bought from more than one, and so
+		# read "not chosen yet" over a table listing two of them.
+		"supplier_name": (" + ".join(x["supplier"] for x in sellers)
+		                  if sellers else (plan.supplier or _("nobody yet"))),
 		"status": _("Not ordered"), "docstatus": 0, "editable": 1,
 		"unit": stage or plan.entry_stage or _("units"),
 		"confirmation_no": None, "confirmation_date": None,
@@ -200,6 +222,8 @@ def save_requirements(procurement_plan, lines):
 		if given.get("qty") not in (None, ""):
 			r.db_set("confirmed_qty", max(0, cint(given.get("qty"))),
 			         update_modified=False)
+		if given.get("supplier"):
+			r.db_set("supplier", given.get("supplier"), update_modified=False)
 		when = given.get("schedule_date")
 		if when:
 			when = max(getdate(when), today)

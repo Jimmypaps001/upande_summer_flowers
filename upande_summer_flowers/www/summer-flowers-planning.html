@@ -347,17 +347,11 @@
       </div>
       <div class="pl-card">
         <div class="pl-card-head">
-          <div><h2>{{ _("What the supplier will send") }}</h2>
-               <p class="pl-note">{{ _("The order is drafted from the plan and waits here. Key in what the supplier can actually send, week by week -- anyone may, the supplier or the buyer -- and confirm it. Confirming submits the order, and that schedule is what the farm then plans against.") }}</p></div>
-        </div>
-        <div id="pc-deliveries" class="pl-scroll"></div>
-      </div>
-      <div class="pl-card">
-        <div class="pl-card-head">
           <div><h2>{{ _("Who raises it") }}</h2>
                <p class="pl-note">{{ _("Our own propagation units raise it free; an outside propagator delivers plants and charges per plant, and gets a purchase order when the procurement plan is approved.") }}</p></div>
         </div>
         <div id="pc-buying" class="pl-scroll"></div>
+        <div id="pc-deliveries" class="pl-scroll"></div>
         <div id="pc-alloc" class="pl-scroll"></div>
       </div>
     </section>
@@ -7929,20 +7923,30 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
     const stages = sc.stages.length ? sc.stages : [""];
     const rows = sc.rows.length ? sc.rows
       : stages.map((st) => ({ entry_stage: st, supplier: "", share_pct: 100, rate: 0 }));
-    const sellRow = (x) => `<tr data-stage="${esc(x.entry_stage || "")}">` +
+    const stageUnits = sc.units_by_stage || {};
+    const sellRow = (x) => {
+      const tot = +stageUnits[x.entry_stage] || 0;
+      const u = Math.round(tot * (+x.share_pct || 0) / 100);
+      return `<tr data-stage="${esc(x.entry_stage || "")}">` +
       `<td>${esc(x.entry_stage || "—")}</td>` +
       `<td><input class="sl-sup" list="pc-sup-list" style="min-width:230px" ` +
       `value="${esc(x.supplier || "")}" placeholder="who sells it…"></td>` +
       `<td class="r"><input class="sl-share" type="number" step="0.01" ` +
       `style="width:80px" value="${(+x.share_pct || 0).toFixed(2)}"></td>` +
+      // The share as a quantity. A percentage of a total nobody shows is a
+      // number the buyer has to work out before they can sanity-check it.
+      `<td class="r sl-units">${num(u)}</td>` +
       `<td class="r"><input class="sl-rate" type="number" step="0.01" ` +
       `style="width:90px" value="${+x.rate || 0}"></td>` +
+      `<td class="r sl-amt">${x.rate ? num(Math.round(u * (+x.rate || 0))) : "—"}</td>` +
       `<td><a class="sl-del text-muted small" href="#">✕</a></td></tr>`;
+    };
     box.innerHTML =
       `<p class="pl-note">${esc(draft.name)} · draft — say who sells each way in, ` +
       `then save. What is ordered from them is the confirmed schedule below.</p>` +
       `<table class="pl-t" id="pc-sell"><thead><tr><th>Bought as</th><th>Supplier</th>` +
-      `<th class="r">Share %</th><th class="r">Price / unit</th><th></th>` +
+      `<th class="r">Share %</th><th class="r">${esc(sc.unit_label || "Units")}</th>` +
+      `<th class="r">Price / unit</th><th class="r">Amount</th><th></th>` +
       `</tr></thead><tbody>${rows.map(sellRow).join("")}</tbody></table>` +
       `<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px">` +
       stages.map((st) => `<button class="pl-btn sl-add" data-stage="${esc(st)}">` +
@@ -8037,14 +8041,29 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
         "request and drafts the order to confirm against.")}</p>`;
       return;
     }
+    // An order is placed with a supplier. Until one is named there is nothing
+    // to agree and nobody to agree it with, so the table waits rather than
+    // offering a schedule that could not be raised.
+    if (orders.length === 1 && orders[0].needs_sellers) {
+      box.innerHTML = `<p class="pl-empty">Say who sells it above and save, ` +
+        `then the week-by-week plan appears here to confirm.</p>`;
+      return;
+    }
     box.innerHTML = orders.map((o) => {
       const ro = !o.editable;
+      const sellers = o.sellers || [];
       const unit = (o.unit || "units").toLowerCase();
       const rows = o.lines.map((L) => {
         const moved = L.week && L.asked_week && L.week !== L.asked_week;
         const short = L.qty < L.asked_qty;
         return `<tr data-line="${esc(L.name)}">` +
           `<td>${esc(L.asked_week || "\u2014")}</td>` +
+          (sellers.length
+            ? `<td>${ro || sellers.length < 2 ? esc(L.supplier || sellers[0] || "\u2014")
+                : `<select class="dc-sup">${sellers.map((sp) =>
+                    `<option${sp === L.supplier ? " selected" : ""}>${esc(sp)}</option>`
+                  ).join("")}</select>`}</td>`
+            : "") +
           `<td class="r">${num(L.asked_qty)}</td>` +
           `<td class="r">${ro ? num(L.qty)
             : `<input class="dc-q" type="number" min="0" step="1" value="${L.qty}" ` +
@@ -8069,11 +8088,15 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
         `</div>` +
         `<table class="pl-t" data-order="${esc(o.purchase_order || o.requirement_of)}" ` +
         `data-req="${o.requirement_of ? "1" : ""}"><thead><tr>` +
-        `<th>Week</th><th class="r">We asked</th>` +
+        `<th>Week</th>` +
+        (sellers.length ? `<th>From</th>` : "") +
+        `<th class="r">We asked</th>` +
         `<th class="r">${esc(o.unit || "Units")} they will send</th>` +
         `<th>On</th><th>\u00a0</th><th class="r">Received</th>` +
         `</tr></thead><tbody>${rows}</tbody>` +
-        `<tfoot><tr><th>Total</th><th class="r">${num(o.asked_total)}</th>` +
+        `<tfoot><tr><th>Total</th>` +
+        (sellers.length ? `<th></th>` : "") +
+        `<th class="r">${num(o.asked_total)}</th>` +
         `<th class="r">${num(o.qty_total)}</th><th colspan="2">` +
         (o.short_by
           ? `<span style="color:var(--critical)">short ${num(o.short_by)} ${esc(unit)}` +
@@ -8101,6 +8124,7 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
       name: tr.dataset.line,
       qty: flt((tr.querySelector(".dc-q") || {}).value),
       schedule_date: (tr.querySelector(".dc-d") || {}).value || null,
+      supplier: (tr.querySelector(".dc-sup") || {}).value || null,
     }));
   }
 
