@@ -9,6 +9,7 @@
  "editable_grid": 1,
  "engine": "InnoDB",
  "field_order": [
+  "title",
   "details_tab",
   "identification_section",
   "crop_protocol",
@@ -141,6 +142,14 @@
  ],
  "fields": [
   {
+   "description": "The variety by the name the farm uses, at its farm, and which version this is. The document is named after the variety's item code, which is what plans and cycles link to.",
+   "fieldname": "title",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Protocol",
+   "read_only": 1
+  },
+  {
    "fieldname": "details_tab",
    "fieldtype": "Tab Break",
    "label": "Details"
@@ -222,7 +231,7 @@
    "options": "Crop Material Stage"
   },
   {
-   "description": "Altitude, temperature, light — what makes this farm's curve differ from the same variety elsewhere.",
+   "description": "Altitude, temperature, light \u2014 what makes this farm's curve differ from the same variety elsewhere.",
    "fieldname": "climate_note",
    "fieldtype": "Small Text",
    "label": "Why this farm differs"
@@ -310,7 +319,7 @@
    "fieldtype": "Column Break"
   },
   {
-   "description": "Mandatory. Why this amendment was made — retained for audit.",
+   "description": "Mandatory. Why this amendment was made \u2014 retained for audit.",
    "fieldname": "change_reason",
    "fieldtype": "Small Text",
    "label": "Change Reason",
@@ -350,10 +359,10 @@
   },
   {
    "default": "20",
-   "description": "Plants standing per square metre of BED — the ground the crop actually occupies, not the block it sits in. This and Plants per Bed set the bed size, the plants per block and every per-hectare figure in the protocol.",
+   "description": "Plants standing per square metre of BED \u2014 the ground the crop actually occupies, not the block it sits in. This and Plants per Bed set the bed size, the plants per block and every per-hectare figure in the protocol.",
    "fieldname": "plants_per_sqm_net",
    "fieldtype": "Int",
-   "label": "Plants per m² of bed (net)",
+   "label": "Plants per m\u00b2 of bed (net)",
    "reqd": 1
   },
   {
@@ -372,28 +381,28 @@
    "description": "The smallest planting worth making, as an area. Beds are whole, so this rounds up to whole beds and then to plants.",
    "fieldname": "min_planting_area_sqm",
    "fieldtype": "Float",
-   "label": "Minimum planting area (m² net)"
+   "label": "Minimum planting area (m\u00b2 net)"
   },
   {
-   "description": "Read-only: every figure here is calculated from plants per m² and plants per bed. Change those and these follow.",
+   "description": "Read-only: every figure here is calculated from plants per m\u00b2 and plants per bed. Change those and these follow.",
    "fieldname": "derived_geo_section",
    "fieldtype": "Section Break",
    "label": "Worked out from the geometry above"
   },
   {
-   "description": "The net planted area of one bed. Karen's beds are 50 m² each. Plants per bed follows from this and the density.",
+   "description": "The net planted area of one bed. Karen's beds are 50 m\u00b2 each. Plants per bed follows from this and the density.",
    "fieldname": "sqm_net_per_bed",
    "fieldtype": "Float",
-   "label": "m² net per bed",
+   "label": "m\u00b2 net per bed",
    "precision": "2"
   },
   {
+   "default": "0",
+   "description": "The farm has not recorded a bed size, so the smallest planting it will make is being used as one.",
    "fieldname": "bed_area_assumed",
    "fieldtype": "Check",
    "label": "Bed area assumed from the minimum planting",
-   "read_only": 1,
-   "default": "0",
-   "description": "The farm has not recorded a bed size, so the smallest planting it will make is being used as one."
+   "read_only": 1
   },
   {
    "description": "The minimum area above, rounded up to whole beds.",
@@ -426,7 +435,7 @@
    "default": "7",
    "fieldname": "weeks_to_pinch",
    "fieldtype": "Int",
-   "label": "Weeks planting → pinch",
+   "label": "Weeks planting \u2192 pinch",
    "reqd": 1
   },
   {
@@ -449,7 +458,7 @@
   {
    "fieldname": "first_harvest_offset_weeks",
    "fieldtype": "Int",
-   "label": "Weeks planting → first harvest",
+   "label": "Weeks planting \u2192 first harvest",
    "read_only": 1
   },
   {
@@ -463,7 +472,7 @@
    "fieldtype": "Column Break"
   },
   {
-   "description": "52 ÷ flush interval. The planting returns to the same weeks each year.",
+   "description": "52 \u00f7 flush interval. The planting returns to the same weeks each year.",
    "fieldname": "harvest_weeks_per_year",
    "fieldtype": "Int",
    "label": "Harvest Weeks Per Year",
@@ -480,7 +489,7 @@
    "description": "Fallow, sterilisation and bed preparation between one crop coming out and the next going in. A single-flush crop is replanted on this rhythm, not the day it is cleared.",
    "fieldname": "turnaround_weeks",
    "fieldtype": "Int",
-   "label": "Turnaround weeks (clear → replant)",
+   "label": "Turnaround weeks (clear \u2192 replant)",
    "non_negative": 1
   },
   {
@@ -488,7 +497,7 @@
    "description": "A crop that cuts every week has no flushes to be timed by, so it says this outright.",
    "fieldname": "weeks_planting_to_first_cut",
    "fieldtype": "Int",
-   "label": "Weeks planting → first cut",
+   "label": "Weeks planting \u2192 first cut",
    "non_negative": 1
   },
   {
@@ -619,7 +628,7 @@
   {
    "fieldname": "establishment_section",
    "fieldtype": "Section Break",
-   "label": "Establishment (TC → productive motherstock)"
+   "label": "Establishment (TC \u2192 productive motherstock)"
   },
   {
    "default": "3",
@@ -657,7 +666,7 @@
    "description": "Weeks between a cutting going into the propagation house and the rooted plant going to the field.",
    "fieldname": "sticking_to_planting_weeks",
    "fieldtype": "Int",
-   "label": "Weeks sticking → planting",
+   "label": "Weeks sticking \u2192 planting",
    "read_only": 1
   },
   {
@@ -697,12 +706,12 @@
    "default": "31",
    "fieldname": "pots_per_sqm",
    "fieldtype": "Int",
-   "label": "Pots per m²"
+   "label": "Pots per m\u00b2"
   },
   {
    "fieldname": "plants_per_sqm_bench",
    "fieldtype": "Float",
-   "label": "Plants per m² of bench",
+   "label": "Plants per m\u00b2 of bench",
    "precision": "1",
    "read_only": 1
   },
@@ -829,10 +838,10 @@
    "fieldtype": "Section Break"
   },
   {
+   "description": "Share of CUT STEMS that fail grading. A loss of what the plants produce, not of the plants: it is taken off the yield once the flushes have been counted, so the plan grows for what can be sold. Compounds with Cutting reject % where both are set.",
    "fieldname": "reject_pct",
    "fieldtype": "Percent",
-   "label": "Harvest reject %",
-   "description": "Share of CUT STEMS that fail grading. A loss of what the plants produce, not of the plants: it is taken off the yield once the flushes have been counted, so the plan grows for what can be sold. Compounds with Cutting reject % where both are set."
+   "label": "Harvest reject %"
   },
   {
    "default": "10",
@@ -918,8 +927,8 @@
   {
    "fieldname": "ready_cutting_price",
    "fieldtype": "Currency",
-   "label": "Ready Cutting Price",
-   "hidden": 1
+   "hidden": 1,
+   "label": "Ready Cutting Price"
   },
   {
    "default": "20",
@@ -942,14 +951,14 @@
   {
    "fieldname": "lift_section",
    "fieldtype": "Section Break",
-   "label": "Lifts — how a consignment is handed over"
+   "label": "Lifts \u2014 how a consignment is handed over"
   },
   {
+   "description": "Snapshotted with the rest of the protocol, so a plan built on this version keeps the lift profile it was built on.",
    "fieldname": "lifts",
    "fieldtype": "Table",
    "label": "Lifts",
-   "options": "Summer Flower Protocol Lift",
-   "description": "Snapshotted with the rest of the protocol, so a plan built on this version keeps the lift profile it was built on."
+   "options": "Summer Flower Protocol Lift"
   }
  ],
  "grid_page_length": 50,
@@ -1002,9 +1011,10 @@
  "row_format": "Dynamic",
  "rows_threshold_for_grid_search": 20,
  "search_fields": "crop_protocol,farm,version,version_status",
+ "show_title_field_in_link": 1,
  "sort_field": "modified",
  "sort_order": "DESC",
  "states": [],
- "title_field": "crop_protocol",
+ "title_field": "title",
  "track_changes": 1
 }

@@ -80,6 +80,21 @@ class CropProtocolVersion(Document):
 		self.set_grades_and_losses()
 		self.check_effective_from()
 		self.sync_status()
+		self.set_title()
+
+	def set_title(self):
+		"""What this snapshot is called, as against what it is named.
+
+		The document is named after the variety's item code -- 3359-Kariki
+		Nanyuki-v1 -- because every plan and cycle links to it by that name.
+		The heading reads what the farm calls the crop.
+		"""
+		from upande_summer_flowers.summer_flowers.crop_protocol import variety_name
+
+		parts = [variety_name(self.variety), self.farm]
+		self.title = " - ".join(x for x in parts if x)
+		if cint(self.version):
+			self.title = "{0} v{1}".format(self.title, cint(self.version))
 
 	def on_update(self):
 		# Frappe workflows only move workflow_state; they do not call into the

@@ -64,6 +64,9 @@ MACHINERY = {
 	"crop_protocol", "version", "version_status", "workflow_state", "effective_from",
 	"effective_to", "is_current", "supersedes", "superseded_by", "change_reason",
 	"approved_by", "approved_on", "naming_series",
+	# The snapshot's own heading. It carries the version number, so copying it
+	# back would put "... v1" on the protocol, and the protocol writes its own.
+	"title",
 }
 
 
@@ -98,6 +101,16 @@ def multiplication_factor(cycles, per_cycle=0):
 		return 1.0
 	each = flt(per_cycle)
 	return float((each if each > 1 else 2.0) ** cycles)
+
+
+def variety_name(variety):
+	"""What the farm calls this variety, falling back to its item code."""
+	if not variety:
+		return variety
+	try:
+		return frappe.get_cached_value("Item", variety, "item_name") or variety
+	except Exception:
+		return variety
 
 
 def source_field(fieldname):
@@ -144,6 +157,17 @@ def before_validate(doc, method=None):
 		doc.variety_item = doc.get("variety")
 	elif doc.get("variety_item") and not doc.get("variety"):
 		doc.variety = doc.get("variety_item")
+
+	# What this protocol is called, as against what it is named. The document is
+	# named after the variety's item CODE -- 110402-Carzan Ks -- because every
+	# plan, cycle and version links to it by that name and renaming them is not
+	# worth the churn. But a form headed "110402-Carzan Ks" names a crop nobody
+	# on the farm calls that, so the heading, and every link to it, reads the
+	# name instead.
+	variety = doc.get("variety") or doc.get("variety_item")
+	if variety:
+		doc.custom_sf_title = " - ".join(
+			x for x in (variety_name(variety), doc.get("farm")) if x)
 
 
 # The stages material can be bought at, and the one every route has to end on.
