@@ -690,6 +690,16 @@ class SummerFlowerCropCycle(CropCycle):
 			if (self.get("custom_actual_uproot_date")
 			    or self.get("custom_planned_uproot_date")) else None
 		plants = cint(self.custom_live_plant_count)
+		# Two figures, because they answer two questions. What comes off the
+		# plant is what the pickers cut and what the harvest is counted against;
+		# what grades out of it is what the market gets and what the farm is
+		# targeted on. The plan has always sized the crop on the second -- the
+		# cycle forecast only ever held the first, so a crop rejecting a fifth
+		# carried that fifth in its targets as output.
+		from upande_summer_flowers.summer_flowers.doctype \
+			.summer_flower_production_plan.summer_flower_production_plan import saleable
+
+		grades_out = saleable(self._version)
 
 		self.set("custom_flush_schedule", [])
 		for number, weeks_from_pinch, spp in self.protocol.flush_rows():
@@ -703,6 +713,7 @@ class SummerFlowerCropCycle(CropCycle):
 			self.append("custom_flush_schedule", {
 				"flush_number": no, "harvest_date": harvest, "year": y,
 				"week_no": w, "stems_per_plant": spp, "expected_stems": expected,
+				"saleable_stems": int(round(expected * grades_out)),
 				"plants_standing": plants, "is_harvested": harvested,
 				"actual_stems": actual,
 				"variance_stems": (actual - expected) if harvested else 0,
@@ -716,6 +727,10 @@ class SummerFlowerCropCycle(CropCycle):
 
 		self.custom_total_harvested_stems = sum(cint(r.actual_stems) for r in done)
 		self.custom_expected_stems_life = sum(cint(r.expected_stems) for r in rows)
+		# The same life, net of what fails grading. Kept beside the gross rather
+		# than replacing it: the pickers are measured on what they cut and the
+		# market on what it can be sold.
+		self.custom_saleable_stems_life = sum(cint(r.saleable_stems) for r in rows)
 		# Variance is against what the harvested flushes were expected to yield,
 		# not against the whole life, or an early cycle always looks catastrophic.
 		self.custom_harvest_variance_stems = (
@@ -726,6 +741,7 @@ class SummerFlowerCropCycle(CropCycle):
 		self.custom_last_harvest_date = done[-1].harvest_date if done else None
 		self.custom_flushes_remaining = len(todo)
 		self.custom_expected_stems_remaining = sum(cint(r.expected_stems) for r in todo)
+		self.custom_saleable_stems_remaining = sum(cint(r.saleable_stems) for r in todo)
 		if todo:
 			self.custom_next_harvest_date = todo[0].harvest_date
 			self.custom_expected_stems_next_flush = cint(todo[0].expected_stems)
@@ -766,7 +782,10 @@ class SummerFlowerCropCycle(CropCycle):
 		self.set("custom_weekly_targets", [])
 		for fl in (self.get("custom_flush_schedule") or []):
 			for grade, pct in grades:
-				expected = int(round(cint(fl.expected_stems) * pct / 100.0))
+				# The share of what grades out, not of what is cut: a target is
+				# what the farm undertakes to deliver, and rejects are not
+				# delivered.
+				expected = int(round(cint(fl.saleable_stems) * pct / 100.0))
 				key = (cint(fl.year), cint(fl.week_no), grade)
 				old_target, manual, actual, notes = prev.get(key, (0, 0, 0, None))
 				target = old_target if (manual and old_target) else expected

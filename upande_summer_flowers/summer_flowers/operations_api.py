@@ -98,6 +98,7 @@ def crop_cycles(variety=None, farm=None, block=None, status=None):
 		        "custom_expected_stems_next_flush", "custom_flushes_remaining",
 		        "custom_expected_stems_life", "custom_total_harvested_stems",
 		        "custom_harvest_variance_stems", "custom_expected_stems_remaining",
+		        "custom_saleable_stems_life", "custom_saleable_stems_remaining",
 		        "custom_targets_status", "custom_has_protocol_override",
 		        "custom_override_approved_by", "custom_uproot_deviation_days",
 		        "custom_uproot_approved_by", "custom_royalty_applicable",
@@ -129,6 +130,12 @@ def crop_cycles(variety=None, farm=None, block=None, status=None):
 			"harvested": sum(cint(r.custom_total_harvested_stems) for r in rows),
 			"expected_life": sum(cint(r.custom_expected_stems_life) for r in rows),
 			"remaining": sum(cint(r.custom_expected_stems_remaining) for r in rows),
+			# What is cut and what can be sold are different numbers wherever a
+			# protocol states a grading loss, and a board reporting output has
+			# to be able to ask for the second.
+			"saleable_life": sum(cint(r.custom_saleable_stems_life) for r in rows),
+			"saleable_remaining": sum(cint(r.custom_saleable_stems_remaining)
+			                          for r in rows),
 			"variance": sum(cint(r.custom_harvest_variance_stems) for r in rows),
 			"needing_attention": len([r for r in rows if r["needs"]]),
 			"next_harvest": min((str(r.custom_next_harvest_date) for r in due),
@@ -208,9 +215,11 @@ def crop_cycle_detail(cycle):
 			"expected_next": cint(doc.custom_expected_stems_next_flush),
 			"flushes_remaining": cint(doc.custom_flushes_remaining),
 			"expected_life": cint(doc.custom_expected_stems_life),
+			"saleable_life": cint(doc.custom_saleable_stems_life),
 			"harvested": cint(doc.custom_total_harvested_stems),
 			"variance": cint(doc.custom_harvest_variance_stems),
 			"remaining": cint(doc.custom_expected_stems_remaining),
+			"saleable_remaining": cint(doc.custom_saleable_stems_remaining),
 			"last_date": str(doc.custom_last_harvest_date or ""),
 		},
 		"override": {
