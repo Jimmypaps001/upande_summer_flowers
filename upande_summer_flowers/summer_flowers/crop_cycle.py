@@ -357,8 +357,14 @@ class SummerFlowerCropCycle(CropCycle):
 		# The doctype names itself after its greenhouse, which a block cycle
 		# deliberately has not got -- so every one of them read "Variety @ None".
 		# A block cycle is named after its block.
-		self.title = "{0} @ {1}".format(self.variety or self.get("custom_sf_variety"),
-		                                self.custom_block)
+		# The variety reads as its name, not its code. Items are coded now --
+		# 92001, 120907 -- and a title saying "92001 @ Kariki Naivasha - Block
+		# A6B" names a crop nobody on the farm calls that. The Link fields
+		# already resolve to the item name; only the title still shouted the
+		# number. The code is kept as the fallback so a cycle on an item that
+		# has lost its name still says something.
+		self.title = "{0} @ {1}".format(variety_name(
+			self.variety or self.get("custom_sf_variety")), self.custom_block)
 		# planted_area is summed from the bed rows, and a block cycle recorded by
 		# bed COUNT has none -- so the native area sat at zero beside a custom
 		# field holding the real figure. Where the beds are not itemised, the
@@ -1015,6 +1021,16 @@ class SummerFlowerCropCycle(CropCycle):
 			"flushes_remaining": self.custom_flushes_remaining,
 			"expected_stems_remaining": self.custom_expected_stems_remaining,
 		}
+
+
+def variety_name(variety):
+	"""What the farm calls this variety, falling back to its item code."""
+	if not variety:
+		return variety
+	try:
+		return frappe.get_cached_value("Item", variety, "item_name") or variety
+	except Exception:
+		return variety
 
 
 def _monday(year, week):
