@@ -424,6 +424,18 @@ def arrival_plan(plan, tc_share=None, returns_per_plant=None,
 	share_by_week = _apportion(
 		weeks, share, cint(asked["plants_from_tc"]) if asked else None)
 
+	# Where our own unit raises it, the roots are chosen by the trough and the
+	# tissue culture covers the rest. The share above becomes the budget rather
+	# than the answer: see _by_the_trough.
+	troughs = None
+	if not one_way:
+		troughs = _by_the_trough(plan, v, weeks, sorted(weeks), share_by_week,
+		                         per_root)
+		if troughs:
+			for land in weeks:
+				got = cint(troughs["delivered"].get(land, 0))
+				share_by_week[land] = max(0, cint(weeks[land]["plants"]) - got)
+
 	# What one bought unit of the first way becomes, and what survives the first
 	# loss on the way there. Worked out once: it is the same walk every week.
 	per_unit_one = _plants_per_unit_from(rows, primary)
@@ -446,7 +458,11 @@ def arrival_plan(plan, tc_share=None, returns_per_plant=None,
 		# simply not bought. Leaving it here made the Total column add up to the
 		# week's demand however little was ordered.
 		by_root = 0 if one_way else w["plants"] - by_tc
-		roots = int(math.ceil(by_root / per_root)) if (per_root > 0 and by_root) else None
+		# Roots come out of store by the trough, so the week's root count is
+		# what the troughs set for it deliver -- not a number worked back from
+		# the week, which is how part troughs were being asked for.
+		roots = (int(math.ceil(by_root / per_root))
+		         if (per_root > 0 and by_root) else None)
 		# The week's own order, and what is left of it after each loss. The
 		# table used to print the PLANTS under the name of the thing bought, so
 		# a week needing 40,000 plants read "40,000 seeds" on a protocol that
@@ -579,7 +595,11 @@ def arrival_plan(plan, tc_share=None, returns_per_plant=None,
 		# that while the farm has one standing.
 		"own_stock": _own_stock(plan, v, rows, primary,
 		                        sum(cint(weeks[k].get("units_tc")) for k in ordered)),
-		"roots_total": sum(cint(weeks[k]["roots_needed"]) for k in ordered),
+		# What is actually bought. Summing the weeks counts what each week could
+		# use; the troughs are what the farm sets, and a trough is bought whole
+		# whether or not the week it lands in can take all of it.
+		"roots_total": (cint(troughs["roots_total"]) if troughs
+		                else sum(cint(weeks[k]["roots_needed"]) for k in ordered)),
 		"weeks": [dict(week=str(k), **weeks[k]) for k in ordered],
 		# "tc" not "plantlets": the farm buys tissue culture, and calling it
 		# something else on a purchase line is how a figure gets queried.
@@ -588,9 +608,17 @@ def arrival_plan(plan, tc_share=None, returns_per_plant=None,
 		# One line, not fifty. The whole season's roots are bought in one
 		# consignment, placed a lead time before the first week any of them has
 		# to come out of store.
-		"root_order_schedule": _root_order(root_pulls, root_lead),
+		# One order, placed a supplier's lead before the first trough is set.
+		# Where the troughs decide the roots, they decide the order date too --
+		# two schedules for one consignment could only disagree.
+		"root_order_schedule": (
+			[{"week": _back(troughs["settings"][0]["set_week"], root_lead),
+			  "week_iso": iso(_back(troughs["settings"][0]["set_week"], root_lead)),
+			  "roots": cint(troughs["roots_total"])}]
+			if troughs else _root_order(root_pulls, root_lead)),
 		# Out of store in trough-fulls, lifted out to the weeks that want them.
-		"root_batches": _root_batches(
+		# Silent where the troughs have already said it: see "troughs" below.
+		"root_batches": [] if troughs else _root_batches(
 			weeks, ordered, per_root, root_weeks,
 			# The ROOTS lifts. A protocol carries a lift table per form, and
 			# mixing them gave a trough five lifts across two different crops'
@@ -603,6 +631,28 @@ def arrival_plan(plan, tc_share=None, returns_per_plant=None,
 		"root_withdrawals": [{"week": k, "week_iso": iso(k), "roots": v}
 		                     for k, v in sorted(root_pulls.items())],
 		"roots_stored": sum(root_pulls.values()),
+		# The troughs themselves, where our own unit is the one setting them:
+		# which to set, when, and what each hands back. This is the thing the
+		# propagator works to, and the reason the tissue culture order is the
+		# shape it is.
+		"troughs": ({"unit": troughs["unit"],
+		             "owned": troughs["troughs_owned"],
+		             "used": troughs["troughs_used"],
+		             "roots": troughs["roots_total"],
+		             "plants": troughs["plants_total"],
+		             "share_wanted": troughs["share_wanted"],
+		             # Weeks as text, like every other week on this card: the
+		             # planner works in dates and the dashboard reads JSON.
+		             "settings": [{"set_week": str(t["set_week"]),
+		                           "set_week_iso": iso(t["set_week"]),
+		                           "capacity_plants": t["capacity_plants"],
+		                           "roots": t["roots"],
+		                           "deliveries": [{"week": str(d["week"]),
+		                                           "week_iso": iso(d["week"]),
+		                                           "plants": d["plants"]}
+		                                          for d in t["deliveries"]]}
+		                          for t in troughs["settings"]]}
+		            if troughs else None),
 		# What the propagation unit is being asked to hand over, and when. This
 		# is the thing the unit actually works to: not an order, a delivery.
 		"propagation_request": [
@@ -749,6 +799,101 @@ def _survival(form="Tissue Culture", version=None):
 	from upande_summer_flowers.summer_flowers import tc_supply as ts
 
 	return max(0.01, ts.survival(form, version=version))
+
+
+def _back(week, weeks_before):
+	"""The Monday `weeks_before` weeks before this one."""
+	return _monday(add_days(getdate(week), -7 * cint(weeks_before)))
+
+
+def _internal_unit(plan):
+	"""Our own propagation unit for this plan, if that is who raises it.
+
+	Looked for on the procurement plan's allocation first, because that is
+	where the choice is recorded once there is a plan to record it on, and on
+	the production plan's held choice before there is. An outside propagator
+	delivers plants to a date and their benches are not our constraint, so
+	they are not a unit for this purpose.
+	"""
+	q = frappe.db.get_value("Summer Flower Procurement Plan",
+	                        {"production_plan": plan.name, "docstatus": ["<", 2]},
+	                        "name")
+	if q:
+		for r in frappe.get_all("Summer Flower Propagation Allocation",
+		                        filters={"parent": q}, fields=["alloc_type",
+		                                                       "propagation_unit"]):
+			if r.propagation_unit and r.alloc_type != "Outside Propagator":
+				return r.propagation_unit
+	# The held rows are the chooser's own, which name the unit "unit"; the
+	# allocation rows name it "propagation_unit". Reading one spelling found
+	# nothing before a procurement plan existed, which is most of the time a
+	# card is looked at.
+	for r in _held(plan, "sf_pending_raising"):
+		if r.get("supplier"):
+			continue
+		unit = r.get("unit") or r.get("propagation_unit")
+		if unit:
+			return unit
+	return None
+
+
+def _trough_capacities(unit):
+	"""Every trough standing in the unit, in plants. Empty where the
+	propagation app is not installed or the unit has no troughs recorded."""
+	if not unit or not frappe.db.table_exists("Propagation Trough"):
+		return []
+	return [cint(t.plants_per_trough) for t in frappe.get_all(
+		"Propagation Trough",
+		filters={"propagation_unit": unit, "is_active": 1,
+		         "status": ["!=", "Out of Service"]},
+		fields=["plants_per_trough"]) if cint(t.plants_per_trough) > 0]
+
+
+def _root_lifts(v):
+	"""The root lift table: when a trough pays back, and how much of itself."""
+	return [{"weeks_after": cint(L.weeks_after_arrival),
+	         "share_pct": flt(L.share_pct)}
+	        for L in (v.get("lifts") or [])
+	        if (L.form or "").strip().lower().startswith("root")]
+
+
+def _by_the_trough(plan, v, weeks, ordered, share_by_week, per_root):
+	"""Re-cut the root share into whole troughs, where our own unit raises it.
+
+	Roots cannot be planted in the quantity a single week happens to want: a
+	trough is planted full or not at all, and it pays back over the weeks its
+	lift table names rather than the week it was set. Sized against a week, the
+	plan asks for part troughs -- 1,140 roots here, 380 there -- which is not
+	something a propagator can do.
+
+	So the roots are chosen by the trough and tissue culture, which comes in any
+	quantity on a much shorter lead, covers whatever they have not. The share
+	the protocol states stops being an instruction and becomes the budget the
+	troughs are bought within.
+
+	None where this does not apply -- an outside propagator, no troughs on
+	record, no root lifts -- and the caller keeps the share it already had.
+	"""
+	from upande_summer_flowers.summer_flowers import trough_plan
+
+	unit = _internal_unit(plan)
+	caps = _trough_capacities(unit)
+	lifts = _root_lifts(v)
+	if not caps or not lifts or not (per_root > 0):
+		return None
+	wanted = {k: max(0, cint(weeks[k]["plants"]) - cint(share_by_week.get(k, 0)))
+	          for k in ordered}
+	budget = sum(wanted.values())
+	if budget <= 0:
+		return None
+	out = trough_plan.plan_troughs(wanted, ordered, lifts, caps, per_root,
+	                               budget_plants=budget)
+	if not out["settings"]:
+		return None
+	out["unit"] = unit
+	out["troughs_owned"] = len(caps)
+	out["share_wanted"] = budget
+	return out
 
 
 def _root_batches(weeks, ordered, per_root, root_weeks, lifts):
