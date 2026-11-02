@@ -750,6 +750,14 @@ class SummerFlowerProcurementPlan(Document):
 			# Set here only so the field is filled before the mandatory check;
 			# validate_schedule_date works out the same earliest-of-the-lines.
 			mr.schedule_date = max(min(wanted_on(r) for r in rows), today)
+			# Which plan asked for it. The requirement row records the request
+			# it raised; this is the same fact the other way round, and it is
+			# the one a person needs -- an order in a buyer's list says nothing
+			# about the season it belongs to. ERPNext carries a same-named field
+			# onto the Purchase Order made from this request, so the order ends
+			# up pointing back here too.
+			if mr.meta.get_field("custom_sf_procurement_plan"):
+				mr.custom_sf_procurement_plan = self.name
 			if mr.meta.get_field("custom_farm"):
 				mr.custom_farm = self.farm
 			if mr.meta.get_field("custom_purpose"):

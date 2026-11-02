@@ -6,7 +6,6 @@
  "doctype": "DocType",
  "editable_grid": 1,
  "engine": "InnoDB",
- "is_submittable": 1,
  "field_order": [
   "overview_section",
   "overview_html",
@@ -75,51 +74,51 @@
  ],
  "fields": [
   {
+   "depends_on": "eval:doc.docstatus==1",
    "fieldname": "overview_section",
    "fieldtype": "Section Break",
-   "label": "What this plan buys, and what it becomes",
-   "depends_on": "eval:doc.docstatus==1"
+   "label": "What this plan buys, and what it becomes"
   },
   {
+   "depends_on": "eval:doc.docstatus==1",
    "fieldname": "overview_html",
-   "fieldtype": "HTML",
-   "depends_on": "eval:doc.docstatus==1"
+   "fieldtype": "HTML"
   },
   {
    "fieldname": "overview_end",
    "fieldtype": "Section Break"
   },
   {
+   "default": "SFPROC-.YYYY.-",
    "fieldname": "naming_series",
    "fieldtype": "Select",
    "label": "Series",
    "options": "SFPROC-.YYYY.-",
-   "default": "SFPROC-.YYYY.-",
    "reqd": 1
   },
   {
    "fieldname": "production_plan",
    "fieldtype": "Link",
+   "in_list_view": 1,
    "label": "Production Plan",
    "options": "Summer Flower Production Plan",
-   "reqd": 1,
-   "in_list_view": 1
+   "reqd": 1
   },
   {
    "fieldname": "variety",
    "fieldtype": "Link",
+   "in_list_view": 1,
    "label": "Variety",
    "options": "Item",
-   "read_only": 1,
-   "in_list_view": 1
+   "read_only": 1
   },
   {
    "fieldname": "farm",
    "fieldtype": "Link",
+   "in_list_view": 1,
    "label": "Farm",
    "options": "Farm",
-   "read_only": 1,
-   "in_list_view": 1
+   "read_only": 1
   },
   {
    "fieldname": "column_break_head",
@@ -146,13 +145,13 @@
    "read_only": 1
   },
   {
+   "default": "Draft",
    "fieldname": "status",
    "fieldtype": "Select",
+   "in_list_view": 1,
    "label": "Status",
    "options": "Draft\nApproved\nCancelled",
-   "default": "Draft",
-   "read_only": 1,
-   "in_list_view": 1
+   "read_only": 1
   },
   {
    "fieldname": "section_method",
@@ -167,48 +166,48 @@
    "reqd": 1
   },
   {
+   "description": "The route has stages between where the material is bought and the ground, so what arrives is raised here before it is planted. Buying and propagating are not alternatives: Aster is bought as tissue culture and propagated.",
    "fieldname": "propagates_here",
    "fieldtype": "Check",
    "label": "Propagated on the farm",
-   "read_only": 1,
-   "description": "The route has stages between where the material is bought and the ground, so what arrives is raised here before it is planted. Buying and propagating are not alternatives: Aster is bought as tissue culture and propagated."
+   "read_only": 1
   },
   {
+   "depends_on": "propagates_here",
+   "description": "The stages the material passes through on the farm after it arrives.",
    "fieldname": "in_house_stages",
    "fieldtype": "Data",
    "label": "Raised here through",
-   "read_only": 1,
-   "description": "The stages the material passes through on the farm after it arrives.",
-   "depends_on": "propagates_here"
+   "read_only": 1
   },
   {
+   "description": "Read off the material route, not chosen here. Change it on the Crop Protocol.",
    "fieldname": "route_verdict",
    "fieldtype": "Small Text",
    "label": "What the protocol says",
-   "read_only": 1,
-   "description": "Read off the material route, not chosen here. Change it on the Crop Protocol."
+   "read_only": 1
   },
   {
+   "depends_on": "eval:doc.method=='Purchase'",
    "fieldname": "entry_stage",
    "fieldtype": "Data",
-   "label": "Bought As",
-   "depends_on": "eval:doc.method=='Purchase'"
+   "label": "Bought As"
   },
   {
+   "depends_on": "eval:doc.method=='Purchase'",
+   "description": "Taken from Who Sells It below. Where more than one seller supplies the same way in, this stays blank and the table is the answer.",
    "fieldname": "supplier",
    "fieldtype": "Link",
    "label": "Supplier",
    "options": "Supplier",
-   "depends_on": "eval:doc.method=='Purchase'",
-   "read_only_depends_on": "eval:(doc.purchase_allocation||[]).length",
-   "description": "Taken from Who Sells It below. Where more than one seller supplies the same way in, this stays blank and the table is the answer."
+   "read_only_depends_on": "eval:(doc.purchase_allocation||[]).length"
   },
   {
+   "description": "A supplier has said what they can send, week by week. The request and the order are raised from that, not from what the plan asked for.",
    "fieldname": "deliveries_confirmed",
    "fieldtype": "Check",
    "label": "Deliveries Confirmed",
-   "read_only": 1,
-   "description": "A supplier has said what they can send, week by week. The request and the order are raised from that, not from what the plan asked for."
+   "read_only": 1
   },
   {
    "fieldname": "column_break_method",
@@ -236,8 +235,8 @@
    "fieldname": "plants_per_unit",
    "fieldtype": "Float",
    "label": "Plants per Unit",
-   "read_only": 1,
-   "precision": "3"
+   "precision": "3",
+   "read_only": 1
   },
   {
    "fieldname": "section_space",
@@ -291,121 +290,121 @@
    "read_only": 1
   },
   {
+   "description": "Everything bought by this plan. On a crop raised through a motherstock that is one purchase -- the plantlets on the Establishment line -- not one per planting.",
    "fieldname": "total_units_to_order",
    "fieldtype": "Int",
-   "label": "Units to Order",
-   "read_only": 1,
    "in_list_view": 1,
-   "description": "Everything bought by this plan. On a crop raised through a motherstock that is one purchase -- the plantlets on the Establishment line -- not one per planting."
+   "label": "Units to Order",
+   "read_only": 1
   },
   {
+   "depends_on": "eval:doc.peak_cuttings",
+   "description": "The busiest sticking week. The pool is bought once and cut from every week, so this is what sizes the order -- the weeks either side lend it nothing.",
    "fieldname": "peak_cuttings",
    "fieldtype": "Int",
    "label": "Peak Week Cuttings",
-   "read_only": 1,
-   "description": "The busiest sticking week. The pool is bought once and cut from every week, so this is what sizes the order -- the weeks either side lend it nothing.",
-   "depends_on": "eval:doc.peak_cuttings"
+   "read_only": 1
   },
   {
+   "depends_on": "eval:doc.peak_cuttings",
+   "description": "The week that figure falls in.",
    "fieldname": "peak_week",
    "fieldtype": "Data",
    "label": "Peak Week",
-   "read_only": 1,
-   "description": "The week that figure falls in.",
-   "depends_on": "eval:doc.peak_cuttings"
+   "read_only": 1
   },
   {
+   "depends_on": "eval:doc.peak_cuttings",
+   "description": "The plantlets plus one for each multiplication. The peak is divided by this: 70,000 cuttings is 70,000 plantlets at no multiplication, 35,000 at one, 23,333 at two.",
    "fieldname": "generations",
    "fieldtype": "Float",
    "label": "Generations Standing",
-   "read_only": 1,
-   "description": "The plantlets plus one for each multiplication. The peak is divided by this: 70,000 cuttings is 70,000 plantlets at no multiplication, 35,000 at one, 23,333 at two.",
-   "depends_on": "eval:doc.peak_cuttings"
+   "read_only": 1
   },
   {
+   "depends_on": "eval:doc.peak_cuttings",
+   "description": "How long the pool can be cut from. Each multiplication is one establishment spent reaching the full pool, taken out of the line's life rather than added to it, because the block is cleared one life after its FIRST cut.",
    "fieldname": "cutting_weeks_left",
    "fieldtype": "Int",
    "label": "Cutting Weeks Left",
-   "read_only": 1,
-   "description": "How long the pool can be cut from. Each multiplication is one establishment spent reaching the full pool, taken out of the line's life rather than added to it, because the block is cleared one life after its FIRST cut.",
-   "depends_on": "eval:doc.peak_cuttings"
+   "read_only": 1
   },
   {
+   "depends_on": "eval:doc.peak_cuttings",
+   "description": "Worked out, not chosen: the most multiplication whose pool still outlasts the season. Every extra one is plantlets saved, so the cheapest workable answer is the last one that still covers the sticking weeks.",
    "fieldname": "cycles_suggested",
    "fieldtype": "Int",
    "label": "Multiplications Suggested",
-   "read_only": 1,
-   "description": "Worked out, not chosen: the most multiplication whose pool still outlasts the season. Every extra one is plantlets saved, so the cheapest workable answer is the last one that still covers the sticking weeks.",
-   "depends_on": "eval:doc.peak_cuttings"
+   "read_only": 1
   },
   {
+   "depends_on": "eval:doc.pool_plants",
+   "description": "Plantlets x generations. This is what has to be standing in the peak week.",
    "fieldname": "pool_plants",
    "fieldtype": "Int",
+   "hidden": 0,
    "label": "Mother Plants The Order Becomes",
-   "read_only": 1,
-   "description": "Plantlets x generations. This is what has to be standing in the peak week.",
-   "depends_on": "eval:doc.pool_plants",
-   "hidden": 0
+   "read_only": 1
   },
   {
+   "depends_on": "eval:doc.pool_plants",
+   "description": "Moved to the Motherstock Plan, which is where the line is worked out week by week. Kept so older plans and reports still read back.",
    "fieldname": "weekly_draw",
    "fieldtype": "Int",
+   "hidden": 1,
    "label": "Cuttings a week at the peak",
-   "read_only": 1,
-   "description": "Moved to the Motherstock Plan, which is where the line is worked out week by week. Kept so older plans and reports still read back.",
-   "depends_on": "eval:doc.pool_plants",
-   "hidden": 1
+   "read_only": 1
   },
   {
+   "depends_on": "eval:doc.motherstock_plan",
+   "description": "The line week by week: when each generation starts cutting, what the cut is split into, and whether the field gets what it asks for. Open it to change the plantlets or the diversion and see what happens.",
    "fieldname": "motherstock_plan",
    "fieldtype": "Link",
    "label": "Motherstock Plan",
    "options": "Summer Flower Motherstock Plan",
-   "read_only": 1,
-   "depends_on": "eval:doc.motherstock_plan",
-   "description": "The line week by week: when each generation starts cutting, what the cut is split into, and whether the field gets what it asks for. Open it to change the plantlets or the diversion and see what happens."
+   "read_only": 1
   },
   {
+   "depends_on": "eval:doc.pool_plants",
+   "description": "Moved to the Motherstock Plan, which is where the line is worked out week by week. Kept so older plans and reports still read back.",
    "fieldname": "divert_weeks",
    "fieldtype": "Int",
+   "hidden": 1,
    "label": "Cut Diverted For (weeks)",
-   "read_only": 1,
-   "description": "Moved to the Motherstock Plan, which is where the line is worked out week by week. Kept so older plans and reports still read back.",
-   "depends_on": "eval:doc.pool_plants",
-   "hidden": 1
+   "read_only": 1
   },
   {
+   "depends_on": "eval:doc.peak_cuttings",
+   "description": "How many times the plantlets are multiplied before the pool is full. Suggested by the peak week and the line's life; see Multiplications Suggested for what the arithmetic asks for.",
    "fieldname": "multiplication_cycles",
    "fieldtype": "Int",
+   "hidden": 0,
    "label": "Multiplications",
-   "read_only": 1,
-   "description": "How many times the plantlets are multiplied before the pool is full. Suggested by the peak week and the line's life; see Multiplications Suggested for what the arithmetic asks for.",
-   "depends_on": "eval:doc.peak_cuttings",
-   "hidden": 0
+   "read_only": 1
   },
   {
+   "depends_on": "eval:doc.pool_plants",
+   "description": "The quantity the protocol's arithmetic works out. Where the order differs from it, somebody decided that; this is what they decided against.",
    "fieldname": "calculated_units",
    "fieldtype": "Int",
    "label": "What The Sum Asks For",
-   "read_only": 1,
-   "description": "The quantity the protocol's arithmetic works out. Where the order differs from it, somebody decided that; this is what they decided against.",
-   "depends_on": "eval:doc.pool_plants"
+   "read_only": 1
   },
   {
+   "depends_on": "eval:doc.pool_plants",
+   "description": "The order is a person's figure, not the calculation's.",
    "fieldname": "units_overridden",
    "fieldtype": "Check",
    "label": "Quantity Set By Hand",
-   "read_only": 1,
-   "description": "The order is a person's figure, not the calculation's.",
-   "depends_on": "eval:doc.pool_plants"
+   "read_only": 1
   },
   {
+   "depends_on": "eval:doc.pool_plants",
+   "description": "The arithmetic, spelt out, so the number can be checked without reading code. The week-by-week working is on the Motherstock Plan.",
    "fieldname": "sizing_basis",
    "fieldtype": "Small Text",
    "label": "How the order was sized",
-   "read_only": 1,
-   "description": "The arithmetic, spelt out, so the number can be checked without reading code. The week-by-week working is on the Motherstock Plan.",
-   "depends_on": "eval:doc.pool_plants"
+   "read_only": 1
   },
   {
    "fieldname": "column_break_totals",
@@ -430,16 +429,16 @@
    "read_only": 1
   },
   {
+   "description": "The material is bought once; raising it is shared out. Each unit takes what its troughs will hold, and the rest is bought in as plants.",
    "fieldname": "section_allocation",
    "fieldtype": "Section Break",
-   "label": "Who Raises It",
-   "description": "The material is bought once; raising it is shared out. Each unit takes what its troughs will hold, and the rest is bought in as plants."
+   "label": "Who Raises It"
   },
   {
    "fieldname": "propagation_allocation",
    "fieldtype": "Table",
-   "options": "Summer Flower Propagation Allocation",
-   "label": "Propagation Allocation"
+   "label": "Propagation Allocation",
+   "options": "Summer Flower Propagation Allocation"
   },
   {
    "fieldname": "section_lines",
@@ -456,64 +455,104 @@
    "fieldname": "amended_from",
    "fieldtype": "Link",
    "label": "Amended From",
-   "options": "Summer Flower Procurement Plan",
    "no_copy": 1,
+   "options": "Summer Flower Procurement Plan",
    "print_hide": 1,
    "read_only": 1
   },
   {
+   "depends_on": "eval:doc.plants_from_order",
+   "description": "Walked week by week from the quantity actually ordered, not from the one the sum suggested.",
    "fieldname": "plants_from_order",
    "fieldtype": "Int",
    "label": "Plants The Order Makes",
-   "read_only": 1,
-   "depends_on": "eval:doc.plants_from_order",
-   "description": "Walked week by week from the quantity actually ordered, not from the one the sum suggested."
+   "read_only": 1
   },
   {
+   "depends_on": "eval:doc.plants_from_order",
    "fieldname": "order_covers_season",
    "fieldtype": "Check",
    "label": "Order Covers The Season",
-   "read_only": 1,
-   "depends_on": "eval:doc.plants_from_order"
+   "read_only": 1
   },
   {
+   "depends_on": "eval:doc.cuttings_short",
+   "description": "Only a route that cuts from a pool has cuttings to be short of.",
    "fieldname": "cuttings_short",
    "fieldtype": "Int",
    "label": "Cuttings It Cannot Make",
-   "read_only": 1,
-   "depends_on": "eval:doc.cuttings_short",
-   "description": "Only a route that cuts from a pool has cuttings to be short of."
+   "read_only": 1
   },
   {
+   "depends_on": "eval:doc.weeks_short",
+   "description": "Sticking weeks on a route that builds a pool; planting weeks on one that buys a unit per plant.",
    "fieldname": "weeks_short",
    "fieldtype": "Int",
    "label": "Weeks Not Covered",
-   "read_only": 1,
-   "depends_on": "eval:doc.weeks_short",
-   "description": "Sticking weeks on a route that builds a pool; planting weeks on one that buys a unit per plant."
+   "read_only": 1
   },
   {
+   "depends_on": "eval:doc.plants_short",
    "fieldname": "plants_short",
    "fieldtype": "Int",
    "label": "Plants The Order Cannot Make",
-   "read_only": 1,
-   "depends_on": "eval:doc.plants_short"
+   "read_only": 1
   },
   {
+   "description": "Where each way in is bought. One seller takes the lot unless you say otherwise; a crop bought two ways has a line of sellers for each.",
    "fieldname": "section_purchase",
    "fieldtype": "Section Break",
-   "label": "Who Sells It",
-   "description": "Where each way in is bought. One seller takes the lot unless you say otherwise; a crop bought two ways has a line of sellers for each."
+   "label": "Who Sells It"
   },
   {
+   "depends_on": "eval:doc.method==\"Purchase\"",
    "fieldname": "purchase_allocation",
    "fieldtype": "Table",
-   "options": "Summer Flower Purchase Allocation",
    "label": "Purchase Allocation",
-   "depends_on": "eval:doc.method==\"Purchase\""
+   "options": "Summer Flower Purchase Allocation"
   }
  ],
- "links": [],
+ "is_submittable": 1,
+ "links": [
+  {
+   "creation": "2026-11-02 00:00:00.000000",
+   "custom": 0,
+   "docstatus": 0,
+   "group": "Buy",
+   "hidden": 0,
+   "idx": 1,
+   "is_child_table": 0,
+   "link_doctype": "Material Request",
+   "link_fieldname": "custom_sf_procurement_plan",
+   "modified": "2026-11-02 00:00:00.000000",
+   "modified_by": "Administrator",
+   "owner": "Administrator",
+   "parent": "Summer Flower Procurement Plan",
+   "parent_doctype": null,
+   "parentfield": "links",
+   "parenttype": "DocType",
+   "table_fieldname": null
+  },
+  {
+   "creation": "2026-11-02 00:00:00.000000",
+   "custom": 0,
+   "docstatus": 0,
+   "group": "Buy",
+   "hidden": 0,
+   "idx": 2,
+   "is_child_table": 0,
+   "link_doctype": "Purchase Order",
+   "link_fieldname": "custom_sf_procurement_plan",
+   "modified": "2026-11-02 00:00:00.000000",
+   "modified_by": "Administrator",
+   "owner": "Administrator",
+   "parent": "Summer Flower Procurement Plan",
+   "parent_doctype": null,
+   "parentfield": "links",
+   "parenttype": "DocType",
+   "table_fieldname": null
+  }
+ ],
  "modified": "2026-10-30 17:00:00.000000",
  "modified_by": "Administrator",
  "module": "Summer Flowers",
@@ -521,6 +560,8 @@
  "owner": "Administrator",
  "permissions": [
   {
+   "amend": 1,
+   "cancel": 1,
    "create": 1,
    "delete": 1,
    "email": 1,
@@ -530,12 +571,12 @@
    "report": 1,
    "role": "System Manager",
    "share": 1,
-   "write": 1,
    "submit": 1,
-   "cancel": 1,
-   "amend": 1
+   "write": 1
   },
   {
+   "amend": 1,
+   "cancel": 1,
    "create": 1,
    "delete": 0,
    "email": 1,
@@ -545,10 +586,8 @@
    "report": 1,
    "role": "Agriculture Manager",
    "share": 1,
-   "write": 1,
    "submit": 1,
-   "cancel": 1,
-   "amend": 1
+   "write": 1
   },
   {
    "create": 1,
