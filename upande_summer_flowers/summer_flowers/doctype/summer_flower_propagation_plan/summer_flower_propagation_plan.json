@@ -144,11 +144,11 @@
    "read_only": 1
   },
   {
+   "description": "The unit that raises this material. Blank means the plan is not yet allocated to a unit.",
    "fieldname": "propagation_unit",
    "fieldtype": "Link",
-   "options": "Warehouse",
    "label": "Propagation Unit",
-   "description": "The unit that raises this material. Blank means the plan is not yet allocated to a unit."
+   "options": "Warehouse"
   },
   {
    "description": "From the production plan. A season runs 1 July to 30 June, and there is one propagation plan per variety per season.",
@@ -344,7 +344,7 @@
   {
    "fieldname": "peak_bench_sqm",
    "fieldtype": "Float",
-   "label": "Bench m² at Peak",
+   "label": "Bench m\u00b2 at Peak",
    "precision": "1",
    "read_only": 1
   },
@@ -563,11 +563,11 @@
    "read_only": 1
   },
   {
+   "description": "Weeks that have been and gone. Only these are judged.",
    "fieldname": "weeks_closed",
    "fieldtype": "Int",
    "label": "Weeks Closed",
-   "read_only": 1,
-   "description": "Weeks that have been and gone. Only these are judged."
+   "read_only": 1
   },
   {
    "fieldname": "tc_received",
@@ -610,18 +610,18 @@
    "read_only": 1
   },
   {
+   "description": "What the closed weeks are short, net of what they ran over. This is the gap the forward weeks are asked to cover.",
    "fieldname": "carried_short",
    "fieldtype": "Int",
    "label": "Carried Short",
-   "read_only": 1,
-   "description": "What the closed weeks are short, net of what they ran over. This is the gap the forward weeks are asked to cover."
+   "read_only": 1
   },
   {
+   "description": "Plants handed to the farm against the material raised for them. What the unit achieved, not what the protocol hopes for.",
    "fieldname": "actual_survival_pct",
    "fieldtype": "Percent",
    "label": "Survival Achieved",
-   "read_only": 1,
-   "description": "Plants handed to the farm against the material raised for them. What the unit achieved, not what the protocol hopes for."
+   "read_only": 1
   },
   {
    "fieldname": "baseline_taken_on",
@@ -665,17 +665,17 @@
   {
    "fieldname": "baseline_json",
    "fieldtype": "Long Text",
-   "label": "Baseline",
    "hidden": 1,
-   "read_only": 1,
-   "print_hide": 1
+   "label": "Baseline",
+   "print_hide": 1,
+   "read_only": 1
   },
   {
+   "description": "The last date the unit recorded anything for. Weeks beyond it are not judged, because nobody has said what happened in them.",
    "fieldname": "reported_to",
    "fieldtype": "Date",
    "label": "Reported Up To",
-   "read_only": 1,
-   "description": "The last date the unit recorded anything for. Weeks beyond it are not judged, because nobody has said what happened in them."
+   "read_only": 1
   },
   {
    "fieldname": "survival_basis",
@@ -684,10 +684,10 @@
    "read_only": 1
   },
   {
+   "collapsible": 0,
    "fieldname": "sec_overview",
    "fieldtype": "Section Break",
-   "label": "The season around this plan",
-   "collapsible": 0
+   "label": "The season around this plan"
   },
   {
    "fieldname": "sfpp_overview_html",
@@ -697,7 +697,84 @@
  ],
  "grid_page_length": 50,
  "index_web_pages_for_search": 1,
- "links": [],
+ "links": [
+  {
+   "creation": "2026-11-02 00:00:00.000000",
+   "custom": 0,
+   "docstatus": 0,
+   "group": "Buy",
+   "hidden": 0,
+   "idx": 1,
+   "is_child_table": 1,
+   "link_doctype": "Summer Flower Procurement Plan",
+   "link_fieldname": "propagation_plan",
+   "modified": "2026-11-02 00:00:00.000000",
+   "modified_by": "Administrator",
+   "owner": "Administrator",
+   "parent": "Summer Flower Propagation Plan",
+   "parent_doctype": null,
+   "parentfield": "links",
+   "parenttype": "DocType",
+   "table_fieldname": "propagation_allocation"
+  },
+  {
+   "creation": "2026-11-02 00:00:00.000000",
+   "custom": 0,
+   "docstatus": 0,
+   "group": "Raise",
+   "hidden": 0,
+   "idx": 2,
+   "is_child_table": 0,
+   "link_doctype": "Plant Consignment",
+   "link_fieldname": "propagation_plan",
+   "modified": "2026-11-02 00:00:00.000000",
+   "modified_by": "Administrator",
+   "owner": "Administrator",
+   "parent": "Summer Flower Propagation Plan",
+   "parent_doctype": null,
+   "parentfield": "links",
+   "parenttype": "DocType",
+   "table_fieldname": null
+  },
+  {
+   "creation": "2026-11-02 00:00:00.000000",
+   "custom": 0,
+   "docstatus": 0,
+   "group": "Raise",
+   "hidden": 0,
+   "idx": 3,
+   "is_child_table": 0,
+   "link_doctype": "Seedling Request",
+   "link_fieldname": "custom_propagation_plan",
+   "modified": "2026-11-02 00:00:00.000000",
+   "modified_by": "Administrator",
+   "owner": "Administrator",
+   "parent": "Summer Flower Propagation Plan",
+   "parent_doctype": null,
+   "parentfield": "links",
+   "parenttype": "DocType",
+   "table_fieldname": null
+  },
+  {
+   "creation": "2026-11-02 00:00:00.000000",
+   "custom": 0,
+   "docstatus": 0,
+   "group": "Raise",
+   "hidden": 0,
+   "idx": 4,
+   "is_child_table": 0,
+   "link_doctype": "Summer Flower Propagation Actual",
+   "link_fieldname": "propagation_plan",
+   "modified": "2026-11-02 00:00:00.000000",
+   "modified_by": "Administrator",
+   "owner": "Administrator",
+   "parent": "Summer Flower Propagation Plan",
+   "parent_doctype": null,
+   "parentfield": "links",
+   "parenttype": "DocType",
+   "table_fieldname": null
+  }
+ ],
  "modified": "2026-08-07 09:00:00.000000",
  "modified_by": "Administrator",
  "module": "Summer Flowers",

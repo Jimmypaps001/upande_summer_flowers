@@ -256,25 +256,25 @@
    "read_only_depends_on": "eval:!doc.override_tc_plants"
   },
   {
+   "default": "0",
+   "description": "Off, the order is whatever the requirement works out to. On, the figure below is yours to set and the calculation only advises.",
    "fieldname": "override_tc_plants",
    "fieldtype": "Check",
-   "label": "Set The TC Quantity Myself",
-   "default": "0",
-   "description": "Off, the order is whatever the requirement works out to. On, the figure below is yours to set and the calculation only advises."
+   "label": "Set The TC Quantity Myself"
   },
   {
+   "description": "What the requirement, the cycles and the order loss work out to.",
    "fieldname": "tc_plants_calculated",
    "fieldtype": "Int",
    "label": "Calculated TC Plants",
-   "read_only": 1,
-   "description": "What the requirement, the cycles and the order loss work out to."
+   "read_only": 1
   },
   {
+   "depends_on": "eval:doc.override_tc_plants || doc.override_tc_order_date",
    "fieldname": "tc_choice_note",
    "fieldtype": "Small Text",
    "label": "What This Choice Costs",
-   "read_only": 1,
-   "depends_on": "eval:doc.override_tc_plants || doc.override_tc_order_date"
+   "read_only": 1
   },
   {
    "fieldname": "lead_time_weeks",
@@ -301,11 +301,11 @@
    "reqd": 1
   },
   {
+   "description": "The first sticking week before any order-date override moved it. Kept so that an override can be measured against something that does not move with it.",
    "fieldname": "sticking_week_required",
    "fieldtype": "Date",
    "label": "Sticking Week The Schedule Wants",
-   "read_only": 1,
-   "description": "The first sticking week before any order-date override moved it. Kept so that an override can be measured against something that does not move with it."
+   "read_only": 1
   },
   {
    "fieldname": "max_pc_date",
@@ -314,11 +314,11 @@
    "read_only": 1
   },
   {
+   "description": "Weeks of reduced cutting capacity from the first cut. Full capacity lands on Motherstock Productive By.",
    "fieldname": "ramp_weeks",
    "fieldtype": "Int",
    "label": "Build-up Weeks to Full Capacity",
-   "read_only": 1,
-   "description": "Weeks of reduced cutting capacity from the first cut. Full capacity lands on Motherstock Productive By."
+   "read_only": 1
   },
   {
    "fieldname": "tc_on_farm_date",
@@ -337,32 +337,32 @@
    "read_only_depends_on": "eval:!doc.override_tc_order_date"
   },
   {
+   "default": "0",
+   "description": "On, the order date below is yours and the first sticking week moves to match it, because the two are a lead time apart.",
    "fieldname": "override_tc_order_date",
    "fieldtype": "Check",
-   "label": "Set The Order Date Myself",
-   "default": "0",
-   "description": "On, the order date below is yours and the first sticking week moves to match it, because the two are a lead time apart."
+   "label": "Set The Order Date Myself"
   },
   {
+   "description": "One full lead time, lab included, before the first sticking week.",
    "fieldname": "tc_order_date_calculated",
    "fieldtype": "Date",
    "label": "Calculated Order Date",
-   "read_only": 1,
-   "description": "One full lead time, lab included, before the first sticking week."
+   "read_only": 1
   },
   {
+   "description": "When the generation raised straight from the tissue culture became cuttable. The line's life is counted from here, not from whichever generation is standing now: cuttings taken to build 1.2 do not reset the clock, so 1.2 comes out when 1 does.",
    "fieldname": "line_start_date",
    "fieldtype": "Date",
    "label": "Motherstock One First Cut",
-   "read_only": 1,
-   "description": "When the generation raised straight from the tissue culture became cuttable. The line's life is counted from here, not from whichever generation is standing now: cuttings taken to build 1.2 do not reset the clock, so 1.2 comes out when 1 does."
+   "read_only": 1
   },
   {
+   "description": "Weeks between this pool reaching full size and the line expiring. Each multiplication cycle is an establishment spent out of this window, so multiplying more leaves less to cut.",
    "fieldname": "productive_weeks",
    "fieldtype": "Int",
    "label": "Cutting Weeks Left In The Line",
-   "read_only": 1,
-   "description": "Weeks between this pool reaching full size and the line expiring. Each multiplication cycle is an establishment spent out of this window, so multiplying more leaves less to cut."
+   "read_only": 1
   },
   {
    "fieldname": "expiry_date",
@@ -455,7 +455,65 @@
  ],
  "grid_page_length": 50,
  "index_web_pages_for_search": 1,
- "links": [],
+ "links": [
+  {
+   "creation": "2026-11-02 00:00:00.000000",
+   "custom": 0,
+   "docstatus": 0,
+   "group": "Grow",
+   "hidden": 0,
+   "idx": 1,
+   "is_child_table": 0,
+   "link_doctype": "Bed Work Order",
+   "link_fieldname": "propagation_batch",
+   "modified": "2026-11-02 00:00:00.000000",
+   "modified_by": "Administrator",
+   "owner": "Administrator",
+   "parent": "Summer Flower Motherstock Batch",
+   "parent_doctype": null,
+   "parentfield": "links",
+   "parenttype": "DocType",
+   "table_fieldname": null
+  },
+  {
+   "creation": "2026-11-02 00:00:00.000000",
+   "custom": 0,
+   "docstatus": 0,
+   "group": "Grow",
+   "hidden": 0,
+   "idx": 2,
+   "is_child_table": 0,
+   "link_doctype": "Crop Cycle",
+   "link_fieldname": "custom_propagation_batch",
+   "modified": "2026-11-02 00:00:00.000000",
+   "modified_by": "Administrator",
+   "owner": "Administrator",
+   "parent": "Summer Flower Motherstock Batch",
+   "parent_doctype": null,
+   "parentfield": "links",
+   "parenttype": "DocType",
+   "table_fieldname": null
+  },
+  {
+   "creation": "2026-11-02 00:00:00.000000",
+   "custom": 0,
+   "docstatus": 0,
+   "group": "Raise",
+   "hidden": 0,
+   "idx": 3,
+   "is_child_table": 1,
+   "link_doctype": "Summer Flower Propagation Plan",
+   "link_fieldname": "motherstock_batch",
+   "modified": "2026-11-02 00:00:00.000000",
+   "modified_by": "Administrator",
+   "owner": "Administrator",
+   "parent": "Summer Flower Motherstock Batch",
+   "parent_doctype": null,
+   "parentfield": "links",
+   "parenttype": "DocType",
+   "table_fieldname": "sources"
+  }
+ ],
  "modified": "2026-08-07 14:30:00.000000",
  "modified_by": "Administrator",
  "module": "Summer Flowers",

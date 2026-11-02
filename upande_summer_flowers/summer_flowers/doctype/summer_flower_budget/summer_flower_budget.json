@@ -123,13 +123,13 @@
    "label": "Valuation"
   },
   {
+   "description": "The variety Item's valuation rate, read from stock. Not typed.",
    "fieldname": "price_per_stem",
    "fieldtype": "Currency",
    "label": "Price Per Stem (item valuation)",
    "options": "currency",
-   "reqd": 1,
    "read_only": 1,
-   "description": "The variety Item's valuation rate, read from stock. Not typed."
+   "reqd": 1
   },
   {
    "fieldname": "total_stems",
@@ -211,7 +211,27 @@
  ],
  "grid_page_length": 50,
  "index_web_pages_for_search": 1,
- "links": [],
+ "links": [
+  {
+   "creation": "2026-11-02 00:00:00.000000",
+   "custom": 0,
+   "docstatus": 0,
+   "group": "Plan",
+   "hidden": 0,
+   "idx": 1,
+   "is_child_table": 0,
+   "link_doctype": "Summer Flower Production Plan",
+   "link_fieldname": "budget",
+   "modified": "2026-11-02 00:00:00.000000",
+   "modified_by": "Administrator",
+   "owner": "Administrator",
+   "parent": "Summer Flower Budget",
+   "parent_doctype": null,
+   "parentfield": "links",
+   "parenttype": "DocType",
+   "table_fieldname": null
+  }
+ ],
  "modified": "2026-10-28 20:00:00.000000",
  "modified_by": "Administrator",
  "module": "Summer Flowers",

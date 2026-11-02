@@ -184,28 +184,28 @@
    "read_only": 1
   },
   {
+   "description": "What is left once the planting has established. Plants is what went into the ground; a share of it does not take, and this is the crop the beds actually carry.",
    "fieldname": "plants_expected_standing",
    "fieldtype": "Int",
    "label": "Expected Standing",
-   "read_only": 1,
-   "description": "What is left once the planting has established. Plants is what went into the ground; a share of it does not take, and this is the crop the beds actually carry."
+   "read_only": 1
   },
   {
    "fieldname": "cb_size",
    "fieldtype": "Column Break"
   },
   {
+   "description": "Net bed area \u2014 the ground the crop occupies, and the only area this app carries.",
    "fieldname": "net_area_ha",
    "fieldtype": "Float",
    "label": "Net Area (ha)",
    "precision": "5",
-   "read_only": 1,
-   "description": "Net bed area — the ground the crop occupies, and the only area this app carries."
+   "read_only": 1
   },
   {
    "fieldname": "net_area_sqm",
    "fieldtype": "Float",
-   "label": "Net Area (m²)",
+   "label": "Net Area (m\u00b2)",
    "precision": "1",
    "read_only": 1
   },
@@ -222,45 +222,45 @@
    "reqd": 1
   },
   {
+   "allow_on_submit": 1,
+   "description": "The day the beds were really planted. Every date downstream -- pinch, uprooting and every harvest week -- is counted from this once it is filled in, because a flush lands so many weeks after the plants went in, not so many weeks after somebody planned that they would.",
    "fieldname": "actual_planting_date",
    "fieldtype": "Date",
-   "label": "Actual Planting Date",
-   "description": "The day the beds were really planted. Every date downstream -- pinch, uprooting and every harvest week -- is counted from this once it is filled in, because a flush lands so many weeks after the plants went in, not so many weeks after somebody planned that they would.",
-   "allow_on_submit": 1
+   "label": "Actual Planting Date"
   },
   {
+   "allow_on_submit": 1,
+   "description": "The Stock Entry that took these plants out of the store when they went in the ground. Plants are bought, so they sit in a warehouse until something consumes them; planting is what consumes them.",
    "fieldname": "stock_entry",
    "fieldtype": "Link",
-   "options": "Stock Entry",
    "label": "Plants Issued On",
-   "read_only": 1,
-   "allow_on_submit": 1,
-   "description": "The Stock Entry that took these plants out of the store when they went in the ground. Plants are bought, so they sit in a warehouse until something consumes them; planting is what consumes them."
-  },
-  {
-   "fieldname": "dispatch_entry",
-   "fieldtype": "Link",
    "options": "Stock Entry",
-   "label": "Moved From Propagation On",
-   "read_only": 1,
-   "allow_on_submit": 1,
-   "description": "The transfer that moved these plants out of the propagation unit and onto this block's warehouse. Only for a crop raised here; bought plants arrive at the block's own store."
-  },
-  {
-   "fieldname": "planting_slip_days",
-   "fieldtype": "Int",
-   "label": "Days Later Than Planned",
-   "description": "Actual planting minus planned. Negative is early. The production plan is not rewritten by this -- what it committed to is what it committed to -- but the harvest weeks move, and this is by how much.",
    "read_only": 1
   },
   {
+   "allow_on_submit": 1,
+   "description": "The transfer that moved these plants out of the propagation unit and onto this block's warehouse. Only for a crop raised here; bought plants arrive at the block's own store.",
+   "fieldname": "dispatch_entry",
+   "fieldtype": "Link",
+   "label": "Moved From Propagation On",
+   "options": "Stock Entry",
+   "read_only": 1
+  },
+  {
+   "description": "Actual planting minus planned. Negative is early. The production plan is not rewritten by this -- what it committed to is what it committed to -- but the harvest weeks move, and this is by how much.",
+   "fieldname": "planting_slip_days",
+   "fieldtype": "Int",
+   "label": "Days Later Than Planned",
+   "read_only": 1
+  },
+  {
+   "default": "Planned planting",
+   "description": "Which date the flush projection is built on.",
    "fieldname": "harvest_dates_from",
    "fieldtype": "Select",
    "label": "Harvest Dates Counted From",
-   "description": "Which date the flush projection is built on.",
    "options": "Planned planting\nActual planting",
-   "read_only": 1,
-   "default": "Planned planting"
+   "read_only": 1
   },
   {
    "fieldname": "planting_year",
@@ -423,11 +423,11 @@
    "options": "Planting Calendar Flush"
   },
   {
+   "collapsible": 1,
+   "description": "This planting's own dates: sticking, planting, pinch and uproot, with every projected flush harvest on the day it falls.",
    "fieldname": "calendar_section",
    "fieldtype": "Section Break",
-   "label": "Calendar",
-   "collapsible": 1,
-   "description": "This planting's own dates: sticking, planting, pinch and uproot, with every projected flush harvest on the day it falls."
+   "label": "Calendar"
   },
   {
    "fieldname": "calendar_html",
@@ -469,11 +469,11 @@
    "label": "Received"
   },
   {
+   "description": "Accepted quantity on submitted receipts and invoices for this planting.",
    "fieldname": "plants_received",
    "fieldtype": "Int",
    "label": "Plants Received",
-   "read_only": 1,
-   "description": "Accepted quantity on submitted receipts and invoices for this planting."
+   "read_only": 1
   },
   {
    "fieldname": "plants_rejected",
@@ -486,11 +486,11 @@
    "fieldtype": "Column Break"
   },
   {
+   "description": "Received less planned. Negative is a short delivery.",
    "fieldname": "plants_variance",
    "fieldtype": "Int",
    "label": "Plants Variance",
-   "read_only": 1,
-   "description": "Received less planned. Negative is a short delivery."
+   "read_only": 1
   },
   {
    "fieldname": "variance_pct",
@@ -505,10 +505,10 @@
   {
    "fieldname": "delivery_status",
    "fieldtype": "Select",
-   "label": "Delivery Status",
-   "read_only": 1,
    "in_list_view": 0,
-   "options": "\nNothing Received\nPartially Received\nFully Received\nShort Received\nOver Received"
+   "label": "Delivery Status",
+   "options": "\nNothing Received\nPartially Received\nFully Received\nShort Received\nOver Received",
+   "read_only": 1
   },
   {
    "fieldname": "timing_section",
@@ -532,11 +532,11 @@
    "fieldtype": "Column Break"
   },
   {
+   "description": "Last receipt against the planting date. Negative means the plants arrived after the planting was due.",
    "fieldname": "days_before_planting",
    "fieldtype": "Int",
    "label": "Days Before Planting",
-   "read_only": 1,
-   "description": "Last receipt against the planting date. Negative means the plants arrived after the planting was due."
+   "read_only": 1
   },
   {
    "fieldname": "revision_section",
@@ -544,11 +544,11 @@
    "label": "Plan Revision"
   },
   {
+   "description": "The bed count this planting was approved with, kept when the plan is revised to what the supplier actually delivered.",
    "fieldname": "beds_before_revision",
    "fieldtype": "Int",
    "label": "Beds Before Revision",
-   "read_only": 1,
-   "description": "The bed count this planting was approved with, kept when the plan is revised to what the supplier actually delivered."
+   "read_only": 1
   },
   {
    "fieldname": "plants_before_revision",
@@ -576,20 +576,173 @@
    "fieldname": "revised_by",
    "fieldtype": "Link",
    "label": "Revised By",
-   "read_only": 1,
-   "options": "User"
+   "options": "User",
+   "read_only": 1
   },
   {
+   "description": "Why this planting is not what the plan asked for -- what the supplier confirmed, or what the bench could not raise. Written when the calendar is.",
    "fieldname": "notes",
    "fieldtype": "Small Text",
    "label": "Notes",
-   "read_only": 1,
-   "description": "Why this planting is not what the plan asked for -- what the supplier confirmed, or what the bench could not raise. Written when the calendar is."
+   "read_only": 1
   }
  ],
  "grid_page_length": 50,
  "index_web_pages_for_search": 1,
- "links": [],
+ "links": [
+  {
+   "creation": "2026-11-02 00:00:00.000000",
+   "custom": 0,
+   "docstatus": 0,
+   "group": "Buy",
+   "hidden": 0,
+   "idx": 1,
+   "is_child_table": 1,
+   "link_doctype": "Purchase Invoice",
+   "link_fieldname": "custom_planting_calendar",
+   "modified": "2026-11-02 00:00:00.000000",
+   "modified_by": "Administrator",
+   "owner": "Administrator",
+   "parent": "Planting Calendar",
+   "parent_doctype": null,
+   "parentfield": "links",
+   "parenttype": "DocType",
+   "table_fieldname": "items"
+  },
+  {
+   "creation": "2026-11-02 00:00:00.000000",
+   "custom": 0,
+   "docstatus": 0,
+   "group": "Buy",
+   "hidden": 0,
+   "idx": 2,
+   "is_child_table": 1,
+   "link_doctype": "Purchase Order",
+   "link_fieldname": "custom_planting_calendar",
+   "modified": "2026-11-02 00:00:00.000000",
+   "modified_by": "Administrator",
+   "owner": "Administrator",
+   "parent": "Planting Calendar",
+   "parent_doctype": null,
+   "parentfield": "links",
+   "parenttype": "DocType",
+   "table_fieldname": "items"
+  },
+  {
+   "creation": "2026-11-02 00:00:00.000000",
+   "custom": 0,
+   "docstatus": 0,
+   "group": "Buy",
+   "hidden": 0,
+   "idx": 3,
+   "is_child_table": 1,
+   "link_doctype": "Purchase Receipt",
+   "link_fieldname": "custom_planting_calendar",
+   "modified": "2026-11-02 00:00:00.000000",
+   "modified_by": "Administrator",
+   "owner": "Administrator",
+   "parent": "Planting Calendar",
+   "parent_doctype": null,
+   "parentfield": "links",
+   "parenttype": "DocType",
+   "table_fieldname": "items"
+  },
+  {
+   "creation": "2026-11-02 00:00:00.000000",
+   "custom": 0,
+   "docstatus": 0,
+   "group": "Ground",
+   "hidden": 0,
+   "idx": 4,
+   "is_child_table": 0,
+   "link_doctype": "Bed",
+   "link_fieldname": "custom_planting_calendar",
+   "modified": "2026-11-02 00:00:00.000000",
+   "modified_by": "Administrator",
+   "owner": "Administrator",
+   "parent": "Planting Calendar",
+   "parent_doctype": null,
+   "parentfield": "links",
+   "parenttype": "DocType",
+   "table_fieldname": null
+  },
+  {
+   "creation": "2026-11-02 00:00:00.000000",
+   "custom": 0,
+   "docstatus": 0,
+   "group": "Ground",
+   "hidden": 0,
+   "idx": 5,
+   "is_child_table": 0,
+   "link_doctype": "Block",
+   "link_fieldname": "custom_current_planting",
+   "modified": "2026-11-02 00:00:00.000000",
+   "modified_by": "Administrator",
+   "owner": "Administrator",
+   "parent": "Planting Calendar",
+   "parent_doctype": null,
+   "parentfield": "links",
+   "parenttype": "DocType",
+   "table_fieldname": null
+  },
+  {
+   "creation": "2026-11-02 00:00:00.000000",
+   "custom": 0,
+   "docstatus": 0,
+   "group": "Grow",
+   "hidden": 0,
+   "idx": 6,
+   "is_child_table": 0,
+   "link_doctype": "Crop Cycle",
+   "link_fieldname": "custom_planting_calendar",
+   "modified": "2026-11-02 00:00:00.000000",
+   "modified_by": "Administrator",
+   "owner": "Administrator",
+   "parent": "Planting Calendar",
+   "parent_doctype": null,
+   "parentfield": "links",
+   "parenttype": "DocType",
+   "table_fieldname": null
+  },
+  {
+   "creation": "2026-11-02 00:00:00.000000",
+   "custom": 0,
+   "docstatus": 0,
+   "group": "Plan",
+   "hidden": 0,
+   "idx": 7,
+   "is_child_table": 1,
+   "link_doctype": "Summer Flower Production Plan",
+   "link_fieldname": "existing_planting",
+   "modified": "2026-11-02 00:00:00.000000",
+   "modified_by": "Administrator",
+   "owner": "Administrator",
+   "parent": "Planting Calendar",
+   "parent_doctype": null,
+   "parentfield": "links",
+   "parenttype": "DocType",
+   "table_fieldname": "plan_blocks"
+  },
+  {
+   "creation": "2026-11-02 00:00:00.000000",
+   "custom": 0,
+   "docstatus": 0,
+   "group": "Plan",
+   "hidden": 0,
+   "idx": 8,
+   "is_child_table": 1,
+   "link_doctype": "Summer Flower Season Plan",
+   "link_fieldname": "planting",
+   "modified": "2026-11-02 00:00:00.000000",
+   "modified_by": "Administrator",
+   "owner": "Administrator",
+   "parent": "Planting Calendar",
+   "parent_doctype": null,
+   "parentfield": "links",
+   "parenttype": "DocType",
+   "table_fieldname": "rows"
+  }
+ ],
  "modified": "2026-10-30 19:00:00.000000",
  "modified_by": "Administrator",
  "module": "Summer Flowers",
