@@ -625,6 +625,11 @@ def peak_sizing(plan, cycles=None, max_cycles=None):
 		"ramp_lead_weeks": ramp_lead,
 		"life_weeks": life,
 		"options": options,
+		# The cap that actually applied, which is the protocol's where it states
+		# one and the farm's habit otherwise. Published because the card has to
+		# say WHICH limit it hit: "only 1 could be sent" over a line with 32,900
+		# spare cuttings a week reads as a shortage, and it is a rule.
+		"max_cycles": cint(max_cycles),
 		"suggested": suggested,
 		"chosen": chosen,
 		"pick": options[chosen],

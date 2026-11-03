@@ -4567,11 +4567,22 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
         c: b.plantings_dropped ? "--critical" : "--good" },
       { k: "Plants stuck", v: num(b.plants_stuck),
         m: `of ${num(b.plants_wanted)} wanted` },
+      // Three different things used to read as one. Hitting the protocol's cap
+      // is a rule and not a fault: "only 1 could be sent" over a line with
+      // 32,900 spare cuttings a week said the material ran out, when what
+      // happened is the protocol allows one multiplication and no more.
       { k: "Multiply", v: `${r.multiplications ?? 0}`,
-        m: r.sends_made === r.multiplications
-          ? `times, of ${r.max_multiplications ?? 4} the farm allows`
-          : `asked; only ${num(r.sends_made)} could be sent`,
-        c: r.sends_made === r.multiplications ? "" : "--critical" },
+        m: (() => {
+          const cap = r.max_multiplications ?? 4;
+          const asked = r.multiplications ?? 0;
+          if (r.sends_made === asked) return `times, of ${cap} the protocol allows`;
+          if (asked > cap) return `asked — the protocol allows ${cap}`;
+          return `asked; only ${num(r.sends_made)} could be gathered`;
+        })(),
+        // Capped by the protocol is information; short of cuttings is a fault.
+        c: r.sends_made === (r.multiplications ?? 0) ? ""
+           : ((r.multiplications ?? 0) > (r.max_multiplications ?? 4)
+              ? "--warning" : "--critical") },
       { k: "Generations", v: num(r.generations || b.generations),
         m: r.line_end_date ? `block cleared ${fdate(r.line_end_date)}` : "" },
       { k: "Planting weeks met", v: `${num(r.weeks_met)} / ${num(r.weeks_required)}`,
@@ -5982,9 +5993,16 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
           ? (q.beyond_protocol
               ? `needed for ${num(q.tc)} plantlets — more than the usual ${q.max_usual}`
               : `needed for ${num(q.tc)} plantlets`)
-          : (c.sends_made === c.multiplications
-              ? `times, of ${(t.peak || {}).max ?? 4} allowed`
-              : `asked; only ${c.sends_made} could be sent`),
+          : (() => {
+              // Same distinction as the plan card: the protocol's cap is a
+              // rule, running out of cuttings to gather is a fault.
+              const cap = (t.peak || {}).max ?? 4;
+              if (c.sends_made === c.multiplications)
+                return `times, of ${cap} the protocol allows`;
+              if (c.multiplications > cap)
+                return `asked — the protocol allows ${cap}`;
+              return `asked; only ${c.sends_made} could be gathered`;
+            })(),
         c: q && q.beyond_protocol ? "--warning" : "" },
       { k: "Order by", v: fdate(c.order_by), m: c.order_late ? "already passed" : "" },
       // The cost nobody sees until they read the table: weeks of cutting a pool

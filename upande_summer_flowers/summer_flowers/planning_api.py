@@ -1311,7 +1311,11 @@ def plan_whatif(plan=None, variety=None, farm=None, tc_qty=None, week_overrides=
 		"weeks_required": cint(chosen_line.get("weeks")),
 		"line_end_date": chosen_line.get("line_end_date"),
 		"first_cut_date": chosen_line.get("first_cut_date"),
-		"max_multiplications": ps.max_multiplications(),
+		# The protocol's cap where it states one, not the farm's habitual four.
+		"max_multiplications": (cint(sizing.get("max_cycles"))
+		                        or ps.max_multiplications()),
+		"farm_max_multiplications": ps.max_multiplications(),
+		"multiplications_asked": mult,
 		"suggested_multiplications": cint(sizing["suggested"]),
 		"covers": 1 if (sched or {}).get("covers") else 0,
 		"shortfall": cint((sched or {}).get("shortfall")),
@@ -3358,7 +3362,10 @@ def motherstock_line(plan=None, variety=None, farm=None, tc=None,
 			"per_mother_per_week": sizing["cuttings_per_mother_per_week"],
 			"min_planting_area": sizing["min_planting_area"],
 			"suggested": sizing["suggested"],
-			"max": ps.max_multiplications(),
+			# The cap that applied: the protocol's where it states one, the
+			# farm's habit otherwise. The card says which limit it hit.
+			"max": cint(sizing.get("max_cycles")) or ps.max_multiplications(),
+			"farm_max": ps.max_multiplications(),
 		}
 
 	out["saved"] = saved
