@@ -862,6 +862,19 @@ table.pl-t td.n{text-align:right;font-variant-numeric:tabular-nums;white-space:n
    different column once the table is wide, so it follows its own data. */
 table.pl-t th.n{text-align:right}
 table.pl-t tr.zero td{color:var(--text-muted)}
+/* The ladder: four rungs from the stems a plan sells to the units it buys.
+   Narrow, because it is three columns of which one is a number -- left to the
+   full width it reads as a table of data rather than one chain of reasoning.
+   The two rungs anyone acts on -- what the grower plants, what the buyer
+   orders -- are marked, so the eye finds them without reading the arithmetic. */
+table.pl-ladder{max-width:34rem;margin-bottom:14px}
+table.pl-ladder td:first-child{white-space:nowrap}
+table.pl-ladder td.n{width:7.5rem}
+table.pl-ladder tr.is-headline td{background:var(--surface-2);font-weight:600}
+.pl-lad-arrow{color:var(--text-muted);margin-right:2px}
+.pl-lad-tag{display:inline-block;margin-left:6px;padding:1px 6px;border-radius:9px;
+  background:var(--surface-3,var(--surface-2));border:1px solid var(--border);
+  font-size:.62rem;text-transform:uppercase;letter-spacing:.4px;white-space:nowrap}
 table.pl-t tr.pl-chosen td{background:var(--surface-2);font-weight:600}
 /* Fixed layout so the week columns stay put and the trailing free-text
    column cannot pull the figures away from their headers. */
@@ -5178,6 +5191,12 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
     renderRoots(m);
 
     wk.innerHTML =
+      // Why that many, before how many a week. The tiles say what to buy and
+      // the table says when; neither says how an order got bigger than the
+      // planting, and that is the first thing anyone checking it asks. The two
+      // rungs that answer it are marked, because the grower wants what goes in
+      // the ground and the buyer wants what is ordered.
+      renderLadder(m) +
       `<div class="text-muted small" style="text-transform:uppercase;` +
       `letter-spacing:.05em;margin:10px 0 4px">What to buy, what to plant, ` +
       `what stands — ` + (wayTwo(m) ? "both ways in, " : "") +
@@ -5346,6 +5365,28 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
       `<th class="n">Wanted</th><th class="n">Lifted</th><th class="n">Late</th>` +
       `<th>Weeks it covers</th>` +
       `</tr></thead><tbody>${rows}</tbody></table>`;
+  }
+
+  // The order as one chain: stems wanted, plants that must stand, plants to
+  // plant, units to buy -- each rung the one above it divided by a loss. The
+  // rungs are built on the server (root_line._ladder) so this card and the
+  // procurement plan cannot divide differently, and so a rung whose loss does
+  // not bite is absent rather than repeating the figure above it.
+  function renderLadder(m) {
+    const L = m.ladder;
+    if (!L || !(L.rungs || []).length) return "";
+    const rows = L.rungs.map((r, i) => {
+      const lead = i === 0 ? "" : `<span class="pl-lad-arrow">&darr;</span> `;
+      return `<tr class="${r.headline ? "is-headline" : ""}">` +
+        `<td>${lead}${esc(r.label)}</td>` +
+        `<td class="n"><b>${num(r.qty)}</b></td>` +
+        `<td class="text-muted small">${esc(r.note || "")}` +
+        (r.headline ? ` <span class="pl-lad-tag">${esc(r.headline)}</span>` : "") +
+        `</td></tr>`;
+    }).join("");
+    return `<div class="text-muted small" style="text-transform:uppercase;` +
+      `letter-spacing:.05em;margin:10px 0 4px">Why that many</div>` +
+      `<table class="pl-t pl-ladder">${rows}</table>`;
   }
 
   function renderRoots(m) {

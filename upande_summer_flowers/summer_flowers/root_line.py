@@ -594,6 +594,15 @@ def arrival_plan(plan, tc_share=None, returns_per_plant=None,
 		"tc_to_plant_total": sum(cint(weeks[k].get("to_plant_tc"))
 		                         for k in ordered),
 		"tc_plants_per_unit": round(_plants_per_unit_from(rows, primary), 6),
+		# The same figures as one chain, because the tiles above answer "how
+		# many" and never "why that many".
+		"ladder": _ladder(
+			account,
+			sum(weeks[k]["by_tc"] for k in ordered),
+			sum(cint(weeks[k].get("to_plant_tc")) for k in ordered),
+			(sum(cint(weeks[k].get("units_tc")) for k in ordered)
+			 if _units_for(1, rows, primary) is not None else None),
+			primary, first_pct, second_pct, per_unit_one),
 		# How the order got bigger than the planting. The card could already be
 		# read two ways -- a reader who knew the protocol saw the gross-up and a
 		# reader who did not saw a number that did not match the plantings -- and
@@ -1194,6 +1203,86 @@ def _loss_account(v, rows, stage):
 		"rooting_applies": rooting_applies,
 		"establishment_applies": establishment_applies,
 	}
+
+
+def _ladder(account, plants, to_plant, units, stage, rooting_pct, field_pct,
+            per_unit=1.0):
+	"""The order as the four numbers a grower and a buyer each check it by.
+
+	Every one of these was already on the card, but only ever one at a time --
+	the plants in a tile, the units in another, the percentages in a note -- so
+	a reader who wanted to know why 8,556 standing plants cost 15,278 seeds had
+	to do the divisions themselves, and the two people who care are looking for
+	two different rungs. The grower wants what goes in the ground; the buyer
+	wants what is ordered. Laid out as one ladder it reads the way the farm says
+	it: this many stems to sell, so this many plants must stand, so this many go
+	in the ground, so this many are bought.
+
+	The losses sit on different sides of the handover, which is why the ladder
+	marks two rungs rather than one. Grading and establishment are field losses
+	and together they give the PLANTS. Rooting is propagation's own loss, and it
+	alone gives the SEEDS.
+
+	A rung is dropped where its loss does not bite. A rung repeating the number
+	above it reads as a loss that was applied and was not -- a crop bought as
+	plants is never rooted, and saying "80% root" over it would be a column of
+	the same figure twice.
+	"""
+	st = account.get("stated") or {}
+	spp = flt(st.get("stems_per_plant_life"))
+	reject = flt(st.get("reject_pct"))
+	saleable = spp * (1.0 - reject / 100.0)
+	if not cint(plants) or saleable <= 0:
+		return None
+
+	rungs = [{
+		"label": _("Saleable stems"), "qty": int(round(cint(plants) * saleable)),
+		"unit": _("stems"), "key": "stems",
+		# What these plants give, not what was asked for: a planting rounds up
+		# to a whole area, so the stand delivers a little over the demand, and
+		# printing the demand here would leave the division below looking wrong.
+		"note": (_("what these plants give: {0} a plant over its life, less "
+		           "{1}% graded out at harvest").format(flt(spp, 2), flt(reject, 2))
+		         if reject else
+		         _("what these plants give: {0} a plant over its life")
+		         .format(flt(spp, 2))),
+	}, {
+		"label": _("Plants that must stand"), "qty": cint(plants),
+		"unit": _("plants"), "key": "standing",
+		"note": _("divided by {0} saleable stems a plant").format(flt(saleable, 2)),
+	}]
+
+	# What goes in the ground, which is more than what stands in it.
+	if field_pct and field_pct < 100 and cint(to_plant):
+		rungs.append({
+			"label": _("Plants to plant"), "qty": cint(to_plant),
+			"unit": _("plants"), "key": "to_plant", "headline": _("Plants needed"),
+			"note": _("divided by {0}% establishing once planted").format(
+				flt(field_pct, 2)),
+		})
+
+	# And what has to be bought to raise them. Two things can make the order
+	# differ from the planting -- a loss on the way, or a unit that is not one
+	# plant -- and where neither does the rung is left off rather than printed
+	# as the figure above it a second time.
+	if units is not None and cint(units):
+		note = None
+		if rooting_pct and rooting_pct < 100:
+			note = _("divided by {0}% rooting in propagation").format(
+				flt(rooting_pct, 2))
+		elif flt(per_unit) and flt(per_unit) != 1:
+			# Said without the stage's own name: "15 plants from every Roots"
+			# is not a sentence, and the row is already headed with it.
+			note = _("{0} plants from each one bought").format(flt(per_unit, 4))
+		if note or cint(units) != cint(to_plant or plants):
+			rungs.append({
+				"label": _("{0} to buy").format(stage or _("Units")),
+				"qty": cint(units), "unit": (stage or _("units")).lower(),
+				"key": "units", "note": note or "",
+				"headline": _("{0} needed").format(stage or _("Units")),
+			})
+	return {"rungs": rungs, "stage": stage,
+	        "saleable_per_plant": round(saleable, 4)}
 
 
 def _units_for(plants, rows, stage):
