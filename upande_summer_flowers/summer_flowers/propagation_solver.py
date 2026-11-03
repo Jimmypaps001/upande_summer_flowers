@@ -570,11 +570,40 @@ def peak_sizing(plan, cycles=None, max_cycles=None):
 		# the rest arriving during it. The line is walked across the range and
 		# the last of the best starts wins, because every week bought early is a
 		# week of mothers cut into nothing AND a week off the end of the season.
-		earliest = add_days(getdate(first_stick), -7 * (c * regen + ramp_lead))
+		# A generation needs time to be GATHERED as well as grown. The window
+		# allowed c establishments and not one week of cutting, so a line whose
+		# second generation had to be productive on the opening week could
+		# never start early enough to manage it -- and the sizing then read
+		# the multiplication as useless when it was only late. A pool of B
+		# mothers cutting per_week each takes 1/per_week weeks to yield B.
+		gather = max(1, int(math.ceil(1.0 / (flt(per_week) or 1.0))))
+		earliest = add_days(getdate(first_stick),
+		                    -7 * (c * (regen + gather) + ramp_lead))
 		latest = add_days(getdate(first_stick), -7 * ramp_lead)
 		started, walk = best_start(
 			demand, buy, c, regen, per_week, life, ramp, per_area,
 			earliest=earliest, latest=latest, batches=batches)
+		# The same number of generations, split the way a grower would: equal
+		# instalments of the peak. Walked too, and kept when it does at least as
+		# well for a smaller order -- which on a season that opens near its peak
+		# is most of the time, and by a wide margin.
+		flat = even_generations(mothers, c + 1, per_area)
+		if flat and cint(flat[0]) < buy:
+			f_buy, f_batches = cint(flat[0]), [cint(x) for x in flat[1:]]
+			f_started, f_walk = best_start(
+				demand, f_buy, c, regen, per_week, life, ramp, per_area,
+				earliest=earliest, latest=latest, batches=f_batches)
+			# Weeks met first: a cheaper order that leaves the field short is
+			# not cheaper, it is a different plan. Then the smaller order.
+			if (cint(f_walk["weeks_met"]), -cint(f_walk["shortfall"])) >= (
+					cint(walk["weeks_met"]), -cint(walk["shortfall"])):
+				buy, batches, started, walk = f_buy, f_batches, f_started, f_walk
+				gplan = ([{"by": gplan[0]["by"] if gplan else first_stick,
+				           "mothers": f_buy}]
+				         + [{"by": gplan[min(i + 1, len(gplan) - 1)]["by"]
+				             if gplan else first_stick, "mothers": b}
+				            for i, b in enumerate(f_batches)])
+				gens = len(gplan)
 		order_by = add_days(started, -7 * (lead + estab))
 		# The line lives one motherstock life from its FIRST cut, so what it has
 		# left for the season is counted from the day it starts cutting.
@@ -634,6 +663,35 @@ def peak_sizing(plan, cycles=None, max_cycles=None):
 		"chosen": chosen,
 		"pick": options[chosen],
 	}
+
+def even_generations(mothers, generations, per_area):
+	"""The peak in equal instalments, which is how the farm says it.
+
+	"Two multiplications" means a third bought and two more grown, and anyone
+	sizing an order by hand divides the peak by three. The step-shaped split
+	below does something cleverer and, on a season that opens near its peak,
+	much worse: a curve rising 23,000 -> 24,000 spends its one multiplication
+	on the 1,000 and buys 23,000, where two instalments of 12,000 cover the
+	same peak for half the order.
+
+	Neither split is right every time -- a generation that cannot be productive
+	before the field opens is no use however it is sized -- so both are walked
+	and the better one wins. This is only the candidate.
+	"""
+	g = max(1, cint(generations))
+	need = int(math.ceil(flt(mothers)))
+	if need <= 0:
+		return []
+	each = round_up_to_area(need / float(g), per_area)
+	out, running = [], 0
+	for _ in range(g):
+		if running >= need:
+			break
+		take = round_up_to_area(min(each, need - running), per_area)
+		out.append(take)
+		running += take
+	return out
+
 
 def generation_plan(demand, per_week, per_area, generations):
 	"""What each generation has to be, and by when, for a given count.
@@ -1063,7 +1121,15 @@ def multiplications_for_tc(plan, tc, max_search=24):
 
 	tried, best = [], None
 	for c in range(floor, min(floor + cint(max_search), 60) + 1):
-		earliest = add_days(getdate(first_stick), -7 * (c * regen + ramp_lead))
+		# A generation needs time to be GATHERED as well as grown. The window
+		# allowed c establishments and not one week of cutting, so a line whose
+		# second generation had to be productive on the opening week could
+		# never start early enough to manage it -- and the sizing then read
+		# the multiplication as useless when it was only late. A pool of B
+		# mothers cutting per_week each takes 1/per_week weeks to yield B.
+		gather = max(1, int(math.ceil(1.0 / (flt(per_week) or 1.0))))
+		earliest = add_days(getdate(first_stick),
+		                    -7 * (c * (regen + gather) + ramp_lead))
 		latest = add_days(getdate(first_stick), -7 * ramp_lead)
 		started, walk = best_start(
 			demand, tc, c, regen, per_week, life, ramp, per_area,
