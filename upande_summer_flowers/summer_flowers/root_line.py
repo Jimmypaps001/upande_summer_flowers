@@ -461,8 +461,16 @@ def arrival_plan(plan, tc_share=None, returns_per_plant=None,
 		# Roots come out of store by the trough, so the week's root count is
 		# what the troughs set for it deliver -- not a number worked back from
 		# the week, which is how part troughs were being asked for.
-		roots = (int(math.ceil(by_root / per_root))
-		         if (per_root > 0 and by_root) else None)
+		#
+		# Divided by what a root actually PUTS IN THE GROUND, not by what it
+		# yields when lifted. Eryngium's roots return fifteen plants each and
+		# lose a quarter of them between lifting and standing, so buying on the
+		# fifteen bought 14,860 roots where the order needs 19,189 -- a 29%
+		# shortfall, on the one way in whose lead time is a year. The agreed
+		# pair above has always applied keep_roots the other way round; the
+		# order was the only place the two were not inverses of each other.
+		roots = (int(math.ceil(by_root / (per_root * keep_roots)))
+		         if (per_root > 0 and keep_roots > 0 and by_root) else None)
 		# The week's own order, and what is left of it after each loss. The
 		# table used to print the PLANTS under the name of the thing bought, so
 		# a week needing 40,000 plants read "40,000 seeds" on a protocol that
