@@ -1277,19 +1277,15 @@ def _ladder(account, plants, to_plant, units, stage, rooting_pct, field_pct,
 
 	Grading and establishment are the FIELD's losses: a stem that fails grading
 	and a plant that fails to take both mean the field must be given more than
-	the demand asks for. Together they say how many plants to plant.
+	the demand asks for. Together they say how many plants to plant. Rooting is
+	PROPAGATION's own loss, and it alone says how many units to buy.
 
-	Rooting is PROPAGATION's own loss, and it alone says how many units have to
-	be bought to hand that many plants over.
-
-	Keeping them in one column read as a single chain of division and hid which
-	side of the fence each loss falls on -- which is the thing a grower and a
-	buyer each need, and they need different ends of it. So: one table ending in
-	the plants, one beginning from them and ending in the order.
-
-	A row whose loss does not bite is left out, and a table with nothing left to
-	say is dropped whole: a crop bought as ready plants has no propagation
-	table, and a protocol stating no losses has neither.
+	Every loss is listed on every variety, including the ones that take nothing.
+	Dropping a row whose loss did not bite made a protocol that states no losses
+	look identical to one that states none BECAUSE there are none -- and most
+	protocols are the first, not the second. A loss nobody has entered is still
+	a loss; it is simply being carried as zero, and the table now says so where
+	it used to say nothing at all.
 	"""
 	st = account.get("stated") or {}
 	spp = flt(st.get("stems_per_plant_life"))
@@ -1298,68 +1294,67 @@ def _ladder(account, plants, to_plant, units, stage, rooting_pct, field_pct,
 	if not cint(plants) or saleable <= 0:
 		return None
 
+	def rate(label, value, unit, stated, note=None):
+		return {"label": label, "qty": value, "unit": unit, "kind": "rate",
+		        "stated": bool(stated), "note": note or ""}
+
 	# ---- what the field needs
-	field_rows = [{
-		"label": _("Saleable stems wanted"), "qty": int(round(cint(plants) * saleable)),
-		"unit": _("stems"), "kind": "qty",
-	}]
-	if reject:
-		field_rows.append({
-			"label": _("Stems a plant gives over its life"), "qty": flt(spp, 2),
-			"unit": _("stems"), "kind": "rate",
-			"note": _("less {0}% that fail grading at harvest").format(flt(reject, 2)),
-		})
-	field_rows.append({
-		"label": _("Saleable stems a plant gives"), "qty": flt(saleable, 2),
-		"unit": _("stems"), "kind": "rate",
-	})
-	field_rows.append({
-		"label": _("Plants that must stand"), "qty": cint(plants),
-		"unit": _("plants"), "kind": "qty",
-	})
+	field_rows = [
+		{"label": _("Saleable stems wanted"), "kind": "qty", "unit": _("stems"),
+		 "qty": int(round(cint(plants) * saleable)), "stated": True},
+		rate(_("Stems a plant gives over its life"), flt(spp, 2), _("stems"), spp),
+		rate(_("Fail grading at harvest"), flt(reject, 2), "%", reject,
+		     None if reject else _("none stated, so none is allowed for")),
+		rate(_("Saleable stems a plant gives"), flt(saleable, 2), _("stems"), True),
+		{"label": _("Plants that must stand"), "kind": "qty", "unit": _("plants"),
+		 "qty": cint(plants), "stated": True},
+	]
 	planted = cint(to_plant) or cint(plants)
-	if field_pct and field_pct < 100 and cint(to_plant):
-		field_rows.append({
-			"label": _("Establish once planted"), "qty": flt(field_pct, 2),
-			"unit": "%", "kind": "rate",
-		})
+	bites = bool(field_pct and field_pct < 100)
+	field_rows.append(rate(
+		_("Establish once planted"), flt(field_pct, 2) if field_pct else 100.0, "%",
+		bool(field_pct),
+		None if bites else _("none stated, so every plant is assumed to take")))
 	groups = [{
 		"key": "field", "title": _("Establishment loss"),
 		"lead": _("from what is sold back to what goes in the ground"),
-		"rows": field_rows,
-		# "Plants to plant", not "Plants needed": the tile above this card and the
-		# week table beside it both use "plants needed" for the plants that must
-		# STAND, and the same two words meaning two numbers on one screen is
-		# worse than either word being the better one.
-		"result_label": _("Plants to plant"), "result": planted,
-		"result_unit": _("plants"),
+		"rows": field_rows, "result_label": _("Plants to plant"),
+		"result": planted, "result_unit": _("plants"),
 	}]
 
 	# ---- and what propagation has to start with to hand that many over
-	prop_rows, why = [], None
-	if rooting_pct and rooting_pct < 100:
-		why = {"label": _("Root in propagation"), "qty": flt(rooting_pct, 2),
-		       "unit": "%", "kind": "rate"}
-	elif flt(per_unit) and flt(per_unit) != 1:
-		# Said without the stage's own name: "15 plants from every Roots" is
-		# not a sentence, and the row is already headed with it.
-		why = {"label": _("Plants from each one bought"), "qty": flt(per_unit, 4),
-		       "unit": _("plants"), "kind": "rate"}
-	if units is not None and cint(units) and (why or cint(units) != planted):
-		prop_rows.append({"label": _("Plants to plant"), "qty": planted,
-		                  "unit": _("plants"), "kind": "qty"})
-		if why:
-			prop_rows.append(why)
-		groups.append({
-			"key": "propagation", "title": _("Propagation loss"),
-			"lead": _("what has to be bought to hand that many over"),
-			"rows": prop_rows,
-			"result_label": _("{0} needed").format(stage or _("Units")),
-			"result": cint(units), "result_unit": (stage or _("units")).lower(),
-		})
+	prop_rows = [{"label": _("Plants to plant"), "kind": "qty",
+	              "unit": _("plants"), "qty": planted, "stated": True}]
+	if flt(per_unit) and flt(per_unit) != 1 and not (rooting_pct and rooting_pct < 100):
+		# Said without the stage's own name: "15 plants from every Roots" is not
+		# a sentence, and the row is already headed with it.
+		prop_rows.append(rate(_("Plants from each one bought"), flt(per_unit, 4),
+		                      _("plants"), True))
+	else:
+		roots = bool(rooting_pct and rooting_pct < 100)
+		prop_rows.append(rate(
+			_("Root in propagation"), flt(rooting_pct, 2) if rooting_pct else 100.0,
+			"%", bool(rooting_pct),
+			None if roots else _("none stated, so every one bought is assumed to root")))
+	groups.append({
+		"key": "propagation", "title": _("Propagation loss"),
+		"lead": _("what has to be bought to hand that many over"),
+		"rows": prop_rows,
+		"result_label": (_("{0} needed").format(stage or _("Units"))
+		                 if units is not None else _("Nothing is bought")),
+		"result": cint(units) if units is not None else None,
+		"result_unit": (stage or _("units")).lower(),
+		# A standing pool is cut from, not ordered: there is no unit to count.
+		"note": (None if units is not None else
+		         _("This route is cut from a standing pool, so the plan sizes the "
+		           "pool rather than an order.")),
+	})
 
 	return {"groups": groups, "stage": stage,
-	        "saleable_per_plant": round(saleable, 4)}
+	        "saleable_per_plant": round(saleable, 4),
+	        "any_loss_stated": bool(reject or (field_pct and field_pct < 100)
+	                                or (rooting_pct and rooting_pct < 100)
+	                                or (flt(per_unit) and flt(per_unit) != 1))}
 
 
 def _units_for(plants, rows, stage):
