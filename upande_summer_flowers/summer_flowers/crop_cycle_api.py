@@ -30,10 +30,12 @@ def scope():
 	_guard()
 	rows = frappe.get_all("Crop Cycle", fields=["farm", "custom_sf_variety",
 	                                            "custom_cycle_scope"])
+	from upande_summer_flowers.summer_flowers.crop_protocol import variety_names
+	varieties = sorted({r.custom_sf_variety for r in rows if r.custom_sf_variety})
 	return {
 		"farms": sorted({r.farm for r in rows if r.farm}),
-		"varieties": sorted({r.custom_sf_variety for r in rows
-		                     if r.custom_sf_variety}),
+		"varieties": varieties,
+		"variety_names": variety_names(varieties),
 		"scopes": ["Greenhouse", "Block"],
 		"statuses": ["Active", "Replanting", "Partially Uprooted", "Ended"],
 	}

@@ -113,6 +113,28 @@ def variety_name(variety):
 		return variety
 
 
+def variety_names(codes):
+	"""{item code: what the farm calls it} for a list of varieties.
+
+	A variety is an Item and an Item is named by its code, so every page that
+	showed a variety showed "15831" where the grower says Daucus carota 'Dara'.
+	Link FIELDS are fixed by Item carrying show_title_field_in_link; the pages
+	that print the value as plain text are not, and this is what they read.
+
+	One query for the lot: a map built a code at a time was a query a row.
+	"""
+	codes = sorted({c for c in (codes or []) if c})
+	if not codes:
+		return {}
+	rows = frappe.get_all("Item", filters={"name": ["in", codes]},
+	                      fields=["name", "item_name"])
+	out = {r.name: (r.item_name or r.name) for r in rows}
+	# A code with no Item behind it still has to render as something.
+	for c in codes:
+		out.setdefault(c, c)
+	return out
+
+
 def source_field(fieldname):
 	"""Where a version field's value is held on Crop Protocol."""
 	return NATIVE.get(fieldname, "custom_sf_" + fieldname)

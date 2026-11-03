@@ -88,9 +88,13 @@ def plans(variety=None, farm=None):
 	# Every plan carried the same period label, so eighteen of them read as
 	# eighteen copies of one thing. Name the crop and the coverage instead: that is
 	# what tells them apart.
+	# Named, not coded: the label is read by a person, and "15831" is not what
+	# anyone calls Daucus carota 'Dara'.
+	from upande_summer_flowers.summer_flowers.crop_protocol import variety_names
+	named = variety_names([r.variety for r in rows])
 	for r in rows:
 		r["label"] = "%s · %s · %s · %s%s · %.0f%% of demand" % (
-			r.name, r.season or _("no season"), r.variety or "?",
+			r.name, r.season or _("no season"), named.get(r.variety) or r.variety or "?",
 			r.workflow_state or r.status or "?",
 			" + budget" if r.budget else "", flt(r.coverage_pct))
 		r["is_authoritative"] = r.docstatus == 1
@@ -142,9 +146,14 @@ def scope():
 		        "effective_from"],
 		order_by="variety asc, farm asc, version desc",
 	)
+	from upande_summer_flowers.summer_flowers.crop_protocol import variety_names
+	varieties = sorted({r.variety for r in rows if r.variety})
 	return {
 		"versions": rows,
-		"varieties": sorted({r.variety for r in rows if r.variety}),
+		"varieties": varieties,
+		# What the grower calls each one. The page prints these as plain text,
+		# where the Item link title cannot reach.
+		"variety_names": variety_names(varieties),
 		"farms": sorted({r.farm for r in rows if r.farm}),
 	}
 

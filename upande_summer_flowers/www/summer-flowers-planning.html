@@ -1506,7 +1506,7 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
       note = multi
         ? `All varieties · ${S.mv.series.length} plans summed` +
           (S.dv ? ` — the figures above are ${S.dv.plan} only` : "")
-        : (S.dv ? `${S.dv.variety} at ${S.dv.farm}` : "");
+        : (S.dv ? `${vname(S.dv.variety)} at ${S.dv.farm}` : "");
     }
 
     drawAreaLines(el, labels, series, { diff: "Variance" });
@@ -1780,7 +1780,7 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
     $("po-count").innerHTML =
       `<span class="pill">${r.done_count} of ${r.total_count} stages ready</span>`;
     $("po-sub").textContent = r.variety
-      ? `${r.variety} at ${r.farm}` + (r.plan ? ` · ${r.plan}` : "")
+      ? `${vname(r.variety)} at ${r.farm}` + (r.plan ? ` · ${r.plan}` : "")
       : "Every stage of the process, read off the documents that carry it.";
     $("po-verdict").innerHTML = r.verdict
       ? `<div class="pl-callout">${esc(r.verdict)}</div>` : "";
@@ -1870,7 +1870,7 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
     ].map(tile).join("") : '<p class="pl-empty">No plan in this scope.</p>';
     renderOverviewSummary();
     $("dv-sub").textContent = S.dv
-      ? `${S.dv.plan} · ${S.dv.variety} at ${S.dv.farm} · ${S.dv.period} · ${S.dv.status}`
+      ? `${S.dv.plan} · ${vname(S.dv.variety)} at ${S.dv.farm} · ${S.dv.period} · ${S.dv.status}`
       : "No production plan.";
     dvChart();
     // Always weekly and always the scoped weeks: a running total only means anything
@@ -2801,7 +2801,7 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
       return `<tr><td class="hc-k" title="${esc(p.name)} · planted ` +
         `${fdate(p.planting_date)} · uproot ${fdate(p.uproot_date)}">` +
         `${esc(b.block_code)}</td>` +
-        `<td class="hc-m">${esc(p.variety || "")}</td>` +
+        `<td class="hc-m">${esc(vname(p.variety))}</td>` +
         `<td class="hc-m">${num(p.beds)}</td>` +
         `<td class="hc-m">${num(p.plants)}</td>` +
         keys.map((k) => {
@@ -3247,7 +3247,7 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
         `${r.short ? num(r.short) : ""}</td></tr>`).join("") +
       `</tbody></table>`;
 
-    $("pg-sub").textContent = `${o.variety} at ${o.farm}` +
+    $("pg-sub").textContent = `${vname(o.variety)} at ${o.farm}` +
       (o.propagation_plan ? ` · ${o.propagation_plan}` : "");
     $("pg-warn").innerHTML = o.blocked
       ? `<div class="pl-callout">${esc(o.blocked)}</div>` : "";
@@ -3529,7 +3529,7 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
       : "";
     el.innerHTML = siblings +
       `Showing <b>${esc(S.plan || d.plan || "—")}</b>` +
-      (d.variety || S.variety ? ` · ${esc(d.variety || S.variety)}` : "") +
+      (d.variety || S.variety ? ` · ${esc(vname(d.variety || S.variety))}` : "") +
       (d.farm || S.farm ? ` at ${esc(d.farm || S.farm)}` : "") +
       (S.version ? ` · built on protocol <b>${esc(S.version)}</b>` : "") +
       (pr.protocol_status ? ` (${esc(pr.protocol_status)})` : "") +
@@ -3652,6 +3652,17 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
   // A typing box that narrows a list and lets you take one off it -- the behaviour a
   // link field has everywhere else in this system. Written here rather than pulled
   // from the desk bundle, which a portal page does not reliably have.
+  // A variety is an Item and an Item is named by its code, so the page read
+  // "15831" where the grower says Daucus carota 'Dara'. VN maps code -> name
+  // and VC maps a typed name back to its code: the CODE stays the value of
+  // everything -- filters, plans, links -- and only what a person reads changes.
+  let VN = {}, VC = {};
+  const vname = (c) => (c && VN[c]) || c || "";
+  const vcode = (t) => {
+    const k = String(t || "").trim().toLowerCase();
+    return VC[k] || String(t || "").trim();
+  };
+
   function attachCombo(input, list, items) {
     let shown = [], idx = -1;
     const close = () => { list.hidden = true; idx = -1;
@@ -4049,7 +4060,7 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
     run("plan_preview", { market_demand: demand, farm: S.farm,
                           season_start_year: season }, (p) => {
       const rows = [
-        ["Variety", `${esc(p.variety)} at ${esc(p.farm)}`],
+        ["Variety", `${esc(vname(p.variety))} at ${esc(p.farm)}`],
         ["Season", `${esc(p.season)} (${esc(p.season_start)} to ${esc(p.season_end)})`],
         ["Demand in that season", `${num(p.demand_stems)} stems over ${p.weeks} weeks`],
         ["Protocol in force", p.protocol ? esc(p.protocol) : "none"],
@@ -5456,7 +5467,7 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
       ? `${num(tc)} ${one.toLowerCase()} and ${num(roots)} ${two.toLowerCase()}`
       : `${num(tc)} ${one.toLowerCase()}`;
     if (!window.confirm(`Save ${what} as the plan ` +
-        `for ${esc(m.variety)} at ${esc(m.farm)}?${warn}\n\nThis writes the ` +
+        `for ${esc(vname(m.variety))} at ${esc(m.farm)}?${warn}\n\nThis writes the ` +
         `figures to the production plan, then builds the procurement plan that ` +
         `orders them and the propagation plan that receives them.`)) return;
     const args = { production_plan: t.plan, tc_qty: tc, roots_qty: roots };
@@ -6277,7 +6288,7 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
                   (w.is_actual ? " (actual)" : " (forecast)")
                 : "Not a harvest week — nothing to cut"))}"
             >${w.is_harvest_week ? "F" + w.flush_number : ""}</div>`).join("");
-        return `<div class="bf-plant"><span class="bf-meta">${esc(p.variety)} · ${p.beds} beds · ` +
+        return `<div class="bf-plant"><span class="bf-meta">${esc(vname(p.variety))} · ${p.beds} beds · ` +
           `${num(p.plants)} plants · planted ${fdate(p.planting_date)} · pinch ${p.pinch_date ? fdate(p.pinch_date) : "—"}` +
           ` · <strong>uproot ${fdate(p.uproot_date)}</strong> · ${harv.length} harvest weeks of ` +
           `${p.cycle_weeks} · ${num(p.expected_stems_life)} stems</span>` +
@@ -7261,7 +7272,7 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
     // instead of being refused outright.
     const vs = $("up-variety");
     vs.innerHTML = "";
-    (S.varieties || []).forEach((x) => vs.add(new Option(x, x)));
+    (S.varieties || []).forEach((x) => vs.add(new Option(vname(x), x)));
     // A register is one farm's order book, so the file has to say which farm it is
     // for. Left blank it would land on whichever register the database returned
     // first, which for a variety grown at two farms is a coin toss.
@@ -7366,7 +7377,7 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
     if (!variety) { toast("Pick the variety to import as.", true); return; }
     if (!farm) { toast("Pick the farm this demand is for.", true); return; }
     const msg = [
-      `Import ${num(r.weeks)} weeks and ${num(r.total)} stems into ${variety} at ${farm}?`,
+      `Import ${num(r.weeks)} weeks and ${num(r.total)} stems into ${vname(variety)} at ${farm}?`,
       "",
       mode === "replace"
         ? "Weeks these years already carry will be replaced by the file's figures."
@@ -8554,7 +8565,7 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
       const f = (q.get("farm") || "").trim();
       const pn = (q.get("plan") || "").trim();
       const yr = (q.get("season") || "").trim();
-      if (v) { S.variety = v; const el = $("f-variety"); if (el) el.value = v; }
+      if (v) { S.variety = v; const el = $("f-variety"); if (el) el.value = vname(v); }
       if (f) { S.farm = f; const el = $("f-farm"); if (el) el.value = f; }
       if (yr) S.season = yr;
       if (pn) S.plan = pn;
@@ -8634,7 +8645,14 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
     call("scope").then((sc) => {
       const vs = $("f-variety"), fs = $("f-farm"), vr = $("ls-version");
       S.varieties = sc.varieties || [];
-      attachCombo(vs, $("f-variety-ac"), () => S.varieties);
+      VN = sc.variety_names || {};
+      VC = {};
+      S.varieties.forEach((c) => {
+        VC[String(vname(c)).toLowerCase()] = c;
+        VC[String(c).toLowerCase()] = c;          // the code still resolves
+      });
+      // The list a person reads is names; what they pick is still the code.
+      attachCombo(vs, $("f-variety-ac"), () => S.varieties.map(vname));
       fs.add(new Option("All farms", ""));
       S.farms = sc.farms || [];
       S.farms.forEach((x) => fs.add(new Option(x, x)));
@@ -8652,16 +8670,16 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
         const typed = vs.value.trim();
         // Picking from the list fires change, and the browser fires it again on blur
         // because the text moved. Same value, same scope: nothing to reload.
-        if (typed === (S.variety || "")) return;
+        if (vcode(typed) === (S.variety || "")) return;
         // Say so rather than silently showing nothing: a name that matches no
         // variety here is far more likely to be a typo than a new crop.
-        if (typed && !S.varieties.some((x) => x.toLowerCase() === typed.toLowerCase())) {
-          const near = S.varieties.filter(
+        if (typed && !S.varieties.some((x) => x.toLowerCase() === vcode(typed).toLowerCase())) {
+          const near = S.varieties.map(vname).filter(
             (x) => x.toLowerCase().includes(typed.toLowerCase())).slice(0, 3);
           toast("No variety called " + typed +
                 (near.length ? " — did you mean " + near.join(", ") + "?" : ""), true);
         }
-        S.variety = typed; S.plan = ""; loadPlans().then(loadScope);
+        S.variety = vcode(typed); S.plan = ""; loadPlans().then(loadScope);
       });
       fs.addEventListener("change", () => {
         S.farm = fs.value; S.plan = ""; loadPlans().then(loadScope);

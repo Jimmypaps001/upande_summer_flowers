@@ -237,6 +237,11 @@
   const sgn = (v) => (v > 0 ? "+" : "") + nf.format(v || 0);
   const cint = (v) => parseInt(v || 0, 10) || 0;
 
+  // {item code: variety name}, filled from scope(). Empty until it loads, and
+  // vname falls back to the code, so nothing renders blank on the way.
+  let VN = {};
+  const vname = (c) => (c && VN[c]) || c || "";
+
   const API = "upande_summer_flowers.summer_flowers.crop_cycle_api.";
   const OPS = "upande_summer_flowers.summer_flowers.crop_cycle_ops.";
   const rpc = (base) => (m, a) => new Promise((res, rej) => {
@@ -439,7 +444,7 @@
         ? '<table class="cc-t"><thead><tr><th>From</th><th>To</th><th>Variety</th>' +
           '<th>Planted</th><th class="n">Area m²</th><th>Protocol</th></tr></thead><tbody>' +
           d.bed_ranges.map((r) => `<tr><td>${r.from_bed}</td><td>${r.to_bed}</td>` +
-            `<td>${esc(r.variety || "")}</td><td>${esc(r.planting_date)}</td>` +
+            `<td>${esc(vname(r.variety))}</td><td>${esc(r.planting_date)}</td>` +
             `<td class="n">${num(Math.round(r.area))}</td><td>${esc(r.protocol || "—")}</td></tr>`).join("") +
           "</tbody></table>"
         : '<p class="cc-empty">No bed ranges.</p>');
@@ -479,7 +484,7 @@
           '<th>Remarks</th></tr></thead><tbody>' +
           rows.map((r) => `<tr><td>${esc(r.date)}</td><td>${r.from_bed}</td>` +
             `<td>${r.to_bed}</td><td class="n">${num(r.qty)}</td>` +
-            `<td>${esc(kind === "uprooting" ? (r.reason || "") : (r.variety || ""))}</td>` +
+            `<td>${esc(kind === "uprooting" ? (r.reason || "") : vname(r.variety))}</td>` +
             `<td>${esc(r.remarks || "")}</td></tr>`).join("") + "</tbody></table>"
         : `<p class="cc-empty">Nothing logged. Finished bed work writes its summary here.</p>`;
     });
@@ -754,9 +759,15 @@
     });
 
     call("scope").then((sc) => {
+      // A variety is an Item and an Item is named by its code, so this page
+      // read "15831" where the grower says Daucus carota 'Dara'. The value
+      // stays the code -- it is what every filter and link is keyed on -- and
+      // only what a person reads changes.
+      VN = sc.variety_names || {};
       const add = (id, all, list) => {
         const s = $(id); s.add(new Option(all, ""));
-        list.forEach((x) => s.add(new Option(x, x)));
+        const label = (x) => (id === "f-variety" ? vname(x) : x);
+        list.forEach((x) => s.add(new Option(label(x), x)));
         s.addEventListener("change", () => {
           S[id.replace("f-", "")] = s.value;
           $("cc-loading").hidden = false; $("cc-loading").textContent = "Loading…";
