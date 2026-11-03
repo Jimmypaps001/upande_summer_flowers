@@ -590,10 +590,6 @@
             >{{ _("% as TC") }}
               <input type="number" id="tc-share" min="0" max="100" step="1"
                      style="width:5rem"></label>
-            <button type="button" class="pl-btn" data-tc="allocate"
-                    style="display:none"
-                    title="{{ _('Split the order between labs. Each sends on its own cycle, and the system sizes every batch from the weeks it feeds.') }}"
-            >{{ _("Allocate to suppliers") }}</button>
             <button type="button" class="pl-btn" data-tc="unit"
                     style="display:none"
                     title="{{ _('Who raises what arrives. Our own bench, or a propagator who charges per plant.') }}"
@@ -4826,10 +4822,10 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
     if (agree) agree.style.display = mother ? "" : "none";
     const agreeMat = head.querySelector('[data-tc="agreemat"]');
     if (agreeMat) agreeMat.style.display = mother ? "none" : "";
-    // Both choosers on every route. A crop with a motherstock is still bought
-    // from somebody, and that question had no button on this card at all.
-    const alloc = head.querySelector('[data-tc="allocate"]');
-    if (alloc) alloc.style.display = "";
+    // Who sells it is asked on the Procurement tab, against the plan that
+    // actually orders from them. It used to be asked here as well -- the same
+    // decision, written to the same place, from two screens -- and a buyer who
+    // changed it in one had no way of knowing the other existed.
     // Who raises it is a question on every route, motherstock or not: the
     // material still has to be stuck by somebody before it is a plant.
     const unitb = head.querySelector('[data-tc="unit"]');
@@ -4845,118 +4841,6 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
   // reading "Tubers (Own) + Roots", a column of roots nobody buys, and a note
   // about a Roots row the protocol does not have.
   const wayTwo = (m) => (!m || (m.ways || 0) < 2 ? null : m.secondary_stage || "Roots");
-
-  // Who sells each way in. The twin of the chooser below it, and against the
-  // same document: the card used to write a supplier split of its own onto the
-  // production plan while the orders were raised off the procurement plan's
-  // table, so a lab chosen here was never the lab anything was ordered from.
-  function chooseSeller() {
-    const plan = (S.tc && S.tc.plan) || S.plan;
-    if (!plan) return;
-    Promise.all([callRl("selling_choices", { production_plan: plan }), loadSuppliers()])
-      .then(([c]) => {
-        S.sell = c;
-        S.sellRows = (c.chosen || []).map((x) => ({
-          entry_stage: x.entry_stage, supplier: x.supplier,
-          share_pct: x.share_pct, rate: x.rate, lead_weeks: x.lead_weeks }));
-        if (!S.sellRows.length) {
-          S.sellRows = (c.ways || []).map((w) => ({
-            entry_stage: w, supplier: "", share_pct: 100,
-            lead_weeks: c.lead_weeks || 0 }));
-        }
-        renderSell();
-      })
-      .catch((e) => toast(e.message));
-  }
-
-  function renderSell() {
-    const c = S.sell, rows = S.sellRows || [];
-    let host = $("tc-sell");
-    if (!host) {
-      host = document.createElement("div");
-      host.id = "tc-sell";
-      $("tc-note").prepend(host);
-    }
-    const ways = c.ways && c.ways.length ? c.ways : [""];
-    const need = (w) => (c.units_by_way || {})[w] || 0;
-    const byWay = {};
-    rows.forEach((x) => { byWay[x.entry_stage] =
-      (byWay[x.entry_stage] || 0) + (+x.share_pct || 0); });
-    const names = S.suppliers || [];
-
-    host.innerHTML = `<div class="pl-callout">
-      <div style="margin-bottom:6px"><b>Who sells it</b>` +
-      (c.procurement_plan
-        ? ` <span class="text-muted">· ${esc(c.procurement_plan)}</span>`
-        : ` <span class="text-muted">· kept until you save the plan, then written ` +
-          `onto the procurement plan it creates</span>`) + `</div>
-      <table class="pl-t"><thead><tr><th>Bought as</th><th>Supplier</th>
-        <th class="n">Share</th><th class="n">Units</th><th class="n">Price</th>
-        <th class="n">Lead wk</th><th></th></tr></thead><tbody>` +
-      rows.map((x, i) => `<tr data-i="${i}">
-        <td>${ways.length > 1
-          ? `<select class="sl-way">${ways.map((w) =>
-              `<option${w === x.entry_stage ? " selected" : ""}>${esc(w)}</option>`).join("")}</select>`
-          : esc(x.entry_stage || ways[0] || "")}</td>
-        <td><input class="sl-sup" list="tc-sup-names" value="${esc(x.supplier || "")}"
-             placeholder="type to search" style="min-width:14rem"></td>
-        <td class="n"><input class="sl-share" type="number" min="0" max="100" step="0.1"
-             style="width:5rem" value="${+x.share_pct || 0}"></td>
-        <td class="n">${num(Math.round(need(x.entry_stage) * (+x.share_pct || 0) / 100))}</td>
-        <td class="n"><input class="sl-rate" type="number" min="0" step="0.01"
-             style="width:6rem" value="${+x.rate || 0}"></td>
-        <td class="n"><input class="sl-lead" type="number" min="0" step="1"
-             style="width:4.5rem" value="${+x.lead_weeks || 0}"></td>
-        <td><a class="sl-del" style="cursor:pointer" title="Remove">✕</a></td></tr>`).join("") +
-      `</tbody></table>
-      <datalist id="tc-sup-names">${names.slice(0, 400).map((n) =>
-        `<option value="${esc(n)}"></option>`).join("")}</datalist>
-      <div style="margin-top:8px">
-        <button type="button" class="pl-btn" id="sl-add">+ Another seller</button>
-        <button type="button" class="pl-btn primary" id="sl-save">Save</button>
-        <button type="button" class="pl-btn" id="sl-x">Close</button>
-      </div>` +
-      ways.map((w) => {
-        const got = byWay[w] || 0;
-        return Math.abs(got - 100) < 0.5 ? "" :
-          `<div class="text-muted small" style="margin-top:6px;color:var(--critical)">` +
-          `${esc(w || "The material")}: ${got.toFixed(1)}% allocated` +
-          `${got < 100 ? ` — ${num(Math.round(need(w) * (100 - got) / 100))} units with no seller` : ""}</div>`;
-      }).join("") + `</div>`;
-
-    host.querySelectorAll("tr[data-i]").forEach((tr) => {
-      const i = +tr.dataset.i, row = rows[i];
-      const way = tr.querySelector(".sl-way");
-      if (way) way.onchange = (e) => { row.entry_stage = e.target.value; renderSell(); };
-      tr.querySelector(".sl-sup").onchange = (e) => { row.supplier = e.target.value.trim(); };
-      tr.querySelector(".sl-share").onchange = (e) => {
-        row.share_pct = parseFloat(e.target.value) || 0; renderSell(); };
-      tr.querySelector(".sl-rate").onchange = (e) => { row.rate = parseFloat(e.target.value) || 0; };
-      tr.querySelector(".sl-lead").onchange = (e) => { row.lead_weeks = parseInt(e.target.value, 10) || 0; };
-      tr.querySelector(".sl-del").onclick = () => { rows.splice(i, 1); renderSell(); };
-    });
-    $("sl-add").onclick = () => {
-      rows.push({ entry_stage: ways[0], supplier: "", share_pct: 0,
-                  lead_weeks: c.lead_weeks || 0 });
-      renderSell();
-    };
-    $("sl-x").onclick = () => host.remove();
-    $("sl-save").onclick = () => {
-      $("sl-save").disabled = true;
-      callRl("set_selling", { production_plan: (S.tc && S.tc.plan) || S.plan,
-                              rows: JSON.stringify(rows) })
-        .then((res) => {
-          S.sell = res;
-          S.sellRows = (res.chosen || []).map((x) => ({
-            entry_stage: x.entry_stage, supplier: x.supplier, share_pct: x.share_pct,
-            rate: x.rate, lead_weeks: x.lead_weeks }));
-          renderSell();
-          toast(`Saved — ${(res.chosen || []).length} seller(s) on ${res.procurement_plan}.`);
-          loadTc(null);
-        })
-        .catch((e) => { $("sl-save").disabled = false; toast(e.message); });
-    };
-  }
 
   // Who raises what arrives, chosen here rather than a document away. Opens on
   // what is already chosen -- a chooser that opens blank over an allocation
@@ -7979,7 +7863,39 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
     const box = $("pc-buying");
     if (!box) return;
     const draft = (r.plans || []).find((p) => p.docstatus === 0);
-    if (!draft) return false;
+    if (!draft) {
+      // Approved, so who sells it is settled. The chooser used to render
+      // nothing at all here, which reads as a broken screen rather than a
+      // closed decision: a buyer clicked, waited, and was told nothing.
+      const done = (r.plans || []).find((p) => p.docstatus === 1);
+      if (!done) return false;
+      let sc;
+      try { sc = await call("seller_choices", { procurement_plan: done.name }); }
+      catch (e) { return false; }
+      const chosen = sc.rows || [];
+      const units = sc.units_by_stage || {};
+      box.innerHTML =
+        `<p class="pl-note">${esc(done.name)} is approved, so who sells it is ` +
+        `settled. Revise the plan to change it.</p>` +
+        (chosen.length
+          ? `<table class="pl-t"><thead><tr><th>Bought as</th><th>Supplier</th>` +
+            `<th class="r">Share %</th><th class="r">${esc(sc.unit_label || "Units")}</th>` +
+            `<th class="r">Price / unit</th><th class="r">Amount</th></tr></thead><tbody>` +
+            chosen.map((x) => {
+              const u = Math.round((+units[x.entry_stage] || 0) *
+                                   (+x.share_pct || 0) / 100);
+              return `<tr><td>${esc(x.entry_stage || "—")}</td>` +
+                `<td>${esc(x.supplier || "—")}</td>` +
+                `<td class="r">${(+x.share_pct || 0).toFixed(2)}</td>` +
+                `<td class="r">${num(u)}</td>` +
+                `<td class="r">${+x.rate ? num(+x.rate) : "—"}</td>` +
+                `<td class="r">${+x.rate ? num(Math.round(u * (+x.rate || 0))) : "—"}</td>` +
+                `</tr>`;
+            }).join("") + `</tbody></table>`
+          : `<p class="pl-empty">It was approved without anybody being named ` +
+            `as selling it.</p>`);
+      return true;
+    }
     try { SELLER_CHOICES = await call("seller_choices", { procurement_plan: draft.name }); }
     catch (e) { return false; }
     const sc = SELLER_CHOICES;
@@ -8778,7 +8694,6 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
         if (b.dataset.tc === "agree") agreeTc();
         if (b.dataset.tc === "agreemat") agreeMaterial();
         if (b.dataset.tc === "unit") { chooseUnit(); return; }
-        if (b.dataset.tc === "allocate") { chooseSeller(); return; }
       });
       $("ag-dlg").addEventListener("click", (e) => {
         const b = e.target.closest("[data-ag]");
