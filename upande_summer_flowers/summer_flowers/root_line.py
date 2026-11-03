@@ -444,6 +444,11 @@ def arrival_plan(plan, tc_share=None, returns_per_plant=None,
 	# it only means anything where the route actually raises what it buys. A
 	# crop bought as plants loses nothing to rooting, and a column saying so
 	# would be a column of the same number twice.
+	# What the week's planting is grown to CUT, and what survives grading. This
+	# is the loss that makes the plant count larger than the demand: a stem that
+	# fails grading was still grown, and the plants had to be there to grow it.
+	_spp = flt((account.get("stated") or {}).get("stems_per_plant_life"))
+	_reject = flt((account.get("stated") or {}).get("reject_pct")) / 100.0
 	first_pct = (flt(account["stated"]["rooting_success_pct"])
 	             if account.get("rooting_applies") else 0.0)
 	# And the second: what fails to establish once it is planted out. Named
@@ -502,6 +507,10 @@ def arrival_plan(plan, tc_share=None, returns_per_plant=None,
 		# to_plant is worked out above, from the plants the week needs standing
 		# and the area they have to be planted in -- not back from the order,
 		# which is how the card came to plant 801 where the plan planted 800.
+		_cut = int(round(cint(w["plants"]) * _spp))
+		_sale = int(round(_cut * (1.0 - _reject)))
+		w.update({"stems_cut": _cut, "stems_saleable": _sale,
+		          "stems_lost_grading": max(0, _cut - _sale)})
 		w.update({"by_tc": by_tc, "by_roots": by_root, "roots_needed": roots,
 		          "units_tc": units_one,
 		          # kept under the old name: what reaches planting out
@@ -615,6 +624,15 @@ def arrival_plan(plan, tc_share=None, returns_per_plant=None,
 		"tc_to_plant_total": sum(cint(weeks[k].get("to_plant_tc"))
 		                         for k in ordered),
 		"tc_plants_per_unit": round(_plants_per_unit_from(rows, primary), 6),
+		# The harvest end of the same chain, so the week table can show why the
+		# plant count is bigger than the demand rather than only asserting it.
+		"stems_cut_total": sum(cint(weeks[k].get("stems_cut")) for k in ordered),
+		"stems_saleable_total": sum(cint(weeks[k].get("stems_saleable"))
+		                            for k in ordered),
+		"stems_lost_grading_total": sum(cint(weeks[k].get("stems_lost_grading"))
+		                                for k in ordered),
+		"grading_reject_pct": round(_reject * 100, 2),
+		"stems_per_plant_life": _spp,
 		# The same figures as one chain, because the tiles above answer "how
 		# many" and never "why that many".
 		"ladder": _ladder(

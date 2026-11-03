@@ -5218,8 +5218,8 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
       // the ground and the buyer wants what is ordered.
       renderLadder(m) +
       `<div class="text-muted small" style="text-transform:uppercase;` +
-      `letter-spacing:.05em;margin:10px 0 4px">What to buy, what to plant, ` +
-      `what stands — ` + (wayTwo(m) ? "both ways in, " : "") +
+      `letter-spacing:.05em;margin:10px 0 4px">What to sell, what to buy, ` +
+      `what to plant, what stands — ` + (wayTwo(m) ? "both ways in, " : "") +
       `week by week</div>` +
       // The week read left to right as the crop meets it: what has to be
       // bought, what is left after each loss, and what finally goes in the
@@ -5227,6 +5227,13 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
       // PLANTS, so a week needing 10,000 plants read "10,000 seeds" on a
       // protocol that loses 44% of them before planting.
       `<table class="pl-t"><thead><tr><th>Wanted</th><th>Week</th>` +
+      // The harvest end of the chain comes first, because it is the answer to
+      // "why plant more than we need": a stem that fails grading was still
+      // grown, and the plants had to be standing to grow it.
+      `<th class="n">Stems wanted</th>` +
+      (m.grading_reject_pct
+        ? `<th class="n">Lost grading ${m.grading_reject_pct}%</th>` +
+          `<th class="n">Stems to cut</th>` : "") +
       `<th class="n">Plants needed</th>` +
       `<th class="n">${esc(wayOne(m))} to buy</th>` +
       (m.tc_first_loss_pct && m.tc_first_loss_pct < 100
@@ -5245,6 +5252,11 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
         const v = got - cintish(w.plants);
         return `<tr><td>${fdate(w.week)}</td>` +
           `<td class="text-muted">${esc(w.week_iso || "")}</td>` +
+          `<td class="n">${w.stems_saleable ? num(w.stems_saleable) : ""}</td>` +
+          (m.grading_reject_pct
+            ? `<td class="n" style="color:var(--critical)">` +
+              `${w.stems_lost_grading ? "−" + num(w.stems_lost_grading) : ""}</td>` +
+              `<td class="n">${w.stems_cut ? num(w.stems_cut) : ""}</td>` : "") +
           `<td class="n">${num(w.plants)}</td>` +
           `<td class="n">${w.units_tc ? num(w.units_tc) : ""}</td>` +
           (m.tc_first_loss_pct && m.tc_first_loss_pct < 100
@@ -5264,6 +5276,11 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
           `${v > 0 ? "+" : ""}${v ? num(v) : "—"}</td></tr>`;
       }).join("") +
       `<tfoot><tr><th colspan="2">Season</th>` +
+      `<th class="n">${num(m.stems_saleable_total)}</th>` +
+      (m.grading_reject_pct
+        ? `<th class="n" style="color:var(--critical)">` +
+          `−${num(m.stems_lost_grading_total)}</th>` +
+          `<th class="n">${num(m.stems_cut_total)}</th>` : "") +
       `<th class="n">${num(m.plants_total)}</th>` +
       `<th class="n">${num(m.tc_units_total)}</th>` +
       (m.tc_first_loss_pct && m.tc_first_loss_pct < 100
