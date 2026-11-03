@@ -457,7 +457,7 @@
  "index_web_pages_for_search": 1,
  "links": [
   {
-   "creation": "2026-11-02 00:00:00.000000",
+   "creation": "2026-11-03 00:00:00.000000",
    "custom": 0,
    "docstatus": 0,
    "group": "Grow",
@@ -466,7 +466,7 @@
    "is_child_table": 0,
    "link_doctype": "Bed Work Order",
    "link_fieldname": "propagation_batch",
-   "modified": "2026-11-02 00:00:00.000000",
+   "modified": "2026-11-03 00:00:00.000000",
    "modified_by": "Administrator",
    "owner": "Administrator",
    "parent": "Summer Flower Motherstock Batch",
@@ -476,7 +476,7 @@
    "table_fieldname": null
   },
   {
-   "creation": "2026-11-02 00:00:00.000000",
+   "creation": "2026-11-03 00:00:00.000000",
    "custom": 0,
    "docstatus": 0,
    "group": "Grow",
@@ -485,7 +485,7 @@
    "is_child_table": 0,
    "link_doctype": "Crop Cycle",
    "link_fieldname": "custom_propagation_batch",
-   "modified": "2026-11-02 00:00:00.000000",
+   "modified": "2026-11-03 00:00:00.000000",
    "modified_by": "Administrator",
    "owner": "Administrator",
    "parent": "Summer Flower Motherstock Batch",
@@ -495,20 +495,20 @@
    "table_fieldname": null
   },
   {
-   "creation": "2026-11-02 00:00:00.000000",
+   "creation": "2026-11-03 00:00:00.000000",
    "custom": 0,
    "docstatus": 0,
    "group": "Raise",
    "hidden": 0,
    "idx": 3,
    "is_child_table": 1,
-   "link_doctype": "Summer Flower Propagation Plan",
+   "link_doctype": "Summer Flower Propagation Source",
    "link_fieldname": "motherstock_batch",
-   "modified": "2026-11-02 00:00:00.000000",
+   "modified": "2026-11-03 00:00:00.000000",
    "modified_by": "Administrator",
    "owner": "Administrator",
    "parent": "Summer Flower Motherstock Batch",
-   "parent_doctype": null,
+   "parent_doctype": "Summer Flower Propagation Plan",
    "parentfield": "links",
    "parenttype": "DocType",
    "table_fieldname": "sources"
