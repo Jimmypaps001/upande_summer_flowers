@@ -867,14 +867,23 @@ table.pl-t tr.zero td{color:var(--text-muted)}
    full width it reads as a table of data rather than one chain of reasoning.
    The two rungs anyone acts on -- what the grower plants, what the buyer
    orders -- are marked, so the eye finds them without reading the arithmetic. */
-table.pl-ladder{max-width:34rem;margin-bottom:14px}
+.pl-lads{display:flex;flex-wrap:wrap;gap:18px;margin-bottom:14px}
+.pl-lad{flex:1 1 23rem;min-width:min(23rem,100%);border:1px solid var(--border);
+  border-radius:8px;overflow:hidden}
+.pl-lad-h{padding:7px 10px;background:var(--surface-2);font-weight:600;
+  font-size:.74rem;text-transform:uppercase;letter-spacing:.04em;
+  border-bottom:1px solid var(--border)}
+.pl-lad-lead{display:block;font-weight:400;text-transform:none;letter-spacing:0;
+  color:var(--text-muted);font-size:.72rem;margin-top:1px}
+table.pl-ladder{width:100%}
 table.pl-ladder td:first-child{white-space:nowrap}
-table.pl-ladder td.n{width:7.5rem}
-table.pl-ladder tr.is-headline td{background:var(--surface-2);font-weight:600}
-.pl-lad-arrow{color:var(--text-muted);margin-right:2px}
-.pl-lad-tag{display:inline-block;margin-left:6px;padding:1px 6px;border-radius:9px;
-  background:var(--surface-3,var(--surface-2));border:1px solid var(--border);
-  font-size:.62rem;text-transform:uppercase;letter-spacing:.4px;white-space:nowrap}
+table.pl-ladder td.n{width:8.5rem;white-space:nowrap}
+/* A rate is not a quantity, and printing the two alike read as a column of
+   figures that did not add up. */
+table.pl-ladder tr.is-rate td{color:var(--text-muted)}
+table.pl-ladder tr.is-result td{background:var(--surface-2);
+  border-top:2px solid var(--border);border-bottom:none}
+.pl-lad-u{color:var(--text-muted);font-weight:400;font-size:.72em;margin-left:4px}
 table.pl-t tr.pl-chosen td{background:var(--surface-2);font-weight:600}
 /* Fixed layout so the week columns stay put and the trailing free-text
    column cannot pull the figures away from their headers. */
@@ -5378,26 +5387,34 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
       `</tr></thead><tbody>${rows}</tbody></table>`;
   }
 
-  // The order as one chain: stems wanted, plants that must stand, plants to
-  // plant, units to buy -- each rung the one above it divided by a loss. The
-  // rungs are built on the server (root_line._ladder) so this card and the
-  // procurement plan cannot divide differently, and so a rung whose loss does
-  // not bite is absent rather than repeating the figure above it.
+  // Two tables, because the losses sit either side of a handover: grading and
+  // establishment are the FIELD's and together say how many plants to plant;
+  // rooting is PROPAGATION's and alone says how many units to buy. One column
+  // of divisions hid which side each loss fell on, and the grower and the buyer
+  // each want a different end of it. Built on the server (root_line._ladder) so
+  // this card and the procurement plan cannot divide differently.
   function renderLadder(m) {
     const L = m.ladder;
-    if (!L || !(L.rungs || []).length) return "";
-    const rows = L.rungs.map((r, i) => {
-      const lead = i === 0 ? "" : `<span class="pl-lad-arrow">&darr;</span> `;
-      return `<tr class="${r.headline ? "is-headline" : ""}">` +
-        `<td>${lead}${esc(r.label)}</td>` +
-        `<td class="n"><b>${num(r.qty)}</b></td>` +
-        `<td class="text-muted small">${esc(r.note || "")}` +
-        (r.headline ? ` <span class="pl-lad-tag">${esc(r.headline)}</span>` : "") +
-        `</td></tr>`;
-    }).join("");
+    if (!L || !(L.groups || []).length) return "";
+    const cell = (r) => (r.kind === "rate" ? r.qty : num(r.qty));
+    const table = (g) =>
+      `<div class="pl-lad">` +
+      `<div class="pl-lad-h">${esc(g.title)}` +
+      `<span class="pl-lad-lead">${esc(g.lead || "")}</span></div>` +
+      `<table class="pl-t pl-ladder">` +
+      g.rows.map((r) =>
+        `<tr class="${r.kind === "rate" ? "is-rate" : ""}">` +
+        `<td>${esc(r.label)}</td>` +
+        `<td class="n">${cell(r)}<span class="pl-lad-u">` +
+        `${esc(r.unit || "")}</span></td>` +
+        `<td class="text-muted small">${esc(r.note || "")}</td></tr>`).join("") +
+      `<tr class="is-result"><td><b>${esc(g.result_label)}</b></td>` +
+      `<td class="n"><b>${num(g.result)}</b><span class="pl-lad-u">` +
+      `${esc(g.result_unit || "")}</span></td><td></td></tr>` +
+      `</table></div>`;
     return `<div class="text-muted small" style="text-transform:uppercase;` +
       `letter-spacing:.05em;margin:10px 0 4px">Why that many</div>` +
-      `<table class="pl-t pl-ladder">${rows}</table>`;
+      `<div class="pl-lads">${L.groups.map(table).join("")}</div>`;
   }
 
   function renderRoots(m) {
