@@ -945,6 +945,7 @@
   },
   {
    "depends_on": "eval:doc.crop_type==\"Summer Flowers\"",
+   "description": "Stems or shares, either way round. A share typed here is taken against Stems per Plant, Lifetime above.",
    "doctype": "Custom Field",
    "dt": "Crop Protocol",
    "fieldname": "custom_sf_flush_schedule",
@@ -3444,7 +3445,7 @@
   },
   {
    "depends_on": "eval:doc.crop_type==\"Summer Flowers\"",
-   "description": "What one plant gives over its whole life. Type it where the flush table carries only shares of that life; it is read off the table instead where the rows state their own stems, because the life is the sum of its flushes and two figures for it could only disagree.",
+   "description": "What one plant gives over its whole life. Type it and every flush below is rewritten from its share of the life; type a flush's stems instead and this goes back to being their sum. Two figures for one life could only ever disagree, so whichever was last touched wins.",
    "doctype": "Custom Field",
    "dt": "Crop Protocol",
    "fieldname": "custom_sf_stated_stems_per_plant_life",

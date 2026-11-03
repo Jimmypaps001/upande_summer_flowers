@@ -150,7 +150,13 @@ app_include_js = [
 
 # Crop Protocol belongs to another app, so this is where its form script lives.
 doctype_js = {
-	"Crop Protocol": ["public/js/crop_protocol_walkthrough.js", "public/js/crop_protocol_ways.js"],
+	"Crop Protocol": [
+		"public/js/crop_protocol_walkthrough.js",
+		"public/js/crop_protocol_ways.js",
+		# Stems per Plant, Lifetime is an input: typing it rewrites every flush
+		# row from its share of the life.
+		"public/js/crop_protocol_flush_shares.js",
+	],
 	# Crop Cycle belongs to upande_agriculture. The plants a cycle stands on were
 	# bought and are still stock until something consumes them, and this is the
 	# document a grower opens when the crop is in the ground.

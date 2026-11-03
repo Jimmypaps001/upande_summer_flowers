@@ -169,6 +169,79 @@ def before_validate(doc, method=None):
 		doc.custom_sf_title = " - ".join(
 			x for x in (variety_name(variety), doc.get("farm")) if x)
 
+	# Early, so that everything downstream -- the derivation, the native mirror,
+	# the snapshot a version is taken from -- reads one set of flush figures.
+	spread_life_over_flushes(doc)
+
+
+def spread_life_over_flushes(doc):
+	"""Type the lifetime yield and the flushes follow it.
+
+	A flush is a share of what a plant gives, and the share is the stable thing
+	about it. A variety that hands back 12% of its life in its third flush still
+	does that when the life itself is revised from 13.34 stems to 15 -- what
+	changes is the stems, in every row at once. Until now the lifetime total was
+	an output only: it could be typed, and on a table whose rows already carried
+	stems nothing happened to them, so the figure sat there disagreeing with the
+	eight rows underneath it until someone worked each one out by hand.
+
+	So all three are inputs, and whichever was touched wins:
+
+	  type the life          -> every row's stems are rewritten from its share
+	  type a share           -> likewise, against the life as it stands
+	  type a row's stems     -> the life goes back to being the sum of the rows
+
+	The shares are then always re-read off the stems, so the table cannot hold a
+	percentage that its own stems contradict.
+	"""
+	if not is_summer_flower(doc):
+		return
+	rows = doc.get("custom_sf_flush_schedule") or []
+	if not rows:
+		return
+
+	before = None if doc.is_new() else doc.get_latest()
+	def _was(row):
+		if not before:
+			return None
+		for r in (before.get("custom_sf_flush_schedule") or []):
+			if cint(r.flush_number) == cint(row.flush_number):
+				return r
+		return None
+
+	stated = flt(doc.get("custom_sf_stated_stems_per_plant_life"))
+	stems_now = sum(flt(r.stems_per_plant) for r in rows)
+	life_typed = bool(before) and _moved(
+		stated, flt(before.get("custom_sf_stated_stems_per_plant_life")))
+	share_typed = any(_moved(flt(r.pct_of_life), flt((_was(r) or {}).get("pct_of_life")))
+	                  for r in rows)
+
+	# A life of nothing is the field left blank, not an instruction to empty the
+	# table, and a table that states no shares has nothing to spread a life over.
+	shares = [flt(r.pct_of_life) for r in rows]
+	if (life_typed or share_typed) and stated > 0 and sum(shares) > 0:
+		total_share = sum(shares)
+		for row, share in zip(rows, shares):
+			row.stems_per_plant = stated * share / total_share
+		stems_now = sum(flt(r.stems_per_plant) for r in rows)
+	elif stems_now:
+		# Nobody touched the life or the shares, so it is the sum of its flushes.
+		doc.custom_sf_stated_stems_per_plant_life = stems_now
+
+	cumulative = 0.0
+	for row in rows:
+		if stems_now:
+			row.pct_of_life = flt(row.stems_per_plant) / stems_now * 100.0
+		cumulative += flt(row.pct_of_life)
+		row.cumulative_pct = cumulative
+
+
+def _moved(a, b):
+	"""Did a figure actually change, allowing for the slop in a repeating share?"""
+	if b is None:
+		return bool(a)
+	return abs(flt(a) - flt(b)) > 1e-6
+
 
 # The stages material can be bought at, and the one every route has to end on.
 # A route that starts halfway through nothing, or stops before a plant exists, is
