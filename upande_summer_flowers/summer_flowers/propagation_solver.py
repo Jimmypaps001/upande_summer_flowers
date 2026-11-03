@@ -519,9 +519,14 @@ def peak_sizing(plan, cycles=None, max_cycles=None):
 	fewer weeks left to cut from. So the suggestion is the most multiplication
 	that still leaves the pool enough cutting weeks to see the season out.
 	"""
-	if max_cycles in (None, ""):
-		max_cycles = max_multiplications()
 	v = frappe.get_cached_doc("Crop Protocol Version", plan.protocol)
+	if max_cycles in (None, ""):
+		# The protocol gets to say so when it has said so. Most versions carry a
+		# zero here, which is the field never having been filled in rather than
+		# a variety that must never be multiplied, so a zero falls back to the
+		# farm's habit. A real number is a real cap: this Aster allows one, and
+		# the card was offering four of them.
+		max_cycles = cint(v.max_multiplication_cycles) or max_multiplications()
 	demand = demand_by_sticking_week(plan)
 	if not demand:
 		return None
