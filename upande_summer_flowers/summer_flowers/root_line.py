@@ -476,18 +476,32 @@ def arrival_plan(plan, tc_share=None, returns_per_plant=None,
 		# a week needing 40,000 plants read "40,000 seeds" on a protocol that
 		# loses 44% of them. Rounded up a week at a time, which is how the
 		# procurement plan rounds, so the two agree to the seed.
-		units_one = (int(math.ceil(by_tc / per_unit_one))
-		             if (by_tc and per_unit_one > 0) else 0)
+		# The planting is the thing that has to be a plantable size, so it is
+		# what rounds -- and it rounds for the WEEK, not for each way into it: a
+		# minimum planting area belongs to the cohort going in the ground, and
+		# applying it to each way's share separately charged a crop bought two
+		# ways the minimum twice.
+		establish = (second_pct / 100.0) if second_pct else 1.0
+		week_plants = cint(w["plants"])
+		planting = (_plantable(v, week_plants / establish)
+		            if (week_plants and establish > 0) else 0)
+		to_plant = (int(round(planting * by_tc / float(week_plants)))
+		            if (week_plants and by_tc) else 0)
+		# What one bought unit puts IN THE GROUND: what it finally becomes, less
+		# the establishment loss that has not happened yet at that point.
+		per_unit_at_plant = ((per_unit_one / establish)
+		                     if establish > 0 else per_unit_one)
+		units_one = (int(math.ceil(to_plant / per_unit_at_plant - 1e-9))
+		             if (to_plant and per_unit_at_plant > 0) else 0)
 		# The week as a ladder down from what is bought to what is left
 		# standing. Planting is not the end of it: a plant is put in the ground
 		# and SOME of them take, so what goes in is more than what the plan
 		# needs -- 14,286 planted to be left with 10,000 -- and the table has to
 		# say which number is which or it reads as though the plan asked for
 		# exactly what it buys.
-		# What reaches planting out. Where nothing is raised -- plants bought
-		# ready, tubers straight out -- that is what was bought.
-		to_plant = (int(round(units_one * first_pct / 100.0))
-		            if first_pct else units_one)
+		# to_plant is worked out above, from the plants the week needs standing
+		# and the area they have to be planted in -- not back from the order,
+		# which is how the card came to plant 801 where the plan planted 800.
 		w.update({"by_tc": by_tc, "by_roots": by_root, "roots_needed": roots,
 		          "units_tc": units_one,
 		          # kept under the old name: what reaches planting out
@@ -1215,6 +1229,28 @@ def _loss_account(v, rows, stage):
 		"rooting_applies": rooting_applies,
 		"establishment_applies": establishment_applies,
 	}
+
+
+def _plantable(v, plants):
+	"""Round a plant count up to something that can actually be planted.
+
+	The unit is the protocol's MINIMUM PLANTING AREA -- the same one the
+	production plan sizes a cohort by -- so the card and the plan arrive at one
+	planting instead of two that nearly agree. Falls back to the raw count where
+	the protocol states no density or no minimum, because rounding to a unit
+	nobody has stated is worse than not rounding at all.
+	"""
+	from upande_summer_flowers.summer_flowers.doctype \
+		.summer_flower_production_plan.summer_flower_production_plan import size_planting
+
+	plants = int(math.ceil(flt(plants) - 1e-9))
+	if plants <= 0:
+		return 0
+	try:
+		sized = cint(size_planting(v, plants)[1])
+	except Exception:
+		return plants
+	return sized or plants
 
 
 def _ladder(account, plants, to_plant, units, stage, rooting_pct, field_pct,
