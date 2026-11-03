@@ -3457,7 +3457,7 @@
    "non_negative": 1,
    "precision": "3",
    "read_only": 0,
-   "read_only_depends_on": "eval:(doc.custom_sf_flush_schedule || []).some(r => r.stems_per_plant)"
+   "read_only_depends_on": ""
   },
   {
    "depends_on": "eval:(doc.crop_type==\"Summer Flowers\") && !doc.__islocal",
@@ -5971,6 +5971,14 @@
    "property": "show_title_field_in_link",
    "property_type": "Check",
    "value": "1"
+  },
+  {
+   "doc_type": "Crop Protocol",
+   "doctype_or_field": "DocField",
+   "field_name": "custom_sf_stated_stems_per_plant_life",
+   "property": "description",
+   "property_type": "Small Text",
+   "value": "What one plant gives over its whole life. Type it and every flush below is rewritten from its share of the life; type a flush's stems instead and this goes back to being their sum. Two figures for one life could only ever disagree, so whichever was last touched wins."
   }
  ],
  "sync_on_migrate": 1
