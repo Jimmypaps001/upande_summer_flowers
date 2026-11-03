@@ -218,8 +218,12 @@ def spread_life_over_flushes(doc):
 
 	# A life of nothing is the field left blank, not an instruction to empty the
 	# table, and a table that states no shares has nothing to spread a life over.
+	# A table stating shares and no stems is the harvest's shape known before its
+	# size, which is how a protocol is often first written down. It is spread
+	# without waiting to be touched, or it would sit at nothing until someone
+	# retyped a figure that was already there.
 	shares = [flt(r.pct_of_life) for r in rows]
-	if (life_typed or share_typed) and stated > 0 and sum(shares) > 0:
+	if (life_typed or share_typed or not stems_now) and stated > 0 and sum(shares) > 0:
 		total_share = sum(shares)
 		for row, share in zip(rows, shares):
 			row.stems_per_plant = stated * share / total_share
