@@ -6117,11 +6117,19 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
     const g = c.generations || [];
     gens.innerHTML = !g.length ? "" :
       `<table class="pl-t"><thead><tr><th>Gen</th><th class="n">Mothers</th>` +
-      `<th class="n">Arrivals</th><th>Starts cutting</th><th class="n">Cutting weeks</th>` +
+      `<th class="n">Arrivals</th><th>Starts cutting</th>` +
+      // Cut for, not could-cut-for. The column used to hold the motherstock
+      // life counted from the first cut, so a line cut for 18 weeks and then
+      // stood at zero for 34 more reported 52. Both are real and they are
+      // different questions: one is work, the other is ground tied up.
+      `<th class="n">Weeks cut</th><th class="n">Of a possible</th>` +
       `<th>Cleared</th></tr></thead><tbody>` +
       g.map((r) => `<tr><td>G${r.generation}</td><td class="n">${num(r.mothers)}</td>` +
         `<td class="n">${num(r.arrivals)}</td><td>${fdate(r.first_cut_date)}</td>` +
-        `<td class="n">${num(r.cutting_weeks)}</td><td>${fdate(r.expiry_date)}</td></tr>`)
+        `<td class="n">${num(r.cutting_weeks)}</td>` +
+        `<td class="n text-muted">${r.cutting_weeks_possible == null ? ""
+          : num(r.cutting_weeks_possible)}</td>` +
+        `<td>${fdate(r.expiry_date)}</td></tr>`)
         .join("") + `</tbody></table>`;
 
     const t2 = c.weeks_table || [];

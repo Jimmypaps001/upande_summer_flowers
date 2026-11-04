@@ -1052,6 +1052,24 @@ def _walk_line(demand, buy, c, regen, per_week, life, ramp, per_area, first_cut,
 			weeks_met += 1
 		else:
 			short += nn - got
+	# How long each generation is actually CUT, which is not how long it could
+	# be. The figure reported was the motherstock life counted from the first
+	# cut -- 52 weeks -- while the pool is cut off the week nothing ahead needs
+	# it and every week after that cuts nothing. On this Aster that is 18 weeks
+	# of cutting and 34 weeks of a line standing at zero, both reported as 52.
+	# The life is kept beside it, because what the block is TIED UP for is a
+	# different and equally real number.
+	last_cut = None
+	for r in rows:
+		if flt(r.get("cuttings_cut")):
+			last_cut = getdate(r["week_start"])
+	for g in gens:
+		life_weeks = cint(g.get("cutting_weeks"))
+		g["cutting_weeks_possible"] = life_weeks
+		on = getdate(g.get("first_cut_date")) if g.get("first_cut_date") else None
+		g["cutting_weeks"] = (max(0, ((last_cut - on).days // 7) + 1)
+		                      if (last_cut and on and last_cut >= on) else 0)
+
 	return {"tc": buy, "cycles": c, "generations": gens,
 	        "weeks_table": rows, "to_field": run, "shortfall": short,
 	        "weeks_met": weeks_met, "weeks": len(demand),
