@@ -127,6 +127,41 @@ class SummerFlowerProductionPlan(Document):
 		self.db_set("status", "Approved")
 		self.warn_on_space()
 		self.create_budget()
+		self.raise_what_follows()
+
+	def raise_what_follows(self):
+		"""The documents an approved plan commits the farm to.
+
+		Agreeing a line used to raise these, so trying a quantity on a draft
+		created purchasing paperwork for a plan nobody had approved. They belong
+		here: approval is the moment the plantings become a commitment, and
+		these are what that commitment costs.
+
+		Each step is reported and each may fail on its own, because an approval
+		that rolls back over a procurement plan would lose the approval too.
+		"""
+		from upande_summer_flowers.summer_flowers.operations_api import (
+			documents_that_follow,
+		)
+
+		if not cint(self.tc_choice_committed):
+			return
+		done, failed = [], []
+		for label, fn in documents_that_follow(self.name):
+			try:
+				fn()
+				done.append(label)
+			except Exception as e:
+				frappe.log_error(frappe.get_traceback(),
+				                 "After approving %s: %s" % (self.name, label))
+				failed.append("%s (%s)" % (label, frappe.utils.strip_html(str(e))[:80]))
+		if done:
+			frappe.msgprint(_("Raised from this plan: {0}.").format(", ".join(done)),
+			                indicator="green", alert=True)
+		if failed:
+			frappe.msgprint(_("Could not raise: {0}. The plan is approved; "
+			                  "raise them from their own forms.").format(
+				", ".join(failed)), indicator="orange")
 
 	def warn_on_space(self):
 		"""Say it now if this plan does not fit the farm.

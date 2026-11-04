@@ -1563,6 +1563,25 @@ def agree_motherstock_line(plan=None, variety=None, farm=None, tc=None,
 
 	ms = for_plan(name, tc_to_order=tc, multiplications=multiplications)
 	doc = frappe.get_doc("Summer Flower Motherstock Plan", ms)
+
+	# ... and onto the PLAN, which is the thing the rest of the app reads. The
+	# Motherstock Plan is the agreed line; the plan's own committed fields are
+	# what say an order has been agreed at all, and this path never wrote them.
+	# So a line agreed from the motherstock card left the plan looking
+	# un-agreed: the plantings were never trimmed to it, and the check that
+	# stops a plan going for approval with nothing ordered refused a plan that
+	# had just ordered. The bought-material card has always written them.
+	#
+	# A draft only, and saved rather than db_set, because the plantings follow
+	# from these figures and only a save works them through.
+	plan_doc = frappe.get_doc("Summer Flower Production Plan", name)
+	if not cint(plan_doc.docstatus):
+		plan_doc.tc_choice_committed = 1
+		plan_doc.tc_plants_committed = cint(doc.tc_to_order)
+		plan_doc.tc_cycles_committed = cint(doc.multiplications)
+		if doc.order_by_date:
+			plan_doc.tc_order_date_committed = doc.order_by_date
+		plan_doc.save(ignore_permissions=True)
 	frappe.db.commit()
 
 	out = {
@@ -1577,7 +1596,10 @@ def agree_motherstock_line(plan=None, variety=None, farm=None, tc=None,
 		"shortfall": cint(doc.shortfall),
 		"steps": [],
 	}
-	for label, fn in _chain_after_agreement(name):
+	# Nothing else. Agreeing writes the line onto the plan; the documents that
+	# follow from it are raised when the plan is APPROVED, because approval is
+	# what commits the farm. See documents_that_follow.
+	for label, fn in []:
 		try:
 			out["steps"].append({"step": label, "ok": True, "result": fn()})
 			frappe.db.commit()
@@ -1623,3 +1645,19 @@ def _chain_after_agreement(production_plan):
 	return [(_("Procurement Plan"), procurement),
 	        (_("Propagation Plan"), propagation),
 	        (_("Plantings"), plantings)]
+
+
+def documents_that_follow(production_plan):
+	"""The chain, run when the plan is approved rather than when it is agreed.
+
+	Agreeing a line is a decision about the plan. It is not an order, and it
+	was raising three documents that behave like one: a Procurement Plan, the
+	Propagation Plan built from it, and the plantings. So trying a quantity on
+	a draft created purchasing paperwork for a plan nobody had approved -- and
+	the chain said so itself, reporting "Plantings skipped, the production plan
+	is not approved yet" while raising the other two anyway.
+
+	Agreement now writes the decision onto the plan and stops. Approval is what
+	commits the farm, so approval is what raises the documents that spend money.
+	"""
+	return _chain_after_agreement(production_plan)

@@ -1500,7 +1500,9 @@ def agree_material_plan(production_plan, tc_qty=None, roots_qty=None,
 
 	out = {"production_plan": plan.name, "tc": tc, "roots": roots,
 	       "order_by": first, "steps": []}
-	for label, fn in _after_material_agreement(plan.name, tc):
+	# Same rule as the motherstock card: the decision is written onto the plan
+	# and nothing is ordered until the plan is approved.
+	for label, fn in []:
 		try:
 			out["steps"].append({"step": label, "ok": True, "result": fn()})
 			frappe.db.commit()
