@@ -75,7 +75,14 @@ def demand_by_sticking_week(plan):
 		if not cint(b.is_new_planting) or not cint(b.sticking_year):
 			continue
 		monday = iso_monday(cint(b.sticking_year), cint(b.sticking_week))
-		out[monday] = out.get(monday, 0) + int(round(cint(b.plants) * per_plant))
+		# The demand figure, never the trimmed one. Once an agreed order is
+		# written back onto the plantings, b.plants is what that order can
+		# plant -- and sizing the order from it would be sizing it from
+		# itself: a smaller peak, a smaller suggestion, a smaller trim, round
+		# and round. What the materials have to cover is what the market asked
+		# for, which is what plants_from_demand holds.
+		wanted = cint(b.get("plants_from_demand")) or cint(b.plants)
+		out[monday] = out.get(monday, 0) + int(round(wanted * per_plant))
 	return dict(sorted(out.items()))
 
 

@@ -1965,6 +1965,21 @@ def build(production_plan, method=None, entry_stage=None, supplier=None,
 	"""
 	fit_to_space = cint(fit_to_space)
 	p = frappe.get_doc("Summer Flower Production Plan", production_plan)
+	# Procurement comes last, and only after the plan it buys for is approved.
+	# Buying is where money is committed, so the plantings it is sized from have
+	# to be the ones somebody signed for -- not a draft that is still being
+	# argued over. The order is: plan the plantings, agree the materials, send
+	# it for approval, and only then raise the orders.
+	if p.docstatus == 0:
+		frappe.throw(
+			_("{0} has not been approved yet. Agree the materials on it, send it "
+			  "for approval, and raise the orders once it is approved -- an order "
+			  "sized from a draft is sized from figures that can still change."
+			  ).format(frappe.utils.get_link_to_form(
+				"Summer Flower Production Plan", p.name)),
+			title=_("The plan is not approved"))
+	if p.docstatus == 2:
+		frappe.throw(_("{0} is cancelled.").format(p.name))
 	v = frappe.get_cached_doc("Crop Protocol Version", p.protocol)
 	from upande_summer_flowers.summer_flowers import sourcing
 	from upande_summer_flowers.summer_flowers.crop_protocol import TAKEN_STAGES

@@ -14,6 +14,8 @@
   "plants",
   "plants_to_plant",
   "plants_required",
+  "plants_from_demand",
+  "trimmed_to_materials",
   "sticking_year",
   "sticking_week",
   "planting_year",
@@ -195,6 +197,20 @@
    "fieldtype": "Check",
    "in_list_view": 1,
    "label": "No Block Free"
+  },
+  {
+   "fieldname": "plants_from_demand",
+   "fieldtype": "Int",
+   "label": "Plants the demand asked for",
+   "read_only": 1,
+   "description": "What this planting was sized at from the market demand, before the materials were agreed. `plants` is what is actually going to be planted; this is what was wanted. Keeping both is what lets the trimming be worked out again from the same starting point every time the plan is saved, instead of shrinking a little further on each one."
+  },
+  {
+   "fieldname": "trimmed_to_materials",
+   "fieldtype": "Check",
+   "label": "Trimmed To The Agreed Materials",
+   "read_only": 1,
+   "description": "Set when the agreed order cannot stick everything this planting wanted. The shortfall is the difference against the demand figure."
   }
  ],
  "grid_page_length": 50,

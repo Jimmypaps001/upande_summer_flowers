@@ -56,6 +56,13 @@ class SummerFlowerProductionPlan(Document):
 		self.roll_up_months()
 		self.set_totals()
 		self.apply_tc_constraint()
+		# The trim lands after the totals, so what will actually be planted is
+		# counted again here. The peak and plants_from_demand are not: they are
+		# the requirement, and the requirement does not move because an order was
+		# agreed against it.
+		new_rows = [b for b in self.plan_blocks if b.is_new_planting]
+		self.new_beds_required = sum((b.beds or 0) for b in new_rows)
+		self.new_plants_required = sum((b.plants or 0) for b in new_rows)
 		self.check_protocol_freshness()
 		self.sync_status()
 
@@ -366,15 +373,27 @@ class SummerFlowerProductionPlan(Document):
 		# lab long before anyone knows which block will be free, and the propagation
 		# plan raises cuttings for the whole plan on the same reasoning.
 		new_rows = [b for b in self.plan_blocks if b.is_new_planting]
+		# What will actually be planted. Before the materials are agreed that is
+		# the demand figure, because nothing has trimmed it yet; afterwards it is
+		# what the agreed order can stick.
 		self.new_beds_required = sum((b.beds or 0) for b in new_rows)
 		self.new_plants_required = sum((b.plants or 0) for b in new_rows)
+		# What the market asked for, kept separately, because every figure that
+		# SIZES an order has to be worked out from the requirement and not from
+		# the order already placed against it.
+		self.plants_from_demand = sum(
+			(cint(b.get("plants_from_demand")) or cint(b.plants)) for b in new_rows)
 
 		# Motherstock is sized by the biggest single sticking week, never the annual
 		# total -- cuttings cannot be banked.
 		sticking = defaultdict(int)
 		for b in new_rows:
 			if b.sticking_year and b.sticking_week:
-				sticking[(b.sticking_year, b.sticking_week)] += b.plants or 0
+				# The peak is what the order has to cover, so it is counted off
+				# the demand figure. Counting the trimmed one would size the
+				# order from the order.
+				sticking[(b.sticking_year, b.sticking_week)] += (
+					cint(b.get("plants_from_demand")) or cint(b.plants) or 0)
 		if sticking:
 			peak_key = max(sticking, key=lambda k: sticking[k])
 			self.peak_weekly_sticking = sticking[peak_key]
@@ -433,7 +452,9 @@ class SummerFlowerProductionPlan(Document):
 		if self.peak_sticking_week_planned:
 			py, pw = self.peak_sticking_week_planned.split("-W")
 			peak_monday = iso_monday(cint(py), cint(pw))
-		req = sourcing.requirement(v, "TC", cint(self.new_plants_required), peak,
+		req = sourcing.requirement(v, "TC",
+		                           cint(self.plants_from_demand)
+		                           or cint(self.new_plants_required), peak,
 		                           peak_date=peak_monday)
 		if not req:
 			self.tc_status = _("This crop's route does not start at TC, so there is no "
@@ -539,6 +560,57 @@ class SummerFlowerProductionPlan(Document):
 				(cint(w.year), cint(w.week_no)), 0)
 		self.supplied_production_stems = cint(built.get("production_stems"))
 		self.supplied_coverage_pct = flt(built.get("coverage_pct"))
+		self.apply_agreed_materials_to_plantings(built, v)
+
+	def apply_agreed_materials_to_plantings(self, built, v):
+		"""Make the plantings say what the agreed materials can actually plant.
+
+		The plan is proposed from the demand, and until the materials are agreed
+		that is the right thing for it to say: the market asked for this much.
+		Once an order is agreed, the plantings are no longer a proposal -- they
+		are what the farm has committed to putting in the ground, and they can
+		only be what the order will stick.
+
+		So the walk's answer per planting is written back onto the row. What the
+		demand asked for is kept beside it in plants_from_demand rather than
+		thrown away, which is also what makes this safe to run on every save:
+		the trim is always worked out from the demand figure, so saving twice
+		gives the same answer as saving once. Reading b.plants instead would
+		take the last trim as the new requirement and shrink it again.
+
+		Nothing happens before an order is agreed, and nothing happens to a
+		planting already in the ground -- no order can change what is planted.
+		"""
+		got = (built or {}).get("supplied_by_row") or {}
+		if not got:
+			return
+		# Never underneath an approval. Approved plantings are what somebody
+		# signed for, and the way to change those is to amend the plan -- the
+		# same rule confirm_tc_choice already applies to the order itself.
+		if self.docstatus != 0:
+			return
+		# A walk that supplies NOTHING is not a decision to plant nothing. It is
+		# what a passed order date looks like: no pool can cut before the first
+		# sticking week, so every planting comes back at zero. Zeroing the plan
+		# over it would turn a scheduling problem into a deleted season. It is
+		# already said in words on tc_status, which is where it belongs.
+		if not any(cint(x) for x in got.values()):
+			return
+		per_bed = cint(v.plants_per_bed) or cint(v.min_planting_plants) or 0
+		for b in self.plan_blocks:
+			if not cint(b.is_new_planting):
+				continue
+			if not b.plants_from_demand:
+				b.plants_from_demand = cint(b.plants)
+			if b.name not in got:
+				continue
+			can = cint(got[b.name])
+			b.plants = can
+			b.plants_to_plant = can
+			b.trimmed_to_materials = 1 if can < cint(b.plants_from_demand) else 0
+			if per_bed:
+				b.beds = int(math.ceil(can / float(per_bed))) if can else 0
+				b.net_area_ha = flt(b.beds) * flt(v.sqm_net_per_bed or 0) / 10000.0
 
 	# ------------------------------------------------------------------ budget
 	def create_budget(self):

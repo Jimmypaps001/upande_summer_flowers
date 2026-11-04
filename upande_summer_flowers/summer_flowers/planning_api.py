@@ -834,9 +834,14 @@ def _tc_production(plan_doc, version, tc_qty, order_date, divert_weeks=0,
 	dropped_too_early = 0
 	plants_wanted = plants_stuck = 0
 	detail = []
+	supplied_by_row = {}
 	for b in rows:
 		key = (cint(b.sticking_year), cint(b.sticking_week))
-		want_plants = cint(b.plants)
+		# What the DEMAND asked for, not what a previous trim left behind. Walking
+		# from b.plants once the plan starts writing the trim back onto it would
+		# shrink the planting a little further on every save, each pass taking the
+		# last pass's answer as the new requirement.
+		want_plants = cint(b.get("plants_from_demand")) or cint(b.plants)
 		plants_wanted += want_plants
 		sr = stick_rows.setdefault(key, {
 			"label": "%s-W%02d" % key,
@@ -862,6 +867,7 @@ def _tc_production(plan_doc, version, tc_qty, order_date, divert_weeks=0,
 		sr["cuttings_needed"] += need
 		have = left.get(key, 0)
 		if have <= 0:
+			supplied_by_row[b.name] = 0
 			dropped += 1
 			too_early = bool(first_cut and key < first_cut)
 			if too_early:
@@ -881,12 +887,14 @@ def _tc_production(plan_doc, version, tc_qty, order_date, divert_weeks=0,
 			got = int(have / per_plant) if per_plant else 0
 			left[key] = 0
 			if got <= 0:
+				supplied_by_row[b.name] = 0
 				dropped += 1
 				detail.append({"stick": "%s-W%02d" % key, "block": b.block,
 				               "wanted": want_plants, "got": 0, "state": "dropped"})
 				continue
 			trimmed += 1
 			state = "trimmed"
+		supplied_by_row[b.name] = got
 		plants_stuck += got
 		sr["plants_stuck"] += got
 		if state != "full":
@@ -924,6 +932,10 @@ def _tc_production(plan_doc, version, tc_qty, order_date, divert_weeks=0,
 		"tc_qty": cint(tc_qty),
 		"order_date": str(order_date),
 		"weeks": weeks,
+		# Per planting, how many plants the agreed order can actually stick. The
+		# plan writes this onto its own rows, so what it says it will plant is
+		# what the materials bought for it can plant.
+		"supplied_by_row": supplied_by_row,
 		"production_stems": total_prod,
 		"demand_stems": total_dem,
 		"standing_stems": standing,
