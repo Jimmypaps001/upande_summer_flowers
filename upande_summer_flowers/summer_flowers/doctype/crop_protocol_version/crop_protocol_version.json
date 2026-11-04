@@ -9,177 +9,187 @@
  "editable_grid": 1,
  "engine": "InnoDB",
  "field_order": [
+  "protocol_name",
   "title",
-  "details_tab",
-  "identification_section",
-  "crop_protocol",
-  "variety",
   "farm",
-  "cb_ident",
-  "company",
+  "variety_item",
+  "crop_type",
+  "variety",
+  "column_break_variety",
+  "breeder",
+  "color",
+  "is_summer_flower",
   "crop_class",
-  "route_section",
-  "growing_cycle",
-  "route_summary",
-  "material_route",
-  "climate_note",
-  "version_section",
-  "version",
-  "version_status",
-  "workflow_state",
-  "cb_version",
-  "effective_from",
-  "effective_to",
-  "is_current",
-  "lineage_section",
-  "supersedes",
-  "superseded_by",
-  "cb_lineage",
-  "change_reason",
+  "company",
+  "life_expectancy_years",
+  "reject_pct",
+  "plants_per_sqm_net",
+  "min_planting_area_sqm",
+  "custom_summer_flowers_section",
   "approval_section",
   "approved_by",
-  "cb_appr",
   "approved_on",
-  "geometry_tab",
+  "custom_cb_sf_1",
+  "change_reason",
+  "climate_note",
+  "section_establishment",
+  "weeks_to_first_bending",
+  "weeks_to_second_bending",
+  "column_break_establishment",
+  "productive_life_years",
+  "productive_life_weeks",
+  "section_cycle",
+  "weeks_between_cuts",
+  "section_yield",
+  "stems_per_plant_first_harvest",
+  "stems_per_cut",
+  "actual_stems_per_cut",
+  "column_break_yield",
+  "max_stems_per_plant_per_cut",
+  "section_flush",
+  "weeks_to_first_flush",
+  "crop_flush_interval_weeks",
+  "column_break_flush",
+  "rose_flush_table_section",
+  "crop_flush_schedule",
+  "section_grade_mix",
+  "grade_mix",
+  "section_growth_stages",
+  "growth_stages",
+  "tab_geometry",
   "density_section",
-  "plants_per_sqm_net",
-  "cb_geo",
-  "plants_per_bed",
-  "min_planting_area_sqm",
   "derived_geo_section",
   "sqm_net_per_bed",
-  "bed_area_assumed",
+  "beds_per_block",
+  "plants_per_bed",
   "min_planting_beds_derived",
   "min_planting_plants",
-  "cb_geo2",
-  "cycle_tab",
-  "timeline_section",
-  "weeks_to_pinch",
-  "flush_interval_weeks",
-  "cb_time",
-  "derived_time_section",
-  "first_harvest_offset_weeks",
-  "total_weeks_in_ground",
-  "cb_time2",
-  "harvest_weeks_per_year",
-  "flushes_per_year",
-  "turnaround_weeks",
+  "plants_per_block",
+  "tab_cycle",
+  "flush_section",
   "weeks_planting_to_first_cut",
-  "productive_weeks",
+  "stated_stems_per_plant_life",
   "stems_per_plant_per_week",
-  "harvest_window_start_week",
-  "harvest_window_end_week",
+  "cb_flush_a",
   "season_curve_build",
   "season_curve_tail",
-  "flush_section",
+  "flush_table_section",
   "flush_schedule",
+  "harvest_is_scheduled",
   "flush_totals_section",
   "total_flushes",
-  "stated_stems_per_plant_life",
   "total_stems_per_plant_life",
-  "cb_flush",
+  "route_section",
+  "growing_cycle",
+  "timeline_section",
+  "field_activities",
+  "timeline_rest_section",
+  "weeks_to_pinch",
+  "first_harvest_offset_weeks",
+  "cb_timeline_a",
+  "flush_interval_weeks",
+  "total_weeks_in_ground",
+  "turnaround_weeks",
+  "productive_weeks",
+  "cb_timeline_b",
+  "harvest_window_start_week",
+  "harvest_window_end_week",
+  "stated_yield_stems_per_ha",
+  "harvest_weeks_per_year",
+  "flushes_per_year",
+  "growth_section",
   "stems_per_ha_life",
   "stems_per_ha_year",
   "plants_per_net_ha",
   "best_year_stems_per_plant",
   "best_year_stems_per_net_ha",
-  "propagation_tab",
+  "tab_prop",
+  "ways_section",
+  "ways",
+  "way_stages",
+  "route_table_section",
+  "material_route",
+  "raised_from_pool",
+  "m1_section",
+  "m1_entry",
+  "m1_entry_weeks",
+  "m1_entry_loss_pct",
+  "m1_cb",
+  "m1_share_pct",
+  "m1_lead_weeks",
+  "m1_route",
+  "m1_steps_section",
+  "m1_steps",
+  "m2_section",
+  "m2_entry",
+  "m2_entry_weeks",
+  "m2_entry_loss_pct",
+  "m2_cb",
+  "m2_share_pct",
+  "m2_lead_weeks",
+  "m2_route",
+  "m2_steps_section",
+  "m2_steps",
+  "lift_section",
+  "lifts",
   "establishment_section",
   "weeks_on_tray",
   "weeks_on_pot",
-  "cb_est",
-  "weeks_to_max_pc",
   "hardening_weeks",
+  "cb_est_a",
   "sticking_to_planting_weeks",
   "est_derived_section",
   "establishment_weeks",
+  "ms_establishment_weeks",
+  "cutting_to_harvest_weeks",
+  "weeks_tc_to_first_cut_derived",
+  "weeks_to_max_pc",
+  "establishment_includes_ramp",
+  "establishment_includes_hardening",
   "bench_section",
   "cuttings_per_plant_per_week",
   "plants_per_pot",
-  "cb_bench",
   "pots_per_sqm",
   "plants_per_sqm_bench",
   "multiplication_section",
   "max_multiplication_cycles",
   "multiplication_factor_per_cycle",
-  "tc_order_loss_pct",
-  "cb_mult",
   "cycle_time_weeks",
+  "cb_mult_a",
   "motherstock_life_weeks",
+  "supplier_lead_weeks",
+  "ramp_weeks",
+  "ramp_profile",
+  "ready_cutting_price",
   "mult_derived_section",
   "max_multiplication_factor",
-  "cb_mult2",
   "lead_time_weeks",
-  "grades_tab",
-  "grade_section",
+  "weeks_to_max_production",
+  "tab_grades",
+  "grade_table_section",
   "grade_allocation",
   "grade_total_pct",
   "loss_section",
   "rooting_success_pct",
   "field_establishment_pct",
-  "cb_loss",
-  "cuttings_per_plant_required",
-  "reject_section",
-  "reject_pct",
   "cutting_reject_pct",
-  "supplier_lead_weeks",
-  "ramp_weeks",
-  "ramp_profile",
-  "ms_establishment_weeks",
-  "establishment_includes_ramp",
-  "establishment_includes_hardening",
-  "weeks_tc_to_first_cut_derived",
-  "cutting_to_harvest_weeks",
-  "stated_yield_stems_per_ha",
+  "cb_loss_a",
+  "tc_order_loss_pct",
+  "cuttings_per_plant_required",
   "yield_variance_pct",
-  "life_expectancy_years",
-  "ready_cutting_price",
-  "weeks_to_max_production",
-  "plants_per_block",
-  "beds_per_block",
-  "propagation_detail_section",
-  "raised_from_pool",
-  "harvest_is_scheduled",
-  "ways",
-  "way_stages",
-  "field_activities",
-  "lift_section",
-  "lifts",
-  "protocol_carbon_copy_section",
-  "actual_stems_per_cut",
-  "breeder",
-  "color",
-  "crop_type",
-  "is_summer_flower",
-  "m1_entry",
-  "m1_entry_loss_pct",
-  "m1_entry_weeks",
-  "m1_lead_weeks",
-  "m1_route",
-  "m1_share_pct",
-  "m1_steps",
-  "m2_entry",
-  "m2_entry_loss_pct",
-  "m2_entry_weeks",
-  "m2_lead_weeks",
-  "m2_route",
-  "m2_share_pct",
-  "m2_steps",
-  "crop_flush_interval_weeks",
-  "crop_flush_schedule",
-  "grade_mix",
-  "growth_stages",
-  "max_stems_per_plant_per_cut",
-  "productive_life_weeks",
-  "productive_life_years",
-  "protocol_name",
-  "stems_per_cut",
-  "stems_per_plant_first_harvest",
-  "variety_item",
-  "weeks_between_cuts",
-  "weeks_to_first_bending",
-  "weeks_to_first_flush",
-  "weeks_to_second_bending"
+  "version_tab",
+  "version_record_section",
+  "crop_protocol",
+  "route_summary",
+  "bed_area_assumed",
+  "version",
+  "version_status",
+  "workflow_state",
+  "effective_from",
+  "effective_to",
+  "is_current",
+  "supersedes",
+  "superseded_by"
  ],
  "fields": [
   {
@@ -189,15 +199,6 @@
    "in_list_view": 1,
    "label": "Protocol",
    "read_only": 1
-  },
-  {
-   "fieldname": "details_tab",
-   "fieldtype": "Tab Break",
-   "label": "Details"
-  },
-  {
-   "fieldname": "identification_section",
-   "fieldtype": "Section Break"
   },
   {
    "fieldname": "crop_protocol",
@@ -227,10 +228,6 @@
    "reqd": 1
   },
   {
-   "fieldname": "cb_ident",
-   "fieldtype": "Column Break"
-  },
-  {
    "fieldname": "company",
    "fieldtype": "Link",
    "label": "Company",
@@ -245,11 +242,6 @@
    "label": "Crop Class",
    "options": "Summer Flower\nRose\nOther",
    "reqd": 1
-  },
-  {
-   "fieldname": "route_section",
-   "fieldtype": "Section Break",
-   "label": "Plant Material Route"
   },
   {
    "fieldname": "growing_cycle",
@@ -276,11 +268,6 @@
    "fieldname": "climate_note",
    "fieldtype": "Small Text",
    "label": "Why this farm differs"
-  },
-  {
-   "fieldname": "version_section",
-   "fieldtype": "Section Break",
-   "label": "Version"
   },
   {
    "default": "1",
@@ -312,10 +299,6 @@
    "read_only": 1
   },
   {
-   "fieldname": "cb_version",
-   "fieldtype": "Column Break"
-  },
-  {
    "description": "Cycles planted on or after this date use this version.",
    "fieldname": "effective_from",
    "fieldtype": "Date",
@@ -337,11 +320,6 @@
    "read_only": 1
   },
   {
-   "fieldname": "lineage_section",
-   "fieldtype": "Section Break",
-   "label": "Lineage"
-  },
-  {
    "fieldname": "supersedes",
    "fieldtype": "Link",
    "label": "Supersedes",
@@ -356,20 +334,11 @@
    "read_only": 1
   },
   {
-   "fieldname": "cb_lineage",
-   "fieldtype": "Column Break"
-  },
-  {
    "description": "Mandatory. Why this amendment was made — retained for audit.",
    "fieldname": "change_reason",
    "fieldtype": "Small Text",
    "label": "Change Reason",
    "reqd": 1
-  },
-  {
-   "fieldname": "approval_section",
-   "fieldtype": "Section Break",
-   "label": "Approval"
   },
   {
    "fieldname": "approved_by",
@@ -379,24 +348,10 @@
    "read_only": 1
   },
   {
-   "fieldname": "cb_appr",
-   "fieldtype": "Column Break"
-  },
-  {
    "fieldname": "approved_on",
    "fieldtype": "Datetime",
    "label": "Approved On",
    "read_only": 1
-  },
-  {
-   "fieldname": "geometry_tab",
-   "fieldtype": "Tab Break",
-   "label": "Geometry"
-  },
-  {
-   "fieldname": "density_section",
-   "fieldtype": "Section Break",
-   "label": "Planting Density"
   },
   {
    "default": "20",
@@ -405,10 +360,6 @@
    "fieldtype": "Int",
    "label": "Plants per m² of bed (net)",
    "reqd": 1
-  },
-  {
-   "fieldname": "cb_geo",
-   "fieldtype": "Column Break"
   },
   {
    "default": "1000",
@@ -423,12 +374,6 @@
    "fieldname": "min_planting_area_sqm",
    "fieldtype": "Float",
    "label": "Minimum planting area (m² net)"
-  },
-  {
-   "description": "Read-only: every figure here is calculated from plants per m² and plants per bed. Change those and these follow.",
-   "fieldname": "derived_geo_section",
-   "fieldtype": "Section Break",
-   "label": "Worked out from the geometry above"
   },
   {
    "description": "The net planted area of one bed. Karen's beds are 50 m² each. Plants per bed follows from this and the density.",
@@ -459,20 +404,6 @@
    "read_only": 1
   },
   {
-   "fieldname": "cb_geo2",
-   "fieldtype": "Column Break"
-  },
-  {
-   "fieldname": "cycle_tab",
-   "fieldtype": "Tab Break",
-   "label": "Growing Cycle"
-  },
-  {
-   "fieldname": "timeline_section",
-   "fieldtype": "Section Break",
-   "label": "Timeline (planting to uproot)"
-  },
-  {
    "default": "7",
    "fieldname": "weeks_to_pinch",
    "fieldtype": "Int",
@@ -487,16 +418,6 @@
    "reqd": 1
   },
   {
-   "fieldname": "cb_time",
-   "fieldtype": "Column Break"
-  },
-  {
-   "description": "Read-only: calculated from the pinch week, the flush interval and the flush schedule.",
-   "fieldname": "derived_time_section",
-   "fieldtype": "Section Break",
-   "label": "Worked out from the timeline above"
-  },
-  {
    "fieldname": "first_harvest_offset_weeks",
    "fieldtype": "Int",
    "label": "Weeks planting → first harvest",
@@ -507,10 +428,6 @@
    "fieldtype": "Int",
    "label": "Total Weeks In Ground",
    "read_only": 1
-  },
-  {
-   "fieldname": "cb_time2",
-   "fieldtype": "Column Break"
   },
   {
    "description": "52 ÷ flush interval. The planting returns to the same weeks each year.",
@@ -585,20 +502,10 @@
    "read_only": 1
   },
   {
-   "fieldname": "flush_section",
-   "fieldtype": "Section Break",
-   "label": "Flush Schedule"
-  },
-  {
    "fieldname": "flush_schedule",
    "fieldtype": "Table",
    "label": "Flush Schedule",
    "options": "Summer Flower Protocol Flush"
-  },
-  {
-   "fieldname": "flush_totals_section",
-   "fieldtype": "Section Break",
-   "label": "Flush Totals"
   },
   {
    "fieldname": "total_flushes",
@@ -620,10 +527,6 @@
    "fieldtype": "Float",
    "label": "Total Stems Per Plant Life",
    "read_only": 1
-  },
-  {
-   "fieldname": "cb_flush",
-   "fieldtype": "Column Break"
   },
   {
    "fieldname": "stems_per_ha_life",
@@ -661,16 +564,6 @@
    "read_only": 1
   },
   {
-   "fieldname": "propagation_tab",
-   "fieldtype": "Tab Break",
-   "label": "Propagation & Motherstock"
-  },
-  {
-   "fieldname": "establishment_section",
-   "fieldtype": "Section Break",
-   "label": "Establishment (TC → productive motherstock)"
-  },
-  {
    "default": "3",
    "fieldname": "weeks_on_tray",
    "fieldtype": "Int",
@@ -683,10 +576,6 @@
    "fieldtype": "Int",
    "label": "Weeks on pot to first harvest",
    "read_only": 1
-  },
-  {
-   "fieldname": "cb_est",
-   "fieldtype": "Column Break"
   },
   {
    "default": "4",
@@ -710,20 +599,10 @@
    "read_only": 1
   },
   {
-   "fieldname": "est_derived_section",
-   "fieldtype": "Section Break",
-   "label": "Worked out from the establishment weeks above"
-  },
-  {
    "fieldname": "establishment_weeks",
    "fieldtype": "Int",
    "label": "Establishment total (weeks)",
    "read_only": 1
-  },
-  {
-   "fieldname": "bench_section",
-   "fieldtype": "Section Break",
-   "label": "Bench & Cutting Yield"
   },
   {
    "default": "1",
@@ -739,10 +618,6 @@
    "label": "Plants Per Pot"
   },
   {
-   "fieldname": "cb_bench",
-   "fieldtype": "Column Break"
-  },
-  {
    "default": "31",
    "fieldname": "pots_per_sqm",
    "fieldtype": "Int",
@@ -754,11 +629,6 @@
    "label": "Plants per m² of bench",
    "precision": "1",
    "read_only": 1
-  },
-  {
-   "fieldname": "multiplication_section",
-   "fieldtype": "Section Break",
-   "label": "Multiplication"
   },
   {
    "default": "4",
@@ -782,10 +652,6 @@
    "read_only": 1
   },
   {
-   "fieldname": "cb_mult",
-   "fieldtype": "Column Break"
-  },
-  {
    "default": "1",
    "fieldname": "cycle_time_weeks",
    "fieldtype": "Int",
@@ -798,12 +664,6 @@
    "label": "Motherstock Life Weeks"
   },
   {
-   "description": "Read-only: what the multiplication achieves and how long it takes.",
-   "fieldname": "mult_derived_section",
-   "fieldtype": "Section Break",
-   "label": "Worked out from the multiplication settings above"
-  },
-  {
    "fieldname": "max_multiplication_factor",
    "fieldtype": "Float",
    "label": "Max Multiplication Factor",
@@ -811,24 +671,10 @@
    "read_only": 1
   },
   {
-   "fieldname": "cb_mult2",
-   "fieldtype": "Column Break"
-  },
-  {
    "fieldname": "lead_time_weeks",
    "fieldtype": "Int",
    "label": "Lead time at max cycles (weeks)",
    "read_only": 1
-  },
-  {
-   "fieldname": "grades_tab",
-   "fieldtype": "Tab Break",
-   "label": "Grades & Losses"
-  },
-  {
-   "fieldname": "grade_section",
-   "fieldtype": "Section Break",
-   "label": "Grade Allocation"
   },
   {
    "fieldname": "grade_allocation",
@@ -841,11 +687,6 @@
    "fieldtype": "Percent",
    "label": "Total %",
    "read_only": 1
-  },
-  {
-   "fieldname": "loss_section",
-   "fieldtype": "Section Break",
-   "label": "Losses"
   },
   {
    "default": "90",
@@ -862,20 +703,12 @@
    "read_only": 1
   },
   {
-   "fieldname": "cb_loss",
-   "fieldtype": "Column Break"
-  },
-  {
    "description": "Cuttings to stick per plant standing in the field.",
    "fieldname": "cuttings_per_plant_required",
    "fieldtype": "Float",
    "label": "Cuttings Per Plant Required",
    "precision": "3",
    "read_only": 1
-  },
-  {
-   "fieldname": "reject_section",
-   "fieldtype": "Section Break"
   },
   {
    "description": "Share of CUT STEMS that fail grading. A loss of what the plants produce, not of the plants: it is taken off the yield once the flushes have been counted, so the plan grows for what can be sold. Compounds with Cutting reject % where both are set.",
@@ -988,21 +821,11 @@
    "label": "Beds per Block"
   },
   {
-   "fieldname": "lift_section",
-   "fieldtype": "Section Break",
-   "label": "Lifts — how a consignment is handed over"
-  },
-  {
    "description": "Snapshotted with the rest of the protocol, so a plan built on this version keeps the lift profile it was built on.",
    "fieldname": "lifts",
    "fieldtype": "Table",
    "label": "Lifts",
    "options": "Summer Flower Protocol Lift"
-  },
-  {
-   "fieldname": "propagation_detail_section",
-   "fieldtype": "Section Break",
-   "label": "How it is propagated, as approved"
   },
   {
    "fieldname": "raised_from_pool",
@@ -1036,11 +859,6 @@
    "options": "Crop Field Activity",
    "label": "Field Activities",
    "description": "What the plant does in the field and when. A planting calendar is built from it, so it belongs in the snapshot."
-  },
-  {
-   "fieldname": "protocol_carbon_copy_section",
-   "fieldtype": "Section Break",
-   "label": "Everything else the protocol carries"
   },
   {
    "fieldname": "actual_stems_per_cut",
@@ -1224,6 +1042,290 @@
    "fieldname": "weeks_to_second_bending",
    "fieldtype": "Int",
    "label": "Weeks to Second Bending"
+  },
+  {
+   "fieldname": "column_break_variety",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "custom_summer_flowers_section",
+   "fieldtype": "Section Break",
+   "label": "Protocol status",
+   "collapsible": 1
+  },
+  {
+   "fieldname": "approval_section",
+   "fieldtype": "Section Break",
+   "label": "Summer Flower — approval and history",
+   "depends_on": "eval:doc.crop_type==\"Summer Flowers\""
+  },
+  {
+   "fieldname": "custom_cb_sf_1",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "section_establishment",
+   "fieldtype": "Section Break",
+   "label": "Establishment",
+   "depends_on": "eval:doc.crop_type==\"Roses\""
+  },
+  {
+   "fieldname": "column_break_establishment",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "section_cycle",
+   "fieldtype": "Section Break",
+   "label": "Cut to Cut Cycle",
+   "depends_on": "eval:doc.crop_type==\"Roses\""
+  },
+  {
+   "fieldname": "section_yield",
+   "fieldtype": "Section Break",
+   "label": "Yield",
+   "depends_on": "eval:doc.crop_type==\"Roses\""
+  },
+  {
+   "fieldname": "column_break_yield",
+   "fieldtype": "Column Break",
+   "depends_on": "eval:doc.crop_type==\"Roses\""
+  },
+  {
+   "fieldname": "section_flush",
+   "fieldtype": "Section Break",
+   "label": "Flush Cycle",
+   "depends_on": "eval:doc.crop_type==\"Roses\""
+  },
+  {
+   "fieldname": "column_break_flush",
+   "fieldtype": "Column Break",
+   "depends_on": "eval:doc.crop_type==\"Summer Flowers\""
+  },
+  {
+   "fieldname": "rose_flush_table_section",
+   "fieldtype": "Section Break",
+   "label": "Flush Schedule",
+   "depends_on": "eval:doc.crop_type==\"Roses\""
+  },
+  {
+   "fieldname": "section_grade_mix",
+   "fieldtype": "Section Break",
+   "label": "Grade Mix",
+   "depends_on": "eval:doc.crop_type==\"Roses\""
+  },
+  {
+   "fieldname": "section_growth_stages",
+   "fieldtype": "Section Break",
+   "label": "Growth Stages",
+   "collapsible": 1,
+   "depends_on": "eval:doc.crop_type==\"Roses\""
+  },
+  {
+   "fieldname": "tab_geometry",
+   "fieldtype": "Tab Break",
+   "label": "Geometry",
+   "depends_on": "eval:doc.crop_type==\"Summer Flowers\""
+  },
+  {
+   "fieldname": "density_section",
+   "fieldtype": "Section Break",
+   "label": "Bed and block, from this farm",
+   "depends_on": "eval:doc.crop_type==\"Summer Flowers\""
+  },
+  {
+   "fieldname": "derived_geo_section",
+   "fieldtype": "Section Break",
+   "label": "Worked out from the geometry above",
+   "collapsible": 1,
+   "depends_on": "eval:doc.crop_type==\"Summer Flowers\""
+  },
+  {
+   "fieldname": "tab_cycle",
+   "fieldtype": "Tab Break",
+   "label": "Growing Cycle",
+   "depends_on": "eval:doc.crop_type==\"Summer Flowers\""
+  },
+  {
+   "fieldname": "flush_section",
+   "fieldtype": "Section Break",
+   "label": "Harvest shape",
+   "depends_on": "eval:doc.crop_type==\"Summer Flowers\""
+  },
+  {
+   "fieldname": "cb_flush_a",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "flush_table_section",
+   "fieldtype": "Section Break",
+   "label": "Flush Schedule",
+   "depends_on": "eval:doc.crop_type==\"Summer Flowers\""
+  },
+  {
+   "fieldname": "flush_totals_section",
+   "fieldtype": "Section Break",
+   "label": "Worked out from the flush schedule",
+   "collapsible": 1,
+   "depends_on": "eval:doc.crop_type==\"Summer Flowers\""
+  },
+  {
+   "fieldname": "route_section",
+   "fieldtype": "Section Break",
+   "label": "Growing cycle"
+  },
+  {
+   "fieldname": "timeline_section",
+   "fieldtype": "Section Break",
+   "label": "Timeline (planting to uproot)",
+   "depends_on": "eval:doc.crop_type==\"Summer Flowers\""
+  },
+  {
+   "fieldname": "timeline_rest_section",
+   "fieldtype": "Section Break",
+   "depends_on": "eval:doc.crop_type==\"Summer Flowers\""
+  },
+  {
+   "fieldname": "cb_timeline_a",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "cb_timeline_b",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "growth_section",
+   "fieldtype": "Section Break",
+   "label": "Worked out: yield per hectare",
+   "collapsible": 1,
+   "depends_on": "eval:doc.crop_type==\"Summer Flowers\""
+  },
+  {
+   "fieldname": "tab_prop",
+   "fieldtype": "Tab Break",
+   "label": "Plant and Materials Planning",
+   "depends_on": "eval:doc.crop_type==\"Summer Flowers\""
+  },
+  {
+   "fieldname": "ways_section",
+   "fieldtype": "Section Break",
+   "label": "Routes",
+   "depends_on": "eval:doc.crop_type==\"Summer Flowers\""
+  },
+  {
+   "fieldname": "route_table_section",
+   "fieldtype": "Section Break",
+   "label": "Material Route",
+   "depends_on": "eval:doc.crop_type==\"Summer Flowers\""
+  },
+  {
+   "fieldname": "m1_section",
+   "fieldtype": "Section Break",
+   "label": "Method 1 — how the material is got",
+   "depends_on": "eval:doc.crop_type==\"Summer Flowers\""
+  },
+  {
+   "fieldname": "m1_cb",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "m1_steps_section",
+   "fieldtype": "Section Break",
+   "label": "…and then",
+   "depends_on": "eval:doc.custom_sf_m1_entry"
+  },
+  {
+   "fieldname": "m2_section",
+   "fieldtype": "Section Break",
+   "label": "Method 2 — a second way in (optional)",
+   "depends_on": "eval:doc.crop_type==\"Summer Flowers\""
+  },
+  {
+   "fieldname": "m2_cb",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "m2_steps_section",
+   "fieldtype": "Section Break",
+   "label": "…and then",
+   "depends_on": "eval:doc.custom_sf_m2_entry"
+  },
+  {
+   "fieldname": "lift_section",
+   "fieldtype": "Section Break",
+   "label": "Lifts — how a consignment is handed over",
+   "depends_on": "eval:doc.crop_type==\"Summer Flowers\""
+  },
+  {
+   "fieldname": "establishment_section",
+   "fieldtype": "Section Break",
+   "label": "Motherstock",
+   "depends_on": "eval:doc.crop_type==\"Summer Flowers\""
+  },
+  {
+   "fieldname": "cb_est_a",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "est_derived_section",
+   "fieldtype": "Section Break",
+   "label": "Worked out from the establishment weeks above",
+   "collapsible": 1,
+   "depends_on": "eval:doc.crop_type==\"Summer Flowers\""
+  },
+  {
+   "fieldname": "bench_section",
+   "fieldtype": "Section Break",
+   "label": "Bench & Cutting Yield",
+   "depends_on": "eval:doc.crop_type==\"Summer Flowers\" && doc.custom_sf_raised_from_pool"
+  },
+  {
+   "fieldname": "multiplication_section",
+   "fieldtype": "Section Break",
+   "label": "Multiplication",
+   "depends_on": "eval:doc.crop_type==\"Summer Flowers\" && doc.custom_sf_raised_from_pool"
+  },
+  {
+   "fieldname": "cb_mult_a",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "mult_derived_section",
+   "fieldtype": "Section Break",
+   "label": "Worked out from the multiplication settings above",
+   "collapsible": 1,
+   "depends_on": "eval:doc.crop_type==\"Summer Flowers\""
+  },
+  {
+   "fieldname": "tab_grades",
+   "fieldtype": "Tab Break",
+   "label": "Grades & Losses",
+   "depends_on": "eval:doc.crop_type==\"Summer Flowers\""
+  },
+  {
+   "fieldname": "grade_table_section",
+   "fieldtype": "Section Break",
+   "label": "Grade Allocation",
+   "depends_on": "eval:doc.crop_type==\"Summer Flowers\""
+  },
+  {
+   "fieldname": "loss_section",
+   "fieldtype": "Section Break",
+   "label": "Losses",
+   "depends_on": "eval:doc.crop_type==\"Summer Flowers\""
+  },
+  {
+   "fieldname": "cb_loss_a",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "version_tab",
+   "fieldtype": "Tab Break",
+   "label": "Version"
+  },
+  {
+   "fieldname": "version_record_section",
+   "fieldtype": "Section Break",
+   "label": "This snapshot"
   }
  ],
  "grid_page_length": 50,
