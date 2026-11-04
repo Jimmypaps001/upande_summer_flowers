@@ -1,27 +1,12 @@
 # Copyright (c) 2026, James Kiruga and contributors
-# For license information, please see license.txt
-"""Remove the customisations this app used to ship and no longer does.
-
-sync_on_migrate adds and updates; it never deletes. Taking a custom field or a
-property setter out of custom/*.json therefore changes nothing on a site that
-already has it -- the record stays, the field keeps appearing on the form, and the
-app and the sites it is installed on drift apart with nothing in the code saying
-so. Everything removed here was removed from the customisation files in the same
-work; this is the half of that change a JSON file cannot express.
-
-Nothing here is referenced anywhere in the app: each name was searched for across
-the python, json, js and html before being listed.
-"""
+"""Remove the customisations this app used to ship and no longer does."""
 
 import frappe
 
 # Summer Flower Market Demand ------------------------------------------------
-# VBN is the buyer's own product code. Nothing downstream ever read it, and the
-# sheet importer now parses the column without storing it.
 DEMAND_FIELDS = ["vbn_code"]
 
 # The base doctype states its own autoname and its own mandatory farm now, so a
-# property setter repeating them is a second copy of the same fact.
 DEMAND_SETTERS = [
 	("Summer Flower Market Demand", None, "autoname"),
 	("Summer Flower Market Demand", "farm", "reqd"),
@@ -30,18 +15,11 @@ DEMAND_SETTERS = [
 ]
 
 # Descriptions moved into the Market Demand walkthrough. Clearing the key in the
-# customisation file does not clear it on a record that already carries it: the
-# sync writes the keys it is given and leaves the rest alone.
 DEMAND_DESCRIPTIONS = ["product_group", "grade_allocation"]
 
 # Crop Protocol --------------------------------------------------------------
-# Gross area was dropped when the protocol stopped carrying bed and block
-# geometry: a protocol states the variety's characteristics, and how much path
-# a farm leaves between beds is the Block's business, not the crop's.
 PROTOCOL_SETTERS = [
 	# life_expectancy_years is now shipped as a custom field carrying its own label,
-	# and being derived rather than mandatory. These setters said the same thing from
-	# the outside, and the pair would drift.
 	("Crop Protocol", "life_expectancy_years", "label"),
 	("Crop Protocol", "life_expectancy_years", "read_only"),
 	("Crop Protocol", "life_expectancy_years", "reqd"),

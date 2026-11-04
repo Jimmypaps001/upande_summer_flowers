@@ -1,10 +1,5 @@
 # Copyright (c) 2026, James Kiruga and contributors
-# For license information, please see license.txt
-"""Controller for /crop-cycles.
-
-Frappe pairs a www template with the basename's hyphens converted to
-underscores, so this file must be crop_cycles.py.
-"""
+"""Controller for /crop-cycles."""
 
 import frappe
 from frappe import _

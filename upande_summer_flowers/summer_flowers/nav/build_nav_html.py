@@ -1,10 +1,4 @@
-"""Render summer_flowers_navigation.html from one table of tiles.
-
-The packhouse block this copies was hand-written HTML, which is how it ended up
-with tiles pointing at routes that no longer exist. Here the tiles are data, the
-markup is generated, and build_nav.py checks every route against the site before
-it writes the block.
-"""
+"""Render summer_flowers_navigation.html from one table of tiles."""
 
 import os
 

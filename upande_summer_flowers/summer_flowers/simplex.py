@@ -1,35 +1,17 @@
 # Copyright (c) 2026, James Kiruga and contributors
-# For license information, please see license.txt
 
-"""A small linear programme, in plain Python.
-
-Written out longhand rather than imported. The planner has to run wherever the
-app is installed, and scipy is on this bench only because another app happened
-to pull it in -- a plan that quietly comes out at 190% of demand on one site and
-100% on another, because of a package nobody declared, is worse than no solver.
-
-Two-phase simplex on a dense tableau, which is the textbook method and is
-enough: the planning problem is a hundred-odd rows and a hundred-odd columns,
-and it is solved once when a plan is generated.
-"""
+"""A small linear programme, in plain Python."""
 
 EPS = 1e-9
 
 
 def minimise(c, a_ub, b_ub, max_iter=20_000):
-	"""min c·x subject to a_ub·x <= b_ub, x >= 0. Returns x, or None if infeasible.
-
-	No bounds other than non-negativity, because nothing here needs them: a
-	cohort is a number of plants and cannot be negative, and every ceiling is
-	written as a row.
-	"""
+	"""min c·x subject to a_ub·x <= b_ub, x >= 0. Returns x, or None if infeasible."""
 	m, n = len(a_ub), len(c)
 	if not m:
 		return [0.0] * n
 
 	# Normalise to non-negative right-hand sides. A row with a negative one is
-	# multiplied through, which turns it from <= into >=, so it gets a surplus
-	# column and an artificial to start the basis off.
 	rows, rhs, ge = [], [], []
 	for i in range(m):
 		if b_ub[i] < 0:
@@ -131,7 +113,6 @@ def minimise(c, a_ub, b_ub, max_iter=20_000):
 		if sum(tab[r][-1] for r in range(m) if basis[r] >= art_at) > 1e-6:
 			return None
 		# An artificial left in the basis at zero is a redundant row; pivot it
-		# out on anything real, or leave it pinned at zero.
 		for r in range(m):
 			if basis[r] >= art_at:
 				for j in range(n + m):

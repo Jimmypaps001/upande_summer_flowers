@@ -1,13 +1,5 @@
 # Copyright (c) 2026, James Kiruga and contributors
-# For license information, please see license.txt
-"""Plantings that did not go in on the day the plan asked for.
-
-Three fields on the production plan used to carry this -- how many slipped, the
-worst one, and a sentence about it -- recounted on every save of a document
-whose own figures deliberately never move. The gap between plan and ground is
-worth reading across plans and over time, which a form cannot show and a list
-can, so it is read off the calendars themselves.
-"""
+"""Plantings that did not go in on the day the plan asked for."""
 
 import frappe
 from frappe import _
@@ -36,7 +28,6 @@ def execute(filters=None):
 		        "planting_date", "actual_planting_date", "planting_slip_days",
 		        "calendar_status"])
 	# The worst slip first, because that is the one somebody has to do something
-	# about; sorted here rather than in SQL, which will not order on an absolute.
 	rows = [r for r in rows if cint(r.planting_slip_days)]
 	rows.sort(key=lambda r: abs(cint(r.planting_slip_days)), reverse=True)
 	for r in rows:

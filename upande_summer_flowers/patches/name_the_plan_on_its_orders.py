@@ -1,15 +1,4 @@
-"""Point every order already raised back at the plan that raised it.
-
-The link is new, so the requests and orders a plan raised before it existed
-know nothing about it and the plan's Connections tab would open empty on every
-season already bought. The fact was never missing -- the plan's own requirement
-rows record which request each line became -- it was only recorded one way
-round. This writes the other way.
-
-Purchase orders are reached through the request they were made from, which is
-how ERPNext joins them, so an order raised by hand off one of these requests is
-picked up as well.
-"""
+"""Point every order already raised back at the plan that raised it."""
 
 import frappe
 

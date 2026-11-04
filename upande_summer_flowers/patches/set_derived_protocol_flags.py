@@ -1,21 +1,5 @@
 # Copyright (c) 2026, James Kiruga and contributors
-# For license information, please see license.txt
-"""Fill in the two flags the protocol form hides fields by.
-
-Both are derived on save -- one says the crop is cut from a standing pool, the
-other says its harvest is entered rather than seeded -- and both were shipped
-without anything to set them on the protocols that already existed. So a
-protocol carrying 52 flush rows still showed the four fields that exist to
-GENERATE a flush schedule, and one raised from bought material still showed
-pots and benches, until somebody happened to save it.
-
-Thirty-five protocols on the first site this ran on were in exactly that
-state. Deriving them here rather than asking people to open and save each one.
-
-Written straight to the column: these are read off other fields on the same
-document, so nothing downstream changes and a full save would only risk
-tripping over unrelated validation on a protocol nobody was editing.
-"""
+"""Fill in the two flags the protocol form hides fields by."""
 
 import frappe
 from frappe.utils import cint

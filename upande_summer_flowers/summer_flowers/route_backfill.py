@@ -1,28 +1,5 @@
 # Copyright (c) 2026, James Kiruga and contributors
-# For license information, please see license.txt
-"""Move the per-stage figures out of the protocol's columns and onto the route.
-
-The protocol carries about fifteen scalars that describe how long each part of the
-journey takes and what is lost along it -- weeks on tray, hardening weeks, rooting
-success, supplier lead. Every one of them describes ONE route: the TC to motherstock
-one that Aster takes. Matricaria is never stuck, Dahlia never sees a pot, and a crop
-bought as plants has no propagation at all, so on those crops the same columns are
-either empty or quietly wrong.
-
-The route table already says the same things generically, per stage. This writes the
-scalars onto it as steps, so that afterwards the rows are a complete record of the
-journey and the columns are a summary of the rows rather than the other way round.
-
-Nothing is invented and nothing is overwritten: a protocol that already carries steps
-is left alone, and a step is only written when the scalar behind it is non-zero. Run
-it twice and the second run does nothing.
-
-    bench --site SITE execute \
-        upande_summer_flowers.summer_flowers.route_backfill.report
-    bench --site SITE execute \
-        upande_summer_flowers.summer_flowers.route_backfill.report \
-        --kwargs "{'dry_run': 0}"
-"""
+"""Move the per-stage figures out of the protocol's columns and onto the route."""
 
 import frappe
 from frappe.utils import cint, flt
@@ -44,13 +21,7 @@ def _loss_from_success(pct):
 
 
 def plan_for(doc):
-	"""What this protocol's scalars say, expressed as route rows.
-
-	Steps under a stage are the wait and the losses incurred turning THAT stage's
-	material into the next stage's. So the raising steps sit under the stage the
-	material is bought at, and the finishing ones under the last stage before the
-	plant goes in the ground.
-	"""
+	"""What this protocol's scalars say, expressed as route rows."""
 	blocks = route_blocks(doc)
 	if not blocks:
 		return None
@@ -70,14 +41,11 @@ def plan_for(doc):
 		])
 	else:
 		# Every other route raises its material in one go, and the protocol only
-		# has one column for it.
 		steps.setdefault(entry.name, []).append(
 			{"step": "Growing on",
 			 "weeks": cint(doc.get("weeks_in_propagation")) or g("weeks_on_tray")})
 
 	# The build-up to full capacity. The mother exists but is not yet yielding what
-	# it will, and that wait is what "establishment" has always silently included --
-	# which is why the column read four weeks longer than the transit steps did.
 	multiplier = next((s for s in stages if s.stage in _stages.StageSet(flag="multiplies")), None)
 	if multiplier is not None and (g("ramp_weeks") or g("weeks_to_max_pc")):
 		steps.setdefault(multiplier.name, []).append(
@@ -104,7 +72,6 @@ def plan_for(doc):
 			on_stage.setdefault(s.name, {})["max_cycles"] = g("max_multiplication_cycles")
 
 	# A step with nothing to say is not written. An empty row is a row someone has
-	# to read and dismiss every time they open the protocol.
 	steps = {k: [x for x in v if cint(x.get("weeks")) or flt(x.get("loss_pct"))]
 	         for k, v in steps.items()}
 	return {"steps": {k: v for k, v in steps.items() if v}, "on_stage": on_stage}
@@ -137,13 +104,7 @@ def apply_to(doc):
 
 
 def compare(doc):
-	"""What the columns say against what the rows now say, measuring the same thing.
-
-	establishment_weeks is TC to a PRODUCTIVE mother -- the raising steps plus the
-	build-up -- and not TC to a plant in the ground. Comparing it against the whole
-	route was comparing two different journeys, which is the confusion the column
-	name carries and the rows do not.
-	"""
+	"""What the columns say against what the rows now say, measuring the same thing."""
 	blocks = route_blocks(doc)
 	entry_steps = blocks[0][1] if blocks else []
 	bulking = [st for _s, steps in blocks for st in steps if st.get("step") == "Bulking"]
@@ -181,8 +142,6 @@ def run(dry_run=1, limit=None):
 				n = apply_to(doc)
 				if not n:
 					# Every scalar behind every step is zero, so there is nothing to
-					# move. These are the protocols provisioned from the categories
-					# document with their timings still to be typed.
 					nothing.append(name)
 					continue
 				if not dry_run:

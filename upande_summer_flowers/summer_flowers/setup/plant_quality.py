@@ -1,52 +1,14 @@
 # Copyright (c) 2026, James Kiruga and contributors
-# For license information, please see license.txt
-"""The default quality inspection for incoming plant material.
-
-Nothing here is a new inspection engine. ERPNext already carries the whole
-chain and it is already in use on this site -- 7,094 Purchase Receipt Items,
-8,380 Purchase Invoice Items, 34 Quality Inspections against four templates:
-
-    Purchase Receipt Item / Purchase Invoice Item
-        received_qty, qty (accepted), rejected_qty, rejected_warehouse,
-        custom_rejection_reason, batch_no, quality_inspection
-    Purchase Invoice.update_stock
-        so an invoice can BE the receipt, which is how plants often arrive
-    Quality Inspection
-        reference_type (Purchase Receipt | Purchase Invoice | Stock Entry | ...),
-        item_code, sample_size, status (Accepted/Rejected), inspected_by,
-        report_date, remarks, readings
-    Quality Inspection Reading
-        per parameter, numeric with min/max or formula-based acceptance
-    Item.inspection_required_before_purchase + Item.quality_inspection_template
-        which is what makes an inspection appear by default
-
-So the only thing missing was the plant-specific template and the defaulting.
-The 94 Summer Flowers items had inspection_required_before_purchase = 0 and no
-template on any of them, which is why plant deliveries arrived uninspected.
-
-Idempotent: safe to re-run, and re-running does not overwrite a threshold
-somebody has since corrected.
-"""
+"""The default quality inspection for incoming plant material."""
 
 import frappe
 
 TEMPLATE = "Plant Material Incoming"
 
 # Item groups whose items are plant material when purchased. Roses are
-# deliberately not here yet -- they are bought as plants too, but the propagation
-# chain this serves is the summer flower one, and switching inspection on for
-# 173 rose varieties is a decision for whoever runs that programme.
 PLANT_ITEM_GROUPS = ("Summer Flowers",)
 
 # Pests and Diseases and Damages already exist on this site and are reused
-# rather than duplicated under a new name.
-#
-# thresholds: (specification, numeric, min, max, value)
-#
-# The numbers below are PLACEHOLDERS. Nobody agronomic has signed them off, and
-# a rejection threshold that has not been agreed is worse than none at all
-# because it rejects real deliveries. They are set wide on purpose and the
-# report_missing_thresholds() check names them until someone confirms.
 PARAMETERS = [
 	("Rooting Percentage", 1, 80.0, 100.0, None),
 	("Root Condition", 0, None, None, "White, well branched, no coiling"),
@@ -102,10 +64,7 @@ def ensure_template():
 
 
 def apply_to_items(item_groups=None):
-	"""Turn the default on for plant items that do not already have one.
-
-	An item that already names a template is left as it is: somebody chose it.
-	"""
+	"""Turn the default on for plant items that do not already have one."""
 	groups = list(item_groups or PLANT_ITEM_GROUPS)
 	names = frappe.get_all("Item", filters={"item_group": ["in", groups]}, pluck="name")
 	changed = 0

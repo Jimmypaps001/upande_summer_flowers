@@ -1,29 +1,5 @@
 # Copyright (c) 2026, James Kiruga and contributors
-# For license information, please see license.txt
-"""Tissue culture arrives in batches, from more than one supplier.
-
-A lab does not send a year's order in one crate. It sends on its own rhythm --
-the farm's own records show Stokman every four weeks, thirteen times a year, and
-Vitroflora every four or five, while Iribov sends twenty-five times at one to
-three week gaps -- and the farm buys from several at once, splitting a variety's
-requirement between them.
-
-So an order is not a number. It is a supplier, a cycle, and a run of batches,
-and the question the planner has to answer is how much goes in each batch. Equal
-splits are the habit and they are wrong wherever the season is not flat: a batch
-landing in a week that wants 25,000 plants and a batch landing in a week that
-wants 1,000 should not be the same size.
-
-This sizes each batch by the demand it actually serves -- the planting weeks
-from when it lands until the next batch lands -- and then scales the run to
-whatever the supplier was allocated, so the figures still add up to what was
-agreed with them.
-
-Shape of an allocation:
-
-	{"supplier": "Stokman", "tc": 286000, "cycle_weeks": 4,
-	 "first_week": "2027-02-08"}
-"""
+"""Tissue culture arrives in batches, from more than one supplier."""
 
 import frappe
 from frappe import _
@@ -34,13 +10,7 @@ from upande_summer_flowers.summer_flowers.root_line import _monday, iso
 
 def batch_plan(plan, allocations, lead_weeks=None, to_ground_weeks=None,
                tc_target=None):
-	"""Every supplier's batches, sized by the demand each one serves.
-
-	`tc_target` is what the labs are between them meant to send. It is not the
-	plant count: roots cover part of the plan, so measuring a tissue culture
-	allocation against plants wanted reports a shortfall that is simply the
-	roots doing their job.
-	"""
+	"""Every supplier's batches, sized by the demand each one serves."""
 	if isinstance(allocations, str):
 		allocations = frappe.parse_json(allocations or "[]")
 	allocations = [a for a in (allocations or []) if cint(a.get("tc"))]
@@ -64,15 +34,9 @@ def batch_plan(plan, allocations, lead_weeks=None, to_ground_weeks=None,
 		out.append(run)
 
 	# What the propagation unit can take is a harder constraint than anything a
-	# lab can promise. Lead times were respected and capacity was not, so four
-	# deliveries of a season put half a million plants into one week against a
-	# unit whose largest intake ever recorded is 185,000.
 	keep = survival("Tissue Culture", version=plan.protocol)
 	limits = capacity_limits()
 	# Material occupies the unit until the LAST lift comes off it. A unit that
-	# states six weeks of hardening is stating when the first lift is ready, not
-	# when the bench is clear, so the longer of the two is what the space is
-	# actually committed for.
 	limits["hold_weeks"] = max(
 		[cint(limits.get("hold_weeks")), ground]
 		+ [w for run in out for w, _s in run["_waves"]])
@@ -82,17 +46,8 @@ def batch_plan(plan, allocations, lead_weeks=None, to_ground_weeks=None,
 		for b in run["batches"]:
 			b["lifts"] = _lift_batch(b, run["_waves"], keep)
 	# Each consignment's lifts add up to that consignment. Across nineteen of
-	# them the per-consignment flooring lost nineteen plants, which was enough
-	# to leave the last planting week uncovered and the card reporting a season
-	# covered only to March. The rounding goes on the last lift of the season,
-	# where it is one number out by a few rather than every number out by one.
 	_settle_rounding(out, keep)
 	# Measured against the plants TISSUE CULTURE is responsible for, not against
-	# the whole week. Roots cover the rest of this plan, so crediting TC lifts
-	# against the full requirement reported a programme that never caught up --
-	# 416,970 of 940,224 on a plan that was exactly covered -- and the shortfall
-	# was simply the roots doing their job. The docstring above said as much;
-	# the arithmetic did not.
 	handovers = _cover(out, _tc_week_need(plan, need, tc_target, keep))
 	grand = sum(run["tc_total"] for run in out)
 	capacity = capacity_view(out, limits, lead)
@@ -110,7 +65,6 @@ def batch_plan(plan, allocations, lead_weeks=None, to_ground_weeks=None,
 		"survival_pct": round(keep * 100, 2),
 		"plants_from_allocation": sum(cint(w["plants"]) for w in handovers),
 		# Every lift of every consignment on one timeline: what the propagation
-		# unit actually hands the farm, and when.
 		"handovers": handovers,
 		"variety": plan.variety, "farm": plan.farm,
 		"lead_weeks": lead, "to_ground_weeks": ground,
@@ -122,7 +76,6 @@ def batch_plan(plan, allocations, lead_weeks=None, to_ground_weeks=None,
 		"over_by": max(0, grand - target),
 		"suppliers": out,
 		# Every batch from every supplier on one timeline, which is the thing a
-		# buyer reads: what is due to whom in which week.
 		"calendar": sorted(
 			[dict(supplier=s["supplier"], **b) for s in out for b in s["batches"]],
 			key=lambda b: (b["week"], b["supplier"])),
@@ -135,14 +88,10 @@ def _one_supplier(alloc, need, land_lag, lead=None):
 	cycle = max(1, cint(alloc.get("cycle_weeks")) or 4)
 	last_land = max(need)
 	# Default the first send to a lead-time BEFORE the first planting, not to
-	# the planting itself. Starting on the planting week means every batch lands
-	# after the week it was meant to feed, and the run reads as though most
-	# batches serve nothing.
 	first = _monday(alloc.get("first_week")
 	                or add_days(min(need), -7 * land_lag))
 
 	# Send weeks: start at the first, step by the cycle, and stop once a batch
-	# would land after the last planting week it could possibly serve.
 	weeks, w = [], first
 	while add_days(w, 7 * land_lag) <= last_land:
 		weeks.append(w)
@@ -151,18 +100,12 @@ def _one_supplier(alloc, need, land_lag, lead=None):
 		weeks = [first]
 
 	# How many consignments the lab is to send, if the planner has said. The
-	# cycle says how OFTEN it can send; it does not say how many times, and a
-	# four-week cycle across a season is eleven sends, not four. Somebody who
-	# wants four deliveries has to be able to ask for four deliveries.
-	# They are spread across the run rather than taken from the front, so the
-	# last one still reaches the last planting week.
 	cap = cint(alloc.get("batches"))
 	if cap and cap < len(weeks):
 		step = (len(weeks) - 1) / float(cap - 1) if cap > 1 else 0
 		weeks = [weeks[int(round(i * step))] for i in range(cap)]
 
 	# What each batch feeds: the planting weeks from its landing until the next
-	# batch lands. A batch is for the weeks only it can reach.
 	spans, served = [], []
 	for i, sw in enumerate(weeks):
 		start = add_days(sw, 7 * land_lag)
@@ -176,16 +119,11 @@ def _one_supplier(alloc, need, land_lag, lead=None):
 	batches, running = [], 0
 	for i, sw in enumerate(weeks):
 		# The last batch takes the remainder, so the run adds to the allocation
-		# exactly rather than to the nearest rounding error.
 		qty = (tc - running if i == len(weeks) - 1
 		       else int(round(tc * served[i] / float(total_served))))
 		qty = max(0, qty)
 		running += qty
 		# Two different weeks, which were one: the material ARRIVES at the
-		# propagation unit a lead time after it is sent, and becomes plants a
-		# hardening time after that. Capacity is about the first; the planting
-		# week is about the second. Reporting only the second hid every question
-		# about whether the unit could take what was coming.
 		arrives = add_days(sw, 7 * cint(lead if lead is not None else 0))
 		batches.append({
 			"batch": i + 1, "week": str(sw), "week_iso": iso(sw),
@@ -196,8 +134,6 @@ def _one_supplier(alloc, need, land_lag, lead=None):
 			"plants_served": cint(served[i]),
 		})
 	# A batch that feeds nothing is not a batch. It happens when a supplier's
-	# cycle is finer than the season's gaps, and listing it as an order of zero
-	# invites somebody to send one.
 	batches = [b for b in batches if b["tc"]]
 	for i, b in enumerate(batches, start=1):
 		b["batch"] = i
@@ -228,16 +164,7 @@ def _settle_rounding(out, keep):
 
 
 def _tc_week_need(plan, need, tc_target, keep):
-	"""The share of each planting week that tissue culture has to cover.
-
-	A plan raised two ways splits every week between them. The split is
-	root_line's, and it is borrowed rather than recomputed: two implementations
-	of one apportionment is how the card and the plan come to disagree about a
-	week by a plant or two.
-
-	With no TC order named, the whole requirement is TC's -- which is the right
-	answer for a plan that has no roots in it.
-	"""
+	"""The share of each planting week that tissue culture has to cover."""
 	from upande_summer_flowers.summer_flowers.root_line import _apportion
 
 	plants = int(cint(tc_target) * flt(keep or 1.0))
@@ -284,26 +211,13 @@ def _timing(plan, lead_weeks, to_ground_weeks):
 
 @frappe.whitelist()
 def tc_suppliers(search=None, all=0):
-	"""The labs this site can actually order from.
-
-	A free-text supplier field turns a typo into a supplier nobody can raise an
-	order against, so the card offers what exists.
-	"""
+	"""The labs this site can actually order from."""
 	if frappe.session.user == "Guest":
 		frappe.throw(_("Please sign in."), frappe.PermissionError)
 	f = {}
 	if search:
 		f["name"] = ["like", "%%%s%%" % search]
 	# Suppliers awaiting approval are offered too, and named as pending. This
-	# site auto-disables a supplier until its workflow reaches Approved, so
-	# filtering them out meant somebody could create a lab and then not find it,
-	# with nothing on screen saying why. Hiding it does not stop the order; it
-	# stops the explanation.
-	# workflow_state is a custom field, and only on the sites that put an
-	# approval workflow on Supplier. Asking for it unconditionally made this
-	# whole endpoint fail with "Unknown column 'workflow_state'" on a site
-	# without one -- so the picker returned an error rather than a list, and
-	# the card showed no labs at all with nothing saying why.
 	fields = ["name", "disabled"]
 	if frappe.db.has_column("Supplier", "workflow_state"):
 		fields.append("workflow_state")
@@ -330,21 +244,9 @@ def batches_for(production_plan, allocations=None, lead_weeks=None,
 
 
 # ---------------------------------------------------------------------------
-# What the propagation unit can actually take
-# ---------------------------------------------------------------------------
 
 def propagation_units(form="Tissue Culture"):
-	"""The warehouses plants are raised in, with what each one can take.
-
-	A propagation unit holds stock, so it is a warehouse, and its capacity
-	belongs on it rather than in one global figure: Kudenga holds 756,000 and
-	takes both forms, Bondet holds 192,500 and has only ever taken roots, and
-	Plantech is an outside propagator that has never stated a figure at all.
-
-	Every farm's material goes through more than one of them and the split is by
-	form, so there is no unit to pick for a plan. They are a pool, and a delivery
-	programme is measured against the pool.
-	"""
+	"""The warehouses plants are raised in, with what each one can take."""
 	takes = ("custom_sf_takes_roots" if form == "Roots" else "custom_sf_takes_tc")
 	rows = frappe.get_all(
 		"Warehouse",
@@ -358,8 +260,6 @@ def propagation_units(form="Tissue Culture"):
 		per_form = cint(r.custom_sf_roots_capacity_plants if form == "Roots"
 		                else r.custom_sf_tc_capacity_plants)
 		# A stated limit on a week's intake, or what the unit has actually taken
-		# in its heaviest week. The second is evidence rather than a promise, so
-		# which one is being used is reported and never quietly mixed in.
 		out.append({
 			"warehouse": r.name,
 			"holds": per_form or cint(r.custom_sf_capacity_plants),
@@ -373,12 +273,7 @@ def propagation_units(form="Tissue Culture"):
 
 
 def capacity_limits(form="Tissue Culture"):
-	"""The pool's ceilings. Zero means nobody has said, and nothing is applied.
-
-	Read from the propagation warehouses where there are any, and from the
-	settings where there are none -- the settings figures were the first way of
-	saying this and a site that has not drawn its units yet still has them.
-	"""
+	"""The pool's ceilings. Zero means nobody has said, and nothing is applied."""
 	units = propagation_units(form)
 	stated = [u for u in units if u["weekly_intake"]]
 	observed = [u for u in units if not u["weekly_intake"] and u["observed_peak"]]
@@ -417,16 +312,7 @@ def _intake(suppliers):
 
 
 def _fit_intake(suppliers, cap, lead):
-	"""Nothing arrives in a week the unit cannot set down.
-
-	What will not fit moves EARLIER, never later. A batch exists to be ready for
-	a planting week, so a batch that slips arrives after the week it was for;
-	one that comes early only costs holding time. It goes back onto the
-	supplier's own cycle, which is the only week that supplier can send in.
-
-	Returns what had to be moved, because a plan quietly reshaped is a plan
-	nobody checked.
-	"""
+	"""Nothing arrives in a week the unit cannot set down."""
 	report = {"moved": 0, "unplaceable": 0, "weeks": 0}
 	if not cap:
 		return report
@@ -436,8 +322,6 @@ def _fit_intake(suppliers, cap, lead):
 		if not over:
 			break
 		# Latest first: moving a late week's excess back opens nothing behind
-		# it, but moving an early one can overflow the week it lands on, and
-		# that week is then still ahead of the loop.
 		week = over[-1]
 		excess = intake[week] - cap
 		report["weeks"] += 1
@@ -466,8 +350,6 @@ def _push_back(run, suppliers, week, excess, cap, lead):
 			break
 		take = min(b["tc"], excess - shifted)
 		# Earlier slots on this supplier's own cycle, nearest first. A slot the
-		# supplier already uses is preferred; a new one is minted behind the
-		# first only when the used ones are full.
 		slot = add_days(getdate(b["arrives"]), -7 * cycle)
 		placed = 0
 		for _ in range(60):
@@ -505,20 +387,7 @@ def _add_to(run, arrives, qty, cycle, lead):
 
 
 def _cover(out, need):
-	"""How far into the season each lift takes us, counted cumulatively.
-
-	A batch used to be credited with the planting weeks between its own landing
-	and the next batch's. That reads well while every batch sits beside the
-	weeks it was sized for, and it stops being true the moment capacity moves
-	one earlier -- a consignment brought forward still buys the weeks it was
-	always for. It also could not survive a consignment arriving as two lifts
-	weeks apart.
-
-	So supply and demand are both run as totals, across every supplier and every
-	lift in the order the plants actually appear. A lift covers the planting
-	weeks its arrival takes the running supply past, which is the question a
-	buyer is asking: how far am I covered once this one is off.
-	"""
+	"""How far into the season each lift takes us, counted cumulatively."""
 	lifts = []
 	for run in out:
 		for b in run["batches"]:
@@ -540,9 +409,6 @@ def _cover(out, need):
 		w["serves_to"] = str(wanted[idx - 1][0]) if idx else None
 		seen = covered
 		# The week the field wants this lift is not the week it is ready:
-		# capacity can bring a consignment forward, and a lift ready in a week
-		# nobody is planting waits for the next week somebody is. Worked out
-		# once, here, so the card and the propagation plan cannot differ on it.
 		to_farm = next((str(d) for d, _q in wanted if str(d) >= str(ready)), None)
 		w["to_farm"] = to_farm
 		timeline.append({
@@ -552,7 +418,6 @@ def _cover(out, need):
 			"weeks_after_arrival": w["weeks_after_arrival"],
 			"plants_served": w["plants_served"], "serves_to": w["serves_to"],
 			# Where this lift came from, so the whole life of a consignment reads
-			# on one line: ordered, taken in, hardened, handed over.
 			"ordered": b["week"], "ordered_iso": b["week_iso"],
 			"arrives": b["arrives"], "arrives_iso": b["arrives_iso"],
 			"consignment_tc": b["tc"],
@@ -628,29 +493,11 @@ def capacity_view(suppliers, limits, lead):
 
 
 # ---------------------------------------------------------------------------
-# A consignment does not become plants all at once
-# ---------------------------------------------------------------------------
 
 def handover_waves(form="Tissue Culture", supplier=None, default_weeks=0,
                    version=None):
-	"""[(weeks after it arrives, share of the consignment), ...].
-
-	Grade 1 and Grade 2 in the planning workbook are not qualities. They are the
-	first batch of plants off a consignment and the second: Iribov hands over
-	87.7% of a shipment seven weeks after it arrives and the rest two weeks
-	later, roots 71.5% at seventeen weeks and 28.5% at twenty. The planner used
-	to treat a consignment as becoming plants in one week, which is why a
-	delivery that fed a fortnight of planting looked like it fed one.
-
-	A supplier's own rules win. Where it has none the blank-supplier rules apply,
-	and where there are none of those at all the old behaviour stands: everything
-	in one lift, at the protocol's weeks to ground.
-	"""
+	"""[(weeks after it arrives, share of the consignment), ...]."""
 	# The protocol's own profile first, where it states one. How a crop is
-	# propagated is a property of the crop -- Eryngium roots sit 8, 10 and 12
-	# weeks in the trough and root for 7 -- and the settings are the house
-	# default for crops that have not said. A supplier's own rules still win
-	# over both, because how often a lab ships is the lab's business.
 	if version and not supplier:
 		from upande_summer_flowers.summer_flowers import crop_protocol as cp
 
@@ -674,22 +521,13 @@ def handover_waves(form="Tissue Culture", supplier=None, default_weeks=0,
 	if not mine:
 		return [(cint(default_weeks), 1.0)]
 	# Taken as stated. Settings refuses a profile that does not add to a
-	# hundred, so rescaling here would only paper over one that got in before
-	# that rule existed -- and quietly handing over 45% of a consignment as
-	# though it were 50% is worse than saying the profile is wrong.
 	total = sum(flt(r.share_pct) for r in mine) or 1.0
 	scale = 100.0 if abs(total - 100.0) <= 0.5 else total
 	return [(cint(r.weeks_after_arrival), flt(r.share_pct) / scale) for r in mine]
 
 
 def survival(form="Tissue Culture", version=None):
-	"""The share of a consignment of `form` expected to reach the field.
-
-	The protocol's: each route on it states what it loses before planting, so
-	tissue culture and roots -- which do not lose alike -- each carry their own
-	figure, crop by crop. A protocol with no route delivered as `form` loses
-	nothing on it, because it does not buy it.
-	"""
+	"""The share of a consignment of `form` expected to reach the field."""
 	from upande_summer_flowers.summer_flowers.route_ways import route_loss
 
 	loss = flt(route_loss(version, form)) if version else 0.0
@@ -702,7 +540,6 @@ def _lift_batch(batch, waves, keep=1.0):
 	out, running = [], 0
 	for i, (weeks, share) in enumerate(waves):
 		# The last lift takes the remainder, so the lifts add to the consignment
-		# rather than to the nearest rounding error.
 		plants = (qty - running if i == len(waves) - 1
 		          else int(round(qty * share)))
 		running += plants

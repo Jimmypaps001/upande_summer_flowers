@@ -1,11 +1,4 @@
-"""Give every summer flower protocol its field-activity table.
-
-Timeline (planting to uproot) used to be a single weeks-to-pinch figure, which
-only describes a pinched crop. It is now a table of what the plant does in the
-field. Seeds the Field Activity list, then fills each protocol's table from the
-figures it already holds -- written straight to the child table so no protocol
-is re-saved, re-versioned or pushed back through its workflow.
-"""
+"""Give every summer flower protocol its field-activity table."""
 
 import frappe
 from frappe.utils import cint

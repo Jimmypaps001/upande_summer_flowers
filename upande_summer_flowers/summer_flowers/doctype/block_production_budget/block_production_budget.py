@@ -1,12 +1,5 @@
 # Copyright (c) 2026, James Kiruga and contributors
-# For license information, please see license.txt
-"""A production budget for one block over one period.
-
-Costs are held as lines under a category so the same document answers both "what
-will this block cost" and "where is it running over". Actuals are read live from
-the ledger against the budget's cost centre rather than keyed in, so the variance
-cannot drift away from the accounts.
-"""
+"""A production budget for one block over one period."""
 
 import frappe
 from frappe import _
@@ -89,13 +82,7 @@ class BlockProductionBudget(Document):
 					r.uom = frappe.db.get_value("Item", r.item, "stock_uom")
 
 	def load_actuals(self):
-		"""Actuals per category from posted GL entries on this cost centre.
-
-		The mapping is by expense account, because a line's account is the only
-		thing that ties the plan to the ledger. A category whose lines carry no
-		account therefore reports zero actual rather than silently absorbing
-		everything else posted to the cost centre.
-		"""
+		"""Actuals per category from posted GL entries on this cost centre."""
 		self._actual_by_category = {c: 0.0 for c in CATEGORIES}
 		if not self.cost_center:
 			return

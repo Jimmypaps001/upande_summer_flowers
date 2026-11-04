@@ -1,36 +1,5 @@
 # Copyright (c) 2026, James Kiruga and contributors
-# For license information, please see license.txt
-"""What the propagation unit actually did, set against what it was asked to do.
-
-The propagation plan is rebuilt from the production plan every time it is
-saved -- it clears its own weeks and consignments and lays them out again. So
-nothing recorded ON those rows can survive, and actuals cannot live there. They
-live in their own records and are matched back on every rebuild, which is why a
-rebuild never loses them and why correcting one corrects the variance.
-
-Two sources, because the farm genuinely has two:
-
-    Roots are real stock. They are an Item, the cold store and the propagation
-    units are Warehouses, and a transfer between them is already written in the
-    stock ledger. Asking somebody to type that number again is asking for two
-    numbers that will disagree.
-
-    Tissue culture usually is not. It comes from an outside propagator who has
-    no access to this site's ledger, and arrives as an email with a count on
-    it. That is typed in, on a Summer Flower Propagation Actual.
-
-Where both exist for the same kind of event, the ledger wins and the typed
-records are kept but not counted -- said out loud on the plan rather than
-silently dropped, because a number that vanishes is worse than one that is
-wrong. The decision is taken per event type, not per row, so a season is never
-half-read from one source and half from the other.
-
-What it then does to the plan is the point of it. Weeks that have been and gone
-are closed and show what was delivered against what was promised. The shortfall
-they carry is offered forward against the weeks that have not happened yet,
-capped at each week's variance band so that making up a gap does not break the
-tolerance the planting programme was solved to hold.
-"""
+"""What the propagation unit actually did, set against what it was asked to do."""
 
 import json
 
@@ -41,7 +10,6 @@ from frappe import _
 from frappe.utils import add_days, cint, flt, getdate, nowdate
 
 # The events, and the material each one moves. Kept here rather than read off
-# the Select options so a renamed option cannot silently stop matching.
 TC_IN = "TC Received"
 ROOTS_IN = "Roots Withdrawn"
 TO_FARM = "Plants To Farm"
@@ -51,8 +19,6 @@ UPLIFT = "Replan Uplift"
 STOCK_READABLE = (ROOTS_IN, TO_FARM, TC_IN)
 
 # How far from a planned week an actual may land and still be that week's.
-# Three weeks either side: a consignment a month out of place is a different
-# consignment, not a late one.
 MATCH_WEEKS = 3
 
 
@@ -67,12 +33,7 @@ def _d(x):
 
 # ------------------------------------------------------------------ sources
 def route_items(version):
-	"""The Item on each stage of the material route, where one is named.
-
-	Only the Roots row carries one today, which is exactly why the split
-	between read and typed is not a setting: it follows from whether the
-	material is stock on this site or not.
-	"""
+	"""The Item on each stage of the material route, where one is named."""
 	from upande_summer_flowers.summer_flowers import crop_protocol as cp
 
 	out = {}
@@ -98,12 +59,7 @@ def unit_warehouses():
 
 
 def _span(doc):
-	"""The window a movement has to fall in to belong to this season.
-
-	Widened by a quarter either side of the plan's own dates, because material
-	arrives before the first week needs it and the last hand-over trails the
-	last planting.
-	"""
+	"""The window a movement has to fall in to belong to this season."""
 	dates = [_d(r.week_start_date) for r in doc.intake if r.week_start_date]
 	dates += [_d(r.ready_on) for r in doc.intake if r.ready_on]
 	dates += [_d(r.week_start_date) for r in doc.weeks if r.week_start_date]
@@ -127,15 +83,6 @@ def from_stock(doc, version=None):
 	                      frappe.get_cached_doc("Crop Protocol Version", doc.protocol))
 	items = route_items(version) if version else {}
 	# The plants themselves are the variety's own Item. Nothing else can be:
-	# the variety IS an Item on this site, and inventing a second one for the
-	# same plant is how a stock figure stops meaning anything.
-	# Roots have their own item -- a root is not a plant. Tissue culture
-	# usually does not: a plantlet IS the variety, arriving as the thing it
-	# will be. Where the route names no TC item, the variety stands for it,
-	# and the two directions keep them apart: a positive movement INTO a unit
-	# is material arriving, a negative one is plants leaving for the farm.
-	# Without that fallback every TC receipt on the site was unreadable, which
-	# is most of them.
 	wanted = [
 		(items.get("Roots"), ROOTS_IN, "Roots", 1),
 		(items.get("TC") or doc.variety, TC_IN, "Tissue Culture", 1),
@@ -172,13 +119,7 @@ def from_stock(doc, version=None):
 
 
 def typed(doc):
-	"""Submitted records somebody entered, for this variety and season.
-
-	Keyed on variety and season rather than on the plan's name, because that is
-	what the farm means by a propagation operation -- one pool, one season --
-	and a plan that is rebuilt, amended or replaced must not strand what was
-	recorded against it.
-	"""
+	"""Submitted records somebody entered, for this variety and season."""
 	if not (doc.variety and season_year(doc.season_start_year)):
 		return []
 	rows = []
@@ -206,11 +147,7 @@ def typed(doc):
 
 
 def collect(doc, version=None):
-	"""Both sources, merged, with the ledger winning an event it covers.
-
-	Per event type, never per row. Half a season read off the ledger and half
-	typed in is two sets of books for one set of plants.
-	"""
+	"""Both sources, merged, with the ledger winning an event it covers."""
 	ledger = from_stock(doc, version)
 	hand = typed(doc)
 	owned = {r["event"] for r in ledger}
@@ -221,7 +158,6 @@ def collect(doc, version=None):
 		rows.append(r)
 	for r in hand:
 		# An uplift is a decision, not an observation, so no ledger entry can
-		# supersede it.
 		r["counted"] = 0 if (r["event"] in owned and r["event"] != UPLIFT) else 1
 		rows.append(r)
 
@@ -237,15 +173,10 @@ def collect(doc, version=None):
 
 # ----------------------------------------------------------------- matching
 def apportion(total, shares):
-	"""Split `total` across `shares` so the parts sum to exactly `total`.
-
-	Largest remainder, the same rule the planting programme uses, because the
-	alternative -- rounding each part on its own -- loses or invents plants.
-	"""
+	"""Split `total` across `shares` so the parts sum to exactly `total`."""
 	base = sum(shares)
 	if not base or total <= 0:
 		# Nothing to go on. An even split is the only honest guess, and it
-		# still has to add up.
 		n = len(shares) or 1
 		out = [total // n] * n
 		for i in range(total - sum(out)):
@@ -270,12 +201,7 @@ def _nearest(target_dates, when, window_days):
 
 
 def match(doc, bundle):
-	"""Tie each counted actual to the planned row it answers.
-
-	Returns the per-row tallies the plan writes onto its own tables, and the
-	actuals that answered nothing -- which are reported rather than dropped,
-	because an unmatched delivery is usually the interesting one.
-	"""
+	"""Tie each counted actual to the planned row it answers."""
 	window = MATCH_WEEKS * 7
 	intake_dates = {}
 	for r in doc.intake:
@@ -292,7 +218,6 @@ def match(doc, bundle):
 			continue
 		if a["event"] == UPLIFT:
 			# Uplifts are cover the plan has already taken in; they are not a
-			# delivery and must not be counted as one.
 			continue
 
 		if a["event"] in (TC_IN, ROOTS_IN):
@@ -323,7 +248,6 @@ def match(doc, bundle):
 		slot["from"].add(a["recorded_from"])
 		when = _d(a["date"])
 		# The date an arrival is judged on is the last of it. A consignment
-		# that came in three deliveries was not complete until the third.
 		if not slot["on"] or when > slot["on"]:
 			slot["on"] = when
 
@@ -333,12 +257,7 @@ def match(doc, bundle):
 
 # ------------------------------------------------------------------ verdict
 def baseline_of(doc):
-	"""The approved plan, as it stood when it was approved.
-
-	Variance against a plan that moves with the actuals is not variance. The
-	snapshot is taken at approval and never touched again, so a week is judged
-	against what was promised rather than against what it has since become.
-	"""
+	"""The approved plan, as it stood when it was approved."""
 	raw = doc.get("baseline_json")
 	if not raw:
 		return None
@@ -364,14 +283,7 @@ def snapshot(doc):
 
 
 def apply_to(doc):
-	"""Write the comparison onto the plan's own rows and sum it up.
-
-	Runs after the plan has rebuilt itself, so the planned figures it judges are
-	this rebuild's. The baseline, where there is one, is what the ACTUALS are
-	measured against; the current rows are left saying what the plan now holds,
-	so the two questions -- what was promised, what is now intended -- do not
-	collapse into one number.
-	"""
+	"""Write the comparison onto the plan's own rows and sum it up."""
 	version = (doc.protocol and
 	           frappe.get_cached_doc("Crop Protocol Version", doc.protocol))
 	bundle = collect(doc, version)
@@ -383,11 +295,6 @@ def apply_to(doc):
 	cutoff = reported_to(bundle, today)
 
 	# ---- consignments
-	# Several consignments can land in the same week -- three labs delivering
-	# into one week is normal -- so a week's actuals are SPLIT across the rows
-	# that make it up rather than written against each of them. Writing the
-	# pool onto every row counted it once per row, and three labs sharing a
-	# week turned 29,510 plantlets into 83,700.
 	shared = _share(doc.intake, hits["intake"],
 	                lambda r: (r.form, _d(r.week_start_date)),
 	                lambda r: cint(r.units))
@@ -422,7 +329,6 @@ def apply_to(doc):
 		                                   cint(r.plants_to_stick)) \
 			if r.deliver_on else cint(r.plants_to_stick)
 	# Two sticking weeks can hand over in the same week, so the same split
-	# applies -- on what each was promised, which is what it is judged against.
 	shared_w = _share(doc.weeks, hits["weeks"], lambda r: _d(r.deliver_on),
 	                  lambda r: cint(r.baseline_plants))
 	delivered = short = ahead = closed = 0
@@ -440,10 +346,6 @@ def apply_to(doc):
 			r.actual_on = None
 			r.recorded_from = None
 		# A week is closed when something was recorded for it, or when the unit
-		# has reported past it. Not merely when it is in the past: a plan built
-		# for a season already half gone would otherwise open claiming every one
-		# of those weeks failed, when all that has happened is that nobody has
-		# started recording. Silence is not a shortfall.
 		is_closed = bool(slot) or bool(cutoff and when and when <= cutoff)
 		r.state = ("Delivered" if slot and r.actual_plants >= promised
 		           else "Part" if slot
@@ -472,14 +374,6 @@ def apply_to(doc):
 	doc.carried_short = max(0, short - ahead)
 
 	# Survival as the unit actually achieved it, cohort by cohort.
-	#
-	# Not season-to-date. Material that came in this week becomes plants
-	# fifteen weeks later, so dividing this week's hand-over by this week's
-	# intake divides one cohort by a different one -- which on real figures
-	# read as 468% survival, a number that is arithmetically correct and means
-	# nothing. A week counts only when EVERY consignment feeding it has been
-	# reported, because a week fed half from a reported batch and half from an
-	# unreported one makes the reported half look miraculous.
 	doc.actual_survival_pct, doc.survival_basis = _survival(doc, version)
 
 	doc.actuals_note = _note(bundle, hits, base)
@@ -488,12 +382,7 @@ def apply_to(doc):
 
 
 def reported_to(bundle, today=None):
-	"""How far the unit has actually reported, which is not the same as today.
-
-	Capped at today, because a reporting cutoff in the future would close weeks
-	that have not happened -- one mistyped year on one record and a whole
-	season reads as delivered or failed.
-	"""
+	"""How far the unit has actually reported, which is not the same as today."""
 	today = today or getdate(nowdate())
 	dates = [_d(a["date"]) for a in bundle["rows"]
 	         if a["counted"] and a["event"] != UPLIFT]
@@ -511,11 +400,7 @@ def _unreported(when, cutoff, if_future):
 
 
 def _share(rows, slots, key_of, weight_of):
-	"""Give each row its part of the pool its key collected.
-
-	Keyed by id() rather than by name, because a child row being rebuilt in
-	memory has no name yet.
-	"""
+	"""Give each row its part of the pool its key collected."""
 	groups = {}
 	for r in rows:
 		k = key_of(r)
@@ -636,22 +521,7 @@ def _note(bundle, hits, base):
 
 # ------------------------------------------------------------------ re-plan
 def propose(doc, version=None):
-	"""Offer the weeks that have not happened yet the shortfall the closed ones carry.
-
-	Three rules, and they are the whole of it.
-
-	    A week that has been and gone cannot be fixed. Its plants are not
-	    coming, so the gap moves forward rather than staying where it was.
-
-	    A forward week may not be loaded past its variance band. The planting
-	    programme was solved to hold +/- that band against market demand, and
-	    making up a shortfall by dumping it on one week would break the thing
-	    the plan exists to protect.
-
-	    Cover has to come from somewhere real. Roots still in store, or
-	    plantlets a lab is already down for beyond what the order needs. A
-	    re-plan that covers a gap from nothing is a worse lie than the gap.
-	"""
+	"""Offer the weeks that have not happened yet the shortfall the closed ones carry."""
 	short = cint(doc.get("carried_short"))
 	doc.replan_cover = 0
 	doc.replan_still_short = 0
@@ -788,13 +658,7 @@ def _replan_note(doc, short, taken, left, cover, have, band):
 
 @frappe.whitelist()
 def accept(propagation_plan):
-	"""Take the proposal in, as records the plan reads back like any other.
-
-	An accepted re-plan is a decision about forward weeks, so it is written the
-	same way an arrival is -- its own submitted records -- rather than typed
-	into the plan's tables, which the next rebuild would clear. Cancelling them
-	undoes the re-plan.
-	"""
+	"""Take the proposal in, as records the plan reads back like any other."""
 	doc = frappe.get_doc("Summer Flower Propagation Plan", propagation_plan)
 	result = propose(doc)
 	if not result or not result["cover"]:

@@ -1,12 +1,5 @@
 # Copyright (c) 2026, James Kiruga and contributors
-# For license information, please see license.txt
-"""What a production plan asks of the land, block by block.
-
-This was eleven fields and a child table on the plan itself, written on every
-save and read by nobody. It is a thing somebody looks at once, when deciding
-whether to approve the plan, so it is worked out here instead -- against the
-blocks as they stand today rather than as they stood when the plan was saved.
-"""
+"""What a production plan asks of the land, block by block."""
 
 import frappe
 from frappe import _

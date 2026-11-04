@@ -1,11 +1,5 @@
 # Copyright (c) 2026, James Kiruga and contributors
-# For license information, please see license.txt
-"""ISO-week arithmetic shared by demand, plans and motherstock scheduling.
-
-Everything in Summer Flowers is planned on ISO weeks starting Monday. ISO years
-carry either 52 or 53 weeks, so week arithmetic must never assume 52 -- a flush
-family drifts back one calendar week each time it crosses a 53-week year.
-"""
+"""ISO-week arithmetic shared by demand, plans and motherstock scheduling."""
 
 import datetime
 import re
@@ -20,11 +14,6 @@ MONTH_NAMES = [
 
 
 # The week a financial year opens on. July to June, and the register numbers it by
-# ISO week rather than by date: W27 onward belongs to the year the season starts in,
-# W1-W26 to the next. Everything that has to agree about which season a week is in
-# reads this, because deriving it twice is how a plan came to open a week after the
-# register it was built from.
-#: The default. Summer Flower Settings overrides it; season_first_week() reads both.
 SEASON_FIRST_WEEK = 27
 
 
@@ -35,20 +24,7 @@ def season_first_week():
 
 
 def season_year(value, default=0):
-	"""The year a season starts in, however the site writes it down.
-
-	season_start_year is a Link to Fiscal Year, and a Fiscal Year is named
-	whatever the site named it. Here they are calendar years -- "2027" -- and
-	cint() reads those perfectly. On marginpar they are the July-to-June span
-	-- "2027-2028" -- and cint() returns 0 for that, silently, so every season
-	a planner asked for collapsed to the one it was already in: the season
-	picker appeared to work and changed nothing, and every Eryngium plan there
-	reads "52 weeks from 2027-W27" instead of "2027-28" because set_season fell
-	through to the branch for a plan with no year.
-
-	So the year is taken off the front rather than parsed as a whole. "2027",
-	"2027-2028", "2027-28" and 2027 all mean the season starting in 2027.
-	"""
+	"""The year a season starts in, however the site writes it down."""
 	if value in (None, ""):
 		return default
 	if isinstance(value, int):
@@ -104,15 +80,7 @@ def validate_week(week, label=None):
 
 
 def week_family_label(weeks, limit=140):
-	"""The weeks of the year a planting is cut in, written so a person can read it.
-
-	Listing every week was fine while every crop flushed eight times: "wk27, wk39,
-	wk51" and so on. A crop that cuts every week for thirty weeks produces a string
-	longer than the column it is stored in, and the plan fell over saving it.
-
-	Runs of consecutive weeks become ranges, which is both shorter and closer to how
-	anyone says it out loud -- "weeks 27 to 39" rather than thirteen week numbers.
-	"""
+	"""The weeks of the year a planting is cut in, written so a person can read it."""
 	nums = sorted({int(w) for w in weeks if w})
 	if not nums:
 		return None

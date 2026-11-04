@@ -1,24 +1,5 @@
 # Copyright (c) 2026, James Kiruga and contributors
-# For license information, please see license.txt
-"""Motherstock build-up simulation: TC purchase -> multiplication -> field plants.
-
-The model follows the grower's own description. A pool of productive mother plants
-is split each round: some leave for the field, the rest are retained and yield new
-plants, so the pool becomes `retained x (1 + factor)`. With factor 1 and nothing
-sent to the field, the pool doubles every round.
-
-    1000 -> 500 to field, 500 retained -> 500 + 500 = 1000
-    1000 -> 0 to field,  1000 retained -> 1000 + 1000 = 2000
-
-That compounds, which is not what the planning workbook assumed. Its formula,
-`TC = mothers / (cycles x factor)`, is linear: each round adds one cohort of the
-original size, and the arriving plantlet is not counted as a generation of its
-own. Four rounds gives 16x here against 4x there, so the two disagree by roughly
-4x on how many plantlets to buy. Both are reported.
-
-Nothing here touches the database, so the same code serves a saved batch and a
-what-if slider.
-"""
+"""Motherstock build-up simulation: TC purchase -> multiplication -> field plants."""
 
 import datetime
 import math
@@ -29,7 +10,6 @@ from frappe.utils import flt, getdate
 from upande_summer_flowers.summer_flowers.planning import iso_year_week
 
 # Parameters the simulation needs, with the field they come from on a
-# Crop Protocol Version.
 PARAM_FIELDS = (
 	"weeks_on_tray",
 	"hardening_weeks",
@@ -60,7 +40,6 @@ def params_from_version(version, overrides=None):
 	p["farm"] = v.farm
 
 	# A cutting is plantable once rooted and hardened; it only becomes a mother
-	# capable of yielding the next round after the full establishment.
 	p["weeks_to_field_ready"] = (v.weeks_on_tray or 0) + (v.hardening_weeks or 0)
 	p["weeks_to_productive_ms"] = v.establishment_weeks or 0
 
@@ -79,12 +58,7 @@ def simulate(
 	field_pct_per_round=None,
 	horizon_weeks=160,
 ):
-	"""Walk the pool forward round by round.
-
-	`field_pct_per_round` is the share of the pool released to the field at each
-	round; a single number applies to every round, a list gives per-round control.
-	Returns the timeline, the round-by-round ledger and headline totals.
-	"""
+	"""Walk the pool forward round by round."""
 	tc_plants = int(tc_plants or 0)
 	arrival = getdate(tc_arrival_date)
 	rounds = int(rounds or 0)
@@ -117,7 +91,6 @@ def simulate(
 		produced = int(round(retained * factor))
 
 		# New plants are plantable sooner than they are able to mother the next
-		# round, so the field release and the next round run off different clocks.
 		field_week = cursor + cycle + to_field
 		next_pool_week = cursor + cycle + to_productive
 
@@ -187,8 +160,6 @@ def simulate(
 
 	peak = max(timeline, key=lambda r: r["ms_pool"]) if timeline else {}
 	# The linear model this is compared against: the cycles govern, so four rounds
-	# give four plants per plantlet, not five. Kept in step with
-	# CropProtocolVersion.multiplication_factor, which is what actually sizes an order.
 	linear_factor = (rounds * (factor if factor > 0 else 1.0)) if rounds else 1.0
 	linear_equivalent = tc_plants * linear_factor
 	return {
@@ -212,11 +183,7 @@ def simulate(
 
 
 def tc_needed_for(target_pool, rounds, factor, field_pct_per_round=0):
-	"""Smallest TC order that reaches `target_pool` after `rounds`.
-
-	Solved forward rather than closed-form, because releasing plants to the field
-	mid-way makes the growth path depend on rounding at each step.
-	"""
+	"""Smallest TC order that reaches `target_pool` after `rounds`."""
 	target_pool = int(target_pool or 0)
 	if target_pool <= 0:
 		return 0

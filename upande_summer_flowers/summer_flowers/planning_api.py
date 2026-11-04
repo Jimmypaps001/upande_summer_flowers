@@ -1,10 +1,5 @@
 # Copyright (c) 2026, James Kiruga and contributors
-# For license information, please see license.txt
-"""Endpoints for the planning dashboard.
-
-Everything here is a projection: it reads saved documents but writes nothing, so
-the same calls back both the current plan and a what-if slider.
-"""
+"""Endpoints for the planning dashboard."""
 
 import datetime
 import math
@@ -40,18 +35,11 @@ def _guard():
 
 
 def resolve_plan(variety=None, farm=None, plan=None):
-	"""The plan the dashboard should show when none was asked for.
-
-	An approved plan is preferred over a newer draft. Picking simply the newest
-	made the whole dashboard swing onto whatever draft was created last, which
-	hid the approved plan and -- because a budget only exists once a plan is
-	approved -- made the budget look as though it had disappeared.
-	"""
+	"""The plan the dashboard should show when none was asked for."""
 	if plan:
 		return plan
 	f = {"docstatus": ["<", 2]}
 	# Kept out of the return so every existing caller is untouched: what this
-	# picked, and whether anybody asked for it, is read back with scope_of().
 	if variety:
 		f["variety"] = variety
 	if farm:
@@ -86,10 +74,6 @@ def plans(variety=None, farm=None):
 		order_by="creation desc",
 	)
 	# Every plan carried the same period label, so eighteen of them read as
-	# eighteen copies of one thing. Name the crop and the coverage instead: that is
-	# what tells them apart.
-	# Named, not coded: the label is read by a person, and "15831" is not what
-	# anyone calls Daucus carota 'Dara'.
 	from upande_summer_flowers.summer_flowers.crop_protocol import variety_names
 	named = variety_names([r.variety for r in rows])
 	for r in rows:
@@ -101,12 +85,6 @@ def plans(variety=None, farm=None):
 	drafts = [r for r in rows if r.docstatus == 0]
 
 	# The financial years the demand register covers, which are not the same as the
-	# years there are plans for. A register carrying three years with one of them
-	# planned left the year picker holding a single option, and a picker with one
-	# option is disabled -- which is what "the financial year is not working" has
-	# meant every time it has been reported. The register is per variety per farm,
-	# so both narrow it -- the seasons offered are the ones this farm's own order
-	# book covers, not another farm's.
 	regf = {}
 	if variety:
 		regf["variety"] = variety
@@ -152,7 +130,6 @@ def scope():
 		"versions": rows,
 		"varieties": varieties,
 		# What the grower calls each one. The page prints these as plain text,
-		# where the Item link title cannot reach.
 		"variety_names": variety_names(varieties),
 		"farms": sorted({r.farm for r in rows if r.farm}),
 	}
@@ -160,14 +137,7 @@ def scope():
 
 @frappe.whitelist()
 def scope_of(variety=None, farm=None, plan=None):
-	"""What the dashboard is actually showing, and whether anyone chose it.
-
-	With no variety and no farm, resolve_plan picks the newest approved plan and
-	the whole page then reports that one plan -- one variety, one farm -- under a
-	filter bar reading "All varieties". Every figure on it is real; none of them is
-	what the bar says. So the page has to be able to say which plan it landed on
-	and that nobody asked for it.
-	"""
+	"""What the dashboard is actually showing, and whether anyone chose it."""
 	_guard()
 	chosen = resolve_plan(variety, farm, plan)
 	f = {"docstatus": ["<", 2]}
@@ -186,9 +156,6 @@ def scope_of(variety=None, farm=None, plan=None):
 		"season": p.season if p else None,
 		"state": (p.workflow_state if p else None),
 		# Judged on variety and farm, not on the plan. The page resolves a plan for
-		# itself and holds it in its own state, so keying on that reported "you
-		# asked for this" for a plan nobody had chosen. What matters to the reader
-		# is that the scope bar says every variety while the figures are one.
 		"implicit": bool(chosen and not (variety or farm)),
 		"plans_in_scope": total,
 		"asked": {"variety": variety or None, "farm": farm or None,
@@ -198,11 +165,7 @@ def scope_of(variety=None, farm=None, plan=None):
 
 @frappe.whitelist()
 def demand_vs_production(variety=None, farm=None, plan=None):
-	"""Weekly and monthly demand against planned production, plus plants and stems.
-
-	Answers "demand per variety against planned production, and the number of
-	plants and stems" in one payload.
-	"""
+	"""Weekly and monthly demand against planned production, plus plants and stems."""
 	_guard()
 	plan = resolve_plan(variety, farm, plan)
 	if not plan:
@@ -212,10 +175,6 @@ def demand_vs_production(variety=None, farm=None, plan=None):
 	v = frappe.get_cached_doc("Crop Protocol Version", p.protocol)
 
 	# Only a committed order constrains anything, so only then is the stored
-	# supplied figure the answer. Reading it unconditionally returns zero for every
-	# plan saved before the column existed -- a plan that grows nothing, which is
-	# both wrong and alarming. Falling back on the value being falsy would be worse:
-	# a week a real order genuinely cannot supply would quietly show production.
 	committed = bool(p.tc_choice_committed)
 
 	weeks = [
@@ -226,8 +185,6 @@ def demand_vs_production(variety=None, farm=None, plan=None):
 			"production": w.production_stems or 0,
 			"variance": w.variance_stems or 0,
 			# What the confirmed order can actually supply this week. Equal to
-			# production until an order is confirmed, so the column reads as "no
-			# constraint yet" rather than as a plan that grows nothing.
 			"supplied": (cint(w.supplied_production_stems) if committed
 			             else cint(w.production_stems)),
 			"area_ha": flt(w.area_ha),
@@ -254,7 +211,6 @@ def demand_vs_production(variety=None, farm=None, plan=None):
 		"version": p.protocol,
 		"status": p.status,
 		# The register this plan answers, so the demand tab can act on it without
-		# guessing from the variety name.
 		"market_demand": p.market_demand,
 		"period": f"{p.from_year}-W{p.from_week:02d} to {p.to_year}-W{p.to_week:02d}",
 		"tc_committed": committed,
@@ -288,18 +244,7 @@ def demand_vs_production(variety=None, farm=None, plan=None):
 
 @frappe.whitelist()
 def demand_vs_production_by_variety(farm=None, season=None):
-	"""Every variety's demand and production in one payload, and their sum.
-
-	The rest of the dashboard is built around one plan, because a plan IS one
-	variety at one farm for one year, and every plan-specific figure would be
-	meaningless averaged. The overview chart is the exception: "what is the farm
-	doing this year" is a fair question and it has more than one crop in it.
-
-	Built by summing demand_vs_production per plan rather than by querying the
-	weeks again. A second walk over the same child tables is a second answer
-	waiting to disagree with the first, which is how most of the bugs in this
-	module started.
-	"""
+	"""Every variety's demand and production in one payload, and their sum."""
 	_guard()
 	f = {"docstatus": ["<", 2]}
 	if farm:
@@ -311,8 +256,6 @@ def demand_vs_production_by_variety(farm=None, season=None):
 	                      order_by="creation desc")
 
 	# One plan per variety: the authoritative one where there is one, else the
-	# newest draft. Summing a variety's draft on top of its approved plan would
-	# count the same crop twice.
 	best = {}
 	for r in rows:
 		cur = best.get(r.variety)
@@ -326,9 +269,6 @@ def demand_vs_production_by_variety(farm=None, season=None):
 			continue
 		t = d["totals"]
 		# When this variety goes in the ground, and what has been settled about
-		# getting the material for it. Read off the plan's own rows and the
-		# documents that hang off it -- an overview with no variety chosen was
-		# showing one plan's numbers and nothing at all about the other thirty-six.
 		blocks = frappe.get_all(
 			"Summer Flower Plan Block",
 			filters={"parent": r.name, "parenttype": "Summer Flower Production Plan",
@@ -368,9 +308,6 @@ def demand_vs_production_by_variety(farm=None, season=None):
 				cell = bag.setdefault(w["label"], {"label": w["label"],
 				                                   "production": 0, "demand": 0})
 				# Sorted on when it happened, never on how it is written. A week
-				# label sorts by accident because it starts with the year; a month
-				# label reads "Apr 29" and sorts alphabetically, which put April
-				# before August and every year interleaved with every other.
 				cell["sort"] = (cint(w.get("year")), cint(w.get("month"))
 				                or cint(w.get("week_no")))
 				cell["production"] += cint(w.get("production"))
@@ -403,12 +340,7 @@ def _has_pool(v):
 
 
 def _direct_derivation(dv, v, peak_plants):
-	"""The same question for a crop bought and planted: how big is the order.
-
-	Named for what the route actually buys -- seeds, roots, tubers, plants --
-	and counted down the losses that route carries, which is the ladder the
-	material card shows week by week.
-	"""
+	"""The same question for a crop bought and planted: how big is the order."""
 	from upande_summer_flowers.summer_flowers import sourcing
 	from upande_summer_flowers.summer_flowers.doctype \
 		.summer_flower_production_plan.summer_flower_production_plan import (
@@ -463,12 +395,8 @@ def tc_derivation(plan=None, variety=None, farm=None):
 	v = frappe.get_cached_doc("Crop Protocol Version", dv["version"])
 	t = dv["totals"]
 	# Sized from the planned peak, so the derivation shows a real order for a plan
-	# whose blocks are not settled yet rather than a column of zeros.
 	peak_plants = t.get("peak_weekly_sticking_planned") or t["peak_weekly_sticking"] or 0
 	# A crop with no pool is not a motherstock story and must not be told as one.
-	# This ran whatever the route, so a seed-raised crop was shown mother plants
-	# it does not have, plantlets it does not buy and a TC order date for seed --
-	# every figure arithmetically derived and none of it about this crop.
 	if not _has_pool(v):
 		return _direct_derivation(dv, v, peak_plants)
 	cuttings = v.cuttings_for_plants(peak_plants) if peak_plants else 0
@@ -491,17 +419,10 @@ def tc_derivation(plan=None, variety=None, farm=None):
 		 "note": f"at {per_week:g} cutting per plant per week"},
 	]
 	# The TC order is the long pole in this whole chain -- 22 to 26 weeks of lead
-	# before a single cutting exists -- so the derivation carries it through to the
-	# order itself rather than stopping at mother plants. The propagation plan's
-	# numbers win where one exists, so the overview cannot disagree with the
-	# document that actually gets approved.
 	tc = {"tc_plants": 0, "tc_order_date": "", "tc_on_farm_date": "",
 	      "first_sticking_date": "", "tc_source": None, "tc_cost": 0,
 	      "ramp_weeks": 0, "full_capacity_date": "", "lost_to_ramp": 0,
 	      # The build-up these figures assume. Without it a caller seeding a
-	      # simulator from this payload has to go and ask the protocol
-	      # separately, and can seed a quantity and a cycle count that do not
-	      # belong to each other.
 	      "build_up_cycles": 0}
 	rows = frappe.get_all(
 		"Summer Flower Propagation Plan",
@@ -526,8 +447,6 @@ def tc_derivation(plan=None, variety=None, farm=None):
 		})
 		if cint(r.mother_plants_required):
 			# The plan nets off standing motherstock and sizes on the worst uncovered
-			# week, so its figure is the one to act on. Say where the difference from
-			# the raw derivation comes from rather than showing two numbers.
 			if cint(r.mother_plants_required) != mothers:
 				steps[-1]["note"] += _(
 					" — {0} says {1} after netting off standing motherstock"
@@ -536,16 +455,10 @@ def tc_derivation(plan=None, variety=None, farm=None):
 			mothers = cint(r.mother_plants_required)
 	elif mothers:
 		# No propagation plan yet, so size the order the same way one would: run an
-		# unsaved batch through its own controller instead of repeating its maths.
 		probe = frappe.new_doc("Summer Flower Motherstock Batch")
 		probe.variety, probe.farm, probe.protocol = dv["variety"], dv["farm"], v.name
 		probe.peak_weekly_cuttings = cuttings
 		# cuttings is already cuttings_for_plants(peak) -- rooting and field loss and
-		# the reject rate are in it. The batch applies cuttings_per_plant_required
-		# itself when apply_losses is set, so leaving it on multiplied the 1.17 in
-		# twice: the Motherstock tab read 11,754 plantlets where the TC tab read
-		# 10,046, for the same plan and the same week. The same double count produced
-		# the 1,992 in the what-if probe, which was fixed there and not here.
 		probe.apply_losses = 0
 		probe.first_sticking_date = _first_sticking_for(dv["plan"])
 		if probe.first_sticking_date:
@@ -562,8 +475,6 @@ def tc_derivation(plan=None, variety=None, farm=None):
 			})
 
 	# The requirement and the order are different numbers and both belong on the
-	# derivation: ordering the requirement exactly arrives short by the loss rate,
-	# and seeing only the larger figure makes the multiplication look wrong.
 	required = int(math.ceil(v.tc_plants_for(mothers, None, with_loss=False))) if mothers else 0
 	mf = v.multiplication_factor()
 	factor_txt = ("%g" % mf)
@@ -611,13 +522,7 @@ from upande_summer_flowers.summer_flowers.doctype.summer_flower_motherstock_batc
 
 
 def _prop_filters(plan):
-	"""How to find the propagation plan for a production plan.
-
-	By variety and season, because that is how it is keyed: propagation is one pool of
-	motherstock and one TC order for a crop in a year, whichever production plan it was
-	last built from. Looking it up by production_plan reported no propagation plan for a
-	crop that had one, as soon as a second plan was cut for the same season.
-	"""
+	"""How to find the propagation plan for a production plan."""
 	row = frappe.db.get_value("Summer Flower Production Plan", plan,
 	                          ["variety", "season_start_year"], as_dict=True)
 	if not row:
@@ -628,15 +533,7 @@ def _prop_filters(plan):
 
 
 def sizing_peak(p):
-	"""The sticking week the TC order is sized from, and what it counts.
-
-	The planned peak, which includes plantings that have no block yet, falling back
-	to the placed one. The order goes to the lab months before anyone knows which
-	block will be free, so sizing it to the plantings that already have one
-	guarantees the plan can never be met even after the blocks are sorted out --
-	and where nothing is placed at all it sized the order at zero, which is what
-	made the whole TC panel read 0 plantlets against a real 3.7 million stem demand.
-	"""
+	"""The sticking week the TC order is sized from, and what it counts."""
 	planned = cint(p.get("peak_weekly_sticking_planned"))
 	placed = cint(p.get("peak_weekly_sticking"))
 	if planned:
@@ -647,13 +544,7 @@ def sizing_peak(p):
 
 
 def _first_sticking_for(plan, placed_only=False):
-	"""Earliest sticking week the plan proposes, as a date.
-
-	Every proposal by default, not only the placed ones. A planting with no block
-	still has a sticking week, and it is the earliest one that dates the TC order;
-	excluding them returned nothing at all for a plan where none are placed, so the
-	order date read "not sized yet" when it was in fact already overdue.
-	"""
+	"""Earliest sticking week the plan proposes, as a date."""
 	extra = "and ifnull(not_placed, 0) = 0" if placed_only else ""
 	row = frappe.db.sql("""select sticking_year y, sticking_week w
 		from `tabSummer Flower Plan Block`
@@ -666,25 +557,10 @@ def _first_sticking_for(plan, placed_only=False):
 
 
 # ---------------------------------------------------------------------------
-# What a TC quantity actually produces
-# ---------------------------------------------------------------------------
 
 def _tc_production(plan_doc, version, tc_qty, order_date, divert_weeks=0,
                    max_bench_sqm=None, week_overrides=None, schedule=None):
-	"""Roll a TC quantity all the way through to stems against demand.
-
-	The chain has always been TC -> pool -> cuttings -> plants stuck -> plantings
-	-> flushes -> stems, but nothing walked it: a smaller order changed a
-	percentage on a tile and left production untouched. Here the cuttings a pool
-	can actually cut in a given week are what limit the plantings whose sticking
-	week that is, and only the plants that get stuck are folded into the weekly
-	grid. Buy less and the plantings shrink, so the stems shrink, so the coverage
-	shrinks.
-
-	Uses the plan's own flush arithmetic -- flush_offsets against the planting
-	date -- so with cuttings unlimited this reproduces the plan's stored numbers
-	rather than a second opinion about them.
-	"""
+	"""Roll a TC quantity all the way through to stems against demand."""
 	from upande_summer_flowers.summer_flowers import lifecycle_sim as ls
 
 	v = version
@@ -703,21 +579,10 @@ def _tc_production(plan_doc, version, tc_qty, order_date, divert_weeks=0,
 	              if (r.year, r.week_no) in index}
 
 	# Weekly cuttings the farm can actually take, from the pool this order builds.
-	# The horizon is measured from the ORDER date to the last week the plan needs a
-	# cutting, not the plan's own week count: the order goes in more than a year
-	# before the plan starts, so counting weeks_covered from it stopped the run
-	# short and the last sticking weeks had no capacity row at all -- which read as
-	# plantings that no order size could supply.
-	# One plantlet buys one mother. Without this the simulation applied the
-	# protocol's multiplication factor on top of the diverted cuttings, so a
-	# quantity tried here became four times the pool it can actually raise and the
-	# coverage it reported was four times too good.
 	from upande_summer_flowers.summer_flowers.propagation_solver import TC_IS_ONE_MOTHER
 
 	p = ls.params_from_version(v.name, TC_IS_ONE_MOTHER)
 	# Overrides arrive keyed by the week a grower reads -- "2026-W06" -- and the
-	# simulation counts weeks from the order date, so they are translated here
-	# rather than making the caller do sim-week arithmetic.
 	overrides = {}
 	for key, value in (week_overrides or {}).items():
 		try:
@@ -737,23 +602,15 @@ def _tc_production(plan_doc, version, tc_qty, order_date, divert_weeks=0,
 	if last_stick:
 		span = max(span, ((getdate(last_stick) - getdate(order_date)).days // 7) + 4)
 	# The diversion is weeks, not a standing percentage: the whole cut goes back
-	# for that many weeks from the first cutting, and after it the field takes what
-	# it asks for and the rest is left on the mother. A standing percentage
-	# compounded every week for the life of the run.
 	first_cut_sw = (cint(p["supplier_lead_weeks"])
 	                + (cint(p.get("tc_to_first_cut_weeks"))
 	                   or cint(p["ms_establishment_weeks"])))
 	# Counted before the diversion window is added, because those are not somebody's
-	# splits -- they are the decision being tried, and reporting them as "weeks you
-	# changed" made an 8-week diversion look like eight hand edits.
 	typed_overrides = len(overrides)
 	for i in range(cint(divert_weeks)):
 		overrides.setdefault(first_cut_sw + i, 0)
 	if schedule is not None:
 		# The peak-week line, already worked out, rather than a second simulation
-		# of it. Two engines answering the same question is what had the what-if
-		# card and the motherstock card quoting different orders for one plan, so
-		# the schedule is handed in and walked rather than re-derived.
 		rows = []
 		for r in schedule.get("weeks_table") or []:
 			y, w = getdate(r["week_start"]).isocalendar()[:2]
@@ -795,7 +652,6 @@ def _tc_production(plan_doc, version, tc_qty, order_date, divert_weeks=0,
 		if cint(b.is_new_planting):
 			continue
 		# Already in the ground: no cutting is needed for it, so no TC decision can
-		# touch it. Taken from the plan's own stored contribution.
 		if not b.existing_planting:
 			continue
 		from upande_summer_flowers.summer_flowers.doctype.planting_calendar \
@@ -814,8 +670,6 @@ def _tc_production(plan_doc, version, tc_qty, order_date, divert_weeks=0,
 		key=lambda b: (cint(b.sticking_year), cint(b.sticking_week)))
 
 	# The first week any pool built by this order can cut. A planting whose
-	# sticking week is before that cannot be supplied by it at any size, which is a
-	# different answer from "buy more" and has to read differently.
 	first_cut = min((( r["year"], r["week_no"]) for r in sim["rows"]
 	                 if cint(r["total_cap"])), default=None)
 
@@ -838,9 +692,6 @@ def _tc_production(plan_doc, version, tc_qty, order_date, divert_weeks=0,
 	for b in rows:
 		key = (cint(b.sticking_year), cint(b.sticking_week))
 		# What the DEMAND asked for, not what a previous trim left behind. Walking
-		# from b.plants once the plan starts writing the trim back onto it would
-		# shrink the planting a little further on every save, each pass taking the
-		# last pass's answer as the new requirement.
 		want_plants = cint(b.get("plants_from_demand")) or cint(b.plants)
 		plants_wanted += want_plants
 		sr = stick_rows.setdefault(key, {
@@ -849,7 +700,6 @@ def _tc_production(plan_doc, version, tc_qty, order_date, divert_weeks=0,
 			"capacity": total_cap_at.get(key, 0),
 			"base_capacity": base_cap_at.get(key, 0),
 			# Capacity that exists this week only because cuttings were diverted
-			# earlier and have finished establishing.
 			"returned_capacity": prop_cap_at.get(key, 0),
 			"to_farm": capacity.get(key, 0),
 			"to_prop": total_cap_at.get(key, 0) - capacity.get(key, 0),
@@ -933,8 +783,6 @@ def _tc_production(plan_doc, version, tc_qty, order_date, divert_weeks=0,
 		"order_date": str(order_date),
 		"weeks": weeks,
 		# Per planting, how many plants the agreed order can actually stick. The
-		# plan writes this onto its own rows, so what it says it will plant is
-		# what the materials bought for it can plant.
 		"supplied_by_row": supplied_by_row,
 		"production_stems": total_prod,
 		"demand_stems": total_dem,
@@ -964,13 +812,7 @@ def _tc_production(plan_doc, version, tc_qty, order_date, divert_weeks=0,
 
 def _solve_tc_for_demand(plan_doc, version, order_date, target_pct=100.0,
                          tolerance_pct=10.0, ceiling=None):
-	"""Smallest TC order whose production lands within tolerance of demand.
-
-	Coverage rises with the order size but not smoothly -- a planting is whole beds
-	and either happens or does not -- so this bisects rather than inverting a
-	formula, and reports the coverage it actually reached instead of assuming the
-	target was hit.
-	"""
+	"""Smallest TC order whose production lands within tolerance of demand."""
 	lo, hi = 0, cint(ceiling) or 200_000
 	floor_pct = target_pct - flt(tolerance_pct)
 	best = None
@@ -999,14 +841,7 @@ def _solve_tc_for_demand(plan_doc, version, order_date, target_pct=100.0,
 
 
 def _cutting_weeks(version, cycles):
-	"""Weeks left to cut from a pool reached in `cycles`, or None if unknowable.
-
-	The line is renewed from tissue culture on motherstock one's clock, so every
-	cycle past the first is an establishment spent out of the same window. Where
-	the protocol has not recorded the life or the establishment, the answer is not
-	zero -- it is that nobody has said, and a zero printed here reads as a verdict
-	that the pool has nothing left to give.
-	"""
+	"""Weeks left to cut from a pool reached in `cycles`, or None if unknowable."""
 	life = cint(version.motherstock_life_weeks)
 	est = cint(version.weeks_tc_to_first_cut())
 	if not life or (cint(cycles) > 1 and not est):
@@ -1017,14 +852,7 @@ def _cutting_weeks(version, cycles):
 @frappe.whitelist()
 def tc_purchase(plan=None, variety=None, farm=None, tc_qty=None, tolerance_pct=10,
                 order_date=None, cycles=None):
-	"""What to buy on the first TC order, and what buying differently does.
-
-	The recommendation is the amount that makes the pool exactly meet the plan's
-	peak sticking week -- the order for a plan that works. Everything downstream is
-	proportional to the pool, so the tolerance is expressed in plantlets and the
-	stems follow: buy 10% under and the peak week is 10% short, which is 10% of the
-	plantings that week not happening.
-	"""
+	"""What to buy on the first TC order, and what buying differently does."""
 	_guard()
 	plan = resolve_plan(variety, farm, plan)
 	if not plan:
@@ -1039,16 +867,12 @@ def tc_purchase(plan=None, variety=None, farm=None, tc_qty=None, tolerance_pct=1
 	per_week = flt(v.cuttings_per_plant_per_week) or 1.0
 	mothers = int(math.ceil(cuttings / per_week)) if cuttings else 0
 	# The three levers, each falling back to what the plan is running on. Asking for
-	# one and not the others has to leave the others where they were, or a tweak to
-	# the quantity would silently reset a date the user had already chosen.
 	cycles = cint(cycles) if cycles not in (None, "") else (
 		cint(p.tc_cycles_committed) if p.tc_choice_committed
 		else cint(v.max_multiplication_cycles))
 	recommended = int(math.ceil(v.tc_plants_for(mothers, cycles))) if mothers else 0
 
 	# The propagation plan nets off standing motherstock, so where one exists its
-	# order is the one to place. The recommendation above is what the plan would
-	# need with no motherstock at all, which is the number to sanity-check against.
 	prop = frappe.get_all(
 		"Summer Flower Propagation Plan",
 		filters=_prop_filters(plan),
@@ -1066,7 +890,6 @@ def tc_purchase(plan=None, variety=None, farm=None, tc_qty=None, tolerance_pct=1
 	cover_of_peak = (pool_for(chosen) * per_week / cuttings * 100) if cuttings else 0
 
 	# The order date decides which weeks the pool can supply at all, so it comes
-	# from the propagation plan where one exists rather than being invented.
 	if order_date:
 		order_date = getdate(order_date)
 	elif p.tc_choice_committed and p.tc_order_date_committed:
@@ -1077,16 +900,12 @@ def tc_purchase(plan=None, variety=None, farm=None, tc_qty=None, tolerance_pct=1
 		order_date = tc_order_by_date(v, _first_sticking_for(plan), cycles=cycles)
 
 	# What this quantity actually grows, and the smallest quantity that lands the
-	# demand. Buying less is now a production number, not a percentage on a tile.
 	built = solved = None
 	if order_date:
 		built = _tc_production(p, v, chosen, order_date)
 		solved = _solve_tc_for_demand(p, v, order_date, tolerance_pct=tol,
 		                              ceiling=max(recommended * 40, 200_000))
 	# When no order size lands the demand, the reader needs to know whether buying
-	# more would help. Usually it would not: a planting with no block does not happen
-	# however many plantlets arrive, and quoting a bigger TC number against that reads
-	# as though the shortfall were a purchasing decision.
 	binding = None
 	if solved and not solved.get("solved"):
 		if cint(p.plantings_not_placed):
@@ -1133,22 +952,15 @@ def tc_purchase(plan=None, variety=None, farm=None, tc_qty=None, tolerance_pct=1
 		"peak_plants": peak_plants,
 		"peak_week": peak_week,
 		# Which peak the order was sized from, so the panel can say so rather than
-		# leaving the reader to wonder why it is bigger than the placed plantings.
 		"peak_basis": peak_basis,
 		"peak_plants_placed": cint(p.peak_weekly_sticking),
 		"peak_cuttings": cuttings,
 		"mothers_for_peak": mothers,
 		"build_up_cycles": cycles,
 		# What multiplying costs. The line is renewed from tissue culture on
-		# motherstock one's clock -- 1.2 comes out when 1 comes out -- so every extra
-		# cycle is an establishment spent out of the same window, not added to it.
-		# The panel showed the benefit (×factor, fewer plantlets) with no sign of the
-		# price, and six cycles is a pool that is full the week it is pulled out.
 		"line_life_weeks": cint(v.motherstock_life_weeks),
 		"cycle_cost_weeks": cint(v.weeks_tc_to_first_cut()),
 		# None, not zero, where the protocol has not said how long the line lives or
-		# how long an establishment takes. Zero would read as "nothing left to cut",
-		# which is a verdict; what is true is that nobody has said.
 		"cutting_weeks": _cutting_weeks(v, cycles),
 		"cutting_weeks_by_cycles": [
 			{"cycles": c,
@@ -1158,13 +970,6 @@ def tc_purchase(plan=None, variety=None, farm=None, tc_qty=None, tolerance_pct=1
 			for c in range(1, max(5, cycles + 2))
 		],
 		# What the plan is actually committed to, so the dashboard can show a tried
-		# figure as tried rather than as decided.
-		# What the sourcing says, as against what the ground would grow. The plan
-		# sizes plantings from demand and reports what they yield; the propagation
-		# plan says whether there are cuttings to stick them with, and the two are
-		# different questions with different answers. The plan cannot ask the
-		# propagation plan for this while it is being built without the two becoming
-		# circular, so it is carried here instead of folded into coverage.
 		"sourcing": ({
 			"propagation_plan": prop.name,
 			"plants_to_stick": cint(prop.total_plants_to_stick),
@@ -1205,24 +1010,7 @@ def tc_purchase(plan=None, variety=None, farm=None, tc_qty=None, tolerance_pct=1
 def plan_whatif(plan=None, variety=None, farm=None, tc_qty=None, week_overrides=None,
                 multiplications=None, divert_weeks=None, order_date=None,
                 to_prop_pct=None, cycles=None):
-	"""Try a different order and see what it does to the plan's stems.
-
-	Same walk as tc_purchase, but it also hands back the per-sticking-week rows the
-	numbers came from so they can be changed one week at a time. Nothing is saved:
-	the plan on file is untouched until the choice is confirmed, so this is the
-	place to find out whether the plan is worth going on with.
-
-	Two levers, and they are the ones the farm pulls: how many plantlets, and how
-	many times the cut is sent back to build another generation -- four at the
-	most. The order date follows from the second unless it is pinned: multiplying
-	needs fewer plantlets but pulls the order earlier and leaves the line fewer
-	weeks to cut, because the block is cleared one life after its FIRST cut.
-
-	`divert_weeks`, `cycles` and `to_prop_pct` were earlier levers: a window in
-	which the whole cut went back, a count of sequential generations, and a
-	standing percentage diverted for ever. All three are accepted and ignored so
-	an older caller does not fail; none of them sizes anything.
-	"""
+	"""Try a different order and see what it does to the plan's stems."""
 	_guard()
 	plan = resolve_plan(variety, farm, plan)
 	if not plan:
@@ -1244,14 +1032,6 @@ def plan_whatif(plan=None, variety=None, farm=None, tc_qty=None, week_overrides=
 	from upande_summer_flowers.summer_flowers import propagation_solver as ps
 
 	# The line as the solver works it out, for the multiplication being asked for.
-	# This is the same engine the popup, the Motherstock Plan and the dashboard
-	# read, so what-if and the documents cannot quote different orders for the
-	# same choice.
-	# The agreed line is the starting point, so the card opens on the figure that
-	# will actually be ordered rather than on a fresh proposal beside it.
-	# The pair, or neither half of it -- see motherstock_line. Moving one lever
-	# must re-size the other, not keep the agreed figure beside a count it was
-	# never worked out for.
 	agreed = frappe.db.get_value(
 		"Summer Flower Motherstock Plan", {"production_plan": plan},
 		["tc_to_order", "multiplications"], as_dict=True)
@@ -1279,7 +1059,6 @@ def plan_whatif(plan=None, variety=None, farm=None, tc_qty=None, week_overrides=
 	mult = cint(chosen_line.get("multiplications") if mult is None else mult)
 
 	# An asked-for date wins; otherwise the one the diversion implies, which is what
-	# the order actually has to be placed on.
 	asked_date = getdate(order_date) if order_date else None
 	if asked_date:
 		order_date = asked_date
@@ -1293,21 +1072,12 @@ def plan_whatif(plan=None, variety=None, farm=None, tc_qty=None, week_overrides=
 		return {"plan": plan, "error": "No sticking weeks to plan cuttings for."}
 
 	# What to buy for the cycles being ASKED for, which is the whole point of the
-	# lever: the pool is the same size either way, so twice the build-up rounds is
-	# half the plantlets. Sized off the pool the propagation plan worked out, by the
-	# same helper the motherstock batch uses, so the recommendation and the batch
-	# cannot disagree.
-	# The least that covers every planting week at THIS diversion -- not the plan's
-	# stored figure, which was worked out at a different one. Reusing it is what
-	# made the quantity sit still while the order date moved, so the order on
-	# screen raised a pool that no longer matched the one being asked for.
 	recommended = cint(rec_line.get("buy") or chosen_line.get("tc") or 0)
 	chosen = cint(tc_qty) if cint(tc_qty) else cint(chosen_line.get("tc") or recommended)
 
 	built = _tc_production(p, v, chosen, order_date, week_overrides=week_overrides,
 	                       schedule=sched)
 	# The plan as it stands, for comparison: what changing anything is measured
-	# against. Read from the document, not recomputed, so the baseline is the plan.
 	return {
 		"plan": plan, "variety": p.variety, "farm": p.farm, "version": v.name,
 		"status": p.workflow_state or p.status,
@@ -1315,8 +1085,6 @@ def plan_whatif(plan=None, variety=None, farm=None, tc_qty=None, week_overrides=
 		"tc_qty": chosen,
 		"multiplications": mult,
 		# Kept under its old name as well, because the card and the saved plan
-		# both still read it and a missing key reads as zero rather than as a
-		# changed model.
 		"divert_weeks": mult,
 		"generations": len(chosen_line.get("generations") or []),
 		"weeks_met": cint(chosen_line.get("weeks_met")),
@@ -1333,11 +1101,9 @@ def plan_whatif(plan=None, variety=None, farm=None, tc_qty=None, week_overrides=
 		"shortfall": cint((sched or {}).get("shortfall")),
 		"sends_made": cint((sched or {}).get("sends_made")),
 		# For the cycles asked for, not for the plan's. What the plan is running on
-		# is in "current" below, which is what this used to duplicate.
 		"recommended_tc": cint(recommended),
 		"propagation_plan": prop.name if prop else None,
 		# What the plan is running on now, so the three levers can be shown as
-		# changed-from rather than as bare numbers.
 		"current": {
 			"tc_qty": cint(prop.tc_plants_required) if prop else 0,
 			"order_date": str(prop.tc_order_date) if prop and prop.tc_order_date else None,
@@ -1346,7 +1112,6 @@ def plan_whatif(plan=None, variety=None, farm=None, tc_qty=None, week_overrides=
 				{"production_plan": plan}, "multiplications") or 0),
 		},
 		# What the order actually becomes, week by week, rather than the order times
-		# a multiplication factor.
 		"mother_plants_from_order": cint(chosen_line.get("peak_pool")),
 		"baseline": {
 			"coverage_pct": flt(p.coverage_pct),
@@ -1361,11 +1126,7 @@ def plan_whatif(plan=None, variety=None, farm=None, tc_qty=None, week_overrides=
 
 @frappe.whitelist()
 def tc_options(version, target_pool, need_by=None, field_pct=0, max_rounds=6):
-	"""TC order size against how early it has to arrive.
-
-	The trade-off the grower asked to see: more lead time means more multiplication
-	rounds fit, so fewer plantlets need buying.
-	"""
+	"""TC order size against how early it has to arrive."""
 	_guard()
 	p = params_from_version(version)
 	target_pool = frappe.utils.cint(target_pool)
@@ -1412,11 +1173,7 @@ def _rate_for(qty, stage="Stage 4", year=None):
 @frappe.whitelist()
 def simulate_buildup(version, tc_plants, tc_arrival_date, rounds=4, field_pct=0,
                      horizon_weeks=160, overrides=None):
-	"""Run the build-up and return the timeline, ledger and space curve.
-
-	This is the what-if: change the TC date or amount and everything downstream
-	moves with it. Nothing is written.
-	"""
+	"""Run the build-up and return the timeline, ledger and space curve."""
 	_guard()
 	if isinstance(overrides, str):
 		overrides = frappe.parse_json(overrides)
@@ -1452,11 +1209,7 @@ def simulate_buildup(version, tc_plants, tc_arrival_date, rounds=4, field_pct=0,
 
 @frappe.whitelist()
 def planting_plan(plan=None, variety=None, farm=None):
-	"""The planting plan: what to stick, when to plant, and where it lands.
-
-	Also returns block occupancy windows, because a block holds one planting at a
-	time and that constraint is only visible on a timeline.
-	"""
+	"""The planting plan: what to stick, when to plant, and where it lands."""
 	_guard()
 	plan = resolve_plan(variety, farm, plan)
 	if not plan:
@@ -1481,7 +1234,6 @@ def planting_plan(plan=None, variety=None, farm=None):
 			"plant": f"{b.planting_year}-W{b.planting_week:02d}"
 			if b.planting_year and b.planting_week else None,
 			# Year and week as numbers too, so the dashboard can filter on a period
-			# without parsing the label back apart.
 			"planting_year": b.planting_year,
 			"planting_week": b.planting_week,
 			"sticking_year": b.sticking_year,
@@ -1489,7 +1241,6 @@ def planting_plan(plan=None, variety=None, farm=None):
 			"planting_date": str(b.planting_date) if b.planting_date else None,
 			"pinch_date": str(b.pinch_date) if b.pinch_date else None,
 			# The other dates the plan commits to, so a calendar view does not have
-			# to re-derive them from the protocol and risk disagreeing with the plan.
 			"sticking_date": str(iso_monday(b.sticking_year, b.sticking_week))
 			if b.sticking_year and b.sticking_week else None,
 			"first_harvest_date": str(iso_monday(b.first_harvest_year,
@@ -1509,13 +1260,11 @@ def planting_plan(plan=None, variety=None, farm=None):
 			"not_placed": bool(b.get("not_placed")),
 			"notes": b.notes,
 			# The child row's own name, so the allocation control can assign a block
-			# to this exact planting rather than matching on index and dates.
 			"row": b.name,
 			"is_new": bool(b.is_new_planting),
 		})
 
 	# Occupancy windows, from the plan's allocated rows plus anything already on
-	# the ground as a Planting Calendar.
 	life_weeks = int(v.total_weeks_in_ground or 0)
 	occupancy = []
 	for b in p.plan_blocks:
@@ -1554,7 +1303,6 @@ def planting_plan(plan=None, variety=None, farm=None):
 		"custom_is_summer_flower_block": 1, **({"farm": p.farm} if p.farm else {})
 	})
 	# Every tab is showing this plan's stored rows, so the page states which
-	# protocol version they were built on and whether it has moved since.
 	fresh = protocol_freshness(p)
 	return {
 		"plan": p.name,
@@ -1566,7 +1314,6 @@ def planting_plan(plan=None, variety=None, farm=None):
 		"protocol_note": fresh["note"],
 		"plantings": plantings,
 		# A submitted plan's blocks are not editable, so the allocation control is not
-		# offered on one.
 		"submitted": bool(p.docstatus),
 		"occupancy": occupancy,
 		"totals": {
@@ -1588,15 +1335,7 @@ def planting_plan(plan=None, variety=None, farm=None):
 
 
 def _sticking_demand(plan, version):
-	"""Cuttings the field wants each week, from the plan's own sticking schedule.
-
-	This is what makes the weekly split a decision instead of a habit. Sending
-	everything to the field is only right while the field can use it all; in a week
-	the field wants less than the pool cuts, the surplus is either wasted or put
-	back into propagation, where it returns as motherstock in time for a peak that
-	has not arrived yet. That is how a later demand is met without buying more
-	plantlets for it.
-	"""
+	"""Cuttings the field wants each week, from the plan's own sticking schedule."""
 	rows = frappe.db.sql("""select sticking_year y, sticking_week w, sum(plants) plants
 		from `tabSummer Flower Plan Block`
 		where parent = %s and is_new_planting = 1 and ifnull(sticking_year, 0) > 0
@@ -1612,13 +1351,7 @@ def _sticking_demand(plan, version):
 def simulate_lifecycle(version, tc_qty, order_date, num_cycles=None, to_prop_pct=0,
                        farm_overrides=None, max_bench_sqm=None, plan=None,
                        horizon_weeks=None, build_up_cycles=None):
-	"""The weekly TC -> motherstock -> cuttings lifecycle, with propagation feedback.
-
-	num_cycles is derived from the horizon unless a caller insists on a number: a
-	generation exists because the previous one expires, and diverted cuttings add
-	generations of their own. The horizon comes from the plan being looked at, so
-	the run covers the period being planned and no further.
-	"""
+	"""The weekly TC -> motherstock -> cuttings lifecycle, with propagation feedback."""
 	_guard()
 	from upande_summer_flowers.summer_flowers import lifecycle_sim as ls
 
@@ -1634,26 +1367,15 @@ def simulate_lifecycle(version, tc_qty, order_date, num_cycles=None, to_prop_pct
 	p = ls.params_from_version(version)
 
 	# Two different things are called cycles here and they must not be confused.
-	# num_cycles is generations: how many times the whole TC -> motherstock -> expiry
-	# loop runs over the horizon. build_up_cycles is multiplication: how many rounds
-	# one order is grown through before it becomes mother plants. Only the second
-	# changes what an order is worth, and it pays for the extra plants in lead time,
-	# so both have to move together or the simulation promises a pool weeks before
-	# it could exist.
 	if build_up_cycles not in (None, ""):
 		v = frappe.get_cached_doc("Crop Protocol Version", version)
 		c = cint(build_up_cycles)
 		p["multiplication_factor"] = flt(v.multiplication_factor(c))
 		p["build_up_cycles"] = c
 		# NOT lead_time_for_cycles: that is the time to the full pool, which is one
-		# establishment per cycle. The first cutting comes at the end of the first
-		# establishment however many cycles follow it, and setting it from the full
-		# figure pushed the first cut out by a whole build-up -- week 36 for a
-		# two-cycle order whose plantlets are cuttable at 18.
 		p["tc_to_first_cut_weeks"] = cint(v.weeks_tc_to_first_cut())
 
 	# What the field asks for, week by week, keyed to the simulation's own clock so
-	# the split can be judged against it rather than guessed at.
 	demand_by_sw = {}
 	if plan:
 		v0 = frappe.get_cached_doc("Crop Protocol Version", version)
@@ -1682,9 +1404,6 @@ def simulate_lifecycle(version, tc_qty, order_date, num_cycles=None, to_prop_pct
 	res["tc_to_first_cut_weeks"] = cint(p.get("tc_to_first_cut_weeks"))
 
 	# What the pool is being sized against. The simulator knows what the pool can
-	# cut; only the propagation plan knows what the plan needs cut in its busiest
-	# week, and the motherstock card has to show the two together or its capacity
-	# figure is a number with nothing to be judged against.
 	res["peak_cuttings_needed"] = 0
 	res["peak_cuttings_week"] = None
 	if plan:
@@ -1700,44 +1419,21 @@ def simulate_lifecycle(version, tc_qty, order_date, num_cycles=None, to_prop_pct
 
 
 def _standing_plants(block, rows, used, basis, register):
-	"""How many plants are standing on this block.
-
-	Three sources, in the order of how much they are worth. A planting calendar
-	entry is a plan that has been written down and says what it put in; a bed
-	record says what the bed holds; and the block's own varieties_grown register
-	says what is growing there. The first two are kept patchily -- four bed
-	records out of 4,789 say Planted -- and where neither has anything, a block
-	carrying a season of Eryngium reported nothing planted while its own
-	register said 723,200 plants. The register is the fallback, not the
-	override: where a planting exists it is the more specific answer and it
-	knows which plan put the crop there.
-	"""
+	"""How many plants are standing on this block."""
 	# What a planting LEAVES standing, not what went into it. plants is the
-	# number put in the ground and a share of it never takes, so counting it as
-	# the standing crop reported every block fuller than it is.
 	from_plantings = sum(cint(r.get("plants_expected_standing")) or cint(r.get("plants"))
 	                     for r in rows
 	                     if r.get("calendar_status") not in ("Uprooted", "Cancelled"))
 	from_beds = sum(x["plants"] for x in used)
 	from_register = cint((register.get(block.name) or {}).get("plants"))
 	# The largest of the three, not the first that is non-zero. Preferring a
-	# planting because one exists let a single 816-plant calendar entry stand
-	# for a block the register says carries 757,600, and reported the block as
-	# all but empty. They are three records of one crop, not three crops, so
-	# they cannot be added -- but the smallest of them is never the answer.
 	return max(from_plantings if basis == "plantings" else 0,
 	           from_beds, from_register)
 
 
 @frappe.whitelist()
 def block_forecast(plan=None, variety=None, farm=None, blocks=None):
-	"""Per-block weekly forecast to the end of each cycle, plus uprooting dates.
-
-	Every block at the farm is returned, including ones with nothing planted, and
-	every week in a planted block's life is returned including the non-harvest
-	ones. A block that is idle or between flushes should read as a real zero rather
-	than be missing from the data.
-	"""
+	"""Per-block weekly forecast to the end of each cycle, plus uprooting dates."""
 	_guard()
 	if isinstance(blocks, str):
 		blocks = [b for b in frappe.parse_json(blocks) if b] if blocks.startswith("[") \
@@ -1755,11 +1451,6 @@ def block_forecast(plan=None, variety=None, farm=None, blocks=None):
 		all_blocks = [b for b in all_blocks if b.name in blocks]
 
 	# What each block says is standing on it, variety by variety. The block keeps
-	# its own register -- varieties_grown, with the plants and the beds each one
-	# holds -- and it is the only place the standing crop is actually written
-	# down here: 4.7 million plants across fourteen rows, against 94,000 in the
-	# Plants Standing field the dashboard was reading. A plan whose variety has
-	# three quarters of a million plants in the ground read as nothing planted.
 	standing = {}
 	if all_blocks:
 		gfilters = {"parenttype": "Block", "parent": ["in", [b.name for b in all_blocks]]}
@@ -1804,8 +1495,6 @@ def block_forecast(plan=None, variety=None, farm=None, blocks=None):
 				"plants": r.custom_plants or 0,
 				"uproot_date": str(r.custom_uproot_date) if r.custom_uproot_date else None,
 				# Dimensions where a bed has them, the recorded area otherwise. The
-				# 4,789 beds in Karen's blocks are each 50 m² with no length or width,
-				# so multiplying reported nought square metres of 24.149 hectares.
 				"area_sqm": (flt(r.bed_length) * flt(r.bed_width)) or flt(r.bed_area),
 			})
 
@@ -1814,23 +1503,14 @@ def block_forecast(plan=None, variety=None, farm=None, blocks=None):
 		rows = by_block.get(b.name, [])
 		beds = beds_by_block.get(b.name, [])
 		# Utilisation is counted off bed records, not off Planting Calendar.beds, so a
-		# bed pulled early shows as free again the moment its status changes.
 		used = [x for x in beds if x["status"] in ("Planted", "Producing")]
 		uprooted = [x for x in beds if x["status"] == "Uprooted"]
 		free = [x for x in beds if x["status"] not in ("Planted", "Producing", "Uprooted")]
 		net_total = sum(x["area_sqm"] for x in beds)
 		net_used = sum(x["area_sqm"] for x in used)
 		# Most Bed records carry no length/width, so area-based utilisation is not
-		# trustworthy on its own. Report how much of it is actually measured and let
-		# the caller fall back to bed counts rather than quote a silent under-count.
 		measured = len([x for x in beds if x["area_sqm"] > 0])
 		# Bed status is the better answer where it is maintained, because a bed pulled
-		# early frees up the moment its status changes. It is not maintained here:
-		# creating a Planting Calendar does not touch the beds, so 14 blocks held
-		# plantings while 4 bed records out of 4,789 said Planted and the farm read as
-		# 0.1% used. Where a block has plantings but no bed says so, the plantings are
-		# the authority and the basis is reported so nobody reads a bed count that was
-		# never kept.
 		held = sum(cint(r.get("beds")) for r in rows
 		           if r.get("calendar_status") not in ("Uprooted", "Cancelled"))
 		basis = "bed status"
@@ -1838,7 +1518,6 @@ def block_forecast(plan=None, variety=None, farm=None, blocks=None):
 			basis = "plantings"
 			held = min(held, len(beds) or held)
 			# Area follows the same basis, or the bar would say 300 beds used and
-			# nought square metres of them.
 			per_bed = (net_total / len(beds)) if beds else 0
 			net_used = held * per_bed
 		entry = {
@@ -1857,7 +1536,6 @@ def block_forecast(plan=None, variety=None, farm=None, blocks=None):
 				              else len(free)),
 				"beds_uprooted": len(uprooted),
 				# Which of the two answers this is, so a reader can tell a maintained
-				# bed register from a count inferred off the plantings.
 				"basis": basis,
 				"pct_used": round(
 					(held if basis == "plantings" else len(used))
@@ -1919,8 +1597,6 @@ def block_forecast(plan=None, variety=None, farm=None, blocks=None):
 		out.append(entry)
 
 	# ---- the overlay: every block's weeks summed onto one series
-	# Contributors are kept per week so a spike in the overlay can be traced back to
-	# the blocks that caused it without re-reading the per-block payload.
 	agg, contrib = {}, {}
 	for b in out:
 		for p in b["plantings"]:
@@ -1933,8 +1609,6 @@ def block_forecast(plan=None, variety=None, farm=None, blocks=None):
 						 "flush": w["flush_number"]})
 
 	# Resolve the plan the same way every other endpoint does, so the overlay has a
-	# demand line even when the caller does not know the plan name yet (the dashboard
-	# loads its panes in parallel).
 	plan = resolve_plan(variety, farm, plan)
 
 	demand_map = {}
@@ -1993,8 +1667,6 @@ EDITABLE_PROTOCOL_FIELDS = (
 	"cuttings_per_plant_per_week", "plants_per_pot", "pots_per_sqm",
 	"max_multiplication_cycles", "multiplication_factor_per_cycle",
 	# Which waits count as establishment. They decide the length of a build-up
-	# round and so the whole schedule hanging off it, which makes them among the
-	# most consequential settings here -- and they were not editable at all.
 	"establishment_includes_hardening", "establishment_includes_ramp",
 	"cycle_time_weeks", "motherstock_life_weeks", "rooting_success_pct",
 	"field_establishment_pct", "cutting_reject_pct", "stated_yield_stems_per_ha",
@@ -2004,14 +1676,7 @@ EDITABLE_PROTOCOL_FIELDS = (
 
 @frappe.whitelist()
 def lifetime_production(variety=None, farm=None, plan=None, grain="month"):
-	"""Every stem a standing planting will yield, to the end of its life.
-
-	The block forecast stops at the plan's horizon, because that is the question a plan
-	asks. A planting outlives it: Aster is 111 weeks in the ground and a plan covers 52,
-	so more than half of what is already planted falls outside every chart on this
-	dashboard. This is the rest of it -- what the ground will produce whether or not
-	anyone plans for it -- flush by flush, from the plantings that exist.
-	"""
+	"""Every stem a standing planting will yield, to the end of its life."""
 	_guard()
 	if plan and not variety:
 		row = frappe.db.get_value("Summer Flower Production Plan", plan,
@@ -2035,7 +1700,6 @@ def lifetime_production(variety=None, farm=None, plan=None, grain="month"):
 		        "totals": {}, "grain": grain}
 
 	# Flush rows carry the dated harvests, and they are the same rows the plan and the
-	# calendar read, so nothing is recomputed here.
 	names = [p.name for p in plantings]
 	flushes = frappe.get_all(
 		"Planting Calendar Flush",
@@ -2097,7 +1761,6 @@ def lifetime_production(variety=None, farm=None, plan=None, grain="month"):
 			"stems_remaining": agg.get("remaining", 0),
 			"last_harvest": agg.get("last"),
 			# What the planting itself claims, so a flush table that has drifted from
-			# the planting's own total is visible rather than silently trusted.
 			"stems_on_record": cint(p.expected_stems_life),
 		})
 	return {
@@ -2118,7 +1781,6 @@ def lifetime_production(variety=None, farm=None, plan=None, grain="month"):
 
 
 # Stages that mean the farm cuts its own material off a standing pool. A route
-# without one of these is a crop that is handed what it plants.
 from upande_summer_flowers.summer_flowers import stages as _stages
 
 MOTHERSTOCK_STAGES = _stages.StageSet((_stages.MOTHERSTOCK, _stages.TAKEN))
@@ -2139,13 +1801,7 @@ CHAIN_FORM = _ChainForm()
 
 
 def _stated_lifts(version, form):
-	"""The lift rows for `form`, from the version or the protocol behind it.
-
-	A version only carries them once it has been approved since they were put
-	on the protocol. Until then the protocol is the only place the two halves
-	of a lift exist, and showing a total with no halves is showing a figure
-	nobody can check against the sheet it came from.
-	"""
+	"""The lift rows for `form`, from the version or the protocol behind it."""
 	rows = [r for r in (version.get("lifts") or [])
 	        if (r.get("form") or "") == form] if hasattr(version, "get") else []
 	if not rows and hasattr(version, "get") and version.get("crop_protocol"):
@@ -2161,13 +1817,7 @@ def _stated_lifts(version, form):
 
 
 def _route_chains_payload(version):
-	"""Each way in, as its own route, with what it costs in time.
-
-	`weeks` is the time from the material arriving to a plantable plant, so it
-	is the stages after the entry one; `lead_weeks` is how long before that the
-	order has to be placed. Added together they are the notice the farm needs,
-	and that is the number the two routes differ on.
-	"""
+	"""Each way in, as its own route, with what it costs in time."""
 	from upande_summer_flowers.summer_flowers import crop_protocol as cp
 
 	out = []
@@ -2190,21 +1840,15 @@ def _route_chains_payload(version):
 			continue
 		entry = stages[0]
 		# The entry stage is the material; the weeks that matter are what
-		# happens to it afterwards.
 		after = sum(x["weeks"] for x in stages[1:]) + sum(
 			y["weeks"] for x in stages[1:] for y in x["steps"])
 		# How this material is handed over once it is in. A consignment is not
-		# one delivery: roots go to the trough and come off in waves, and the
-		# waves are what decide when plants actually reach the farm.
 		form = CHAIN_FORM.get(entry["stage"])
 		lifts = []
 		if form:
 			from upande_summer_flowers.summer_flowers import tc_supply as ts
 
 			# The two halves as well as the total, because the week a lift
-			# reaches the farm is weeks on the trough plus rooting and the
-			# protocol sheet reads it that way -- a total with no halves
-			# cannot be checked against the sheet it came from.
 			stated = _stated_lifts(version, form)
 			for i, (wk, share) in enumerate(
 					ts.handover_waves(form, None, after, version=version), 1):
@@ -2272,21 +1916,12 @@ def _pool_journey(v, lead, estab, cycles, build, to_cut, stick_to_plant,
 
 
 def _route_journey(v, plant_to_harvest):
-	"""Order to first harvest, read off the route the crop actually takes.
-
-	One step a stage, with the stage's own weeks between them, so a seed route
-	reads order, arrive, root, plant, cut -- and a crop bought as plants reads
-	order, arrive, plant, cut, because that is all that happens to it.
-	"""
+	"""Order to first harvest, read off the route the crop actually takes."""
 	rows = [r for r in (v.get("material_route") or [])
 	        if (r.get("row_type") or "Stage") == "Stage"]
 	entry = next((r for r in rows if cint(r.get("is_purchase"))), None)
 	start = rows.index(entry) if entry else 0
 	# One way in, not the whole table. A crop bought two ways has its chains one
-	# after another in the same route, and walking to the end of the table put
-	# the roots leg on the end of the tissue culture's journey -- Planted twice,
-	# and a first harvest fifteen weeks after the wrong one. A chain ends at the
-	# planting it leads to.
 	chain = []
 	for r in rows[start:]:
 		chain.append(r)
@@ -2304,8 +1939,6 @@ def _route_journey(v, plant_to_harvest):
 		journey.append({
 			"week": week,
 			# "Seeds arrives" is nobody's English. The stage names are plural as
-			# often as not, so the verb follows the name rather than the other
-			# way round.
 			"label": (_("{0} arrive") if name.endswith("s") else _("{0} arrives"))
 			.format(name),
 			"note": _("{0}w supplier lead").format(lead)})
@@ -2317,8 +1950,6 @@ def _route_journey(v, plant_to_harvest):
 			"week": week,
 			"label": _("Planted") if end else r.stage,
 			# The note is the gap BEFORE this step, the way the pool journey
-			# reads "3w tray" between the tray and the pot. Planting out takes no
-			# time of its own, so it carries none.
 			"note": (_("{0}w {1}").format(weeks, r.stage.lower())
 			         if weeks and not end else None),
 		})
@@ -2329,21 +1960,7 @@ def _route_journey(v, plant_to_harvest):
 
 @frappe.whitelist()
 def protocol_detail(version=None, variety=None, farm=None, plan=None):
-	"""The whole protocol sheet: inputs, derived values and the journey timelines.
-
-	Three ways to arrive at a version, in order of how specific they are.
-
-	A version named outright wins -- that is the picker on the tab. Otherwise a plan
-	in scope names its own, because the plan is built on a pinned version and the rest
-	of the dashboard is describing that plan: showing the version in force beside it
-	would put a different set of numbers on the same screen, and a plan sits on a
-	superseded version routinely.
-
-	Only with neither does it fall back to the version in force for a variety. That
-	fallback used to be the only path -- the dashboard passed plan= and this had no
-	such argument, so Frappe dropped it -- which is why the Protocol tab stayed on
-	Aster Pink Flash while every other tab followed the plan you had picked.
-	"""
+	"""The whole protocol sheet: inputs, derived values and the journey timelines."""
 	_guard()
 	source = "picked"
 	if not version and plan:
@@ -2378,22 +1995,17 @@ def protocol_detail(version=None, variety=None, farm=None, plan=None):
 			"weeks_from_pinch": r.weeks_from_pinch,
 			"weeks_from_planting": (v.weeks_to_pinch or 0) + (r.weeks_from_pinch or 0),
 			# Kept for callers that still read it; there is no grid allowance now, so
-			# it is the same figure. Aster reads 20 here, not 21.
 			"weeks_from_planting_gridded": (v.weeks_to_pinch or 0)
 			+ (r.weeks_from_pinch or 0),
 			"stems_per_plant": flt(r.stems_per_plant),
 			"stems_per_ha": int(round(flt(r.stems_per_plant) * plants_per_ha)),
 			"cumulative_stems_per_plant": round(cum, 2),
 			# The share of the plant's life this flush is, and everything gathered by
-			# the end of it. The planning sheet is read in percentages -- the last row
-			# is 100% -- and until now the page could only show stems.
 			"pct_of_life": flt(r.pct_of_life),
 			"cumulative_pct": flt(r.cumulative_pct),
 		})
 
 	# How the material gets to a plant, so the page can say what this crop is raised
-	# from. It was only ever on the protocol form in the desk; the planning dashboard
-	# could show you a seed crop's whole schedule without once saying it was seed.
 	route = []
 	for r in (v.material_route or []):
 		route.append({
@@ -2405,32 +2017,18 @@ def protocol_detail(version=None, variety=None, farm=None, plan=None):
 			"lead_weeks": cint(r.lead_weeks), "rate": flt(r.rate),
 			"item": r.item,
 			# The split the planner reads off this protocol. It was computed
-			# from these rows and never sent to the page that shows them.
 			"share_pct": flt(r.share_pct),
 			"returns_per_plant": flt(r.returns_per_plant),
 		})
 	bought = [r["stage"] for r in route if r["is_purchase"] and r["stage"]]
 
 	# The route as the chains it actually is, rather than one flat list. A
-	# variety bought two ways has two routes -- Eryngium is tissue culture AND
-	# roots, seven weeks and a year of lead apart -- and reading them as one
-	# column of stages says neither.
 	chains = _route_chains_payload(v)
 	# Whether there is a motherstock at all. A crop handed its material has no
-	# pool, no build-up and no renewal date, and a card asking when to renew a
-	# pool that does not exist is a question nobody asked.
 	has_ms = bool([r for r in route
 	               if (r["stage"] or "") in MOTHERSTOCK_STAGES])
 
 	# TC order through to the first harvest off those cuttings.
-	#
-	# Built from lead_time_weeks, which is the same figure the plan's order-by date
-	# works back from, so the two cannot disagree. They did: this card walked order ->
-	# establishment -> cut and reached 81 weeks, while the plan assumed 103 -- because
-	# the card ignored the multiplication cycles the order's SIZE depends on. You
-	# cannot order a fifth of the mother plants and also cut eighteen weeks after they
-	# land. It counted hardening twice as well, once inside establishment and again on
-	# the way to the field.
 	lead = cint(v.supplier_lead_weeks)
 	estab = cint(v.ms_establishment_weeks)
 	cycles = cint(v.max_multiplication_cycles)
@@ -2440,9 +2038,6 @@ def protocol_detail(version=None, variety=None, farm=None, plan=None):
 	plant_to_harvest = cint(v.first_harvest_offset_weeks)
 
 	# A crop with no pool does not take the tissue-culture road, and telling it
-	# as one put a tray, a pot, a ramp, a build-up and a motherstock cutting in
-	# front of a seed. Its journey is its own route: order, arrive, raise,
-	# plant, cut -- with the weeks the route itself states.
 	if not _has_pool(v):
 		journey, journey_title = _route_journey(v, plant_to_harvest)
 	else:
@@ -2475,8 +2070,6 @@ def protocol_detail(version=None, variety=None, farm=None, plan=None):
 		"effective_to": str(v.effective_to) if v.effective_to else None,
 		"is_current": bool(v.is_current),
 		# Which of the three routes chose this version, so the tab can say whether it
-		# is showing the plan's pinned protocol or the one in force -- they differ
-		# routinely, and a reader who cannot tell which is which cannot trust either.
 		"source": source,
 		"for_plan": plan if source == "plan" else None,
 		"change_reason": v.change_reason,
@@ -2493,10 +2086,6 @@ def protocol_detail(version=None, variety=None, farm=None, plan=None):
 			"total_flushes": v.total_flushes or 0,
 			"total_stems_per_plant_life": flt(v.total_stems_per_plant_life),
 			# Worked out here rather than read off the snapshot, so they agree with
-			# the plants_per_ha above them. A version approved before the per-hectare
-			# basis moved to BED_SQM_PER_HA still carries figures built on 10,000 m²,
-			# and showing those beside a density quoted on 6,667 puts two different
-			# hectares on one card.
 			"stems_per_ha_life": flt(v.total_stems_per_plant_life) * plants_per_ha,
 			"stems_per_ha_year": ((flt(v.total_stems_per_plant_life) * plants_per_ha)
 			                      / flt(v.life_expectancy_years)
@@ -2532,7 +2121,6 @@ def protocol_detail(version=None, variety=None, farm=None, plan=None):
 		"journey": journey,
 		"journey_title": journey_title,
 		# What this crop is bought as, so the card can name it instead of
-		# saying "TC" to a protocol that buys seed.
 		"entry_stage": next((r.stage for r in (v.get("material_route") or [])
 		                     if cint(r.get("is_purchase"))), None),
 		"versions": sibling,
@@ -2542,12 +2130,7 @@ def protocol_detail(version=None, variety=None, farm=None, plan=None):
 @frappe.whitelist()
 def save_protocol(version, changes, flushes=None, grades=None, change_reason=None,
                   effective_from=None):
-	"""Apply protocol edits, honouring the versioning rules.
-
-	A Draft is edited in place. An Active version is never edited: it is amended
-	into a new Draft, because crop cycles are pinned to the parameters they ran
-	under and rewriting those retrospectively would falsify their history.
-	"""
+	"""Apply protocol edits, honouring the versioning rules."""
 	_guard()
 	if isinstance(changes, str):
 		changes = frappe.parse_json(changes or "{}")
@@ -2571,7 +2154,6 @@ def save_protocol(version, changes, flushes=None, grades=None, change_reason=Non
 		amended = True
 
 	# Silently dropping an edit is worse than refusing it: the save reports success,
-	# the figure does not move, and the only clue is that nothing happened.
 	refused = [k for k in (changes or {}) if k not in EDITABLE_PROTOCOL_FIELDS]
 	if refused:
 		frappe.throw(
@@ -2839,7 +2421,6 @@ def propagation_detail(plan=None, propagation_plan=None, variety=None, farm=None
 
 	d = frappe.get_doc("Summer Flower Propagation Plan", propagation_plan)
 	# What one mother plant yields in a week. Everything below converts cuttings to
-	# mother plants with it.
 	per_week = flt(frappe.db.get_value(
 		"Crop Protocol Version",
 		frappe.db.get_value("Summer Flower Production Plan", d.production_plan, "protocol"),
@@ -2851,8 +2432,6 @@ def propagation_detail(plan=None, propagation_plan=None, variety=None, farm=None
 		        "tc_order_date", "tc_on_farm_date", "first_sticking_date",
 		        "expiry_date", "total_cost", "currency", "bench_sqm"])
 	# The protocol is the production plan's, and so is the question of whether it
-	# has moved since the numbers were built. Judged live: an approved plan never
-	# runs validate again, so its stored verdict would be frozen at approval.
 	pp = protocol_freshness(
 		frappe.get_doc("Summer Flower Production Plan", d.production_plan))
 	return {
@@ -2894,12 +2473,6 @@ def propagation_detail(plan=None, propagation_plan=None, variety=None, farm=None
 		},
 		"warning": d.schedule_warning,
 		# Mother plants, not cuttings. A week's cuttings are what the field wants;
-		# the motherstock is what has to be standing on the bench to cut them, and
-		# that is the number anyone can act on -- you buy, raise and bench mother
-		# plants, you do not buy cuttings. One mother yields
-		# cuttings_per_plant_per_week, so the conversion is that and nothing else,
-		# done here rather than on the page so the table and the card cannot divide
-		# by different figures.
 		"weeks": [{
 			"year": r.year, "week_no": r.week_no,
 			"label": "%s-W%02d" % (r.year, cint(r.week_no)),
@@ -2926,9 +2499,6 @@ def propagation_detail(plan=None, propagation_plan=None, variety=None, farm=None
 			"recorded_from": r.recorded_from,
 		} for r in d.weeks],
 		# What the unit was sent and what it did with it. Separate from the
-		# weeks because a consignment and a hand-over are different events --
-		# fifteen weeks apart for a root -- and putting them in one row is how
-		# a cohort gets divided by the wrong cohort.
 		"consignments": [{
 			"week": str(r.week_start_date or ""), "week_iso": r.week_iso,
 			"form": r.form, "source": r.source, "reference": r.reference,
@@ -2970,10 +2540,6 @@ def propagation_detail(plan=None, propagation_plan=None, variety=None, farm=None
 		} for r in d.sources],
 		"batches": batches,
 		# Who else is raising this season. The allocation lives on the
-		# procurement plan, so it is read from there rather than copied here --
-		# a re-allocation must not leave a stale share on a plan written before
-		# it. Includes the procurement plans themselves, because "what was
-		# bought" and "who raises it" are two halves of one answer.
 		"procurement": d.procurement_summary(),
 		"allocations": d.allocation_summary(),
 	}
@@ -2981,13 +2547,7 @@ def propagation_detail(plan=None, propagation_plan=None, variety=None, farm=None
 
 @frappe.whitelist()
 def procurement_detail(plan=None, variety=None, farm=None):
-	"""What was bought for a production plan, and who was allocated to raise it.
-
-	Its own endpoint rather than a corner of `propagation_detail`, because a
-	plan can have been bought without anybody propagating it yet -- that is the
-	normal state of a plan between approval and the first allocation, and
-	reaching this through the propagation plan made it invisible exactly then.
-	"""
+	"""What was bought for a production plan, and who was allocated to raise it."""
 	_guard()
 	plan = resolve_plan(variety, farm, plan)
 	if not plan:
@@ -3016,9 +2576,6 @@ def procurement_detail(plan=None, variety=None, farm=None):
 				        "propagation_plan", "note", "rate_per_plant", "amount",
 				        "purchase_order",
 				        # What this row raises and when the farm gets it. Both are
-				        # already worked out and stored; the card had no way to say
-				        # either, so a propagator was chosen with nothing on screen
-				        # about what they are raising or when it lands.
 				        "alloc_type", "lead_weeks", "start_by",
 				        "plants_from", "plants_to", "ready_basis"],
 				order_by="idx"):
@@ -3028,8 +2585,6 @@ def procurement_detail(plan=None, variety=None, farm=None):
 			rows.append(r)
 
 	# Who SELLS it, beside who raises it. The dashboard could allocate the
-	# propagating and not the buying, so a crop bought as tissue culture from
-	# two laboratories and raised on two benches showed half its own plan.
 	buying = []
 	for pr in plans:
 		for r in frappe.get_all(
@@ -3069,26 +2624,7 @@ def procurement_detail(plan=None, variety=None, farm=None):
 
 @frappe.whitelist()
 def confirm_tc_choice(plan, tc_qty=None, order_date=None, cycles=None, reason=None):
-	"""Commit a tried quantity, order date or build-up, and carry it downstream.
-
-	plan_whatif answers "what would happen"; this is the answer to "do it". The
-	three documents that each hold a piece of the same decision are written in one
-	go, because leaving any of them behind is how the plan, the propagation plan
-	and the batch came to disagree about the same order in the first place:
-
-	    production plan   what is being bought and what it supplies
-	    propagation plan  the requirement it was raised against
-	    motherstock batch the order itself, and the schedule hanging off it
-
-	The batch takes the figures as overrides rather than as its own calculation, so
-	it keeps saying what the requirement was and what was chosen instead. Confirming
-	the calculated figure clears the override rather than pinning it, so a confirm
-	that changes nothing leaves nothing behind to go stale.
-
-	A submitted plan is not touched: the numbers on it have been approved, and the
-	way to change those is to amend the plan, not to have an endpoint quietly
-	rewrite them underneath the approval.
-	"""
+	"""Commit a tried quantity, order date or build-up, and carry it downstream."""
 	_guard()
 	p = frappe.get_doc("Summer Flower Production Plan", plan)
 	if p.docstatus == 1:
@@ -3101,10 +2637,6 @@ def confirm_tc_choice(plan, tc_qty=None, order_date=None, cycles=None, reason=No
 	tc_qty = cint(tc_qty) or cint(p.tc_plants_to_order)
 
 	# Cycles and the order date are one decision, not two. Fewer build-up cycles is
-	# a shorter lead time and therefore a later order date -- that is most of why
-	# anyone cuts cycles. Keeping the old date while changing the cycles would
-	# confirm a schedule the lead time contradicts, so where no date was asked for
-	# and the cycles have moved, the date is re-derived rather than carried over.
 	was_cycles = (cint(p.tc_cycles_committed) if p.tc_choice_committed
 	              else cint(v.max_multiplication_cycles))
 	if order_date:
@@ -3134,18 +2666,10 @@ def confirm_tc_choice(plan, tc_qty=None, order_date=None, cycles=None, reason=No
 	# ---- the propagation plan, where one exists for this variety and season
 	prop_name = None
 	# The one raised for THIS plan first. _prop_filters matches on variety and
-	# season, which is right for reading -- a season has one propagation plan -- but
-	# wrong for writing: confirming on one plan would rewrite the propagation plan
-	# belonging to another plan for the same variety and season, which is exactly
-	# what an amended plan and its original are.
 	prop = frappe.get_all("Summer Flower Propagation Plan",
 	                      filters={"production_plan": plan, "docstatus": ["<", 2]},
 	                      fields=["name", "docstatus"], order_by="creation desc", limit=1)
 	# and no fallback. Matching on variety and season would find the propagation
-	# plan of a different plan for the same season -- an amended plan and its
-	# original are exactly that -- and write this plan's order onto it. A plan with
-	# no propagation plan of its own has nothing to carry the choice to yet; one is
-	# raised when the plan is approved.
 	if prop and cint(prop[0].docstatus) == 0:
 		prop_name = prop[0].name
 		pd = frappe.get_doc("Summer Flower Propagation Plan", prop_name)
@@ -3164,10 +2688,6 @@ def confirm_tc_choice(plan, tc_qty=None, order_date=None, cycles=None, reason=No
 		                 "when it is approved, and this choice goes with it"))
 
 	# ---- the procurement plan, which is what actually places the order
-	# The TC figure and its date are the establishment line on that document. Left
-	# out, the dashboard confirmed one quantity and the farm ordered another, and
-	# nothing downstream of the procurement plan -- the planting calendar, the
-	# propagation plan it raises -- ever heard about the change.
 	for q in frappe.get_all("Summer Flower Procurement Plan",
 	                        filters={"production_plan": plan, "docstatus": ["<", 2]},
 	                        fields=["name", "docstatus"], order_by="creation desc"):
@@ -3203,8 +2723,6 @@ def confirm_tc_choice(plan, tc_qty=None, order_date=None, cycles=None, reason=No
 		bd = frappe.get_doc("Summer Flower Motherstock Batch", b.name)
 		bd.build_up_cycles = cycles
 		# Confirming what the maths already says should clear the override, not pin
-		# it: a batch marked as overridden when it is not would stop following the
-		# protocol the next time the protocol moves.
 		bd.override_tc_plants = 1 if tc_qty != cint(bd.tc_plants_calculated) else 0
 		bd.tc_plants_required = tc_qty
 		if order_date:
@@ -3241,17 +2759,7 @@ def confirm_tc_choice(plan, tc_qty=None, order_date=None, cycles=None, reason=No
 
 @frappe.whitelist()
 def production_sheet(plan=None, variety=None, farm=None):
-	"""The plan as one row per planting and one column per week.
-
-	Everything else on this dashboard reads the plan as a total: so many stems in
-	so many weeks. This is the plan the way it is worked -- which planting, in which
-	block, puts which stems in which week -- and it is the shape the farm's own
-	workbook uses, so a plan can be checked against the sheet it replaces.
-
-	Nothing here recalculates a stem. It arranges what _populate already recorded
-	while it folded the plantings in, which is why the columns add up to the plan's
-	own weekly figures rather than to a second opinion about them.
-	"""
+	"""The plan as one row per planting and one column per week."""
 	_guard()
 	plan = resolve_plan(variety, farm, plan)
 	if not plan:
@@ -3262,31 +2770,12 @@ def production_sheet(plan=None, variety=None, farm=None):
 
 
 # The CSV is plan_sheet.sheet_csv, which is whitelisted and writes the download
-# response itself. Wrapping it here would be a second implementation of the one
-# thing this file keeps having to un-duplicate.
 
 
 @frappe.whitelist()
 def motherstock_line(plan=None, variety=None, farm=None, tc=None,
                      multiplications=None, divert_weeks=None):
-	"""The motherstock line for the dashboard: the decision, and what it gives.
-
-	The same engine the procurement popup and the Motherstock Plan read, so the
-	dashboard cannot quote a different plantlet order from the documents.
-
-	Sized by the busiest sticking week: that week's cuttings divided by the
-	generations standing, rounded up to a whole planting area. Cuttings cannot be
-	banked, so the weeks either side lend the peak nothing and there is no total
-	to divide by instead.
-
-	The weekly split is demand-led. The field is served first from the very first
-	cut -- a ramping pool still roots and hardens, and those plants are plantable
-	-- and only the surplus can go back as mothers, four times at the most.
-
-	`tc` and `multiplications` are the playground: pass either to see what it does
-	without writing anything down. `divert_weeks` belonged to the model before
-	this one and is accepted and ignored so old links do not break.
-	"""
+	"""The motherstock line for the dashboard: the decision, and what it gives."""
 	_guard()
 	from upande_summer_flowers.summer_flowers import propagation_solver as ps
 
@@ -3294,29 +2783,16 @@ def motherstock_line(plan=None, variety=None, farm=None, tc=None,
 	if not name:
 		return {"plan": None}
 	# The agreed line, if somebody has committed to one. Read BEFORE solving, not
-	# after: the card is meant to show the figure procurement will order, and
-	# solving first had the dashboard quoting its own proposal (37,000) beside a
-	# document that said 19,000. Anything passed in still wins -- that is a person
-	# trying something on purpose.
 	saved = frappe.db.get_value(
 		"Summer Flower Motherstock Plan", {"production_plan": name},
 		["name", "tc_to_order", "multiplications", "order_by_date", "generations"],
 		as_dict=True)
 	# The agreed line is a PAIR -- so many plantlets at so many multiplications --
-	# and it is shown only when nothing has been asked for. Inheriting half of it
-	# beside an overridden half is what had Multiply moving from 0 to 1 while the
-	# plantlet figure sat at 37,000: the whole point of multiplying is that it
-	# divides what you buy, so the half that was not named is re-solved from the
-	# half that was.
 	if saved and multiplications in (None, "") and not cint(tc):
 		multiplications = cint(saved.multiplications)
 		tc = cint(saved.tc_to_order)
 
 	# A quantity on its own is a question, not an override: "I can afford this
-	# many plantlets -- what must I do to them?" So it decides the rounds, the
-	# way the rounds decide the quantity when it is the rounds that were typed.
-	# Multiplying more than the farm's usual four is allowed here, because a
-	# small order may simply need it, and the answer says when it has.
 	derived = None
 	if cint(tc) and multiplications in (None, ""):
 		plan_doc = frappe.get_doc("Summer Flower Production Plan", name)
@@ -3325,10 +2801,6 @@ def motherstock_line(plan=None, variety=None, farm=None, tc=None,
 			multiplications = cint(derived["needed"])
 
 	# What was ASKED for, before the protocol's cap is applied to it. The card
-	# could never say "you asked for 2, the protocol allows 1" because only the
-	# applied figure came back: the box snapped to 1 and the tile read as though
-	# 1 was what had been typed. The cap is a rule and the farm is entitled to
-	# see it bite.
 	asked = cint(multiplications) if multiplications not in (None, "") else None
 
 	out = ps.peak_options(name, cycles=multiplications, tc=tc)
@@ -3347,7 +2819,6 @@ def motherstock_line(plan=None, variety=None, farm=None, tc=None,
 	sizing, sch = out.get("sizing"), out.get("schedule")
 	if sizing and sch:
 		# Flattened into the shape the card draws, so the dashboard and the
-		# document cannot disagree about which figure is the decision.
 		out["chosen"] = {
 			"tc": sch["tc"],
 			"multiplications": sch["cycles"],
@@ -3384,7 +2855,6 @@ def motherstock_line(plan=None, variety=None, farm=None, tc=None,
 			"min_planting_area": sizing["min_planting_area"],
 			"suggested": sizing["suggested"],
 			# The cap that applied: the protocol's where it states one, the
-			# farm's habit otherwise. The card says which limit it hit.
 			"max": cint(sizing.get("max_cycles")) or ps.max_multiplications(),
 			"farm_max": ps.max_multiplications(),
 		}
@@ -3398,12 +2868,7 @@ def record_propagation_actual(propagation_plan, event, actual_date, units=0,
                               plants=0, against_week=None, reference=None,
                               supplier=None, warehouse=None, reason=None,
                               remarks=None):
-	"""Record one thing that happened at the unit, from the planning page.
-
-	The same document the desk raises, submitted the same way. There is no
-	second, lighter record for things typed on a web page: one event has one
-	record or the farm has two sets of books.
-	"""
+	"""Record one thing that happened at the unit, from the planning page."""
 	_guard()
 	a = frappe.new_doc("Summer Flower Propagation Actual")
 	a.propagation_plan = propagation_plan
@@ -3432,11 +2897,6 @@ def accept_propagation_replan(propagation_plan):
 
 
 # ---------------------------------------------------------- the unit's calendar
-# What the propagation plan means week by week, as dates rather than as a table.
-# A unit does not read "week 14, 12,000 cuttings"; it reads "stick on Monday the
-# 30th, pot up on the 20th, hardening from the 11th". Those later dates are not
-# stored anywhere -- they are the sticking date plus what the protocol says each
-# establishment phase takes -- so this is where they get worked out, once.
 PROP_EVENT_TYPES = {
 	"tc_order": "Order tissue culture",
 	"tc_arrive": "Tissue culture on farm",
@@ -3489,20 +2949,7 @@ def propagation_varieties(farm=None, season=None):
 @frappe.whitelist()
 def propagation_schedule(propagation_plan=None, plan=None, variety=None,
                          farm=None, from_date=None, weeks=None):
-	"""Every dated thing the unit has to do for one variety, in order.
-
-	Built from three sources and kept honest about which is which:
-
-	    the plan's own dates      TC order, TC on farm, first sticking
-	    the intake rows           a consignment due, and when it can be worked
-	    the week rows + protocol  sticking, and what follows it
-
-	Only the first two are stored. The rest are derived here -- sticking date
-	plus weeks_on_tray is when rooting is done, plus weeks_on_pot is when it
-	leaves the nursery, plus hardening_weeks is when it can travel -- because
-	storing them would mean a protocol change silently leaving a hundred stale
-	dates behind on approved plans.
-	"""
+	"""Every dated thing the unit has to do for one variety, in order."""
 	_guard()
 	detail = propagation_detail(plan=plan, propagation_plan=propagation_plan,
 	                            variety=variety, farm=farm)
@@ -3590,9 +3037,6 @@ def propagation_schedule(propagation_plan=None, plan=None, variety=None,
 		    ref=w.get("label"))
 
 	# The motherstock line the cuttings come off. Without these the calendar
-	# says "stick 4,000 cuttings" in a week with nothing to cut them from, and
-	# the multiplication weeks -- when the unit is building the line up rather
-	# than supplying from it -- do not appear at all.
 	ms = motherstock_plan(variety=detail.get("variety"), farm=detail.get("farm"),
 	                      propagation_plan=detail.get("propagation_plan"))
 	for s in ms.get("steps", []):
@@ -3634,17 +3078,6 @@ def propagation_schedule(propagation_plan=None, plan=None, variety=None,
 
 
 # ---------------------------------------------------------------------------
-# What the propagation unit actually needs
-#
-# The unit is not deciding what to grow -- by the time a plan reaches it the
-# demand argument is over and the plan is approved. Showing the unit how well
-# the plan covers the market invites it to second-guess a decision it has no
-# standing to make, and buries the two things it does own: what leaves for the
-# farms and when, and how the plants to fill that are raised.
-#
-# So: no demand, no coverage, no stems. Plants, dates, farms, and the
-# motherstock the cuttings come off.
-# ---------------------------------------------------------------------------
 
 MS_EVENT_TYPES = {
 	"ms_tc_order": "Order motherstock TC",
@@ -3659,8 +3092,6 @@ MS_EVENT_TYPES = {
 }
 
 # The step labels build_steps() writes, mapped onto the event kinds above. The
-# labels are translated at write time, so match on the untranslated source the
-# controller uses and fall back to a substring for anything new.
 _MS_STEP_KINDS = (
 	("Place TC order", "ms_tc_order"),
 	("TC plants on farm", "ms_tc_arrive"),
@@ -3682,15 +3113,7 @@ def _ms_kind(step_label):
 
 
 def _motherstock_batches(variety=None, farm=None, production_plan=None):
-	"""The motherstock lines a unit would be cutting for this variety.
-
-	Variety is the key and the only hard filter. A motherstock line is not
-	owned by one production plan -- it is cut from for years, across seasons
-	and across plans -- and on a real site `production_plan` is usually blank,
-	so filtering on it hides the line entirely. Farm only narrows, and only
-	when it leaves something standing: the motherstock is raised at the
-	propagation unit, which is routinely not the farm the plants travel to.
-	"""
+	"""The motherstock lines a unit would be cutting for this variety."""
 	base = {"docstatus": ["<", 2]}
 	if variety:
 		base["variety"] = variety
@@ -3717,12 +3140,7 @@ def _motherstock_batches(variety=None, farm=None, production_plan=None):
 
 @frappe.whitelist()
 def motherstock_plan(variety=None, farm=None, plan=None, propagation_plan=None):
-	"""How the cuttings for this variety are raised, and when they are cut.
-
-	Everything here is already computed on the batch -- this only reads it out
-	in the order the unit works in, so that nobody has to open a desk form to
-	find out whether this is a cutting week or a multiplication week.
-	"""
+	"""How the cuttings for this variety are raised, and when they are cut."""
 	_guard()
 	if propagation_plan:
 		pp = frappe.db.get_value("Summer Flower Propagation Plan", propagation_plan,
@@ -3733,7 +3151,6 @@ def motherstock_plan(variety=None, farm=None, plan=None, propagation_plan=None):
 
 	batches = _motherstock_batches(variety, farm)
 	# A variety with no motherstock line is bought-in, not broken. Say so
-	# rather than returning an empty list that reads like a loading failure.
 	if not batches:
 		return {"variety": variety, "farm": farm, "batches": [],
 		        "steps": [], "reason": "no motherstock line for this variety"}
@@ -3769,22 +3186,11 @@ DELIVERY_STATES = ("Planned", "Partially Delivered", "Delivered", "Closed")
 @frappe.whitelist()
 def delivery_schedule(farm=None, variety=None, from_date=None, weeks=None,
                       include_past=None):
-	"""What leaves for the farms, when, and whether it has gone yet.
-
-	One row per plan-week that has a delivery date: the farm expecting it, the
-	variety, how many plants, and -- once the week is closed -- what the farm
-	actually got. Grouped by week, because the unit works a week at a time and
-	a lorry carries whatever is ready that week regardless of which plan it
-	belongs to.
-
-	Only approved plans. A draft is a proposal; loading a lorry against it is
-	how a farm ends up with plants nobody agreed to.
-	"""
+	"""What leaves for the farms, when, and whether it has gone yet."""
 	_guard()
 	start = getdate(from_date or nowdate())
 	if not cint(include_past):
 		# Last week is still worth seeing -- a Monday delivery slips to Tuesday
-		# and the week it belonged to has already turned.
 		start = add_days(start, -7)
 	horizon = add_days(start, cint(weeks or 12) * 7)
 
@@ -3798,7 +3204,6 @@ def delivery_schedule(farm=None, variety=None, from_date=None, weeks=None,
 
 	def empty(reason):
 		# An empty lorry list and a broken screen look identical unless the
-		# reason is carried out with it.
 		return {"weeks": [], "rows": [], "totals": {
 			        "plants": 0, "delivered": 0, "outstanding": 0, "weeks": 0},
 		        "farms": [], "varieties": [], "reason": reason,
@@ -3846,7 +3251,6 @@ def delivery_schedule(farm=None, variety=None, from_date=None, weeks=None,
 			"state": r.state or "Planned",
 			"delivered_on": str(r.actual_on) if r.actual_on else None,
 			# Where this week's plants come from: the unit's own standing
-			# motherstock, a line still building up, or bought-in material.
 			"source": {
 				"existing_motherstock": cint(r.from_existing_ms),
 				"new_motherstock": cint(r.from_new_ms),
@@ -3893,23 +3297,9 @@ def delivery_schedule(farm=None, variety=None, from_date=None, weeks=None,
 
 
 # ---------------------------------------------------------------------------
-# The farm's own view
-#
-# Everything above answers the planner's question -- what to grow, what to buy,
-# who raises it. The farm asks a shorter one: what is coming, when, and from
-# whom. It is the same plan read from the other end, and until now it could
-# only be assembled by opening four documents.
-# ---------------------------------------------------------------------------
 
 def _trough_calendar(production_plan, proc, version):
-	"""When this plan's roots come off the troughs, per unit.
-
-	Returns None rather than raising when the answer cannot be had -- no
-	upande_propagation, no allocated units, no troughs standing in them, or a
-	protocol with no lifts for this form. In every one of those cases the farm
-	plan falls back to the allocation share, which is worse but is not a
-	guess dressed up as a measurement.
-	"""
+	"""When this plan's roots come off the troughs, per unit."""
 	try:
 		from upande_propagation import allocation as A
 	except ImportError:
@@ -3924,7 +3314,6 @@ def _trough_calendar(production_plan, proc, version):
 		                          version=version)
 	except Exception:
 		# A missing protocol lift row or a trough mid-edit must not take the
-		# whole farm plan down with it.
 		frappe.log_error(frappe.get_traceback(), "farm_plan trough calendar")
 		return None
 	return cal if cal.get("units") else None
@@ -3932,13 +3321,7 @@ def _trough_calendar(production_plan, proc, version):
 
 @frappe.whitelist()
 def farm_plan(farm, variety=None, from_date=None, weeks=None, include_past=None):
-	"""What the farm expects to receive, week by week, and where each lot is raised.
-
-	A week's plants rarely come from one place: some are raised at our own unit,
-	the rest bought in as plants because the troughs could not hold them. The
-	farm needs both halves on the same line -- a delivery that is 90% bought in
-	is a different conversation with a different person from one that is ours.
-	"""
+	"""What the farm expects to receive, week by week, and where each lot is raised."""
 	_guard()
 	start = getdate(from_date or nowdate())
 	if not cint(include_past):
@@ -3957,7 +3340,6 @@ def farm_plan(farm, variety=None, from_date=None, weeks=None, include_past=None)
 	by_plan = {p.name: p for p in plans}
 
 	# Who raises what, per plan: the allocation rows, and the shortfall that is
-	# bought in. A procurement plan with no allocation is entirely bought.
 	raisers = {}
 	for proc in frappe.get_all("Summer Flower Procurement Plan",
 	                           filters={"production_plan": ["in", list(by_plan)],
@@ -3969,7 +3351,6 @@ def farm_plan(farm, variety=None, from_date=None, weeks=None, include_past=None)
 		                      fields=["propagation_unit", "supplier", "plants",
 		                              "propagation_plan"])
 		# Our own units and outside propagators are kept apart: a supplier row
-		# has no unit, and counting it as one put its plants on a unit called None.
 		raisers.setdefault(proc.production_plan, []).append({
 			"procurement_plan": proc.name, "entry_stage": proc.entry_stage,
 			"method": proc.method, "supplier": proc.supplier,
@@ -3979,10 +3360,6 @@ def farm_plan(farm, variety=None, from_date=None, weeks=None, include_past=None)
 		})
 
 	# ── the trough calendar, first ─────────────────────────────────────────
-	# Where it can answer, it answers for the whole plan, not for some weeks:
-	# a trough is planted full and comes off in lifts, so the week a plant is
-	# WANTED and the week it is DELIVERED are different weeks. Keeping the
-	# wanted weeks alongside the delivered ones counts the same plants twice.
 	calendars, lots = {}, []
 	for p in plans:
 		for proc in raisers.get(p.name, []):
@@ -4025,15 +3402,12 @@ def farm_plan(farm, variety=None, from_date=None, weeks=None, include_past=None)
 				             for x in u["rows"]
 				             if getdate(start) <= getdate(x["ready_on"]) <= getdate(horizon)])
 			# What no trough could hold is bought as plants, and those land on
-			# the week they were wanted rather than on a lift date.
 			who = proc.get("supplier") or _("bought in")
 			for on, qty in (cal.get("bought_in") or {}).items():
 				add(on, who, qty, p.variety, "bought in", True)
 			continue
 
 		# No trough answer for this plan: fall back to the allocation share,
-		# spread evenly over the plan's own planting weeks. It is an
-		# approximation, and `from_calendar` says so on every week it touches.
 		rows = frappe.get_all(
 			"Summer Flower Plan Block",
 			filters={"parent": p.name, "is_new_planting": 1},
@@ -4074,8 +3448,6 @@ def farm_plan(farm, variety=None, from_date=None, weeks=None, include_past=None)
 			"week": s["week"], "deliver_on": s["deliver_on"], "plants": s["plants"],
 			"varieties": sorted(s["varieties"]),
 			# Whether this week is what the troughs will actually hand over, or
-			# a season share spread evenly. The two mean different things and
-			# the farm should not have to guess which it is reading.
 			"from_calendar": bool(s["from_calendar"]),
 			"sources": [{"name": k, "plants": v["plants"], "kind": v["kind"]}
 			            for k, v in sorted(s["sources"].items(),
@@ -4100,18 +3472,12 @@ def farm_plan(farm, variety=None, from_date=None, weeks=None, include_past=None)
 			"bought_in": sum(s["plants"] for w in out for s in w["sources"]
 			                 if s["kind"] == "bought in"),
 			# What the plan asked for, against what the troughs make it. They
-			# are not equal and should not be: a trough is planted full, so a
-			# season wanting 1,206,208 roots receives 1,209,240 of them. The
-			# 3,032 is not an error to chase -- it is the last trough's spare
-			# capacity, and the farm has to find ground for it.
 			"demand": sum(cint(c[0]["season_plants"]) for c in calendars.values()),
 			"surplus": sum(cint(u["surplus"]) for c in calendars.values()
 			               for u in c[0]["units"]),
 		},
 		"varieties": sorted({v for w in out for v in w["varieties"]}),
 		# Every trough lot landing in the window: which trough, what went into
-		# it, which lift this is. 7,000 off one trough's second lift is a
-		# different thing to plan around from 7,000 off seven troughs.
 		"lots": sorted(lots, key=lambda x: (x["ready_on"], x.get("unit") or "")),
 		"calendar_weeks": len([w for w in out if w["from_calendar"]]),
 		"plans_on_calendar": sorted(calendars),
@@ -4131,19 +3497,10 @@ def _stem_price(variety):
 	return stem_price(variety)
 
 # ---------------------------------------------------------------------------
-# Who raises it: own propagation units and outside propagators, from the board
-# ---------------------------------------------------------------------------
 
 @frappe.whitelist()
 def seller_choices(procurement_plan):
-	"""The ways this plan buys, and who could sell each of them.
-
-	The companion to propagator_choices. Buying the material and raising it are
-	two decisions and the dashboard could only make the second: choosing a
-	seller meant leaving the plan, opening the document and pressing a button
-	there, which is why every plan on this site reads "nobody is named as
-	selling this yet".
-	"""
+	"""The ways this plan buys, and who could sell each of them."""
 	_guard()
 	doc = frappe.get_doc("Summer Flower Procurement Plan", procurement_plan)
 	frappe.has_permission("Summer Flower Procurement Plan", "read", doc, throw=True)
@@ -4151,7 +3508,6 @@ def seller_choices(procurement_plan):
 	if not stages:
 		stages = [doc.main_entry_stage() or doc.entry_stage or ""]
 	# What each way in comes to, so a share can be read as a quantity. A share
-	# of a number nobody shows is a number somebody has to work out.
 	by_stage = doc.units_by_stage() or {}
 	return {
 		"plan": doc.name,
@@ -4195,7 +3551,6 @@ def save_sellers(procurement_plan, rows):
 		})
 	doc.flags.ignore_permissions = True
 	# Saying who sells it is not saying who raises it, and the plan's guard on
-	# the second must not refuse the first.
 	doc.flags.choosing_sellers = True
 	doc.save()
 	return seller_choices(doc.name)
@@ -4229,11 +3584,7 @@ def propose_propagators(procurement_plan):
 
 @frappe.whitelist()
 def save_propagators(procurement_plan, rows):
-	"""Allocate the season by the shares chosen on the board.
-
-	rows: [{"propagation_unit": ...} or {"supplier": ..., "rate_per_plant": ...},
-	with "share_pct"]. Shares are of the whole season and must make 100.
-	"""
+	"""Allocate the season by the shares chosen on the board."""
 	rows = frappe.parse_json(rows) if isinstance(rows, str) else (rows or [])
 	units = [{"unit": r["propagation_unit"], "share_pct": flt(r.get("share_pct"))}
 	         for r in rows if r.get("propagation_unit")]

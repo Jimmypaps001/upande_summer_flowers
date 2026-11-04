@@ -1,17 +1,5 @@
 # Copyright (c) 2026, James Kiruga and contributors
-# For license information, please see license.txt
-"""Turn the free-text stem length grades into records, and point both tables at them.
-
-Grade was Data in two child tables -- the demand register's split and the
-protocol's grade mix -- and free text drifts: this site holds "50" on one protocol
-and "50cm" on six others, which read as two different grades to anything that
-groups by them, so a demand split could never be compared with a protocol mix
-without someone knowing that by heart.
-
-Every distinct value in use becomes a Summer Flower Grade, spellings that differ
-only by the missing "cm" are folded onto the one that has it, and the rows are
-rewritten to match. Then the Link has something to point at.
-"""
+"""Turn the free-text stem length grades into records, and point both tables at them."""
 
 import re
 
@@ -62,8 +50,6 @@ def execute():
 		created += 1
 
 	# Rewrite the rows whose spelling is being folded away. db_set on the table
-	# rather than document by document: a protocol may be submitted, and this is a
-	# spelling correction, not a change to what the protocol says.
 	fixed = 0
 	for doctype, field in TABLES:
 		if not frappe.db.table_exists(doctype):

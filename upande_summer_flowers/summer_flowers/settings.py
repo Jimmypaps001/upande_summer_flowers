@@ -1,10 +1,5 @@
 # Copyright (c) 2026, James Kiruga and contributors
-# For license information, please see license.txt
-"""Farm policy that used to be written into the source.
-
-Each reader falls back to the figure the code carried before, so a site that has
-set nothing behaves exactly as it did.
-"""
+"""Farm policy that used to be written into the source."""
 
 import frappe
 from frappe.utils import cint, flt
@@ -13,14 +8,7 @@ DOCTYPE = "Summer Flower Settings"
 
 
 def _get(field, default):
-	"""The site's figure, or the one the code carried before.
-
-	Asked of the meta first. get_single_value queues "Field X does not exist"
-	into the message log BEFORE it raises, so catching the exception is not
-	enough -- the message still reaches the browser, and a dashboard carrying a
-	red error about a setting nobody has set is worse than the default it
-	silently falls back to.
-	"""
+	"""The site's figure, or the one the code carried before."""
 	try:
 		if not frappe.get_meta(DOCTYPE).has_field(field):
 			return default
@@ -41,11 +29,7 @@ def bed_sqm_per_ha(default=6667):
 
 
 def lead_weeks(default=None):
-	"""Supplier lead per bought material, as {stage: weeks}.
-
-	The table in settings wins where it names a stage; anything it does not name
-	keeps the figure the code carried.
-	"""
+	"""Supplier lead per bought material, as {stage: weeks}."""
 	out = dict(default or {})
 	try:
 		rows = frappe.get_cached_doc(DOCTYPE).get("stage_lead_weeks") or []
@@ -58,12 +42,7 @@ def lead_weeks(default=None):
 
 
 def second_way(default=None):
-	"""Crops bought a second way: {variety: (route, share)}.
-
-	The table wins for a variety it names; the rest keep the figure the code
-	carried. Only ever a default -- apply_catalogue leaves a share somebody
-	worked out alone.
-	"""
+	"""Crops bought a second way: {variety: (route, share)}."""
 	out = dict(default or {})
 	try:
 		rows = frappe.get_cached_doc(DOCTYPE).get("second_ways") or []
@@ -111,11 +90,5 @@ def lift_share_tolerance(default=0.5):
 
 
 def part_trough_pct(default=25):
-	"""How much of a trough is too little to be worth sticking.
-
-	A batch that runs a little over a trough does not open another one for the
-	remainder: a nearly empty trough costs a bench, a stick and a lift for a few
-	hundred plants. The overflow is taken off an older or an upcoming lift, and
-	where neither has room the planting simply goes short.
-	"""
+	"""How much of a trough is too little to be worth sticking."""
 	return flt(_get("part_trough_pct", default))

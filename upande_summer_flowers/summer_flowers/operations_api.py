@@ -1,16 +1,5 @@
 # Copyright (c) 2026, James Kiruga and contributors
-# For license information, please see license.txt
-"""Transactional endpoints for the planning dashboard.
-
-planning_api is a read-only projection layer. This module is the opposite: every
-call here writes. It is kept separate so that "does this endpoint change data"
-never has to be answered by reading the body of the function.
-
-Nothing here reimplements business rules. Each endpoint loads the document and
-calls the controller method, so the dashboard is subject to exactly the same
-validation, approval and role checks as the desk form -- an approval cannot be
-skipped by coming in through the web page.
-"""
+"""Transactional endpoints for the planning dashboard."""
 
 import datetime
 
@@ -41,7 +30,6 @@ REVIEW_SOURCES = (
 )
 
 # Only these controller methods may be reached from the dashboard, and only on
-# these doctypes. A generic "call any method" endpoint would be a hole.
 ALLOWED_ACTIONS = {
 	"Block Production Budget": ("submit_for_approval", "approve", "reject",
 	                            "refresh_actuals"),
@@ -70,8 +58,6 @@ def _cycle(name):
 	return doc
 
 
-# ---------------------------------------------------------------------------
-# Crop cycles: list and detail
 # ---------------------------------------------------------------------------
 
 @frappe.whitelist()
@@ -131,8 +117,6 @@ def crop_cycles(variety=None, farm=None, block=None, status=None):
 			"expected_life": sum(cint(r.custom_expected_stems_life) for r in rows),
 			"remaining": sum(cint(r.custom_expected_stems_remaining) for r in rows),
 			# What is cut and what can be sold are different numbers wherever a
-			# protocol states a grading loss, and a board reporting output has
-			# to be able to ask for the second.
 			"saleable_life": sum(cint(r.custom_saleable_stems_life) for r in rows),
 			"saleable_remaining": sum(cint(r.custom_saleable_stems_remaining)
 			                          for r in rows),
@@ -256,25 +240,17 @@ def crop_cycle_detail(cycle):
 
 
 # ---------------------------------------------------------------------------
-# Harvesting
-# ---------------------------------------------------------------------------
 
 @frappe.whitelist()
 def record_harvest(cycle, flush_number, actual_stems, harvest_date=None,
                    grade_actuals=None):
-	"""Close a flush with what was actually cut.
-
-	Per-grade actuals are optional. When given they are written onto the weekly
-	target rows for the flush's week and must add up to the flush total, because
-	a grade split that does not reconcile makes both figures untrustworthy.
-	"""
+	"""Close a flush with what was actually cut."""
 	doc = _cycle(cycle)
 	flush = next((r for r in doc.custom_flush_schedule
 	              if cint(r.flush_number) == cint(flush_number)), None)
 	if not flush:
 		frappe.throw(_("Flush {0} is not on cycle {1}.").format(flush_number, cycle))
 	# The future-date and negative-stems rules live on the controller, so the desk
-	# form and this endpoint cannot disagree about what a valid harvest is.
 	total = cint(actual_stems)
 	splits = frappe.parse_json(grade_actuals) if isinstance(grade_actuals, str) \
 		else (grade_actuals or None)
@@ -315,11 +291,7 @@ def set_actual_pinch(cycle, actual_pinch_date):
 
 @frappe.whitelist()
 def record_cuttings_on(cycle, quantity, taken_on=None):
-	"""Cuttings taken off a standing cycle for propagation.
-
-	Separate from act() because act() deliberately passes no arguments other than
-	a rejection reason, and this needs a quantity.
-	"""
+	"""Cuttings taken off a standing cycle for propagation."""
 	doc = _cycle(cycle)
 	total = doc.record_cuttings(quantity, taken_on)
 	frappe.db.commit()
@@ -338,11 +310,7 @@ def end_cycle_on(cycle, actual_uproot_date, reason=None):
 
 @frappe.whitelist()
 def set_weekly_target(row, target_stems=None, reset=None):
-	"""Override one week-and-grade target by hand, or reset it to the expectation.
-
-	Setting a target marks the row as hand-set so later protocol changes leave it
-	alone; resetting clears that mark and hands the row back to the forecast.
-	"""
+	"""Override one week-and-grade target by hand, or reset it to the expectation."""
 	_guard()
 	parent = frappe.db.get_value("Crop Cycle Weekly Target", row, "parent")
 	if not parent:
@@ -384,17 +352,10 @@ def reset_targets(cycle):
 
 
 # ---------------------------------------------------------------------------
-# Review queue
-# ---------------------------------------------------------------------------
 
 @frappe.whitelist()
 def review_queue():
-	"""Everything across the module that is waiting on a person.
-
-	Documents in a pending state plus cycles carrying an unapproved override or
-	uprooting deviation, which are not separate documents but still need a
-	decision.
-	"""
+	"""Everything across the module that is waiting on a person."""
 	_guard()
 	items = []
 	for doctype, field, pending, label, extra in REVIEW_SOURCES:
@@ -418,9 +379,6 @@ def review_queue():
 			})
 
 	# Material Request is the input order sheet, and submitting it is the approval,
-	# so a draft block-scoped request is what is waiting on someone. It is listed
-	# rather than actioned here: submitting a Material Request goes through
-	# Material Request, which is where its own validation and notifications live.
 	for r in frappe.get_all(
 		"Material Request",
 		filters={"custom_sf_block": ["is", "set"], "docstatus": 0},
@@ -486,13 +444,7 @@ def review_queue():
 
 @frappe.whitelist()
 def act(doctype, name, action, reason=None):
-	"""Run one whitelisted controller action.
-
-	The doctype and action are checked against ALLOWED_ACTIONS rather than being
-	trusted, so this cannot be used to reach an arbitrary method. The controller
-	does the role and state checking, which is why the dashboard cannot approve
-	anything the desk form would refuse.
-	"""
+	"""Run one whitelisted controller action."""
 	_guard()
 	allowed = ALLOWED_ACTIONS.get(doctype)
 	if not allowed or action not in allowed:
@@ -512,25 +464,16 @@ def act(doctype, name, action, reason=None):
 
 
 # ---------------------------------------------------------------------------
-# The chain: demand -> production plan -> propagation plan -> budget
-# ---------------------------------------------------------------------------
 
 @frappe.whitelist()
 def chain_status(variety=None, farm=None, demand=None, plan=None, season=None):
-	"""Where a variety has got to along the chain, and what the next step is.
-
-	One call rather than four, so the dashboard cannot show a plan from one
-	variety next to a budget from another.
-	"""
+	"""Where a variety has got to along the chain, and what the next step is."""
 	_guard()
 	if not demand:
 		f = {}
 		if variety:
 			f["variety"] = variety
 		# The register is one farm's order book, so the farm narrows it. Without
-		# this, a variety grown at two farms resolved to whichever register was
-		# edited last and the dashboard showed one farm's demand under another
-		# farm's plan.
 		if farm:
 			f["farm"] = farm
 		rows = frappe.get_all("Summer Flower Market Demand", filters=f,
@@ -547,15 +490,11 @@ def chain_status(variety=None, farm=None, demand=None, plan=None, season=None):
 		from upande_summer_flowers.summer_flowers.valuation import stem_price
 
 		# The register holds no price and no currency: the stem is valued at the
-		# variety's valuation, in its company's currency.
 		d["price_per_stem"] = stem_price(d.variety, d.company)
 		d["currency"] = frappe.get_cached_value("Company", d.company, "default_currency") \
 			if d.company else None
 
 	# Scoped to the financial year when one is chosen, because the rest of this
-	# card already is: every step after the register describes one plan, and a plan
-	# is one financial year. Leaving the register at its full span put 24 years of
-	# demand beside one year of everything else and called the difference a gap.
 	d["season_start_year"] = season_year(season) or None
 	if season:
 		start = season_year(season)
@@ -582,8 +521,6 @@ def chain_status(variety=None, farm=None, demand=None, plan=None, season=None):
 		"Summer Flower Production Plan", filters={"market_demand": demand,
 		                                          "docstatus": ["<", 2]},
 		# variety and season_start_year are read below to find the propagation
-		# plan, and were not being selected -- so this raised KeyError on every
-		# call and the chain card has been showing its error state throughout.
 		fields=["name", "variety", "farm", "season_start_year",
 		        "workflow_state", "docstatus", "budget", "weeks_covered",
 		        "total_demand_stems", "total_production_stems", "coverage_pct",
@@ -593,17 +530,10 @@ def chain_status(variety=None, farm=None, demand=None, plan=None, season=None):
 		        "unmet_stems", "blocks_used"],
 		order_by="creation desc")
 	# The financial year has to reach the plan, not just the register. It was
-	# applied above and nowhere else, so every year answered with the newest plan:
-	# 2026-27, 2027-28 and 2028-29 all showed the 2028-29 plan, and the propagation
-	# plan and budget that hang off it. A year with no plan now says so rather than
-	# borrowing another year's -- which is worse than showing nothing, because the
-	# figures look like an answer to the question that was asked.
 	scoped = ([p for p in plans
 	           if season_year(p.get("season_start_year")) == season_year(season)]
 	          if season else plans)
 	# Describe the plan the dashboard is showing. Falling back to the newest is
-	# what made the chain card name a draft while every tile beside it described
-	# the approved plan the scope bar had selected.
 	wanted = plan
 	plan = next((p for p in plans if p["name"] == wanted), None) if wanted else None
 	if plan is None:
@@ -638,10 +568,6 @@ def chain_status(variety=None, farm=None, demand=None, plan=None, season=None):
 		space = _space_for(plan, d.get("farm"))
 
 	# Procurement sits between the plan and everything that follows from it. The
-	# chain went straight from plan to propagation and offered a button to create
-	# one, which answered the sourcing question before it was asked: a crop bought
-	# as plants ready to go got a propagation plan too, and a crop raised here got
-	# its cuttings sized before anyone had said where the material came from.
 	proc = None
 	if plan:
 		pq = frappe.get_all(
@@ -677,7 +603,6 @@ def chain_status(variety=None, farm=None, demand=None, plan=None, season=None):
 		 "done": bool(prop), "name": prop["name"] if prop else None,
 		 "state": prop["status"] if prop else None,
 		 # No button. A propagation plan is raised by approving the procurement
-		 # plan, and only for a crop this farm actually propagates.
 		 "note": (None if prop else
 		          (_("Raised when the procurement plan is approved.") if proc else
 		           _("Comes from the procurement plan, and only for a crop raised "
@@ -690,14 +615,7 @@ def chain_status(variety=None, farm=None, demand=None, plan=None, season=None):
 
 @frappe.whitelist()
 def process_overview(variety=None, farm=None, plan=None, season=None):
-	"""The whole process on one screen: every stage, its documents, and what stops it.
-
-	The tabs each answer one question well and none of them answer "where is this
-	crop". This walks the chain the same way it actually runs -- register, plan,
-	budget, propagation, TC order, motherstock, plantings, cycles, harvest, inputs
-	-- reads the documents at each stage, and says which stage is the one holding
-	everything else up. Read-only.
-	"""
+	"""The whole process on one screen: every stage, its documents, and what stops it."""
 	_guard()
 	from upande_summer_flowers.summer_flowers.planning_api import resolve_plan
 
@@ -708,8 +626,6 @@ def process_overview(variety=None, farm=None, plan=None, season=None):
 	def stage(key, label, doc=None, state=None, value=None, detail=None,
 	          done=False, blocked=None, count=None, note=None):
 		# blocked stops the chain; note is something to do next that does not.
-		# Plantings waiting on a block used to be a blocker, and it is not one: the
-		# plan is built, the TC order is sized and propagation follows from them.
 		stages.append({
 			"key": key, "label": label, "doc": doc, "state": state,
 			"value": value, "detail": detail, "done": bool(done),
@@ -719,12 +635,6 @@ def process_overview(variety=None, farm=None, plan=None, season=None):
 			blockers.append("%s: %s" % (label, blocked))
 
 	# ── 0. whose chain is this?
-	#
-	# A plan is the most specific thing in scope, so it names the variety and the farm.
-	# The register used to be resolved first, from the variety filter alone, and with
-	# no variety set it took the most recently edited register of any crop -- so the
-	# chain showed Agapanthus Blue's demand above an Aster Pink Flash plan and reported
-	# that they did not match. They never disagreed; they were never the same crop.
 	if plan and frappe.db.exists("Summer Flower Production Plan", plan):
 		scope = frappe.db.get_value("Summer Flower Production Plan", plan,
 		                            ["variety", "farm"], as_dict=True)
@@ -748,13 +658,9 @@ def process_overview(variety=None, farm=None, plan=None, season=None):
 		        "blockers": blockers, "verdict": _("Nothing to show: no demand register.")}
 	d = dem[0]
 	# Where no plan was given the register names the variety, since one variety's
-	# demand can be met from several farms and the farm then comes from the plan.
 	variety = d.variety
 
 	# Scoped to the financial year when one is chosen. Every stage after this one
-	# describes a single plan, and a plan is a single financial year, so a register
-	# reading its whole span here put decades of demand at the head of a chain
-	# describing one season of work.
 	if season:
 		start = season_year(season)
 		wk = frappe.db.sql("""select year, week_no, demand_stems
@@ -792,13 +698,11 @@ def process_overview(variety=None, farm=None, plan=None, season=None):
 			      cint(p.peak_concurrent_beds))
 		       if cint(p.peak_concurrent_beds)
 		       # Plans built before the peak was computed have it at zero. Quote the
-		       # horizon total instead of printing "0 beds", which reads as an error.
 		       else _("{0} plantings, {1} beds over the horizon").format(
 			      len([b for b in p.plan_blocks if b.is_new_planting]),
 			      cint(p.new_beds_required))),
 		      done=p.docstatus == 1,
 		      # Not "blocked": the plan is built and the propagation and TC figures
-		      # follow from it. Assigning blocks is the next job, not a prerequisite.
 		      blocked=None,
 		      note=(_("{0} plantings are waiting on a block ({1} stems). Assign blocks "
 		              "before planting; the plan and the TC order already include them."
@@ -822,11 +726,6 @@ def process_overview(variety=None, farm=None, plan=None, season=None):
 		               if p and p.docstatus != 1 else None))
 
 	# ── 4. procurement
-	#
-	# How the material is got, which until this step is an open question. The chain
-	# jumped from the budget straight to propagation, so a crop bought as plants
-	# ready to go still showed a propagation step -- and a crop raised here showed
-	# one before anybody had said the farm was raising it.
 	proc = None
 	if p:
 		pq = frappe.get_all(
@@ -849,10 +748,6 @@ def process_overview(variety=None, farm=None, plan=None, season=None):
 		                  "and nothing downstream of it exists.") if p else None)))
 	else:
 		# A plan raised before the route was read, on a protocol that still has no
-		# route, knows neither what is bought nor whether anything is propagated.
-		# Saying "nothing bought; taken off the farm's own crop" in that case is an
-		# answer invented from an empty field, and it sat one step above a
-		# propagation plan asking for 370,000 cuttings.
 		unread = not (proc.route_verdict or proc.entry_stage
 		              or cint(proc.propagates_here))
 		if unread:
@@ -880,12 +775,6 @@ def process_overview(variety=None, farm=None, plan=None, season=None):
 			            else None)))
 
 	# ── 5. propagation
-	#
-	# Found by variety and season, which is how it is keyed: propagation is one pool of
-	# motherstock and one TC order for a crop in a year, whichever production plan it
-	# was last built from. Looking it up by production_plan reported "Not created, so
-	# nothing knows where the cuttings come from" for a crop that had one, because a
-	# second plan had been cut for the same season.
 	pr = None
 	if p:
 		rows = frappe.get_all("Summer Flower Propagation Plan",
@@ -904,8 +793,6 @@ def process_overview(variety=None, farm=None, plan=None, season=None):
 		pr = rows[0] if rows else None
 	if not pr:
 		# Only a crop this farm raises has a propagation plan, and the procurement
-		# plan is what raises it. Calling its absence a blocker on a crop bought as
-		# plants ready to go reported a problem that does not exist.
 		if proc and not cint(proc.propagates_here):
 			stage("propagation", "Propagation plan", state=_("not propagated here"),
 			      detail=_("{0} is bought as {1} and planted as it arrives.").format(
@@ -938,7 +825,6 @@ def process_overview(variety=None, farm=None, plan=None, season=None):
 			      pr.tc_order_date, "{:,}".format(cint(pr.tc_cost)),
 			      pr.currency or ""),
 		      # A batch is raised from the propagation plan, which belongs to the crop
-		      # and the season rather than to one production plan.
 		      done=bool(frappe.db.count("Summer Flower Motherstock Batch",
 		                                {"variety": p.variety,
 		                                 "docstatus": ["<", 2]})),
@@ -1055,15 +941,9 @@ def process_overview(variety=None, farm=None, plan=None, season=None):
 		      detail=_("Raised per block from the crop cycle"))
 
 	# The budget goes to the far end. It is posted off the plan and nothing in the
-	# chain waits on it -- propagation, the TC order and the field all run whether
-	# or not it has reached Accounts -- so sitting third it pushed the six stages
-	# that DO block each other further along, and read as a step the crop was
-	# waiting on. Moved rather than dropped: it is still part of the process, just
-	# not part of the queue.
 	stages.sort(key=lambda s: s["key"] == "budget")
 
 	# The one thing worth acting on: the earliest stage that is stuck. Read after
-	# the sort, so "first" means first in the order shown.
 	stuck = next((s for s in stages if s["blocked"]), None)
 	verdict = (_("{0} is what to deal with first. {1}").format(stuck["label"],
 	                                                           stuck["blocked"])
@@ -1079,11 +959,7 @@ def process_overview(variety=None, farm=None, plan=None, season=None):
 
 
 def _space_for(plan, farm):
-	"""Beds the plan wants against beds and blocks the farm has.
-
-	Beds are rarely the binding constraint; blocks are, because a block holds one
-	planting at a time and a planting sits in it for its whole life.
-	"""
+	"""Beds the plan wants against beds and blocks the farm has."""
 	blocks = frappe.get_all(
 		"Block", filters={"custom_is_summer_flower_block": 1, "farm": farm},
 		fields=["name", "custom_total_beds", "custom_net_area_ha"])
@@ -1108,7 +984,6 @@ def _space_for(plan, farm):
 		"blocks_used": cint(plan.get("blocks_used")),
 		"unmet_stems": cint(plan.get("unmet_stems")),
 		# Beds over the horizon double-count a block used twice, so the pressure
-		# figure is the most beds standing at once.
 		"peak_beds": peak,
 		"peak_beds_week": plan.get("peak_beds_week"),
 		"beds_pct": round(peak * 100.0 / beds_have, 1) if beds_have else 0,
@@ -1117,11 +992,7 @@ def _space_for(plan, farm):
 
 @frappe.whitelist()
 def plan_preview(market_demand, farm=None, season_start_year=None):
-	"""What creating this plan would mean, before anything is written.
-
-	A passthrough because the dashboard reaches this module and the check itself lives
-	with the plan. Both surfaces ask the same question and get the same answer.
-	"""
+	"""What creating this plan would mean, before anything is written."""
 	_guard()
 	from upande_summer_flowers.summer_flowers.doctype \
 		.summer_flower_production_plan.summer_flower_production_plan import (
@@ -1133,14 +1004,7 @@ def plan_preview(market_demand, farm=None, season_start_year=None):
 
 @frappe.whitelist()
 def create_production_plan(demand, farm=None, season_start_year=None, force_new=0):
-	"""Build the production plan for a demand register.
-
-	An open draft is rebuilt rather than joined by another one. Pressing this a few
-	times used to leave a row of identically named drafts with nothing to tell them
-	apart, which is exactly the confusion this is meant to resolve: a demand has one
-	plan being worked on at a time. Pass force_new to keep a draft and start a
-	separate scenario beside it.
-	"""
+	"""Build the production plan for a demand register."""
 	_guard()
 	if not cint(force_new):
 		open_draft = frappe.get_all(
@@ -1159,8 +1023,6 @@ def create_production_plan(demand, farm=None, season_start_year=None, force_new=
 			       "weeks_in_deficit": cint(doc.weeks_in_deficit),
 			       "reused": 1}
 			# No propagation plan here. How the plants are got is decided in the
-			# sourcing step, and building one on creation answers that question
-			# before anyone has been asked it -- it assumes the farm will propagate.
 			return out
 
 	d = frappe.get_doc("Summer Flower Market Demand", demand)
@@ -1222,26 +1084,16 @@ def create_propagation_plan(plan):
 		 "season", "last_change_summary"],
 		as_dict=True)
 	# Created or updated, and what moved. There is one propagation plan per variety
-	# per season, so pressing this on a second plan for the same crop rebuilds the
-	# existing one -- silently, until now.
 	row["created"] = outcome["created"]
 	row["changes"] = outcome["changes"]
 	return row
 
 
 # ---------------------------------------------------------------------------
-# Budget
-# ---------------------------------------------------------------------------
 
 @frappe.whitelist()
 def budget_detail(plan=None, budget=None):
-	"""The budget a plan produced, with its months and fiscal-year postings.
-
-	A budget only exists once a plan is approved -- approval is the transition that
-	submits the plan and builds it -- so a draft plan legitimately has none. The
-	payload says which case it is rather than returning an empty object, because
-	"no budget yet" and "budget missing" need different actions from the user.
-	"""
+	"""The budget a plan produced, with its months and fiscal-year postings."""
 	_guard()
 	if not budget:
 		if not plan:
@@ -1308,8 +1160,6 @@ def budget_detail(plan=None, budget=None):
 
 
 # ---------------------------------------------------------------------------
-# Plan-level workflow, so the dashboard can drive the demand -> budget chain
-# ---------------------------------------------------------------------------
 
 @frappe.whitelist()
 def plan_action(plan, action):
@@ -1320,8 +1170,6 @@ def plan_action(plan, action):
 
 	if action == "regenerate":
 		# Not a workflow transition: rebuilding is an edit, and the controller
-		# refuses it on anything already submitted. Exposed here so a plan can be
-		# altered and re-agreed from the dashboard, which is where it is read.
 		doc.regenerate()
 		frappe.db.commit()
 		doc.reload()
@@ -1354,13 +1202,7 @@ def plan_transitions(plan):
 
 @frappe.whitelist()
 def propose_horizon(market_demand, years=1):
-	"""The weeks an extension would add, and what last year put in them.
-
-	Proposes; it does not write. The demand for a week nobody has ordered yet is a
-	commercial judgement, not an arithmetic one, so the weeks come back with last
-	year's figure filled in as a starting point and the decision stays with the
-	person who has to sell them.
-	"""
+	"""The weeks an extension would add, and what last year put in them."""
 	_guard()
 	years = max(1, cint(years))
 	d = frappe.get_doc("Summer Flower Market Demand", market_demand)
@@ -1369,16 +1211,12 @@ def propose_horizon(market_demand, years=1):
 
 	have = {(cint(r.year), cint(r.week_no)) for r in d.demand_weeks}
 	# The pattern is the LAST YEAR on the register, not the whole register. Using
-	# every week meant each extension repeated everything that came before it, so a
-	# 157-week register went to 314, then 628, then 1,254 in three presses -- twenty
-	# years of demand nobody asked for, and each press proposing more than the last.
 	source = sorted(d.demand_weeks,
 	                key=lambda r: (cint(r.year), cint(r.week_no)))[-52:]
 	out = []
 	for step in range(1, years + 1):
 		for r in source:
 			# 52 weeks on, not the same week number a year later: a 53-week year
-			# would otherwise drop a week or double one.
 			monday = iso_monday(cint(r.year), cint(r.week_no)) + datetime.timedelta(
 				weeks=52 * step)
 			y, w = iso_year_week(monday)
@@ -1406,13 +1244,7 @@ def propose_horizon(market_demand, years=1):
 
 @frappe.whitelist()
 def add_demand_weeks(market_demand, weeks):
-	"""Write the weeks that came back edited.
-
-	Takes what it is given rather than recomputing it: the point of proposing was
-	that the figures could be changed, and recalculating them here would throw the
-	edit away. Weeks already on the register are skipped, so saving twice adds
-	nothing and never overwrites a week somebody has already set.
-	"""
+	"""Write the weeks that came back edited."""
 	_guard()
 	if isinstance(weeks, str):
 		weeks = frappe.parse_json(weeks or "[]")
@@ -1459,12 +1291,7 @@ def add_demand_weeks(market_demand, weeks):
 
 @frappe.whitelist()
 def motherstock_commitment(plan=None, variety=None, farm=None):
-	"""What agreeing a line would do, so the dialog can say it before it happens.
-
-	Agreeing is the moment the planning stops being a sketch: it writes the line,
-	orders against it, and moves the documents the farm actually works from. A
-	confirmation that only repeats the quantity does not tell anybody that.
-	"""
+	"""What agreeing a line would do, so the dialog can say it before it happens."""
 	_guard()
 	from upande_summer_flowers.summer_flowers.planning_api import resolve_plan
 
@@ -1498,25 +1325,7 @@ def motherstock_commitment(plan=None, variety=None, farm=None):
 @frappe.whitelist()
 def agree_motherstock_line(plan=None, variety=None, farm=None, tc=None,
                            multiplications=None):
-	"""Write the line down, order against it, and move what follows from it.
-
-	The motherstock card used to be read-only, on the reasoning that committing
-	belonged on the document. But the planning happens here -- this is where the
-	peak week, the weekly split and the shortfall are visible side by side -- so
-	the card now does the one write that matters.
-
-	And it does not stop at the line. An agreed line that leaves the order, the
-	propagation plan and the plantings quoting the previous one is four documents
-	disagreeing about one decision, which is the failure this whole chain has
-	been pulled apart to prevent. So agreeing runs the chain: the Motherstock
-	Plan, then the Procurement Plan built from it, then the Propagation Plan
-	rebuilt from that, then the plantings -- each step reported, and each one
-	allowed to fail without taking the agreement down with it, because the line
-	is the thing that must survive.
-
-	Nothing else on the card writes. Trying a quantity or a multiplication is
-	still free; this is the only thing that commits to one.
-	"""
+	"""Write the line down, order against it, and move what follows from it."""
 	_guard()
 	from upande_summer_flowers.summer_flowers.doctype \
 		.summer_flower_motherstock_plan.summer_flower_motherstock_plan import for_plan
@@ -1533,15 +1342,6 @@ def agree_motherstock_line(plan=None, variety=None, farm=None, tc=None,
 	doc = frappe.get_doc("Summer Flower Motherstock Plan", ms)
 
 	# ... and onto the PLAN, which is the thing the rest of the app reads. The
-	# Motherstock Plan is the agreed line; the plan's own committed fields are
-	# what say an order has been agreed at all, and this path never wrote them.
-	# So a line agreed from the motherstock card left the plan looking
-	# un-agreed: the plantings were never trimmed to it, and the check that
-	# stops a plan going for approval with nothing ordered refused a plan that
-	# had just ordered. The bought-material card has always written them.
-	#
-	# A draft only, and saved rather than db_set, because the plantings follow
-	# from these figures and only a save works them through.
 	plan_doc = frappe.get_doc("Summer Flower Production Plan", name)
 	if not cint(plan_doc.docstatus):
 		plan_doc.tc_choice_committed = 1
@@ -1565,16 +1365,12 @@ def agree_motherstock_line(plan=None, variety=None, farm=None, tc=None,
 		"steps": [],
 	}
 	# Nothing else. Agreeing writes the line onto the plan; the documents that
-	# follow from it are raised when the plan is APPROVED, because approval is
-	# what commits the farm. See documents_that_follow.
 	for label, fn in []:
 		try:
 			out["steps"].append({"step": label, "ok": True, "result": fn()})
 			frappe.db.commit()
 		except Exception as e:
 			# The agreement stands even when something downstream will not build.
-			# Losing the line because a planting row has no block would be the
-			# worst of both: nothing agreed and nothing ordered.
 			frappe.db.rollback()
 			frappe.log_error(frappe.get_traceback(), "Agreeing %s: %s" % (ms, label))
 			out["steps"].append({"step": label, "ok": False,
@@ -1600,9 +1396,6 @@ def _chain_after_agreement(production_plan):
 
 	def plantings():
 		# Written by the procurement plan, which is the only thing that knows how
-		# the material was got -- and therefore what each entry's source, supplier
-		# and plant count are. The production plan used to write a second, thinner
-		# version of the same document from its own button.
 		from upande_summer_flowers.summer_flowers.doctype \
 			.summer_flower_procurement_plan.summer_flower_procurement_plan import (
 				write_plantings_for,
@@ -1616,16 +1409,5 @@ def _chain_after_agreement(production_plan):
 
 
 def documents_that_follow(production_plan):
-	"""The chain, run when the plan is approved rather than when it is agreed.
-
-	Agreeing a line is a decision about the plan. It is not an order, and it
-	was raising three documents that behave like one: a Procurement Plan, the
-	Propagation Plan built from it, and the plantings. So trying a quantity on
-	a draft created purchasing paperwork for a plan nobody had approved -- and
-	the chain said so itself, reporting "Plantings skipped, the production plan
-	is not approved yet" while raising the other two anyway.
-
-	Agreement now writes the decision onto the plan and stops. Approval is what
-	commits the farm, so approval is what raises the documents that spend money.
-	"""
+	"""The chain, run when the plan is approved rather than when it is agreed."""
 	return _chain_after_agreement(production_plan)

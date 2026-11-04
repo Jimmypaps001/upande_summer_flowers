@@ -1,12 +1,5 @@
 # Copyright (c) 2026, James Kiruga and contributors
-# For license information, please see license.txt
-"""A versioned, per-farm parameter set hanging off a variety's Crop Protocol.
-
-Crop Protocol stays the variety master. Amendments create a new version record
-rather than editing in place, so a crop cycle keeps pointing at the parameters it
-actually ran under. Superseding is what closes the previous version's effective
-window -- nothing is overwritten.
-"""
+"""A versioned, per-farm parameter set hanging off a variety's Crop Protocol."""
 
 import math
 
@@ -19,10 +12,6 @@ from upande_summer_flowers.summer_flowers import stages as _stages
 WEEKS_PER_YEAR = 52
 
 # Net bed in a hectare of ground. A hectare is 10,000 m2, but paths, headlands and
-# the gaps between beds take about a third of it, so only this much is ever planted.
-# Quoting per-hectare figures against the full 10,000 overstated every one of them
-# by half: the farm plans against the ground it has, not against the bed it would
-# have if the ground were all bed.
 BED_SQM_PER_HA = 6667
 
 
@@ -33,39 +22,18 @@ def bed_sqm_per_ha():
 
 
 # What a stage is assumed to lose when the protocol does not say. Five per
-# cent at rooting, five at establishment, five at grading: a house allowance,
-# not a measurement, and replaced the moment somebody states the real one.
 DEFAULT_STAGE_LOSS_PCT = 5.0
 
 
 class CropProtocolVersion(Document):
 	def guard_snapshot_only(self):
-		"""A version is written by approving a Crop Protocol, and by nothing else.
-
-		It is the history: a full copy of the protocol as it stood when a change was
-		approved, and the thing every plan, planting and crop cycle pins to. Letting
-		it be edited afterwards would rewrite what an approved plan says it was built
-		on, which is the one guarantee this doctype exists to give.
-
-		Migrations and patches are let through, because they have to be able to carry
-		old data forward.
-		"""
+		"""A version is written by approving a Crop Protocol, and by nothing else."""
 		if self.flags.from_protocol_snapshot or self.flags.ignore_protocol_lock:
 			return
 		if (frappe.flags.in_migrate or frappe.flags.in_patch or frappe.flags.in_install
 				or frappe.flags.in_test):
 			return
 		# A Draft is not history yet. Nothing is pinned to it -- no plan, no planting,
-		# no crop cycle can be built on a version that has never been approved -- so
-		# there is nothing to falsify by editing it, and save_protocol's whole
-		# contract is that a Draft is edited in place while an Active one is amended
-		# into a new Draft. Guarding the Draft too meant that amendment created a
-		# version it could not then write to, so no approved protocol could be
-		# changed at all: the edit died on the copy it had just made.
-		# Pending Approval is on the same side of the line. The workflow's own
-		# Draft -> Pending Approval -> Active path saves the doc at every step, so
-		# guarding Pending made Approve unreachable: the version could be sent for
-		# approval and then never approved, stranded in a state it could not leave.
 		if (self.version_status or "Draft") in ("Draft", "Pending Approval"):
 			return
 		frappe.throw(
@@ -89,12 +57,7 @@ class CropProtocolVersion(Document):
 		self.set_title()
 
 	def set_title(self):
-		"""What this snapshot is called, as against what it is named.
-
-		The document is named after the variety's item code -- 3359-Kariki
-		Nanyuki-v1 -- because every plan and cycle links to it by that name.
-		The heading reads what the farm calls the crop.
-		"""
+		"""What this snapshot is called, as against what it is named."""
 		from upande_summer_flowers.summer_flowers.crop_protocol import variety_name
 
 		parts = [variety_name(self.variety), self.farm]
@@ -104,7 +67,6 @@ class CropProtocolVersion(Document):
 
 	def on_update(self):
 		# Frappe workflows only move workflow_state; they do not call into the
-		# controller, so detect the Draft/Pending -> Active crossing ourselves.
 		before = self.get_doc_before_save()
 		became_active = self.workflow_state == "Active" and (
 			not before or before.workflow_state != "Active"
@@ -135,8 +97,6 @@ class CropProtocolVersion(Document):
 
 	def sync_status(self):
 		# Superseded is terminal and is set by the successor's activation, not by the
-		# workflow. Copying workflow_state over it resurrects a retired version --
-		# which left two versions Active at once and made resolve_version ambiguous.
 		if self.version_status == "Superseded":
 			return
 		if self.workflow_state and self.workflow_state in (
@@ -146,28 +106,11 @@ class CropProtocolVersion(Document):
 
 	# ------------------------------------------------------------------ geometry
 	def set_geometry(self):
-		"""Everything geometric comes off net bed area.
-
-		One area, and it is the ground the crop occupies. Carrying a second, larger
-		one alongside invited every per-hectare figure to be read against whichever
-		the reader assumed.
-		"""
+		"""Everything geometric comes off net bed area."""
 		if not self.plants_per_sqm_net:
 			frappe.throw(_("Plants per m² of bed (net) is required."))
 
 		# Two inputs decide the geometry: how densely the crop is planted, and how big
-		# a bed is. Plants per bed was an input too and is now the result of them --
-		# 50 m² at 20 plants per m² is 1,000 plants -- because three numbers where two
-		# will do is three numbers that can disagree.
-		# How big a bed is belongs to the farm, not to the crop, and a farm whose ground
-		# has not been recorded yet should not stop anyone writing down what a variety
-		# does. Without it the bed-based figures simply cannot be worked out, and say so
-		# by staying empty rather than by refusing the protocol.
-		# A farm that has not recorded its bed size still states the smallest planting
-		# it will make, and that is an area too. Falling back to it keeps every
-		# bed-based figure in the right order of magnitude instead of collapsing to
-		# one plant per bed -- which is what a zero here used to mean, and it made a
-		# 20-bed crop read as 10,000 beds on 0 hectares.
 		bed_sqm = flt(self.sqm_net_per_bed) or flt(self.min_planting_area_sqm)
 		self.bed_area_assumed = 1 if (not self.sqm_net_per_bed and bed_sqm) else 0
 
@@ -186,18 +129,7 @@ class CropProtocolVersion(Document):
 
 	# --------------------------------------------------------------------- flush
 	def set_flush_schedule(self):
-		"""Number the flushes, date them, and reconcile stems against percentages.
-
-		A harvest is a share of a life. The planning sheet works in percentages --
-		this flush is 12.2% of everything the plant gives -- and the protocol has
-		only ever held stems, so the share had to be worked out by hand every time
-		anyone wanted to read it that way.
-
-		Either one can be the input. State the stems and the shares follow; state the
-		shares and a stated life, and the stems follow. What is not allowed is both
-		being typed and disagreeing, so whichever is stated wins and the other is
-		rewritten from it.
-		"""
+		"""Number the flushes, date them, and reconcile stems against percentages."""
 		rows = sorted(self.flush_schedule, key=lambda r: r.flush_number or 0)
 		interval = self.flush_interval_weeks or 0
 
@@ -205,8 +137,6 @@ class CropProtocolVersion(Document):
 		pct_given = sum(flt(r.pct_of_life) for r in rows)
 		stated = flt(self.stated_stems_per_plant_life)
 		# What a plant gives over its life is the sum of its flushes -- there is
-		# nowhere else for the number to come from, so it is read off the rows rather
-		# than typed beside them and left to disagree.
 		if stems_given:
 			self.stated_stems_per_plant_life = stems_given
 		if not stems_given and pct_given and stated:
@@ -220,9 +150,6 @@ class CropProtocolVersion(Document):
 			row.idx = idx
 			row.flush_number = idx
 			# Planting is what is typed; pinch is worked back from it. Every crop has a
-			# planting date, and most of these are never pinched at all -- asking them
-			# when their flush falls "after pinching" was asking about an event that
-			# does not happen to them.
 			pinch = cint(self.weeks_to_pinch)
 			if cint(row.weeks_from_planting):
 				row.weeks_from_pinch = cint(row.weeks_from_planting) - pinch
@@ -236,9 +163,6 @@ class CropProtocolVersion(Document):
 			row.cumulative_pct = cumulative
 
 		# The interval is a seed for filling blank offsets, and once the rows carry
-		# their own it is simply the gap between them. Reading it back off the rows
-		# stops it being a second, stale opinion -- a crop cutting every week said
-		# nothing here at all, because the seed had never been typed.
 		gaps = sorted({cint(rows[i + 1].weeks_from_pinch) - cint(rows[i].weeks_from_pinch)
 		               for i in range(len(rows) - 1)})
 		if gaps and gaps[0] > 0:
@@ -262,19 +186,7 @@ class CropProtocolVersion(Document):
 		return blocks
 
 	def set_from_route(self):
-		"""Take the per-stage figures off the route, where the route states them.
-
-		These columns describe one journey each -- weeks on a tray, weeks on a pot,
-		the wait while a mother bulks up -- and the route now says all of it, per
-		stage, for every crop rather than for Aster alone. So the column stops being
-		typed and starts being read off the row, and the two can no longer disagree.
-
-		Two rules keep this from rewriting history. A figure is only taken when the
-		row that carries it exists, so a protocol with no steps keeps what was typed
-		on it. And a zero is never taken, because on these rows a zero loss and a
-		loss nobody has filled in look exactly alike -- reading one as the other
-		would turn every blank rooting success into a perfect 100%.
-		"""
+		"""Take the per-stage figures off the route, where the route states them."""
 		blocks = self.route_blocks()
 		steps = {s.step: s for _stage, rows in blocks for s in rows if s.step}
 		if not steps:
@@ -302,33 +214,20 @@ class CropProtocolVersion(Document):
 				self.tc_order_loss_pct = flt(bought.loss_pct)
 
 		# Cycles a stage may be run round again: motherstock generations, or the
-		# times a tuber clump is divided.
 		mult = next((st for st, _ in blocks
 		             if st.stage in _stages.StageSet(flag="multiplies")), None)
 		if mult and cint(mult.max_cycles):
 			self.max_multiplication_cycles = cint(mult.max_cycles)
 
 	def harvest_window_weeks(self):
-		"""How many weeks of the year the crop is allowed to cut, if it is limited.
-
-		Zero means unlimited -- it cuts whenever it is old enough. A window that
-		wraps the new year (week 45 to week 8) is counted the long way round, since
-		that is the way the crop grows through it.
-		"""
+		"""How many weeks of the year the crop is allowed to cut, if it is limited."""
 		a, b = cint(self.harvest_window_start_week), cint(self.harvest_window_end_week)
 		if not a or not b:
 			return 0
 		return (b - a + 1) if b >= a else (WEEKS_PER_YEAR - a + 1 + b)
 
 	def set_continuous_totals(self):
-		"""The totals for a crop that cuts every week instead of in flushes.
-
-		There are no flush rows to count, so the three figures that a flush schedule
-		would have implied are stated outright: when it starts, how long it keeps
-		going, and what it gives in a week. Everything the rest of this class reads
-		-- life, life yield, harvest weeks -- is worked out from those, so nothing
-		downstream needs to know which kind of crop it is looking at.
-		"""
+		"""The totals for a crop that cuts every week instead of in flushes."""
 		first = cint(self.weeks_planting_to_first_cut)
 		productive = cint(self.productive_weeks)
 		per_week = flt(self.stems_per_plant_per_week)
@@ -357,18 +256,9 @@ class CropProtocolVersion(Document):
 
 		first = min((r.weeks_from_pinch or 0) for r in rows) if rows else 0
 		# Pinch plus the first flush, and nothing else. A rounding allowance used to
-		# be added here, which is why Aster read 21 weeks against a protocol that
-		# says 7 + 13.
 		self.first_harvest_offset_weeks = (self.weeks_to_pinch or 0) + first
 
 		# How many harvests land in a year: counted off the schedule rather than
-		# divided out of the interval. 52 / interval is only the same answer when the
-		# flushes are evenly spaced, and it is no answer at all for a crop cut once or
-		# a crop cut every week -- both of which read zero here until now.
-		# Evenly spaced flushes keep the figure they have always had: the interval
-		# divides the year and the answer is that division. It is only where that
-		# division cannot answer -- a crop cut once, or cut every week, both of which
-		# read zero here -- that the harvests are counted off the schedule instead.
 		offs = sorted(cint(r.weeks_from_pinch) for r in rows)
 		gaps = {offs[i + 1] - offs[i] for i in range(len(offs) - 1)}
 		best = 0
@@ -376,9 +266,6 @@ class CropProtocolVersion(Document):
 			best = max(best, sum(1 for b in offs[i:] if b - a < WEEKS_PER_YEAR))
 		if len(gaps) <= 1 and self.flush_interval_weeks:
 			# Evenly spaced: the interval divides the year, and that is the figure
-			# these protocols have always carried. But it cannot exceed the harvests
-			# that exist -- a crop cutting weekly for thirty weeks does not cut
-			# fifty-two times, which is what the division alone claimed.
 			self.harvest_weeks_per_year = min(
 				round(WEEKS_PER_YEAR / self.flush_interval_weeks), best or 0)
 		else:
@@ -392,24 +279,16 @@ class CropProtocolVersion(Document):
 
 	def set_per_hectare(self, years):
 		# Per hectare means per hectare of GROUND, of which bed_sqm_per_ha() is bed.
-		# There is one area in this app -- the ground the crop occupies -- and every
-		# per-hectare figure is quoted against it. Carrying a second, larger area
-		# alongside invited every yield to be read against whichever one the reader
-		# assumed.
 		plants_per_ha = (self.plants_per_sqm_net or 0) * bed_sqm_per_ha()
 		self.plants_per_net_ha = int(round(plants_per_ha))
 		self.stems_per_ha_life = (self.total_stems_per_plant_life or 0) * plants_per_ha
 		self.stems_per_ha_year = (self.stems_per_ha_life / years) if years else 0
 
 		# The best year, not the average one. Flushes are not evenly spaced across a
-		# plant's life and the first ones are the heaviest, so the year a planting
-		# yields most is a different number from its lifetime average -- both are on
-		# the sheet and only the average was here.
 		self.best_year_stems_per_plant = self.best_year_per_plant()
 		self.best_year_stems_per_net_ha = self.best_year_stems_per_plant * plants_per_ha
 
 		# A target yield and a computed one rarely agree; show the gap instead of
-		# quietly preferring one.
 		if self.stated_yield_stems_per_ha and self.stems_per_ha_year:
 			self.yield_variance_pct = (
 				(self.stems_per_ha_year - self.stated_yield_stems_per_ha)
@@ -427,11 +306,6 @@ class CropProtocolVersion(Document):
 			+ (self.weeks_to_max_pc or 0) + (self.hardening_weeks or 0)
 		)
 		# What a cutting actually needs to become a productive mother: tray, pot,
-		# then the build-up to full capacity. Hardening is not in here -- it belongs to
-		# the cutting-to-harvest path, where the cutting goes to the field instead.
-		# Establishment to a productive mother, and the weeks to the FIRST cutting are
-		# now two names for a decision the protocol makes rather than two hard-coded
-		# definitions that could not agree.
 		self.ms_establishment_weeks = (
 			(self.weeks_on_tray or 0) + (self.weeks_on_pot or 0) + (self.ramp_weeks or 0)
 			+ (cint(self.hardening_weeks) if self.establishment_includes_hardening else 0)
@@ -448,30 +322,16 @@ class CropProtocolVersion(Document):
 		self.lead_time_weeks = self.lead_time_for_cycles(cycles)
 
 	def ramp_ratios(self):
-		"""The climb to full cutting capacity, as one ratio per week.
-
-		A new pool does not cut at its full rate the week it starts. ramp_profile
-		records the shape ("25,50,75,100"); ramp_weeks its length. Falls back to
-		weeks_to_max_pc where only that was filled in, so a protocol written before
-		the profile existed still ramps instead of jumping to 100%.
-		"""
+		"""The climb to full cutting capacity, as one ratio per week."""
 		from upande_summer_flowers.summer_flowers.lifecycle_sim import parse_ramp
 
 		return parse_ramp(self.ramp_profile,
 		                  cint(self.ramp_weeks) or cint(self.weeks_to_max_pc))
 
 	def best_year_per_plant(self):
-		"""Most stems one plant gives in any 52 consecutive weeks of its life.
-
-		A rolling window over the flush schedule rather than the first four flushes:
-		which flushes fall in a year depends on the interval, and for Aster the
-		heaviest year is flushes 1 to 4 at 10.0 stems against a lifetime average of
-		8.7. Taking the average where the sheet means the best year understates a
-		planting's peak by 13%.
-		"""
+		"""Most stems one plant gives in any 52 consecutive weeks of its life."""
 		if self.growing_cycle == self.CONTINUOUS and not self.flush_schedule:
 			# Every producing week is the same week, so the best year is simply as
-			# many of them as fall in one.
 			weeks = min(cint(self.productive_weeks), WEEKS_PER_YEAR)
 			window = self.harvest_window_weeks()
 			return flt(self.stems_per_plant_per_week) * min(weeks, window or weeks)
@@ -487,16 +347,7 @@ class CropProtocolVersion(Document):
 		return best
 
 	def weeks_tc_to_first_cut(self):
-		"""Weeks from a TC plantlet arriving to the first cutting off it.
-
-		Tray and pot always; the build-up and hardening only if the protocol says they
-		count. Neither is obvious. The ramp is arguably cut through rather than waited
-		out, at the reducing rate the build-up profile describes; hardening arguably belongs to
-		the cutting that goes to the field, not to the mother that stays on the bench.
-		The planning workbook counts both -- 3 + 8 + 4 + 3 = 18 weeks, which is what
-		makes its lab lead time 40 and not 26 -- so this is a stated assumption on the
-		protocol rather than a decision buried in code.
-		"""
+		"""Weeks from a TC plantlet arriving to the first cutting off it."""
 		weeks = (self.weeks_on_tray or 0) + (self.weeks_on_pot or 0)
 		if self.establishment_includes_ramp:
 			weeks += cint(self.ramp_weeks) or cint(self.weeks_to_max_pc)
@@ -505,35 +356,12 @@ class CropProtocolVersion(Document):
 		return weeks
 
 	def lead_time_for_cycles(self, cycles):
-		"""Weeks from receiving TC plantlets to a pool of the full size.
-
-		A multiplication cycle is an establishment, not a week. Buy 1,000 plantlets
-		for 2,000 mother plants: the plantlets establish, and at the end of that you
-		have 1,000 mothers and can cut from them. Those cuttings go back to the
-		propagation unit and establish in their turn, and only then -- two
-		establishments in, not one and a bit -- is the pool the 2,000 that was
-		bought for. So N cycles is N establishments.
-
-		This used to add one cycle_time_weeks per cycle on top of two flat
-		establishments, which made four cycles 40 weeks where the farm's own working
-		is 72. A TC order placed on that arithmetic is eight months late.
-
-		Note this is the time to the FULL pool, which is what the order date has to
-		be worked back from. The first cutting comes much earlier, at the end of the
-		first establishment -- see weeks_tc_to_first_cut -- and the weeks between the
-		two are real cutting weeks off a part-built pool.
-		"""
+		"""Weeks from receiving TC plantlets to a pool of the full size."""
 		est = self.weeks_tc_to_first_cut()
 		return est * max(1, cint(cycles))
 
 	def multiplication_factor(self, cycles=None):
-		"""How many mother plants one TC plantlet ends up as.
-
-		The arithmetic is crop_protocol.multiplication_factor and is shared with
-		the route derivation, which used to carry a second and different copy of
-		it: the route said one multiplication changed nothing while the order
-		said it halved, for the same protocol on the same screen.
-		"""
+		"""How many mother plants one TC plantlet ends up as."""
 		from upande_summer_flowers.summer_flowers.crop_protocol import (
 			multiplication_factor,
 		)
@@ -543,28 +371,14 @@ class CropProtocolVersion(Document):
 		return multiplication_factor(cycles, self.multiplication_factor_per_cycle)
 
 	def mother_plants_for(self, tc_plants, cycles=None):
-		"""Mother plants a given order of plantlets ends up as. The inverse of
-		tc_plants_for, so an override can be read back in the units that matter.
-
-		Kept next to its inverse deliberately: the two drifting apart is how an
-		override comes to promise a pool the order cannot produce.
-		"""
+		"""Mother plants a given order of plantlets ends up as. The inverse of"""
 		factor = self.multiplication_factor(cycles)
 		loss = flt(self.tc_order_loss_pct) / 100
 		arriving = flt(tc_plants) * (1 - loss) if 0 < loss < 1 else flt(tc_plants)
 		return arriving * factor
 
 	def tc_plants_for(self, mother_plants, cycles=None, with_loss=True):
-		"""Plantlets to order for a target number of mother plants.
-
-		Two steps. The multiplication divides by what one plantlet becomes -- see
-		multiplication_factor -- and then the order allowance divides by what
-		survives the lab-to-bench transfer: 4,000 plantlets needed is 4,444 ordered
-		at 10%. Ordering the requirement exactly means arriving short by the loss
-		rate.
-
-		with_loss=False gives the bare requirement, for showing the two apart.
-		"""
+		"""Plantlets to order for a target number of mother plants."""
 		factor = self.multiplication_factor(cycles)
 		needed = (mother_plants / factor) if factor else mother_plants
 		if not with_loss:
@@ -582,15 +396,6 @@ class CropProtocolVersion(Document):
 			)
 
 		# A stage nobody has measured still loses plants. Thirty-three of the
-		# Active protocols here state 100% rooting and 100% establishment,
-		# which is not a measurement -- it is the field never having been
-		# filled in -- and the orders sized from it were short by whatever
-		# really dies. A house allowance of 5% a stage stands in until somebody
-		# measures the variety, and the card says it is an allowance rather
-		# than letting it pass for a figure the protocol stated.
-		#
-		# Only where nothing was said. A protocol that states 95%, or 80%, or
-		# any other number keeps it; this never argues with a measurement.
 		if not flt(self.rooting_success_pct) or flt(self.rooting_success_pct) == 100:
 			self.rooting_success_pct = 100.0 - DEFAULT_STAGE_LOSS_PCT
 		if (not flt(self.field_establishment_pct)
@@ -608,17 +413,7 @@ class CropProtocolVersion(Document):
 	SINGLE = "Single flush cycle"
 
 	def flush_offsets(self):
-		"""[(weeks after planting the harvest lands, stems per plant), ...]
-
-		The harvest profile of the planting, whatever kind of crop it is. A crop with
-		distinct flushes reads it off its flush schedule; a crop that cuts every week
-		has one entry per producing week; a crop cut once has a single entry.
-
-		This is the one place the growing cycle is asked about. Everything that plans
-		a planting -- the deficit loop, the block calendar, the week grid -- works off
-		this list and never needs to know which kind of crop made it, which is why
-		Aster and Bupleurum can share a planner at all.
-		"""
+		"""[(weeks after planting the harvest lands, stems per plant), ...]"""
 		rows = sorted(self.flush_schedule, key=lambda r: r.flush_number or 0)
 		if rows:
 			return [
@@ -642,7 +437,6 @@ class CropProtocolVersion(Document):
 
 		if self.growing_cycle == self.SINGLE:
 			# Cut once and the block comes out. The whole life yield lands in one week,
-			# which is what makes these crops need planting again to cover the next.
 			return [(first, flt(self.total_stems_per_plant_life))]
 
 		return []
@@ -672,14 +466,7 @@ class CropProtocolVersion(Document):
 		return sorted({((first + interval * k - 1) % WEEKS_PER_YEAR) + 1 for k in range(count)})
 
 	def cuttings_for_plants(self, plants):
-		"""Cuttings to stick for a target number of standing plants.
-
-		Rooting and field losses only, both of which are inside
-		cuttings_per_plant_required. The cutting reject used to be divided out
-		on top of them, which stuck a tenth more for a loss that happens to
-		STEMS at grading -- it is counted once now, against the yield, where
-		the flushes give it something to be a tenth of.
-		"""
+		"""Cuttings to stick for a target number of standing plants."""
 		return int(math.ceil(plants * (self.cuttings_per_plant_required or 1)))
 
 	# ------------------------------------------------------------- versioning
@@ -720,7 +507,6 @@ class CropProtocolVersion(Document):
 			prior.db_set("version_status", "Superseded", update_modified=False)
 			prior.db_set("is_current", 0, update_modified=False)
 			# The previous version's window closes the day before this one opens, so
-			# a cycle planted on any date resolves to exactly one version.
 			prior.db_set(
 				"effective_to", add_days(getdate(self.effective_from), -1),
 				update_modified=False,
@@ -730,11 +516,7 @@ class CropProtocolVersion(Document):
 
 	@frappe.whitelist()
 	def create_amendment(self, change_reason=None, effective_from=None):
-		"""Copy this version into a new Draft for amendment.
-
-		In-progress cycles keep pointing at this version. They only move if
-		explicitly migrated.
-		"""
+		"""Copy this version into a new Draft for amendment."""
 		if self.version_status != "Active":
 			frappe.throw(_("Only an Active version can be amended."))
 		if not change_reason:
@@ -760,13 +542,7 @@ class CropProtocolVersion(Document):
 
 @frappe.whitelist()
 def current_version(variety, farm):
-	"""The Active version a plan for this crop at this farm should start from.
-
-	`refresh_current_flag` keeps exactly one Active version per (protocol, farm)
-	flagged as current, so this is a lookup and not a judgement. It orders by the
-	flag first so a site where the flag was never refreshed still answers with
-	the newest effective version rather than an arbitrary row.
-	"""
+	"""The Active version a plan for this crop at this farm should start from."""
 	rows = frappe.get_all(
 		"Crop Protocol Version",
 		filters={"variety": variety, "farm": farm, "version_status": "Active"},
@@ -779,11 +555,7 @@ def current_version(variety, farm):
 
 @frappe.whitelist()
 def resolve_version(crop_protocol, farm, on_date=None):
-	"""The version in force for a variety at a farm on a given date.
-
-	Planning uses today; a crop cycle uses its planting date, which is what keeps
-	history attached to the parameters it actually ran under.
-	"""
+	"""The version in force for a variety at a farm on a given date."""
 	on_date = getdate(on_date or nowdate())
 	rows = frappe.get_all(
 		"Crop Protocol Version",

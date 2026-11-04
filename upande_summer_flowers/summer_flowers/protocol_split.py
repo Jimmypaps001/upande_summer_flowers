@@ -1,16 +1,5 @@
 # Copyright (c) 2026, James Kiruga and contributors
-# For license information, please see license.txt
-"""Move the summer flower protocols off Crop Protocol onto their own doctype.
-
-A straight copy, field for field, because the split deliberately kept every
-fieldname: what was custom_sf_x on Crop Protocol is custom_sf_x here. The name is
-kept too -- "<variety>-<farm>" -- so every Crop Protocol Version, production plan
-and crop cycle that points at a protocol still points at one by the same name.
-
-Nothing is deleted. The Crop Protocol records stay where they are until someone
-who can see both is satisfied, which is the only safe order for a move that
-carries the numbers every plan is built from.
-"""
+"""Move the summer flower protocols off Crop Protocol onto their own doctype."""
 
 import frappe
 from frappe.utils import cint
@@ -88,18 +77,7 @@ def report(dry_run=1):
 
 @frappe.whitelist()
 def move_back(dry_run=1):
-	"""Copy summer flower protocols back onto Crop Protocol.
-
-	The reverse of move(), for a site that took the split before 6fb2cbc put the
-	protocol back on Crop Protocol. Same contract in both directions: a straight
-	copy, field for field, keeping the "<variety>-<farm>" name so every Crop
-	Protocol Version, production plan and crop cycle that points at a protocol
-	still points at one by the same name. Nothing is deleted -- the Summer Flower
-	Protocol records stay until someone who can see both is satisfied.
-
-	Only fields Crop Protocol actually has are copied. A field this app added to
-	the old doctype and has since dropped is left behind rather than forced on.
-	"""
+	"""Copy summer flower protocols back onto Crop Protocol."""
 	dry_run = cint(dry_run)
 	if not frappe.db.table_exists("Summer Flower Protocol"):
 		return {"source_count": 0, "moved": [], "already": [], "failed": [],
@@ -108,7 +86,6 @@ def move_back(dry_run=1):
 	names = frappe.get_all("Summer Flower Protocol", pluck="name")
 	moved, already, failed = [], [], []
 	# A move is not an edit: without this, copying an already-approved protocol
-	# tries to snapshot it again and is refused for having changed nothing.
 	frappe.flags.sf_protocol_move = True
 
 	for n in names:

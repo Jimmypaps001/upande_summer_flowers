@@ -1,16 +1,4 @@
-"""Every loss allowance on a summer flower protocol goes to zero.
-
-Asked for directly: the losses are to be zero until an agronomist measures them.
-A rooting success of 90% and a cutting reject of 14% that nobody measured are
-not more honest than a 100/0 that everybody knows is a placeholder -- they just
-look measured, and they move the plantlet order by a fifth.
-
-This sets the Crop Protocol AND the Crop Protocol Versions. A version is a
-snapshot and is normally immutable, but a production plan reads its version and
-not the protocol, so leaving the versions alone would mean none of the plans that
-already exist ever see the change. That is the whole reason a patch, rather than
-an edit-and-approve, is the route here.
-"""
+"""Every loss allowance on a summer flower protocol goes to zero."""
 
 import frappe
 from frappe.utils import cint
@@ -26,9 +14,6 @@ ZERO = [
 
 def execute():
 	# A patch that raises rolls back every doctype change in the migrate with
-	# it, so a patch must never assume a custom field is already there. This
-	# one filters on a field installed elsewhere; on a site that has not got it
-	# there is simply nothing to zero.
 	if not frappe.db.has_column("Crop Protocol", "custom_is_summer_flower"):
 		return
 
@@ -59,7 +44,6 @@ def execute():
 				                    update_modified=False)
 				hit = True
 		# cuttings_per_plant_required is derived from rooting x field establishment,
-		# so it has to follow them down or the plan keeps grossing the order up.
 		if frappe.db.get_value("Crop Protocol Version", name,
 		                       "cuttings_per_plant_required") != 1:
 			frappe.db.set_value("Crop Protocol Version", name,

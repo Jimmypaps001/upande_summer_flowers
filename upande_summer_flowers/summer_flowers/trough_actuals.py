@@ -1,23 +1,5 @@
 # Copyright (c) 2026, James Kiruga and contributors
-# For license information, please see license.txt
-"""The troughs the plan asked for, against the troughs that were actually set.
-
-The planner chooses troughs: so many of this size, set in these weeks, each
-paying back on the protocol's lift dates. That was a promise nothing could be
-held to -- the plan said six troughs in January and the register said nothing
-at all, because a trough's occupancy was inferred from the plantings it was
-assumed to serve rather than recorded when somebody filled it.
-
-A Trough Setting is that record. This sets the two side by side: what was
-planned, what was set, what came off, and where the two part company. It reads
-both and writes neither.
-
-A lift is also the moment plants leave the unit for the field, so a recorded
-lift is an actual the production plan is entitled to see. feed_actuals turns
-each one into a Summer Flower Propagation Actual, which is the record the
-variance engine already reads -- rather than asking the propagator to type the
-same number into a second place.
-"""
+"""The troughs the plan asked for, against the troughs that were actually set."""
 
 import frappe
 from frappe import _
@@ -63,12 +45,7 @@ def lifts_of(settings):
 
 @frappe.whitelist()
 def against_plan(production_plan):
-	"""Plan versus register, trough for trough.
-
-	The plan's troughs come from the card -- it works them out rather than
-	storing them -- so they are asked for here the same way the card asks, and
-	the two cannot drift apart.
-	"""
+	"""Plan versus register, trough for trough."""
 	from upande_summer_flowers.summer_flowers import root_line
 
 	plan = frappe.get_doc("Summer Flower Production Plan", production_plan)
@@ -84,9 +61,6 @@ def against_plan(production_plan):
 		by_set.setdefault(r["parent"], []).append(r)
 
 	# Matched on the week a trough was set, because that is the decision the
-	# plan made. A trough set a fortnight late is the same trough, late -- not
-	# a different one -- and reporting it as missing plus unexpected would hide
-	# the only fact worth knowing about it.
 	done = []
 	for a in actual:
 		best, gap = None, None
@@ -155,16 +129,7 @@ def _note(planned, actual, done, want):
 
 @frappe.whitelist()
 def feed_actuals(trough_setting):
-	"""Turn this setting's recorded lifts into propagation actuals.
-
-	A lift is plants leaving the unit, which is exactly the event the plan's
-	variance engine reads. Writing it here rather than asking the propagator to
-	type it twice is the difference between a plan that knows what happened and
-	one that knows what was typed into it.
-
-	Idempotent: a lift already fed is skipped, so running it again after a
-	correction adds the correction and nothing else.
-	"""
+	"""Turn this setting's recorded lifts into propagation actuals."""
 	doc = frappe.get_doc(SETTING, trough_setting)
 	if doc.docstatus == 2:
 		frappe.throw(_("{0} is cancelled.").format(doc.name))

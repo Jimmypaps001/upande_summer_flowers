@@ -1,41 +1,5 @@
 # Copyright (c) 2026, James Kiruga and contributors
-# For license information, please see license.txt
-"""Plant material arriving on a Purchase Receipt or a Purchase Invoice.
-
-There is no Plants Receipt doctype and there should not be one. Plants are
-bought, so they arrive the way everything bought arrives:
-
-    Purchase Order -> Purchase Receipt (or a Purchase Invoice with
-    update_stock) -> Quality Inspection -> Stock Ledger / Batch
-
-and ERPNext already carries every field the delivery needs -- received_qty,
-qty as the accepted quantity, rejected_qty, rejected_warehouse,
-custom_rejection_reason, batch_no, quality_inspection per line. Item's
-inspection_required_before_purchase plus quality_inspection_template is what
-makes the inspection appear without anyone choosing one; setup/plant_quality.py
-switches that on for plant items.
-
-This module adds only the three things ERPNext does not have:
-
-1.  An inspection on an invoice that does not update stock.
-    erpnext/controllers/stock_controller.py:1508 returns early from
-    validate_inspection when a Purchase Invoice has update_stock = 0, so the
-    inspection requirement never fires on it. Every one of the 3,352 submitted
-    invoices on this site has update_stock = 0, so on the invoice route -- which
-    is how plants often arrive -- native enforcement is silently absent.
-
-2.  Agronomic context on the line. A purchase line knows the item and the
-    supplier; it does not know which planting the plants are for, so nothing
-    connects a delivery to the plan it was ordered against.
-
-3.  The plan comparison. The planting was approved for a plant count; the
-    supplier delivers another. That gap is the thing production planning needs
-    to see, and it has to survive a partial delivery, a second delivery against
-    the same planting, and a cancellation.
-
-Quantities are read back from submitted documents rather than accumulated,
-so a cancel, an amend or a return corrects the planting instead of drifting.
-"""
+"""Plant material arriving on a Purchase Receipt or a Purchase Invoice."""
 
 import frappe
 from frappe import _
@@ -67,12 +31,7 @@ def plant_lines(doc):
 
 # ------------------------------------------------------------------ line context
 def set_line_context(doc, method=None):
-	"""Derive the planting context onto each plant line, on every save.
-
-	Read-only on the form: the only thing anyone picks is the planting, and
-	everything else follows from it, so a line cannot claim a planned quantity
-	that the planting does not have.
-	"""
+	"""Derive the planting context onto each plant line, on every save."""
 	for row in plant_lines(doc):
 		cal = row.get("custom_planting_calendar")
 		if not cal:
@@ -110,13 +69,7 @@ def _days_before(doc, planting_date):
 
 # ------------------------------------------------- inspection on the invoice route
 def require_inspection(doc, method=None):
-	"""Close the gap ERPNext leaves on an invoice that does not update stock.
-
-	Deliberately narrow: only plant lines, only when the item itself asks for an
-	inspection, and only on the document that native validation skips. On a
-	Purchase Receipt, or an invoice that does update stock, ERPNext has already
-	run this and running it again would only duplicate the message.
-	"""
+	"""Close the gap ERPNext leaves on an invoice that does not update stock."""
 	if doc.doctype != "Purchase Invoice" or doc.get("update_stock"):
 		return
 	if doc.get("is_return"):
@@ -172,11 +125,7 @@ def refresh_plantings(doc, method=None):
 
 
 def _received_lines(planting):
-	"""Every submitted plant line pointing at this planting, both routes.
-
-	Returns rows already netted for returns: a return document carries negative
-	quantities in ERPNext, so summing docstatus 1 across both is correct.
-	"""
+	"""Every submitted plant line pointing at this planting, both routes."""
 	rows = []
 	for dt in RECEIPT_DOCTYPES:
 		child = dt + " Item"
@@ -246,11 +195,7 @@ def refresh_planting(planting, notify=False):
 
 
 def _order_closed(planting):
-	"""Is there still an open purchase order line for this planting?
-
-	Short of the plan with the order still open is a partial delivery, not a
-	shortfall, and alerting on it would cry wolf on every split delivery.
-	"""
+	"""Is there still an open purchase order line for this planting?"""
 	pending = frappe.db.sql("""
 		select 1
 		from `tabPurchase Order Item` poi
@@ -304,13 +249,7 @@ def _alert(planting, plan, accepted, planned, variance, variance_pct, status):
 # --------------------------------------------------------------- plan revision
 @frappe.whitelist()
 def revise_to_delivered(planting, reason=None):
-	"""Revise a planting down to what actually arrived, keeping the original.
-
-	plants is derived on Planting Calendar (beds x plants_per_bed) and cannot be
-	written directly -- validate would recompute it -- so the revision moves the
-	bed count, which is the thing a farm actually changes when fewer plants turn
-	up, and the approved figures are snapshotted first.
-	"""
+	"""Revise a planting down to what actually arrived, keeping the original."""
 	doc = frappe.get_doc("Planting Calendar", planting)
 	received = cint(doc.plants_received)
 	if received <= 0:
@@ -352,14 +291,7 @@ def _signed_in():
 
 
 def open_plant_orders(supplier=None, variety=None, farm=None, limit=40):
-	"""Orders with plant material still outstanding.
-
-	The unit cannot say what arrived until it knows what was ordered, so this is
-	the list the phone opens on: submitted orders still open, plant lines only,
-	and only where something is still to come. A line received in full is not an
-	arrival waiting to be recorded, and offering it would invite a second receipt
-	against a delivery already taken in.
-	"""
+	"""Orders with plant material still outstanding."""
 	_signed_in()
 	groups = list(plant_item_groups())
 	conds = []
@@ -369,13 +301,10 @@ def open_plant_orders(supplier=None, variety=None, farm=None, limit=40):
 		args["supplier"] = supplier
 	if variety:
 		# set_line_context refuses a line whose item is not the planting's
-		# variety, so on a plant line the item code is the variety.
 		conds.append("and poi.item_code = %(variety)s")
 		args["variety"] = variety
 
 	# The planting link is a custom field and the farm hangs off it. Neither is
-	# present on a site that has not installed them, and asking regardless is
-	# how an endpoint like this dies with "Unknown column".
 	has_link = frappe.db.has_column("Purchase Order Item", "custom_planting_calendar")
 	link_select = ("poi.custom_planting_calendar as planting"
 	               if has_link else "null as planting")
@@ -433,8 +362,6 @@ def open_plant_orders(supplier=None, variety=None, farm=None, limit=40):
 			"planting": r.planting,
 		})
 	# What this site makes mandatory on the receipt itself. Sites differ --
-	# karenroses demands the supplier's delivery note -- and a form that only
-	# finds out on save costs a second trip for the paperwork.
 	meta = frappe.get_meta("Purchase Receipt")
 	required = [f for f in ("supplier_delivery_note", "bill_no", "bill_date")
 	            if (meta.get_field(f) or frappe._dict()).get("reqd")]
@@ -445,17 +372,7 @@ def open_plant_orders(supplier=None, variety=None, farm=None, limit=40):
 def draft_plant_receipt(purchase_order, lines, posting_date=None,
                         rejected_warehouse=None, supplier_delivery_note=None,
                         bill_no=None, bill_date=None):
-	"""A draft Purchase Receipt for what actually turned up.
-
-	Draft on purpose. Submitting moves stock and posts to the ledger, and the
-	phone at the trough is not where that should happen -- but the figures are
-	freshest there, so this writes them down and leaves the submission to
-	whoever checks the delivery against the invoice.
-
-	Nothing extra is recorded here. refresh_planting already runs on submit, off
-	the submitted document, exactly as it does for a receipt raised in the desk,
-	so the plan comparison needs no help from this end.
-	"""
+	"""A draft Purchase Receipt for what actually turned up."""
 	_signed_in()
 	from erpnext.buying.doctype.purchase_order.purchase_order import make_purchase_receipt
 
@@ -515,7 +432,6 @@ def draft_plant_receipt(purchase_order, lines, posting_date=None,
 		pr.set_posting_time = 1
 		pr.posting_date = getdate(posting_date)
 	# Site-mandatory header fields, set only when given, so a site that does not
-	# ask for them is never handed an empty string to validate.
 	if supplier_delivery_note:
 		pr.supplier_delivery_note = supplier_delivery_note
 	if bill_no:

@@ -1,13 +1,4 @@
-"""Recount the placement totals on submitted plans built under the old rule.
-
-Until the planner stopped waiting for a block, a proposed planting with no block was
-excluded from beds required, plants required and the peak sticking week. Two approved
-plans were built that way and store zero plants against 750,000 and 544,000 in their
-own rows -- and a submitted document cannot be re-saved to fix it.
-
-These are read-only derived summaries, not accounting entries, so they are corrected in
-place. Nothing about the plan's approval, its budget or its plantings changes.
-"""
+"""Recount the placement totals on submitted plans built under the old rule."""
 
 import frappe
 from frappe.utils import cint

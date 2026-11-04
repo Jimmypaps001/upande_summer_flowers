@@ -1,21 +1,5 @@
 # Copyright (c) 2026, James Kiruga and contributors
-# For license information, please see license.txt
-"""The route as the user enters it: ways in, then each way's timeline to planting.
-
-A protocol lists every way its material can come in (Crop Protocol Way) -- a
-Material Route, the share of the order it carries, the supplier's lead time, how
-many plants one unit bought becomes and its price. Eryngium lists tissue culture
-and roots side by side and uses both at once.
-
-Each way then has a timeline (Crop Protocol Way Stage), read like the field
-table: the material arrives at week 0, each activity takes the weeks typed
-against it, and the last row is Planting -- the same moment as week 0 of what
-the plant does in the field.
-
-Everything downstream still reads custom_sf_material_route, so this module only
-writes that table from the two above, and reads it back into them for a protocol
-entered before they existed.
-"""
+"""The route as the user enters it: ways in, then each way's timeline to planting."""
 
 import frappe
 from frappe import _
@@ -34,17 +18,11 @@ WAYS = "custom_sf_ways"
 WAY_STAGES = "custom_sf_way_stages"
 ROUTE_FIELD = "custom_sf_material_route"
 # Stages that raise bought or taken material to something plantable. On a
-# protocol without a motherstock, the first of these is what
-# custom_sf_sticking_to_planting_weeks means.
 from upande_summer_flowers.summer_flowers import stages as _stages
 
 RAISING = _stages.StageSet((_stages.PROPAGATION, _stages.CONDITIONING))
 
 # A motherstock's timeline: the plantlet on a tray, then a pot until its first
-# cutting, then that cutting rooted to a plant. Kept on the protocol fields
-# everything downstream reads; the motherstock stage's own weeks are worked out
-# from tray + pot. Hardening is the rooting of the cutting, so it is not a row of
-# its own and follows Rooting.
 STANDING_STEPS = (
 	("Tray", "custom_sf_weeks_on_tray"),
 	("Pot", "custom_sf_weeks_on_pot"),
@@ -53,8 +31,6 @@ STANDING_STEPS = (
 HARDENING = "custom_sf_hardening_weeks"
 LIFTS = "custom_sf_lifts"
 # Stages where somebody raises the material -- our own propagation unit, or an
-# outside propagator who delivers plants and charges for each. A route without one
-# (bought as plants, own roots straight in) has nobody to choose.
 PROPAGATING = _stages.StageSet((_stages.MOTHERSTOCK, _stages.PROPAGATION))
 class _LiftForms:
 	"""{stage: lift form}, read from the Material Stage records."""
@@ -79,11 +55,7 @@ def has_ways(doc):
 
 
 def _route_for(stages):
-	"""The Material Route with exactly these stages, made if there is none.
-
-	Two routes can share stages ("Own cuttings" is "TC to motherstock" by another
-	name), so the routes the app started with are tried first, in their order.
-	"""
+	"""The Material Route with exactly these stages, made if there is none."""
 	from upande_summer_flowers.summer_flowers.crop_routes import SEED_ROUTES
 
 	names = [n for n in SEED_ROUTES if n in ROUTES] + [n for n in ROUTES if n not in SEED_ROUTES]
@@ -148,8 +120,6 @@ def sync_route_from_ways(doc):
 	         if r.get("kind") in ("Arrival", "Stage")}
 
 	# Whatever the route rows already hold that the ways do not say (losses,
-	# yields, steps) is carried over by position, so nothing is dropped.
-	# Matched on the entry stage, which no two ways share.
 	old = {chain[0][0].stage: chain for chain in route_chains(doc)}
 
 	rows = []
@@ -164,14 +134,12 @@ def sync_route_from_ways(doc):
 			if n == 0:
 				ppu = flt(way.plants_per_unit)
 				# A lead time and a price belong to what is bought. Material the farm
-				# takes off its own crop has neither, whatever the row says.
 				bought = stage in BOUGHT_STAGES
 				way.bought = 1 if bought else 0
 				if not bought:
 					way.lead_weeks, way.rate = 0, 0
 				else:
 					# Costed at the bought item's valuation (the variety, or its Roots
-					# item), not at a price typed on the protocol.
 					from upande_summer_flowers.summer_flowers.valuation import (
 						bought_item,
 						item_cost,
@@ -197,15 +165,11 @@ def sync_route_from_ways(doc):
 	sync_lifts(doc)
 
 	# The protocol's single supplier lead is the first bought way's, which is what
-	# the approved version has always taken it to be (it reads the first bought
-	# stage's lead over whatever the field said). Entered on the way, not twice.
 	first_bought = next((w for w in doc.get(WAYS) if w.bought), None)
 	if first_bought and cint(first_bought.lead_weeks):
 		doc.custom_sf_supplier_lead_weeks = cint(first_bought.lead_weeks)
 
 	# One number used to say how long a cutting or a bought plantlet takes to root.
-	# With no motherstock it is the raising stage's weeks, typed in the table now,
-	# and the many places that still read the single figure get it from there.
 	all_stages = [s for w in doc.get(WAYS) for s in ROUTES[w.route]]
 	if any(s in STANDING_STAGES for s in all_stages):
 		doc.set(HARDENING, cint(doc.get(ROOTING)))
@@ -213,7 +177,6 @@ def sync_route_from_ways(doc):
 		for w in doc.get(WAYS):
 			stages = ROUTES[w.route]
 			# Rooting is what the single figure means; sprouting or cooling only
-			# stands in for it on a route that has no rooting.
 			raising = next((s for s in stages if _stages.kind(s) == _stages.PROPAGATION
 			                and not _stages.info(s).get("multiplies")), None) or next(
 				(s for s in stages if s in RAISING), None)
@@ -227,11 +190,7 @@ def propagates(route):
 
 
 def sync_lifts(doc):
-	"""Tie each lift to its way and give it the form planning knows it by.
-
-	A lift from before ways is matched to the way whose material it describes. A
-	lift on a way that is no longer listed goes with it.
-	"""
+	"""Tie each lift to its way and give it the form planning knows it by."""
 	by_form = {}
 	for w in doc.get(WAYS) or []:
 		form = LIFT_FORM.get((ROUTES.get(w.route) or [None])[0])
@@ -253,11 +212,7 @@ def sync_lifts(doc):
 
 
 def timeline(route, weeks_of, bought=None):
-	"""One way's rows from arrival to planting, with the running week.
-
-	weeks_of(kind, stage, field) gives a row's weeks: off the protocol on a save,
-	or zero/the form's values when the form lays a new route out.
-	"""
+	"""One way's rows from arrival to planting, with the running week."""
 	stages = ROUTES.get(route) or []
 	if not stages:
 		return []
@@ -320,30 +275,17 @@ def route_stages(route):
 
 @frappe.whitelist()
 def route_info(route):
-	"""What the form needs to draw one way: its timeline, and whether it buys and
-	whether its consignments can be handed over in lifts."""
+	"""What the form needs to draw one way: its timeline, and whether it buys and"""
 	stages = ROUTES.get(route) or []
 	entry = stages[0] if stages else None
 	return {"rows": route_stages(route), "bought": 1 if entry in BOUGHT_STAGES else 0,
 	        "lifts": 1 if entry in LIFT_FORM else 0,
 	        # What a consignment down this route hands over. The card shows it
-	        # and stamps it on the lifts it adds, so nobody is asked a question
-	        # the route has already answered.
 	        "lift_form": LIFT_FORM.get(entry)}
 
 
 def route_loss(protocol_or_version, lift_form):
-	"""What a protocol loses between a consignment of `lift_form` (Tissue
-	Culture, Roots...) and the field, as a percentage. None when the protocol
-	has no route delivered that way.
-
-	Read off the route's own stages, which is where the Grades & Losses tab has
-	already put it: what fails to root, what fails to establish, and the
-	allowance on the order itself. The route card used to carry a second figure
-	typed by hand against each way, and the two disagreed -- a seed protocol
-	said 80% on the card while its rooting stage said 76% -- with only the route
-	ever sizing an order. One fact, stated once, in the tab named after it.
-	"""
+	"""What a protocol loses between a consignment of `lift_form` (Tissue"""
 	doc = _loss_doc(protocol_or_version)
 	if not doc:
 		return None
@@ -352,7 +294,6 @@ def route_loss(protocol_or_version, lift_form):
 		if _stages.lift_form(entry) != lift_form:
 			continue
 		# Losses compound down the chain, and a step inside a stage loses on its
-		# own account; survival() in crop_protocol walks them the same way.
 		surviving = 1.0
 		for stage, steps in chain:
 			surviving *= 1.0 - flt(stage.get("loss_pct")) / 100.0
@@ -363,9 +304,7 @@ def route_loss(protocol_or_version, lift_form):
 
 
 def _loss_doc(protocol_or_version):
-	"""The document whose route to read: the version if that is what was named,
-	else the protocol. A version is the snapshot a plan was built against, so a
-	plan's losses must come from it and not from a protocol edited since."""
+	"""The document whose route to read: the version if that is what was named,"""
 	name = protocol_or_version
 	if not name:
 		return None

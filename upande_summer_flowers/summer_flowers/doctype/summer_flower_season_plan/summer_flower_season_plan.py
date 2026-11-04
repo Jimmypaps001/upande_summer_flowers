@@ -1,18 +1,5 @@
 # Copyright (c) 2026, James Kiruga and contributors
-# For license information, please see license.txt
-"""The season's plantings on one page, for the people who have to do them.
-
-There is one Planting Calendar per cohort, and there has to be: bed allocation,
-the stock issue, the crop cycle and block occupancy all hang off it. But
-thirty-eight records is not a plan anybody can be handed. A manager asks three
-things about a season -- when do the plants arrive, when do we plant them, when
-does the first cut come back -- and the answers were spread across thirty-eight
-documents and two others.
-
-So this reads them. It stores nothing it could look up: every row is built from
-the Planting Calendar it names, and rebuilding is the only way to change it. A
-figure here can be wrong only by being stale, never by disagreeing.
-"""
+"""The season's plantings on one page, for the people who have to do them."""
 
 import frappe
 
@@ -72,11 +59,7 @@ class SummerFlowerSeasonPlan(Document):
 		return getdate("%s-07-01" % start) <= d <= getdate("%s-06-30" % (start + 1))
 
 	def _delivery_dates(self):
-		"""When the propagation unit hands each planting week its plants.
-
-		Only for a crop raised here; one bought in arrives on its supplier's date,
-		which the calendar already records as first_receipt_date.
-		"""
+		"""When the propagation unit hands each planting week its plants."""
 		name = frappe.db.get_value(
 			"Summer Flower Propagation Plan",
 			{"variety": self.variety, "season_start_year": self.season_start_year,
@@ -106,7 +89,6 @@ class SummerFlowerSeasonPlan(Document):
 		if not nums:
 			return None
 		# Runs rather than a list of forty numbers: "1-24, 31-36" is what a manager
-		# writes on a board.
 		runs, start, prev = [], nums[0], nums[0]
 		for n in nums[1:]:
 			if n == prev + 1:
@@ -118,13 +100,7 @@ class SummerFlowerSeasonPlan(Document):
 		return ", ".join(str(a) if a == b else "%s-%s" % (a, b) for a, b in runs)
 
 	def _first_cut(self, cal):
-		"""The week the first flush lands, with its year.
-
-		Off the flush projection, which is dated. harvest_week_family is a
-		week-OF-YEAR label -- "wk1, wk14" -- describing which weeks of any year the
-		crop flushes in, and reading the first token off it put "wk8" in a column a
-		manager reads as a date.
-		"""
+		"""The week the first flush lands, with its year."""
 		row = frappe.db.get_value("Planting Calendar Flush",
 		                          {"parent": cal.name, "flush_number": 1},
 		                          ["year", "week_no", "harvest_date"], as_dict=True)

@@ -1,14 +1,5 @@
 # Copyright (c) 2026, James Kiruga and contributors
-# For license information, please see license.txt
-"""Read endpoints for the crop cycle dashboard.
-
-Scope-aware throughout. A greenhouse cycle is described by bed ranges and the
-varieties grown across them; a block cycle by the block's own beds and, when it
-is a summer flower cycle, a flush forecast. The dashboard shows whichever applies
-rather than blanking half its panels for the other kind.
-
-Reads only. Anything that writes lives in crop_cycle_ops.
-"""
+"""Read endpoints for the crop cycle dashboard."""
 
 import frappe
 from frappe import _

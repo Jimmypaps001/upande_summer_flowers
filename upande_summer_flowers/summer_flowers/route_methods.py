@@ -1,5 +1,4 @@
 # Copyright (c) 2026, James Kiruga and contributors
-# For license information, please see license.txt
 """The route as one method per way in."""
 
 import frappe
@@ -166,8 +165,6 @@ def apply_catalogue(dry_run=1, farm=None):
 		second = ways.get(p.variety)
 		doc = frappe.get_doc(PROTOCOL_DOCTYPE, p.name)
 		# Compare the entry stages, not the pickers: a picker clears itself once it
-		# has filled the method, so reading it back always said "was nothing" and
-		# every protocol reported as changed on every run.
 		want = ((ROUTES.get(route) or [None])[0],
 		        (ROUTES.get(second[0]) or [None])[0] if second else None)
 		was = (doc.get(_f(1, "entry")) or None, doc.get(_f(2, "entry")) or None,

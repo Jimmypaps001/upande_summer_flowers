@@ -1,11 +1,4 @@
-"""Routes become records, and every protocol lists its ways in.
-
-Seeds a Material Route per route the app used to hard-code, then gives each
-summer flower protocol its ways (route, share, lead, plants per unit, price) and
-the weeks at each stage, read off the route it already has. Written straight to
-the child tables: no protocol is re-saved, re-versioned or sent back through its
-workflow.
-"""
+"""Routes become records, and every protocol lists its ways in."""
 
 import frappe
 

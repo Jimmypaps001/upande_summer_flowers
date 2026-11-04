@@ -1,22 +1,5 @@
 # Copyright (c) 2026, James Kiruga and contributors
-# For license information, please see license.txt
-"""Material Request as the crop input order sheet.
-
-There is no separate order-sheet doctype. Material Request already models a
-request for goods, carries this site's farm / business unit / request type, is
-approved by being submitted, tracks how much has been ordered and received, and
-turns into a Purchase Order. Duplicating that in a parallel doctype meant
-maintaining an approval, a status field and a hand-off that Material Request
-already has, and it kept the request outside every report and dashboard the
-business already runs on Material Request.
-
-So this module adds only what Material Request cannot work out for itself: given
-a block, an area and a per-hectare application rate, how much of each input is
-needed, and how much of that is already on the shelf.
-
-The site has 11,609 Material Requests and a dozen other scripts on the doctype,
-so every branch here exits immediately unless custom_sf_block is set.
-"""
+"""Material Request as the crop input order sheet."""
 
 import frappe
 from frappe import _
@@ -64,7 +47,6 @@ def _pull_context(doc):
 		doc.custom_farm = frappe.db.get_value("Block", doc.custom_sf_block, "farm")
 	if not flt(doc.custom_sf_area_ha):
 		# Fall back to the whole block: better an obvious over-estimate than a
-		# silent zero, which would order nothing at all.
 		doc.custom_sf_area_ha = flt(frappe.db.get_value(
 			"Block", doc.custom_sf_block, "custom_net_area_ha"))
 	if not doc.get("set_warehouse"):
@@ -79,8 +61,6 @@ def _default_store(doc):
 	if field and doc.get("custom_farm") and frappe.get_meta("Farm").has_field(field):
 		return frappe.db.get_value("Farm", doc.custom_farm, field)
 	# No such field on this site's Farm: no default store, which is what the
-	# request would have had anyway. Asking for the column would instead refuse
-	# the save outright.
 	return None
 
 
@@ -91,11 +71,7 @@ def _check_period(doc):
 
 
 def _set_quantities(doc):
-	"""qty is the shortfall: what the area needs, less what is already on hand.
-
-	A line whose rate is not given is left exactly as the user typed it, so an
-	ordinary hand-entered line on a block-scoped request still behaves normally.
-	"""
+	"""qty is the shortfall: what the area needs, less what is already on hand."""
 	area = flt(doc.custom_sf_area_ha)
 	for r in doc.items:
 		if not flt(r.get("custom_sf_rate_per_ha")):
@@ -109,7 +85,6 @@ def _set_quantities(doc):
 		r.custom_sf_qty_in_stock = on_hand
 		shortfall = max(0.0, required - on_hand)
 		# Material Request will not accept a zero-qty line, so a fully covered item
-		# has to be told about rather than silently set to nothing.
 		if shortfall <= 0:
 			frappe.msgprint(
 				_("{0}: stock on hand ({1}) already covers the {2} required. "
@@ -159,15 +134,7 @@ def _check_item_groups(doc):
 def build_input_request(block=None, crop_cycle=None, request_type=None,
                         schedule_date=None, period_to=None, seed_from=None,
                         items=None, business_unit=None):
-	"""Create a draft Material Request for a block's inputs.
-
-	Draft on purpose: submitting is the approval, and that is the requester's or
-	the Farm Manager's decision, not this function's.
-
-	Business unit, request type and the per-line purpose are mandatory on Material
-	Request at this site and cannot be derived from a block, so they come from
-	Summer Flower Settings rather than being guessed here.
-	"""
+	"""Create a draft Material Request for a block's inputs."""
 	if frappe.session.user == "Guest":
 		frappe.throw(_("Please sign in."), frappe.PermissionError)
 	if not (block or crop_cycle):
@@ -191,7 +158,6 @@ def build_input_request(block=None, crop_cycle=None, request_type=None,
 	rows = frappe.parse_json(items) if isinstance(items, str) else (items or [])
 	if not rows and seed_from:
 		# The most recent request for this block is the only structured precedent
-		# there is -- the site has no input programme to read from.
 		src = frappe.get_doc("Material Request", seed_from)
 		rows = [{
 			"item_code": r.item_code, "uom": r.uom,

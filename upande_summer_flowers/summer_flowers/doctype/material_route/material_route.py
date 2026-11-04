@@ -1,10 +1,5 @@
 # Copyright (c) 2026, James Kiruga and contributors
-# For license information, please see license.txt
-"""A way plant material becomes a plant in the ground: TC -> Motherstock -> Plants.
-
-Held as data so a new way in is a new record, not a code change. A protocol picks
-one or more of these as its ways in (Crop Protocol Way).
-"""
+"""A way plant material becomes a plant in the ground: TC -> Motherstock -> Plants."""
 
 import frappe
 from frappe import _
@@ -34,5 +29,4 @@ class MaterialRoute(Document):
 			               "can be {0}.").format(ROUTE_END))
 		self.summary = " → ".join(stages)
 		# Only a route that starts by buying has a supplier, so only it has a lead
-		# time or a price. Own cuttings, roots and tubers are taken, not ordered.
 		self.bought = 1 if stages[0] in BOUGHT_STAGES else 0

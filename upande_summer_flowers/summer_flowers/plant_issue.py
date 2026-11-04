@@ -1,28 +1,11 @@
 # Copyright (c) 2026, James Kiruga and contributors
-# For license information, please see license.txt
-"""Plants leaving stock because they went in the ground.
-
-Plants are bought, so they arrive on a Purchase Receipt and sit in a warehouse
-as stock -- see plant_receipt.py. Nothing took them out again. A planting was
-recorded, a crop cycle was raised, flowers were forecast off it, and the
-plantlets were still on the books in the store they had been delivered to. The
-stock ledger said the farm was holding half a million plants it had planted.
-
-So planting issues them: a Stock Entry of type Planting, which is a Material
-Issue like any other consumption, against the planting that consumed them.
-
-It is not raised on the plan, or on approval, or when a block is allocated. It
-is raised when the plants actually go in the ground, because that is when they
-stop being stock -- which is the day recorded in actual_planting_date.
-"""
+"""Plants leaving stock because they went in the ground."""
 
 import frappe
 from frappe import _
 from frappe.utils import cint, flt, getdate, nowdate
 
 # A Material Issue under a name the farm would use for it. The site already
-# names its entries this way -- Harvesting, Discard, Quarantine Rejects -- so a
-# bare "Material Issue" on the ledger would say nothing about what happened.
 ENTRY_TYPE = "Planting"
 ENTRY_PURPOSE = "Material Issue"
 
@@ -42,14 +25,7 @@ def ensure_entry_type():
 
 
 def source_warehouse(planting):
-	"""Where the plants for this planting are standing as stock.
-
-	The warehouse they were delivered into, read off the receipt lines that point
-	at this planting -- not the block's greenhouse, which is where the crop ends
-	up and rarely where the plantlets were booked in. Falls back to the block's
-	house, and then to the company default, so a planting whose material arrived
-	before anyone was linking receipts still issues from somewhere real.
-	"""
+	"""Where the plants for this planting are standing as stock."""
 	for dt in ("Purchase Receipt", "Purchase Invoice"):
 		row = frappe.db.sql("""
 			select c.warehouse
@@ -68,11 +44,7 @@ def source_warehouse(planting):
 
 
 def issue_for(planting, qty=None, on_date=None, throw=False):
-	"""Take this planting's plants out of stock.
-
-	Idempotent by design: a planting that already has a submitted issue is left
-	alone, because saving the calendar again is not a second planting.
-	"""
+	"""Take this planting's plants out of stock."""
 	if planting.get("stock_entry") and frappe.db.get_value(
 			"Stock Entry", planting.stock_entry, "docstatus") == 1:
 		return None
@@ -111,22 +83,12 @@ def issue_for(planting, qty=None, on_date=None, throw=False):
 	                          or planting.planting_date or nowdate())
 	se.set_posting_time = 1
 	# On the parent as well as the line. ERPNext fills a blank s_warehouse from the
-	# item's own default during set_missing_values, so setting it only on the line
-	# had the issue come out of General Store -- a warehouse this crop has never
-	# been near -- and fail for want of stock that was sitting in the right one.
 	se.from_warehouse = warehouse
 	if se.meta.has_field("custom_farm"):
 		se.custom_farm = planting.farm
 	# The item's own stock UOM and a factor of one. Left out, Stock Entry refuses
-	# the line outright -- "Row 1: UOM Conversion Factor is mandatory" -- which is
-	# what stopped every issue before the warehouse was ever reached.
 	uom = frappe.db.get_value("Item", item, "stock_uom") or "Nos"
 	# Plants that were bought carry a valuation from the receipt that brought them
-	# in. Plants that were raised here, or booked in before anyone costed them, do
-	# not -- and Stock Entry refuses to post consumption it cannot value. A
-	# planting is a physical fact and must be recordable either way, so where there
-	# is no valuation the line is allowed a zero one and the entry says so, rather
-	# than the planting going unrecorded to protect a number nobody has.
 	valued = flt(frappe.db.get_value("Bin", {"item_code": item,
 	                                         "warehouse": warehouse},
 	                                 "valuation_rate"))
@@ -154,8 +116,6 @@ def issue_for(planting, qty=None, on_date=None, throw=False):
 	except Exception as e:
 		frappe.log_error(frappe.get_traceback(), "Planting issue for %s" % planting.name)
 		# insert() can succeed and submit() throw -- no stock, a closed period, a
-		# rule this module has never heard of. The draft it leaves behind is not a
-		# record of anything, and a second attempt would leave another.
 		if se.get("name") and frappe.db.exists("Stock Entry", se.name):
 			try:
 				frappe.delete_doc("Stock Entry", se.name, force=True,
@@ -191,10 +151,6 @@ def issue_plants(planting, qty=None, on_date=None):
 	return out
 
 # --------------------------------------------------------------- internal move
-# Plants raised here are not bought, but they still move: out of the propagation
-# unit and onto the block that was allocated for them. That is a transfer between
-# two warehouses, not a purchase and not a consumption, and nothing recorded it --
-# so the unit held plants it had already sent to the field.
 TRANSFER_TYPE = "Propagation Dispatch"
 TRANSFER_PURPOSE = "Material Transfer"
 
@@ -210,22 +166,14 @@ def ensure_transfer_type():
 
 
 def propagation_warehouse(farm):
-	"""Where the propagation unit holds what it has raised.
-
-	Named on Summer Flower Settings when the farm has said so. Otherwise nothing
-	is guessed: a transfer out of the wrong store is worse than no transfer.
-	"""
+	"""Where the propagation unit holds what it has raised."""
 	return frappe.db.get_single_value("Summer Flower Settings",
 	                                  "propagation_warehouse")
 
 
 @frappe.whitelist()
 def dispatch_to_block(planting, qty=None, on_date=None):
-	"""Move this planting's plants from the propagation unit to its block.
-
-	Only for a crop raised here. Plants bought in arrive at the block's own store
-	on a Purchase Receipt and have nothing to transfer.
-	"""
+	"""Move this planting's plants from the propagation unit to its block."""
 	doc = frappe.get_doc("Planting Calendar", planting)
 	if doc.get("dispatch_entry") and frappe.db.get_value(
 			"Stock Entry", doc.dispatch_entry, "docstatus") == 1:

@@ -1,17 +1,5 @@
 # Copyright (c) 2026, James Kiruga and contributors
-# For license information, please see license.txt
-"""Uprooting or replanting a run of beds, over as many days as it takes.
-
-The native Replanting Log and Uprooting Log record a whole bed range against a
-single date, so there was no way to say that two and a half beds were done today
-and the rest would follow tomorrow. This is the job; the logs still get their
-summary row when it finishes, so the cycle's own tabs remain the record of what
-happened.
-
-Progress is measured in beds and is deliberately fractional. Half a bed of work
-is half a bed of plants, and the cycle's live plant count moves with it, because
-a forecast built on plants that are already out of the ground is wrong.
-"""
+"""Uprooting or replanting a run of beds, over as many days as it takes."""
 
 import math
 
@@ -33,7 +21,6 @@ class BedWorkOrder(Document):
 
 	def on_trash(self):
 		# Undo whatever this job had already applied, or the cycle keeps a plant
-		# count that reflects work now deleted.
 		if cint(self.plants_applied):
 			self._shift_cycle_plants(-cint(self.plants_applied))
 
@@ -62,8 +49,6 @@ class BedWorkOrder(Document):
 		self.total_beds = cint(self.to_bed) - cint(self.from_bed) + 1
 		if self.block:
 			# Bed numbers are unique within a greenhouse, not within a block, so a
-			# block's beds are an arbitrary range -- 201-240, not 1-40. Checking the
-			# range against the bed count would reject every block but the first.
 			rng = frappe.db.sql("""select min(bed) lo, max(bed) hi, count(*) n
 				from tabBed where custom_block = %s""", (self.block,), as_dict=True)[0]
 			if not rng["n"]:
@@ -106,7 +91,6 @@ class BedWorkOrder(Document):
 			whole = math.floor(cumulative + 1e-9)
 			frac = cumulative - whole
 			# The bed being worked is the one after the last finished bed. When the
-			# total lands exactly on a boundary there is no bed in progress.
 			r.bed_reached = cint(self.from_bed) + whole - (1 if frac < 1e-9 else 0)
 			r.fraction_in_bed = round(frac * 100, 2)
 			r.plants = int(round(flt(r.beds_done) * per_bed))
@@ -149,11 +133,7 @@ class BedWorkOrder(Document):
 
 	# -------------------------------------------------------------- effects
 	def apply_to_cycle(self):
-		"""Move the cycle's live plant count by whatever changed since last save.
-
-		A delta rather than a recompute, so re-saving or editing an entry cannot
-		double-count, and so several jobs on one cycle each contribute once.
-		"""
+		"""Move the cycle's live plant count by whatever changed since last save."""
 		want = cint(self.plants_affected)
 		if self.work_type == "Uprooting":
 			want = -want
@@ -171,7 +151,6 @@ class BedWorkOrder(Document):
 		cyc.custom_live_plant_count = new
 		cyc.flags.ignore_permissions = True
 		# Saving re-derives the flush schedule from the new plant count, which is the
-		# whole point: stems still to come should reflect plants still in the ground.
 		cyc.save()
 
 	def mark_beds(self):
@@ -190,14 +169,7 @@ class BedWorkOrder(Document):
 			frappe.db.set_value("Bed", b, vals, update_modified=False)
 
 	def _log_reason(self):
-		"""A reason the Uprooting Log will actually accept.
-
-		The job and the log each carry their own Select list, and a value valid on
-		one but not the other used to surface only when the job completed and the
-		summary row was written -- the worst moment to discover it. Anything the log
-		does not recognise is recorded as Other with the original kept in the
-		remarks, so finishing a job can never be blocked by a label.
-		"""
+		"""A reason the Uprooting Log will actually accept."""
 		wanted = self.reason or ""
 		allowed = (frappe.get_meta("Uprooting Log").get_field("reason").options
 		           or "").split("\n")

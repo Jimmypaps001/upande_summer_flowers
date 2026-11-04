@@ -1,11 +1,5 @@
 # Copyright (c) 2026, James Kiruga and contributors
-# For license information, please see license.txt
-"""Yield per hectare for every summer flower protocol.
-
-These figures are worked out on each save of a Crop Protocol and used to sit on
-its form. They are read across protocols far more than inside one, so they are
-listed here instead.
-"""
+"""Yield per hectare for every summer flower protocol."""
 
 import frappe
 from frappe import _

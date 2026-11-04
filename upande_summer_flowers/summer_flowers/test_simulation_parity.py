@@ -1,25 +1,5 @@
 # Copyright (c) 2026, James Kiruga and contributors
-# For license information, please see license.txt
-"""The simulator and the documents have to agree.
-
-Every figure on this dashboard exists twice: once worked out live so a change can
-be tried before it is committed, and once written onto a document when it is. That
-is the design -- a what-if that had to save first would be no use -- but it is also
-the failure this module has hit more than any other. The order-by date disagreed
-with the TC journey; the cutting loss was applied twice in one path and once in the
-other; the recommended quantity kept still while the pool it raised moved; per
-hectare meant one thing on the snapshot and another on the card.
-
-None of those were caught by anything, because nothing compared the two. This does.
-It is deliberately not a test of whether the arithmetic is right -- the protocol
-decides that, and it changes. It is a test that the two roads to the same number
-arrive at the same place.
-
-Every case runs against whatever this site actually has: an approved protocol
-version, a submitted plan, its propagation plan. Where a site has none, the case
-says so and skips rather than inventing a fixture, because a fixture would prove
-the fixture.
-"""
+"""The simulator and the documents have to agree."""
 
 import frappe
 from frappe.tests import IntegrationTestCase
@@ -49,13 +29,7 @@ class IntegrationTestSimulationParity(IntegrationTestCase):
 	"""Two roads to one number, walked and compared."""
 
 	def test_per_hectare_is_one_hectare(self):
-		"""plants/ha, stems/ha and the density must describe the same hectare.
-
-		The snapshot stores these and the sheet works them out. When the basis moved
-		from 10,000 m2 of bed to BED_SQM_PER_HA of ground, the stored ones stayed on
-		the old basis -- so a card could show a density quoted against one hectare
-		beside a yield quoted against another, and the two looked equally official.
-		"""
+		"""plants/ha, stems/ha and the density must describe the same hectare."""
 		version = _live_version()
 		if not version:
 			self.skipTest("no active protocol version on this site")
@@ -79,14 +53,7 @@ class IntegrationTestSimulationParity(IntegrationTestCase):
 				    "from plants per hectare")
 
 	def test_cycles_move_the_order_not_the_pool(self):
-		"""The build-up lever divides the buy; it does not change what is grown.
-
-		The pool the plan needs is fixed by the plan. Cycles decide how many
-		plantlets it takes to raise that pool and how long it takes -- so doubling
-		the rounds halves the order and lengthens the lead, and leaves the pool
-		alone. For a while the order stood still while the pool moved, which is the
-		same bug read from the other end.
-		"""
+		"""The build-up lever divides the buy; it does not change what is grown."""
 		plan = _live_plan()
 		if not plan:
 			self.skipTest("no production plan on this site")
@@ -117,13 +84,7 @@ class IntegrationTestSimulationParity(IntegrationTestCase):
 			"four rounds did not need ordering earlier than one")
 
 	def test_recommended_order_raises_the_pool_the_plan_asked_for(self):
-		"""What the sheet recommends must raise what the propagation plan needs.
-
-		These are computed by different code on different documents: the
-		recommendation runs through the version's tc_plants_for, the requirement is
-		stored on the propagation plan. They are only allowed to differ by the
-		rounding up of a plantlet.
-		"""
+		"""What the sheet recommends must raise what the propagation plan needs."""
 		plan = _live_plan()
 		if not plan:
 			self.skipTest("no production plan on this site")
@@ -142,18 +103,13 @@ class IntegrationTestSimulationParity(IntegrationTestCase):
 			f"the recommended order raises {raised:,.0f} mother plants against "
 			f"{needed:,} required")
 		# And it must not be wildly over: a whole extra cycle's worth would mean the
-		# loss allowance or the factor is being applied twice, which it has been.
 		self.assertLess(
 			raised, needed * 1.5,
 			f"the recommended order raises {raised:,.0f} for a pool of {needed:,} "
 			"-- a loss or a factor is being applied more than once")
 
 	def test_weekly_cuttings_foot_to_the_stated_total(self):
-		"""The propagation weeks have to add up to the total stated above them.
-
-		The dashboard now foots this table on screen, so a total that came from
-		somewhere else would be visibly wrong. It came from somewhere else.
-		"""
+		"""The propagation weeks have to add up to the total stated above them."""
 		plan = _live_plan()
 		if not plan:
 			self.skipTest("no production plan on this site")
@@ -174,17 +130,7 @@ class IntegrationTestSimulationParity(IntegrationTestCase):
 
 
 def report():
-	"""Run the parity checks against this site and print what they found.
-
-	The same assertions as the test case, reachable without the test runner:
-
-	    bench --site SITE execute \
-	        upande_summer_flowers.summer_flowers.test_simulation_parity.report
-
-	A site holding real data should not have testing switched on just to answer
-	"do these two figures still agree", and a check nobody can run is a check
-	nobody runs.
-	"""
+	"""Run the parity checks against this site and print what they found."""
 	import unittest
 
 	suite = unittest.TestLoader().loadTestsFromTestCase(IntegrationTestSimulationParity)

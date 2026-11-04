@@ -1,18 +1,5 @@
 # Copyright (c) 2026, James Kiruga and contributors
-"""Stop beds claiming a crop that was never planted.
-
-allocate_beds() gave every newly allocated bed the status "Planted", because the
-allocation table had no word for a bed that is merely spoken for. So allocating a
-block marked its beds as carrying a standing crop -- on this bench, 858 bed rows
-and 970 Bed records said Planted while not one planting had an actual planting
-date against it.
-
-Reserved now means allocated, Planted means somebody recorded the day it went in.
-This corrects what is already written: a bed belonging to a planting that has not
-been planted goes back to Reserved, and its Bed record back to Empty. Beds that
-were uprooted, or that belong to a planting with a real date on it, are left
-exactly as they are.
-"""
+"""Stop beds claiming a crop that was never planted."""
 
 import frappe
 
@@ -33,7 +20,6 @@ def execute():
 		                    "Reserved", update_modified=False)
 		if r.bed and frappe.db.exists("Bed", r.bed):
 			# Empty, not Reserved: Bed has its own vocabulary and a bed spoken for
-			# by a future planting is empty ground today.
 			frappe.db.set_value("Bed", r.bed, "custom_bed_status", "Empty",
 			                    update_modified=False)
 			beds += 1

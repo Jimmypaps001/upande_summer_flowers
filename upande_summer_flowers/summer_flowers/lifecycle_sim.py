@@ -1,24 +1,5 @@
 # Copyright (c) 2026, James Kiruga and contributors
-# For license information, please see license.txt
-"""Motherstock lifecycle: TC order -> supplier lead -> establishment -> cuts -> expiry,
-repeating, with propagation feedback.
-
-Week by week:
-
-* an active TC cycle supplies base capacity, ramping 25/50/75/100% over its first
-  weeks rather than switching on at full rate;
-* cuttings diverted to propagation in any week come back as their own motherstock
-  sub-pool `ms_establishment_weeks` later, which then ramps and produces for a
-  full life of its own;
-* so the pool compounds continuously off weekly decisions, not in discrete rounds.
-
-Diverting cuttings is the multiplication. Send everything to the field and
-capacity is flat until the next TC order lands; divert some and capacity climbs
-15 weeks later on top of whatever is already producing.
-
-Nothing here touches the database, so one implementation serves a saved batch and
-a what-if slider.
-"""
+"""Motherstock lifecycle: TC order -> supplier lead -> establishment -> cuts -> expiry,"""
 
 import datetime
 
@@ -66,27 +47,14 @@ def params_from_version(version, overrides=None):
 		"ramp_weeks": int(v.ramp_weeks or 0),
 		"ms_establishment_weeks": int(v.ms_establishment_weeks or 0),
 		# Time to the FIRST cutting, which is one establishment -- not to the full
-		# pool, which is one per build-up cycle. The two were the same field, so a
-		# four-cycle protocol showed nothing coming off the bench for 72 weeks when
-		# in fact it cuts from week 18 off a quarter-built pool.
 		"tc_to_first_cut_weeks": int(v.weeks_tc_to_first_cut() or 0),
 		# One build-up round: cuttings taken off the standing pool, established, and
-		# added to it. The protocol's own establishment, so turning hardening off
-		# there shortens the round here too.
 		"stage_interval_weeks": int(v.weeks_tc_to_first_cut() or 0),
 		# Plantlets are multiplied up before they become mother plants, which is what
-		# the build-up cycles in the lead time are for. The simulator used to treat
-		# one plantlet as one mother while still waiting out the build-up, so an
-		# order sized by the Motherstock Batch produced a fifth of the capacity that
-		# batch had sized it for.
 		"multiplication_factor": v.multiplication_factor(),
 		# Carried so a caller can see which build-up the numbers assume, and
-		# override it without having to know how the factor is worked out.
 		"build_up_cycles": cint(v.max_multiplication_cycles),
 		# A cutting diverted to the propagation unit becomes a mother plant after
-		# tray and pot, then ramps. Not ms_establishment_weeks, which folds the build-up
-		# in and would wait it out before ramping again; and not the TC path either,
-		# because a cutting off the farm is not multiplied up in a lab first.
 		"cutting_to_mother_weeks": (cint(v.weeks_on_tray) + cint(v.weeks_on_pot)),
 		"ms_life_weeks": int(v.motherstock_life_weeks or 0),
 		"hardening_weeks": int(v.hardening_weeks or 0),
@@ -124,10 +92,6 @@ def build_cycles(p, tc_qty, order_date, num_cycles):
 		arrive_sw = sw + lead
 		first_cut_sw = arrive_sw + estab
 		# The line is cleared as one block. Every tranche in it dies here, whatever
-		# its own age, so a late build-up gets less life than an early one rather
-		# than carrying the pool on past the clearance. Letting each tranche keep a
-		# full life of its own made the pool compound without bound -- which is what
-		# max_bench_sqm below was holding back.
 		line_end_sw = first_cut_sw + life
 		expiry_sw = line_end_sw
 		c = {
@@ -142,7 +106,6 @@ def build_cycles(p, tc_qty, order_date, num_cycles):
 			"full_sw": first_cut_sw + ramp_w - 1,
 			"expiry_sw": expiry_sw,
 			# Order the replacement one full lead-plus-establishment before this
-			# motherstock dies, or the next one is not productive in time.
 			"next_order_sw": expiry_sw - (lead + estab),
 			"first_harvest_sw": first_cut_sw + p["cutting_to_harvest_weeks"],
 			"order_date": order,
@@ -157,12 +120,6 @@ def build_cycles(p, tc_qty, order_date, num_cycles):
 				weeks=lead + estab + p["cutting_to_harvest_weeks"]),
 		}
 		# The build-up, stage by stage. One order does not become its whole pool at
-		# once: the plantlets establish and give the first tranche of mothers, those
-		# are cut, the cuttings establish in their turn and give the second, and so
-		# on. N cycles is N establishments and the pool is only full at the end of
-		# the last one -- but every tranche before it is cutting the whole time,
-		# which is where the weekly cuttings between first cut and full pool come
-		# from. Modelling the pool as arriving whole hid all of them.
 		bu = max(1, cint(p.get("build_up_cycles") or 0))
 		gap = int(p.get("stage_interval_weeks") or estab)
 		per_stage = (flt(factor) / bu) if bu else 1.0
@@ -170,8 +127,6 @@ def build_cycles(p, tc_qty, order_date, num_cycles):
 		for k in range(bu):
 			ready = first_cut_sw + k * gap
 			# A tranche that comes online at or after the clearance never cuts at
-			# all, so it is not a tranche. Carrying it inflated the pool with plants
-			# that could not exist.
 			if k and ready >= line_end_sw:
 				break
 			c["stages"].append({
@@ -190,8 +145,6 @@ def build_cycles(p, tc_qty, order_date, num_cycles):
 		c["pool_full_date"] = c["stages"][-1]["ready_date"] + datetime.timedelta(
 			weeks=ramp_w - 1)
 		# The cycle is done when the block is cleared, which is one life after its
-		# FIRST cut. It used to run to the last tranche's own death, which put the
-		# clearance up to (build-ups - 1) x establishment later than the farm's.
 		c["line_end_sw"] = line_end_sw
 		c["expiry_sw"] = line_end_sw
 		c["expiry_date"] = order + datetime.timedelta(weeks=lead + estab + life)
@@ -200,26 +153,13 @@ def build_cycles(p, tc_qty, order_date, num_cycles):
 			weeks=lead + gap * bu)
 		cycles.append(c)
 		# The next cycle starts at the week its own order date says it does. Setting
-		# this to expiry_sw put the replacement order in at the moment the previous
-		# motherstock died, so its first cut landed a full lead-plus-establishment
-		# later -- 53 weeks with no cutting capacity at all, while next_order_date
-		# said the opposite. The dates and the week indices have to agree, or the
-		# renewal that the schedule promises never happens in the simulation.
 		order = c["next_order_date"]
 		sw = c["next_order_sw"]
 	return cycles
 
 
 def cycles_for_horizon(p, tc_qty, order_date, horizon_weeks):
-	"""How many TC generations the horizon actually needs.
-
-	The count used to be picked from a dropdown, which is the wrong question: a
-	generation exists because the one before it expires and something has to
-	replace it. Renewal is already chained -- each cycle carries the week the next
-	order must go in -- so the count falls out of how far ahead you are looking.
-	Diverted cuttings add generations on top of these, and those are counted from
-	the pools the simulation actually creates rather than guessed at here.
-	"""
+	"""How many TC generations the horizon actually needs."""
 	horizon = max(1, int(horizon_weeks or 0))
 	n = 1
 	while n < MAX_CYCLES:
@@ -240,27 +180,9 @@ def ramp_ratio(week_in_pool, ramp):
 def simulate(p, tc_qty, order_date, num_cycles=None, farm_overrides=None,
              default_to_prop_pct=0.0, extra_weeks=None, max_bench_sqm=None,
              horizon_weeks=None, demand_by_sw=None, divert_until_sw=None):
-	"""Walk every week forward, letting diverted cuttings build new pools.
-
-	`farm_overrides` is {sim_week: plants_to_field}; anything not overridden falls
-	back to `default_to_prop_pct` diverted.
-
-	`max_bench_sqm` is the physical ceiling on the pool and matters more than it
-	looks: because a new pool's own output is also eligible for diversion, a
-	standing divert percentage compounds without bound and runs to absurd numbers
-	within a couple of years. Bench space is what actually stops it, so once the
-	bench is full the diversion is trimmed to what fits and the week is flagged.
-
-	`divert_until_sw` ends the multiplying on a week. After it the cut goes to the
-	field and whatever the field has not asked for is simply not taken -- a mother
-	makes cuttings whether or not anyone wants them, and leaving them on the plant
-	is neither a planting nor a loss. Without this, every week's surplus was banked
-	as new mothers whose surplus was banked in turn, which is how a plan for
-	550,000 plants came back proposing a pool of 71 million.
-	"""
+	"""Walk every week forward, letting diverted cuttings build new pools."""
 	farm_overrides = {int(k): int(v) for k, v in (farm_overrides or {}).items()}
 	# Derived unless a caller insists, so the answer to "how many cycles" comes
-	# from the period being planned instead of from a control on a page.
 	if not num_cycles:
 		num_cycles = cycles_for_horizon(p, tc_qty, order_date,
 		                                horizon_weeks or extra_weeks or 156)
@@ -268,7 +190,6 @@ def simulate(p, tc_qty, order_date, num_cycles=None, farm_overrides=None,
 	base = getdate(order_date)
 	ramp = p["ramp"]
 	# Establishment for a DIVERTED CUTTING, which is the only thing this figure is
-	# used for below. The TC cycles have their own, longer path in build_cycles.
 	estab = p.get("cutting_to_mother_weeks") or p["ms_establishment_weeks"]
 	life = p["ms_life_weeks"]
 	per_plant = p["cuttings_per_plant_per_week"]
@@ -297,7 +218,6 @@ def simulate(p, tc_qty, order_date, num_cycles=None, farm_overrides=None,
 		   "Pot ends, ramp to full capacity begins")
 		ev(c["first_cut_sw"], f"MS{n} first cut")
 		# Each build-up tranche announces itself, so the week a new one lands is
-		# visible rather than showing up as capacity that rose for no stated reason.
 		for st in c["stages"]:
 			if st["stage"] > 1:
 				ev(st["ready_sw"],
@@ -316,8 +236,6 @@ def simulate(p, tc_qty, order_date, num_cycles=None, farm_overrides=None,
 	rows = []
 	truncated = False
 	# The bench filling is an event; the bench BEING full is a state, and the week
-	# figure already carries a warning glyph for it. Saying it in words every week
-	# put the same sentence on ninety consecutive rows.
 	bench_was_full = False
 
 	for sw in range(0, horizon + 1):
@@ -334,8 +252,6 @@ def simulate(p, tc_qty, order_date, num_cycles=None, farm_overrides=None,
 		for c in cycles:
 			if c["first_cut_sw"] <= sw < c["expiry_sw"]:
 				# Every tranche of this order that is alive this week, each ramping
-				# from its own arrival. Summing them is what makes the pool climb in
-				# steps instead of appearing whole.
 				for st in c["stages"]:
 					w = sw - st["ready_sw"]
 					if w < 0 or w >= life:
@@ -393,8 +309,6 @@ def simulate(p, tc_qty, order_date, num_cycles=None, farm_overrides=None,
 		for pool in prop_pools:
 			w = sw - pool["start_sw"]
 			# Dead either by its own age or because the block it belongs to has been
-			# cleared, whichever comes first. Age alone let a diverted pool outlive
-			# the mothers it was cut from.
 			if w < 0 or w >= life or sw >= pool.get("line_end_sw", 10 ** 9):
 				continue
 			pct = ramp_ratio(w, ramp)
@@ -416,9 +330,6 @@ def simulate(p, tc_qty, order_date, num_cycles=None, farm_overrides=None,
 				to_farm = max(0, min(farm_overrides[sw], total_cap))
 			elif demand_by_sw is not None and not default_to_prop_pct:
 				# Send the field what the field has asked for and bank the rest. A week
-				# that cuts more than the plan needs is the only chance to build the
-				# pool for a peak later on, and giving the surplus to a field with
-				# nowhere to put it loses both the cuttings and the chance.
 				to_farm = min(total_cap, needed)
 			else:
 				to_farm = int(round(total_cap * (1 - flt(default_to_prop_pct) / 100)))
@@ -437,14 +348,10 @@ def simulate(p, tc_qty, order_date, num_cycles=None, farm_overrides=None,
 		if to_prop > 0 and sw <= last_sw and len(prop_pools) < MAX_POOLS:
 			start = sw + estab
 			# Which block these cuttings belong to, and therefore when they will be
-			# cleared. Cuttings taken within `estab` weeks of the clearance become
-			# mothers that never cut, so they are wasted rather than banked -- and
-			# that is the real deadline on multiplying, not a bench ceiling.
 			line_end = next((c["line_end_sw"] for c in cycles
 			                 if c["first_cut_sw"] <= sw < c["line_end_sw"]), None)
 			too_late = line_end is not None and start >= line_end
 			# Not zeroed: these cuttings were taken, and `wasted` below is what says
-			# so. Zeroing them made a doomed diversion look like no diversion.
 			room = 0 if too_late else to_prop
 			if max_plants is not None and not too_late:
 				# What will already be standing the week this pool comes online.
@@ -458,11 +365,8 @@ def simulate(p, tc_qty, order_date, num_cycles=None, farm_overrides=None,
 				                   else start + life})
 				diverted_planted = room
 				# No event. A pool coming online is what the Prop-MS column IS, and
-				# one of these fired most weeks of the run -- ninety lines of the
-				# Event column saying what the column beside it already showed.
 			if bench_limited and not bench_was_full:
 				# Once, when it starts. The bench staying full is a state, and the
-				# ⚠ on the bench figure says it every week without a sentence.
 				ev(sw, _("Bench full from here — diverted cuttings have nowhere "
 				         "to go"))
 
@@ -491,11 +395,9 @@ def simulate(p, tc_qty, order_date, num_cycles=None, farm_overrides=None,
 			"ramp_pct": int(round(ramp_pct * 100)),
 			"needed": needed,
 			# Short is the interesting week: the field wants cuttings the pool cannot
-			# cut, and no amount of diverting later fixes a week already past.
 			"shortfall": max(0, needed - total_cap),
 			"base_cap": base_cap,
 			# Which build-up tranches are cutting this week, and whether one of them
-			# landed in it. The schedule colours a tranche's arrival week off this.
 			"stage_detail": stage_detail,
 			"stage_arrived": next((d["label"] for d in stage_detail
 			                       if d["arrived_this_week"] and d["stage"] > 1), None),
@@ -515,7 +417,6 @@ def simulate(p, tc_qty, order_date, num_cycles=None, farm_overrides=None,
 			"cuttings_potted": diverted_planted,
 			"cuttings_wasted": wasted,
 			# Not wasted: once multiplying has stopped, a cutting the field has not
-			# asked for is left on the mother rather than taken and thrown away.
 			"cuttings_not_taken": not_taken,
 			"ms_plants": _pool_plants(cycles, prop_pools, sw, life),
 			"events": events.get(sw, []),
@@ -550,9 +451,6 @@ def simulate(p, tc_qty, order_date, num_cycles=None, farm_overrides=None,
 		"horizon_weeks": horizon,
 		"prop_pools": len(prop_pools),
 		# The pools themselves, not just how many. What was diverted in which week,
-		# when the protocol's establishment brings it back, and what it then cuts --
-		# which is the whole answer to "if I send half to propagation, when does it
-		# join production".
 		"prop_pool_rows": [{
 			"src_sw": x["src_sw"],
 			"src_date": str(base + datetime.timedelta(weeks=x["src_sw"])),
@@ -563,8 +461,6 @@ def simulate(p, tc_qty, order_date, num_cycles=None, farm_overrides=None,
 			"full_date": str(base + datetime.timedelta(
 				weeks=x["start_sw"] + len(ramp) - 1)),
 			# The block is cleared as one, so a pool ends at the clearance if that
-			# comes first. Reporting its own age here while the simulation ran to
-			# the clearance put two different end dates on the same pool.
 			"ends_sw": min(x["start_sw"] + life, x.get("line_end_sw", 10 ** 9)),
 			"ends_date": str(base + datetime.timedelta(
 				weeks=min(x["start_sw"] + life, x.get("line_end_sw", 10 ** 9)))),
@@ -574,16 +470,9 @@ def simulate(p, tc_qty, order_date, num_cycles=None, farm_overrides=None,
 		"num_cycles": len(cycles),
 		"cycles_derived": True,
 		# A diverted batch that matures is a generation in its own right: it cuts,
-		# and what it cuts can be diverted again. Counted from the pools the run
-		# created rather than asserted up front.
 		"generations": len(cycles) + len(prop_pools),
 		"truncated": truncated,
 		# A build-up cannot stack more tranches than a motherstock lives to see. With
-		# an 18-week round and a 52-week life only three are ever standing together:
-		# the fourth lands two weeks after the first has died, so a fourth cycle buys
-		# nothing and an order sized by dividing the requirement by four arrives a
-		# quarter short. Stated here because it is a property of the protocol, not of
-		# any one order, and it is invisible in the totals.
 		"stages_that_fit": stages_that_fit,
 		"stages_ordered": stages_ordered,
 		"build_up_capped": bool(stages_ordered > stages_that_fit),
@@ -611,14 +500,7 @@ def simulate(p, tc_qty, order_date, num_cycles=None, farm_overrides=None,
 
 
 def _pool_plants(cycles, prop_pools, sw, life):
-	"""Mother plants standing this week, base cycle plus every live sub-pool.
-
-	Summed tranche by tranche, each from its own arrival to its own expiry. Counting
-	the order's whole pool from the first cut said 4,000 plants were standing in a
-	week when the first thousand were already dead and the last had not arrived --
-	and it is the figure the bench area, the pot count and the pool chart are all
-	drawn from, so the bench read full when it was not.
-	"""
+	"""Mother plants standing this week, base cycle plus every live sub-pool."""
 	total = 0
 	for c in cycles:
 		stages = c.get("stages")

@@ -1,14 +1,5 @@
 # Copyright (c) 2026, James Kiruga and contributors
-# For license information, please see license.txt
-"""Provenance for every derived number on the planning dashboard.
-
-Each metric declares where it comes from: the formula, the inputs with the field
-and record they were read from, the arithmetic, and any caveat that changes how it
-should be read. Values are pulled live, so an explanation can never drift from the
-figure it explains.
-
-The point is that a planner can challenge a number without reading the code.
-"""
+"""Provenance for every derived number on the planning dashboard."""
 
 import frappe
 from frappe import _
@@ -28,8 +19,6 @@ def _step(label, value, source=None, unit=None):
 	return {"label": label, "value": value, "source": source, "unit": unit}
 
 
-# ---------------------------------------------------------------------------
-# Protocol metrics
 # ---------------------------------------------------------------------------
 
 def _protocol(version):
@@ -343,8 +332,6 @@ def _m_o2h(v):
 	}
 
 
-# ---------------------------------------------------------------------------
-# Plan metrics
 # ---------------------------------------------------------------------------
 
 PLAN_METRICS = {}

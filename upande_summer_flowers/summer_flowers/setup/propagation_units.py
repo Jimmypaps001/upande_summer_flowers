@@ -1,21 +1,5 @@
 # Copyright (c) 2026, James Kiruga and contributors
-# For license information, please see license.txt
-"""Where plants are raised, as warehouses, and what each one can take.
-
-A propagation unit holds stock, so it is a warehouse. Capacity belongs on it
-rather than in one global figure, because the units are not alike: Kudenga holds
-756,000 and takes both forms, Bondet holds 192,500 and has only ever taken
-roots, and Plantech is an outside propagator that has never stated a figure.
-
-Only the fields are created here. The figures are a site's own, and putting them
-in an app would be asserting that every farm's benches are the same size.
-
-Two kinds of number are kept apart on purpose. A stated limit is what somebody
-says the unit holds. The biggest week on record is what it has actually taken
-in -- evidence of what it has done, not a promise of what it can do -- so it is
-a separate field, and the planner only falls back to it when nobody has stated
-a limit, and says when it has.
-"""
+"""Where plants are raised, as warehouses, and what each one can take."""
 
 import frappe
 from frappe.custom.doctype.custom_field.custom_field import create_custom_fields
@@ -93,12 +77,7 @@ def install():
 
 
 def mark_unit(doc, method=None):
-	"""A warehouse of type Propagation Unit is one of our own propagation units.
-
-	The type is what people choose; the two older flags that different parts of the
-	planner still read are kept agreeing with it. Choosing another type does not
-	clear them, so a unit flagged by hand before the type existed is left alone.
-	"""
+	"""A warehouse of type Propagation Unit is one of our own propagation units."""
 	from upande_summer_flowers.summer_flowers.settings import propagation_unit_type
 
 	if not doc.get("warehouse_type") or doc.get("warehouse_type") != propagation_unit_type():

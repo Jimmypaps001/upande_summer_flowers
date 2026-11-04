@@ -1,5 +1,4 @@
 # Copyright (c) 2026, James Kiruga and contributors
-# For license information, please see license.txt
 
 import calendar
 import datetime
@@ -31,7 +30,6 @@ class SummerFlowerBudget(Document):
 
 	def value_months(self):
 		# The variety Item's valuation; refreshed while the budget is a draft so it
-		# follows stock rather than whatever was true when it was built.
 		if self.docstatus == 0 and self.variety:
 			from upande_summer_flowers.summer_flowers.valuation import stem_price
 
@@ -45,8 +43,7 @@ class SummerFlowerBudget(Document):
 		self.months_covered = len(self.budget_months)
 
 	def roll_up_fiscal_years(self):
-		"""Percentages are computed within each fiscal year, which is what a
-		Monthly Distribution needs (it must total 100 per year)."""
+		"""Percentages are computed within each fiscal year, which is what a"""
 		by_fy = {}
 		for row in self.budget_months:
 			fy = by_fy.setdefault(row.fiscal_year, {"stems": 0, "value": 0.0, "months": 0})
@@ -75,21 +72,13 @@ class SummerFlowerBudget(Document):
 	# --------------------------------------------------------- accounts push
 	@frappe.whitelist()
 	def post_to_accounts(self):
-		"""Write one Monthly Distribution and one Budget per fiscal year.
-
-		This site budgets against Farm (Budget.budget_against has a Farm option and a
-		custom `farm` field), and Budget.budget_distribution carries the monthly
-		amounts, so the distribution lands directly on the Budget too.
-		"""
+		"""Write one Monthly Distribution and one Budget per fiscal year."""
 		if not self.budget_account:
 			frappe.throw(_("Set the Income Account before posting to accounts."))
 		if not self.total_value:
 			frappe.throw(_("Budget has no value to post. Set Price per Stem."))
 
 		# Checked before anything is written, for the same reason the fiscal years
-		# are: a site that cannot budget against Farm has to budget against the cost
-		# centre, and finding that out half way through leaves Monthly Distributions
-		# behind with no Budget to hang them on.
 		if self._budget_dimension() == "Cost Center" and not self.cost_center:
 			frappe.throw(
 				_("This site's Budget cannot be budgeted against Farm, so it has to be "
@@ -99,8 +88,6 @@ class SummerFlowerBudget(Document):
 			)
 
 		# Check every fiscal year up front. Fiscal Years can be restricted to a
-		# subset of companies, and failing mid-loop would leave some years posted
-		# and the rest not.
 		blocked = [
 			fy.fiscal_year for fy in self.fiscal_years
 			if not fiscal_year_available(fy.fiscal_year, self.company)
@@ -136,15 +123,7 @@ class SummerFlowerBudget(Document):
 		return f"SF {self.variety} {self.farm} {fiscal_year}"[:140]
 
 	def _budget_dimension(self):
-		"""What this site's Budget can actually be budgeted against.
-
-		Budget belongs to ERPNext, and budgeting against Farm is a customisation:
-		it needs both a `farm` field and Farm among budget_against's options. A site
-		without them has only Cost Center and Project, so asking for Farm wrote an
-		invalid option and filtering by farm was a SELECT on a column that is not
-		there -- which is why posting to accounts did nothing at all on a site that
-		had never been customised that way.
-		"""
+		"""What this site's Budget can actually be budgeted against."""
 		meta = frappe.get_meta("Budget")
 		field = meta.get_field("budget_against")
 		options = [o.strip() for o in (field.options or "").split("\n")] if field else []
@@ -169,11 +148,7 @@ class SummerFlowerBudget(Document):
 
 	@staticmethod
 	def _balanced_percents(months):
-		"""[(row, percent)] summing to exactly 100.
-
-		Both Monthly Distribution and Budget validate that percentages total 100, so
-		the rounding remainder is pushed onto the largest month instead of drifting.
-		"""
+		"""[(row, percent)] summing to exactly 100."""
 		pcts = [(r, flt(r.pct_of_fiscal_year, 3)) for r in months]
 		drift = round(100 - sum(p for _r, p in pcts), 3)
 		if pcts and drift:
@@ -203,7 +178,6 @@ class SummerFlowerBudget(Document):
 
 	def _upsert_budget(self, fy_row, months, monthly_distribution):
 		# ERPNext rejects a second Budget for the same farm + account + overlapping
-		# fiscal year, so adopt whatever is already there rather than colliding.
 		existing = fy_row.erpnext_budget or self._find_existing_budget(fy_row.fiscal_year)
 
 		if existing and frappe.db.exists("Budget", existing):
@@ -236,10 +210,6 @@ class SummerFlowerBudget(Document):
 		doc.save()
 
 		# Budget.before_save -> allocate_budget() always regenerates the distribution
-		# on insert (is_new means there is no prior doc to compare against), which
-		# flattens it to an even 1/12 per month. So write the seasonal profile on a
-		# second save: by then nothing it watches has changed and distribute_equally
-		# is 0, so it leaves these rows alone.
 		doc.set("budget_distribution", [])
 		for row, pct in self._balanced_percents(months):
 			doc.append("budget_distribution", {

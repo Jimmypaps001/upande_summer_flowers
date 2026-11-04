@@ -1,18 +1,5 @@
 # Copyright (c) 2026, James Kiruga and contributors
-# For license information, please see license.txt
-"""Take the grade split off the demand register; the protocol is where it lives.
-
-How a plant's stems divide by length is a property of the crop, not of what the
-market asked for, and every reader already went to the protocol for it -- the
-planning sheet, the crop cycle and the dashboard all read the version's
-grade_allocation. The copy on the register was written by the sheet importer and
-read by nothing, which is the worst kind of duplicate: it can disagree with the
-protocol for years and nobody finds out, because the wrong one is never used.
-
-The walkthrough had a step pointing at the field. A Form Tour reads each step's
-field to fill in a label, so a step left behind makes every later migrate fail
-with an error that names the framework and not the field.
-"""
+"""Take the grade split off the demand register; the protocol is where it lives."""
 
 import frappe
 

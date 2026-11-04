@@ -1,16 +1,5 @@
 # Copyright (c) 2026, James Kiruga and contributors
-# For license information, please see license.txt
-"""What each material stage is, read from the Material Stage records.
-
-A stage used to mean something because its name was written into a tuple here
-(BOUGHT_STAGES = ("TC", "Seeds", ...)). It now means what its record says: its
-kind, whether it multiplies, whether it is already a plant, the form its
-deliveries are lifted as, the item it is bought as and its usual lead time. A
-new stage is a new record.
-
-StageSet behaves like the tuples it replaced -- `in`, iteration, `+` -- so the
-code that reads them did not have to change, and it is re-read every request.
-"""
+"""What each material stage is, read from the Material Stage records."""
 
 import frappe
 from frappe.utils import cint
@@ -25,7 +14,6 @@ CONDITIONING = "Conditioning"
 END = "End"
 
 # What a site starts with (written as records by the add_material_stages patch),
-# and what is used before that patch has run. Not consulted once records exist.
 SEED = {
 	"TC": dict(kind=BOUGHT, lift_form="Tissue Culture", default_lead_weeks=15),
 	"Seeds": dict(kind=BOUGHT),
@@ -35,9 +23,6 @@ SEED = {
 	"Budwoods": dict(kind=BOUGHT),
 	"Bought-in Plants": dict(kind=BOUGHT, ready_to_plant=1),
 	# What each of these is bought as on the season the farm has not got enough
-	# of its own standing. Cuttings have no bought form here -- nobody sells an
-	# unrooted cutting of these crops -- so the gap on that route is reported and
-	# not quietly turned into an order for something else.
 	"Roots (Own)": dict(kind=TAKEN, bought_as="Roots"),
 	"Cuttings (Own)": dict(kind=TAKEN),
 	"Tubers (Own)": dict(kind=TAKEN, bought_as="Tubers"),
@@ -101,20 +86,7 @@ def lift_forms():
 
 
 def bought_as(stage):
-	"""The stage an own-crop stage is BOUGHT at when the farm is short of it.
-
-	A crop cut off the farm's own stock is cut off a crop the farm has. Where
-	there is not enough of it standing, the difference has to come from a
-	supplier -- and it comes as the same material under a name somebody sells:
-	own tubers are bought as Tubers. Stated on the stage record rather than
-	worked out from the name, because "Roots (Own)" happening to start with
-	"Roots" is a spelling, not a fact about the crop.
-
-	Falls back to the name while a site has not been told, so the one site
-	already running does not have to be edited before this works. Nothing is
-	returned where the bought form does not exist, and then the gap is reported
-	rather than filled.
-	"""
+	"""The stage an own-crop stage is BOUGHT at when the farm is short of it."""
 	named = info(stage).get("bought_as")
 	if named:
 		return named

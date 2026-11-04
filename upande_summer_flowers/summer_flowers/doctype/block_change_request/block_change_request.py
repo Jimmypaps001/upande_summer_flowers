@@ -1,13 +1,5 @@
 # Copyright (c) 2026, James Kiruga and contributors
-# For license information, please see license.txt
-"""Splitting a block into several, or recombining several into one.
-
-A block is a piece of land, so the land does not appear or vanish when the fences
-move: the resulting area must equal the source area, and the request
-will not execute if it does not. Both directions need Farm Manager approval and a
-justification, and neither is allowed while a planting is standing on the land --
-a plant cannot be transferred between blocks by editing a record.
-"""
+"""Splitting a block into several, or recombining several into one."""
 
 import re
 
@@ -143,12 +135,7 @@ class BlockChangeRequest(Document):
 
 	@frappe.whitelist()
 	def execute(self):
-		"""Create or resize the resulting blocks and retire the sources.
-
-		Sources are retired rather than deleted: their history -- past plantings,
-		past area revisions -- is the record of what happened on that land and
-		has to survive the rearrangement.
-		"""
+		"""Create or resize the resulting blocks and retire the sources."""
 		if self.status != "Approved":
 			frappe.throw(_("A block change must be approved before it is executed."))
 		if self.status == "Executed":
@@ -161,7 +148,6 @@ class BlockChangeRequest(Document):
 			else:
 				blk = frappe.new_doc("Block")
 				# Block's own naming already prefixes "Block ", so a code entered
-				# as "Block 11A-1" would come out as "... Block Block 11A-1".
 				blk.block = re.sub(r"^\s*block\s+", "", r.block_code or "",
 				                   flags=re.I).strip()
 				blk.farm = self.farm

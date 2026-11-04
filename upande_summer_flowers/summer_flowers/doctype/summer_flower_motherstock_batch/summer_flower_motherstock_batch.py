@@ -1,5 +1,4 @@
 # Copyright (c) 2026, James Kiruga and contributors
-# For license information, please see license.txt
 
 import math
 
@@ -39,7 +38,6 @@ class SummerFlowerMotherstockBatch(Document):
 		self.effective_peak_cuttings = int(math.ceil(peak))
 
 		# One cutting per mother per week means the mother count equals the peak
-		# week's cutting requirement.
 		per_plant_per_week = p.cuttings_per_plant_per_week or 1
 		self.mother_plants = int(math.ceil(self.effective_peak_cuttings / per_plant_per_week))
 		self.pots_required = int(math.ceil(self.mother_plants / (p.plants_per_pot or 1)))
@@ -54,32 +52,19 @@ class SummerFlowerMotherstockBatch(Document):
 		p = self.protocol_doc
 		cycles = self.build_up_cycles or 0
 		# No warning when this runs past max_multiplication_cycles. That figure is
-		# zero on almost every protocol because nobody has ever filled it in, so
-		# the warning fired on ordinary use and said nothing anybody could act on
-		# -- least of all on a crop with no motherstock, where the honest answer
-		# is not "you exceeded the cap" but "this crop has no build-up at all".
 
 		self.multiplication_factor = p.multiplication_factor(cycles)
 		self.lead_time_weeks = p.lead_time_for_cycles(cycles)
 		self.total_lead_time_weeks = (self.lead_time_weeks or 0) + lab_lead_weeks(p)
 
 		# The calculation always runs and is always shown, whether or not it is the
-		# figure being ordered. A batch that quietly stopped telling you what the
-		# requirement was would make an override impossible to judge.
 		self.tc_plants_calculated = int(math.ceil(p.tc_plants_for(self.mother_plants, cycles)))
 		if not (self.override_tc_plants and cint(self.tc_plants_required) > 0):
 			self.tc_plants_required = self.tc_plants_calculated
 
 	# ----------------------------------------------------------- the override
 	def describe_choice(self):
-		"""Say what an override buys, in the units the decision is made in.
-
-		A quantity is hard to judge as a quantity: 8,556 against 6,845 means
-		nothing until it is read back as mother plants, and a date means nothing
-		until it is read as weeks earlier or later than the schedule wants. Both are
-		stated, and shortfalls are stated as shortfalls rather than left to be
-		inferred from two numbers sitting next to each other.
-		"""
+		"""Say what an override buys, in the units the decision is made in."""
 		p = self.protocol_doc
 		lines = []
 
@@ -122,18 +107,6 @@ class SummerFlowerMotherstockBatch(Document):
 		p = self.protocol_doc
 
 		# An overridden order date moves the first sticking week rather than sitting
-		# next to it in contradiction. The two are one full lead time apart by
-		# definition: order today, and the earliest the pool can be cut from is the
-		# lead time away. Buying earlier means sticking earlier, and everything the
-		# plan hangs off the sticking week -- planting, pinching, first harvest --
-		# moves with it. Setting the date without moving the week would leave a batch
-		# claiming an order date its own schedule disagrees with.
-		# The week the schedule wants, held apart from the week the override forces.
-		# Without this the baseline moves with the override -- the calculated order
-		# date is derived from the sticking week, so shifting the week shifts the
-		# baseline and the two always agree, leaving an override that reads as no
-		# change at all. Captured before the shift, and only while it is still the
-		# schedule's own answer.
 		if not self.sticking_week_required or not self.override_tc_order_date:
 			self.sticking_week_required = getdate(self.first_sticking_date)
 
@@ -146,10 +119,6 @@ class SummerFlowerMotherstockBatch(Document):
 		stick = getdate(self.first_sticking_date)
 
 		# The first cutting week and full capacity are not the same week. The pool
-		# climbs the build-up while it is being cut, so max PC lands ramp_weeks - 1 weeks
-		# after the first cut -- the last ramp step is the 100% one. Setting these
-		# equal, as this did, is what made the build-up invisible and every plan read as
-		# though a new pool delivered its full rate from day one.
 		ramp = p.ramp_ratios()
 		self.ramp_weeks = len(ramp)
 		self.max_pc_date = add_days(stick, 7 * (len(ramp) - 1))
@@ -159,23 +128,15 @@ class SummerFlowerMotherstockBatch(Document):
 		if not (self.override_tc_order_date and self.tc_order_date):
 			self.tc_order_date = self.tc_order_date_calculated
 		# The life clock starts at motherstock ONE, not at the generation cut from
-		# it. Cuttings taken off the first pool to build a second do not reset
-		# anything: the line is renewed from tissue culture, and 1.2 comes out when
-		# 1 comes out. Dating expiry from the multiplied generation's first cut gave
-		# every extra cycle a full life of its own, so four cycles read as four
-		# times the plants at no cost in time -- when what it actually costs is
-		# three establishments out of the same window.
 		est = p.weeks_tc_to_first_cut()
 		cycles = max(1, cint(self.build_up_cycles))
 		self.line_start_date = add_days(getdate(self.tc_on_farm_date), 7 * est)
 		self.expiry_date = add_days(self.line_start_date,
 		                            7 * (p.motherstock_life_weeks or 0))
 		# What is left to cut from the full pool. Multiplying buys plants out of
-		# this, not beside it.
 		self.productive_weeks = max(0, cint(round(
 			(getdate(self.expiry_date) - stick).days / 7.0)))
 		# Renewal must be productive the week this one expires, so the next order
-		# goes in one full lead time before that.
 		self.renewal_tc_order_date = add_days(
 			self.expiry_date, -7 * (self.total_lead_time_weeks or 0)
 		)
@@ -275,7 +236,6 @@ class SummerFlowerMotherstockBatch(Document):
 		tc_plants = self.tc_plants_required or 0
 		cycles = self.build_up_cycles or 0
 		# The same definition the lead time uses, or the step dates drift away from
-		# tc_on_farm_date + lead_time_weeks and the two disagree on the same batch.
 		est = p.weeks_tc_to_first_cut()
 
 		step(_("Place TC order"), self.tc_order_date, tc_plants,
@@ -319,20 +279,8 @@ class SummerFlowerMotherstockBatch(Document):
 # ---------------------------------------------------------------------------
 
 def lab_lead_weeks(version):
-	"""Order-to-delivery at the TC lab, from one place.
-
-	The protocol carries supplier_lead_weeks per variety per farm and is versioned;
-	Summer Flower Settings carries a single global figure. Both were in use -- the
-	batch read the Setting, the lifecycle simulator read the protocol -- so the two
-	engines dated the same order differently and their coverage numbers could not be
-	reconciled. The protocol wins because it is the more specific and the auditable
-	one; the Setting remains the fallback for a protocol that has not filled it in.
-	"""
+	"""Order-to-delivery at the TC lab, from one place."""
 	# The protocol's figure, including zero. Zero is a real answer -- plantlets already
-	# on the farm, or bought in rooted -- and treating it as "not filled in" meant the
-	# journey said 0 weeks of supplier lead while every date built from this one
-	# assumed the global 20, two numbers for one fact. The Setting is the fallback only
-	# for a version that has no such field at all.
 	weeks = getattr(version, "supplier_lead_weeks", None)
 	if weeks is None:
 		return lab_turnaround_weeks()
@@ -340,21 +288,7 @@ def lab_lead_weeks(version):
 
 
 def tc_order_by_date(version, first_sticking_date, cycles=None):
-	"""The last date a TC order can be placed and still reach a sticking week.
-
-	Two waits, and only two: the lab's own order-to-delivery, then lead_time_weeks,
-	which is already defined as arrival to first cutting including any multiplication
-	cycles. Adding ms_establishment_weeks on top would count tray and pot twice.
-
-	One function because there were two. The plan worked back by lab lead plus lead
-	time and the dashboard by lead time alone, so the same plan showed "order by
-	2025-11-03" on the document and "2026-08-10" on the dashboard -- nine months
-	apart, for the single decision with the longest lead time in the process.
-
-	`cycles` asks the question for a build-up other than the protocol's own, which
-	is what makes cutting cycles worth trying: fewer cycles is a shorter lead time
-	and therefore a later, easier order date, paid for in plantlets.
-	"""
+	"""The last date a TC order can be placed and still reach a sticking week."""
 	if not first_sticking_date:
 		return None
 	lead = (cint(version.lead_time_for_cycles(cint(cycles)))
@@ -388,11 +322,7 @@ def lookup_tc_rate(qty, stage="Stage 4", year=None):
 
 @frappe.whitelist()
 def cycle_options(protocol, mother_plants, stage="Stage 4", year=None):
-	"""Cost and lead time for every build-up option, so the trade-off is visible.
-
-	Band boundaries mean more cycles is not always cheaper: a smaller order can fall
-	into a dearer band and cost more than a larger one.
-	"""
+	"""Cost and lead time for every build-up option, so the trade-off is visible."""
 	p = frappe.get_cached_doc("Crop Protocol Version", protocol)
 	mother_plants = frappe.utils.cint(mother_plants)
 	year = frappe.utils.cint(year) or getdate(nowdate()).year

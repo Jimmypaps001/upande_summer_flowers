@@ -1,43 +1,5 @@
 # Copyright (c) 2026, James Kiruga and contributors
-# For license information, please see license.txt
-"""Name the customization file that will break the next migrate or install.
-
-frappe.modules.utils.sync_customizations walks every installed app, every module in
-it, and every .json in that module's custom folder, and hands each one to
-sync_customizations_for_doctype. That function reads three keys straight out of the
-dict with no check that they are there:
-
-    doctype           at the top of the function
-    custom_fields     after the doctype-exists guard
-    property_setters  just below it
-
-Any of the three missing raises KeyError and takes the whole migrate down. Because
-the loop never says which file it is holding, the traceback names only frappe's own
-line -- on a bench with a hundred-odd customization files across thirty apps that
-tells you nothing. This walks the same three loops, in the same order, under the
-same gate, and prints the path.
-
-Two gates, not one, because the two failures look different:
-
-    migrate   reads a file only if it carries sync_on_migrate, so a malformed file
-              without that flag can sit harmless for months
-    install   reads every .json in the folder, flag or no flag
-
-A file can therefore be fatal on a fresh install and invisible on every migrate.
-Both are reported, and each says which one it will bite.
-
-What is deliberately NOT called fatal: a file whose doctype is not installed on this
-site. sync_customizations_for_doctype guards that case itself -- it prints "DocType
-{0} does not exist" and returns -- so it is a quiet no-op, worth knowing about but
-not a breakage. Calling it one would be crying wolf.
-
-Dangling document links are reported separately again, as a warning rather than a
-break. A customization file shipping a Document Link whose field does not exist in
-the database is how "Unknown column 'custom_material_request'" got into an install
-here, but the insert itself is unvalidated, so the failure surfaces later and
-elsewhere. The link is certainly wrong; asserting exactly when it will bite is more
-than the evidence supports.
-"""
+"""Name the customization file that will break the next migrate or install."""
 
 import json
 import os
@@ -45,8 +7,6 @@ import os
 import frappe
 
 # The keys sync_customizations_for_doctype reads without a guard, in the order it
-# reads them. Kept as data because that is the whole contract being checked; if a
-# future frappe adds a fourth, this list is the one thing to update.
 REQUIRED_KEYS = ("doctype", "custom_fields", "property_setters")
 
 FATAL = ("migrate", "install")
@@ -116,7 +76,6 @@ def _inspect(app, module, path):
 			add(gate, "has no top-level %s key" % key, "customising %s" % doctype)
 
 	# A Document Link pointing at a field the database has not got. The row inserts
-	# unvalidated and fails later, somewhere that never mentions this file.
 	for row in data.get("links") or []:
 		link_dt = row.get("link_doctype")
 		link_field = row.get("link_fieldname")
@@ -136,12 +95,7 @@ def _inspect(app, module, path):
 
 
 def _folders():
-	"""Yield (app, module, folder) for every custom folder sync_customizations reads.
-
-	Deliberately goes through frappe.get_installed_apps() and app_modules rather than
-	globbing the apps directory, so an app sitting on disk but not installed on this
-	site is skipped here exactly as it is skipped there.
-	"""
+	"""Yield (app, module, folder) for every custom folder sync_customizations reads."""
 	for app in frappe.get_installed_apps():
 		for module in frappe.local.app_modules.get(app) or []:
 			try:
@@ -170,11 +124,7 @@ def counted():
 
 
 def check():
-	"""Print the report and return the problems.
-
-	bench --site SITE execute \
-	    upande_summer_flowers.summer_flowers.customization_check.check
-	"""
+	"""Print the report and return the problems."""
 	problems = scan()
 	total = counted()
 
@@ -207,22 +157,7 @@ def check():
 
 
 def before_migrate():
-	"""Name the file before frappe trips over it.
-
-	sync_customizations runs later in the same migrate and reads three keys out of
-	every custom/*.json with no check that they are there. When one is missing it
-	dies on `data["doctype"]` with a KeyError and no filename, and the migrate is
-	over -- on a bench of a hundred-odd customization files across a dozen apps
-	that identifies nothing.
-
-	This runs first and says which file, in which app, and what is wrong with it.
-	It refuses the migrate only for the faults that would stop it anyway: the
-	migrate was going to fail either way, and failing with the path in the message
-	is the whole point.
-
-	Deliberately checks every installed app, not just this one. The file that stops
-	the migrate is rarely in the app that notices.
-	"""
+	"""Name the file before frappe trips over it."""
 	problems = scan()
 	blocking = [p for p in problems if p["breaks"] == "migrate"]
 	if not blocking:

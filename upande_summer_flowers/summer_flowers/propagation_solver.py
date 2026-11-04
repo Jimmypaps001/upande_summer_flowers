@@ -1,34 +1,5 @@
 # Copyright (c) 2026, James Kiruga and contributors
-# For license information, please see license.txt
-"""How many plantlets to buy, and how long to divert the cut before planting.
-
-The farm's own description of what happens, which is what this solves against:
-
-    A mother cuts every week of its productive life. So the second generation
-    does not wait for the first to finish -- week one's cuttings start one batch
-    of new mothers, week two's start another, and each is one establishment away
-    from producing, a week apart rather than a generation apart. While that is
-    happening the first mothers are still cutting, so from the week you decide
-    you have enough coming, each week's cut splits: some back as mothers, the
-    rest rooted and sent to the field. And the whole block is cleared together,
-    so a late generation dies with the first one rather than living on.
-
-That leaves exactly two things to decide, and they trade against each other:
-
-    * how many TC plantlets to buy
-    * how many weeks to send the WHOLE cut back before any goes to the field
-
-Buy fewer and you divert longer, which means ordering earlier. Everything else
--- the order date, when the first plants land, when the pool peaks, whether the
-weekly stream actually covers the weekly planting need -- follows from those two
-and the protocol.
-
-This deliberately does not use multiplication_factor or lead_time_for_cycles.
-Those model the build-up as N sequential establishments, which is the thing the
-farm says does not happen; a four-cycle protocol came out at 60 weeks to a full
-pool against a motherstock life of 52, so the plan was working the TC order back
-from a pool that lands after the block is cleared.
-"""
+"""How many plantlets to buy, and how long to divert the cut before planting."""
 
 import datetime
 import math
@@ -41,13 +12,9 @@ from upande_summer_flowers.summer_flowers import lifecycle_sim as ls
 from upande_summer_flowers.summer_flowers.planning import iso_monday
 
 # A plantlet buys one mother. The build-up is the diverted cuttings below, not a
-# factor applied to the order -- counting both is how one order came to look like
-# four tranches of mothers that nobody ever cut for.
 TC_IS_ONE_MOTHER = {"multiplication_factor": 1.0, "build_up_cycles": 1}
 
 #: The farm sends a motherstock block back to multiplication four times at the
-#: most -- "i only send 4 times". Past that the block is simply cut for the
-#: field until it is cleared.
 MAX_MULTIPLICATIONS = 4
 
 
@@ -61,13 +28,7 @@ SEARCH_CEILING_STEPS = 24
 
 
 def demand_by_sticking_week(plan):
-	"""{Monday of the sticking week: cuttings the propagation unit must deliver}
-
-	Keyed on sticking, not planting: the cutting has to come off the mother the
-	week it is stuck, and the weeks between sticking and planting are the rooting
-	the propagation unit does. Grossed up by cuttings_per_plant_required, so a
-	rooting loss is bought rather than discovered.
-	"""
+	"""{Monday of the sticking week: cuttings the propagation unit must deliver}"""
 	v = frappe.get_cached_doc("Crop Protocol Version", plan.protocol)
 	per_plant = flt(v.cuttings_per_plant_required) or 1.0
 	out = {}
@@ -76,33 +37,19 @@ def demand_by_sticking_week(plan):
 			continue
 		monday = iso_monday(cint(b.sticking_year), cint(b.sticking_week))
 		# The demand figure, never the trimmed one. Once an agreed order is
-		# written back onto the plantings, b.plants is what that order can
-		# plant -- and sizing the order from it would be sizing it from
-		# itself: a smaller peak, a smaller suggestion, a smaller trim, round
-		# and round. What the materials have to cover is what the market asked
-		# for, which is what plants_from_demand holds.
 		wanted = cint(b.get("plants_from_demand")) or cint(b.plants)
 		out[monday] = out.get(monday, 0) + int(round(wanted * per_plant))
 	return dict(sorted(out.items()))
 
 
 def last_useful_divert_weeks(p):
-	"""Diverting after this many weeks of cutting buys mothers that never cut.
-
-	A cutting stuck in week w is productive at w + establishment, and the block is
-	cleared one life after its first cut. So the deadline is a real date, not a
-	bench size.
-	"""
+	"""Diverting after this many weeks of cutting buys mothers that never cut."""
 	estab = cint(p.get("cutting_to_mother_weeks")) or cint(p["ms_establishment_weeks"])
 	return max(0, cint(p["ms_life_weeks"]) - estab)
 
 
 def order_date_for(p, first_sticking, divert_weeks):
-	"""Back from the week the field's first cuttings must be stuck.
-
-	first cut = order + supplier lead + establishment; the first `divert_weeks` of
-	cutting go back as mothers; the week after that is the field's first sticking.
-	"""
+	"""Back from the week the field's first cuttings must be stuck."""
 	weeks = (cint(p["supplier_lead_weeks"])
 	         + (cint(p.get("tc_to_first_cut_weeks")) or cint(p["ms_establishment_weeks"]))
 	         + cint(divert_weeks))
@@ -129,14 +76,11 @@ def evaluate(version, tc, divert_weeks, demand, first_sticking, tc_loss_pct=0.0)
 	                + (cint(p.get("tc_to_first_cut_weeks"))
 	                   or cint(p["ms_establishment_weeks"])))
 	# Everything cut in the diversion window goes back, whatever the field asked
-	# for. After it, simulate serves the demand and banks the surplus.
 	overrides = {first_cut_sw + i: 0 for i in range(cint(divert_weeks))}
 
 	sim = ls.simulate(p, arriving, order, num_cycles=1, farm_overrides=overrides,
 	                  demand_by_sw=demand_by_sw, horizon_weeks=last_sw + 8,
 	                  # Multiplying ends when the window does. After it the cut goes
-	                  # to the field, and a surplus the field has not asked for stays
-	                  # on the mother instead of being banked as yet more mothers.
 	                  divert_until_sw=first_cut_sw + cint(divert_weeks))
 	rows = {r["sw"]: r for r in sim["rows"]}
 
@@ -171,14 +115,7 @@ def evaluate(version, tc, divert_weeks, demand, first_sticking, tc_loss_pct=0.0)
 
 
 def least_tc_for(version, divert_weeks, demand, first_sticking, tc_loss_pct=0.0):
-	"""Smallest order that covers every planting week at this diversion.
-
-	Cover only ever improves with more plantlets, so this is a bisection rather
-	than a sweep -- but only once the diversion is possible at all. Diverting
-	longer pulls the order earlier, which pulls the block's clearance earlier too,
-	and past a point the block is cleared before the season's last planting. No
-	quantity of plantlets fixes that, so it is reported rather than searched.
-	"""
+	"""Smallest order that covers every planting week at this diversion."""
 	probe = evaluate(version, max(1, sum(demand.values()) // 100), divert_weeks,
 	                 demand, first_sticking, tc_loss_pct)
 	if not probe:
@@ -190,7 +127,6 @@ def least_tc_for(version, divert_weeks, demand, first_sticking, tc_loss_pct=0.0)
 			"order_by": probe["order_by"], "covers": False,
 			"line_end_date": probe["line_end_date"],
 			# Not "before": the clearance falling ON the last planting week is just
-			# as fatal, and saying "before 2028-12-11" of 2028-12-11 reads as a bug.
 			"blocked": _("Diverting {0} weeks pulls the order {0} weeks earlier, so "
 			             "the block would be cleared on {1}. The season's last "
 			             "planting is {2}, and the block has to outlast it. No "
@@ -235,14 +171,7 @@ def _divert_candidates(p):
 
 
 def recommend(plan, tc=None, divert_weeks=None):
-	"""The whole answer the dialog draws: one recommendation, and what it means.
-
-	The recommendation is the SMALLEST order that covers every planting week and
-	can still be placed, because plantlets are what this costs. Diverting longer
-	buys the same cover for fewer plantlets, but each extra week of diversion
-	pulls the order date a week earlier, and an order date in the past is not an
-	option however cheap it looks.
-	"""
+	"""The whole answer the dialog draws: one recommendation, and what it means."""
 	from upande_summer_flowers.summer_flowers import sourcing
 	from upande_summer_flowers.summer_flowers.doctype \
 		.summer_flower_motherstock_batch.summer_flower_motherstock_batch import (
@@ -279,11 +208,9 @@ def recommend(plan, tc=None, divert_weeks=None):
 		options.append(r)
 
 	# A blocked option is shown, not hidden: "you cannot divert that long, and
-	# here is why" is the answer to the question somebody was about to ask.
 	usable = [o for o in options if o.get("covers")]
 	placeable = [o for o in usable if not o["order_late"]]
 	# Cheapest that can still be ordered. Nothing placeable means the decision is
-	# late, not impossible, and the dialog has to say which.
 	pick = (min(placeable, key=lambda o: (o["tc"], -o["divert_weeks"]))
 	        if placeable else
 	        (min(usable, key=lambda o: (o["tc"], -o["divert_weeks"]))
@@ -295,15 +222,12 @@ def recommend(plan, tc=None, divert_weeks=None):
 		chosen_tc = cint(tc)
 	else:
 		# The least that covers AT THIS DIVERSION, not the recommendation's own
-		# quantity. Moving the weeks and keeping the other number is how the panel
-		# came to report a shortfall against a quantity nobody had chosen.
 		at_d = next((o for o in usable if o["divert_weeks"] == chosen_d), None)
 		if not at_d:
 			r = least_tc_for(plan.protocol, chosen_d, demand, first_sticking, loss)
 			at_d = r if (r and r.get("covers")) else None
 		chosen_tc = (at_d or pick or {}).get("tc")
 	# The chosen pair comes back with its whole schedule, because the week list is
-	# the thing the reader is here to look at -- the quantity is a by-product.
 	detail = (schedule_for(plan.protocol, chosen_tc, chosen_d, demand,
 	                       first_sticking, loss) if chosen_tc else None)
 	if detail:
@@ -335,8 +259,6 @@ def recommend(plan, tc=None, divert_weeks=None):
 		"options": options,
 		"limits": {
 			# What the protocol allows, and what THIS season allows. The second is
-			# usually the binding one, and quoting only the first told a reader they
-			# had 41 weeks to play with when the answer was 4.
 			"last_divert_weeks": last_divert,
 			"max_divert_that_covers": (max(o["divert_weeks"] for o in usable)
 			                           if usable else None),
@@ -352,7 +274,6 @@ def recommend(plan, tc=None, divert_weeks=None):
 			"tc_loss_pct": loss,
 		},
 		# Shown, never netted off: the order is sized for the whole need, and what
-		# is already standing is the reader's to weigh.
 		"standing": {
 			"plants": cint(standing),
 			"as_at": str(first_sticking),
@@ -362,11 +283,7 @@ def recommend(plan, tc=None, divert_weeks=None):
 
 
 def _assumptions(v):
-	"""Protocol figures that are defaults rather than measurements.
-
-	cuttings_per_plant_per_week drives every number here, and a 1.0 that nobody
-	filled in is indistinguishable from a 1.0 an agronomist measured.
-	"""
+	"""Protocol figures that are defaults rather than measurements."""
 	out = []
 	if flt(v.cuttings_per_plant_per_week) in (0, 1):
 		out.append(_("Cuttings per mother per week is {0} on this protocol. Every "
@@ -393,31 +310,14 @@ def options(production_plan, tc=None, divert_weeks=None):
 
 
 def _generation_of(start_sw, first_cut_sw, estab):
-	"""Which generation a pool coming online in `start_sw` belongs to.
-
-	Generations are bands one establishment wide, counted from the first cut of
-	the plantlets. Gen 1 is what the plantlets became. Cuttings taken off gen 1
-	establish one band later and are gen 2; cuttings taken once gen 2 is cutting
-	are gen 3, and so on.
-
-	Within a band the pools arrive a week apart rather than together, because a
-	mother cuts every week -- so "gen 2 arrives" is a run of weeks, not a date.
-	That is the whole difference from counting multiplication cycles, and it is
-	why the number of generations follows from how long the cut is diverted
-	instead of being set on its own.
-	"""
+	"""Which generation a pool coming online in `start_sw` belongs to."""
 	if not estab or start_sw <= first_cut_sw:
 		return 1
 	return 1 + max(1, int(round((start_sw - first_cut_sw) / float(estab))))
 
 
 def schedule_for(version, tc, divert_weeks, demand, first_sticking, tc_loss_pct=0.0):
-	"""The line week by week, and the generations that make it up.
-
-	This is what the reader actually wants to see: not a quantity, but when each
-	generation starts cutting, how many mothers are standing that week, how the
-	week's cut splits, and whether the field got what it asked for.
-	"""
+	"""The line week by week, and the generations that make it up."""
 	p = ls.params_from_version(version, TC_IS_ONE_MOTHER)
 	res = evaluate(version, tc, divert_weeks, demand, first_sticking, tc_loss_pct)
 	if not res:
@@ -501,8 +401,6 @@ def schedule_for(version, tc, divert_weeks, demand, first_sticking, tc_loss_pct=
 
 
 # ---------------------------------------------------------------------------
-# Sizing off the peak week, with the multiplication the system works out
-# ---------------------------------------------------------------------------
 
 def round_up_to_area(plants, per_area):
 	"""Up to a whole minimum planting area. Nobody buys a third of a bed."""
@@ -512,27 +410,10 @@ def round_up_to_area(plants, per_area):
 
 
 def peak_sizing(plan, cycles=None, max_cycles=None):
-	"""What to buy, sized by the busiest week, and how often to multiply.
-
-	The pool is bought once and cut from every week of the season, so the week
-	that sets its size is the busiest one -- the weeks either side lend it
-	nothing. Divide that week's cuttings by the generations standing (the
-	plantlets plus one per multiplication) and round up to a whole planting area.
-
-	What a multiplication costs is time, and that is the part nobody should have
-	to work out. Each one is an establishment of a diverted cutting, so the pool
-	is full that much later, the order goes in that much earlier, and the line --
-	which still dies one motherstock life after its FIRST cut -- has that many
-	fewer weeks left to cut from. So the suggestion is the most multiplication
-	that still leaves the pool enough cutting weeks to see the season out.
-	"""
+	"""What to buy, sized by the busiest week, and how often to multiply."""
 	v = frappe.get_cached_doc("Crop Protocol Version", plan.protocol)
 	if max_cycles in (None, ""):
 		# The protocol gets to say so when it has said so. Most versions carry a
-		# zero here, which is the field never having been filled in rather than
-		# a variety that must never be multiplied, so a zero falls back to the
-		# farm's habit. A real number is a real cap: this Aster allows one, and
-		# the card was offering four of them.
 		max_cycles = cint(v.max_multiplication_cycles) or max_multiplications()
 	demand = demand_by_sticking_week(plan)
 	if not demand:
@@ -546,40 +427,19 @@ def peak_sizing(plan, cycles=None, max_cycles=None):
 	per_week = flt(v.cuttings_per_plant_per_week) or 1.0
 	per_area = cint(v.plants_per_bed) or cint(v.min_planting_area_sqm) or 1
 	# What a propagation order is rounded to, which is NOT the planting area.
-	# A bed is how much ground a planting takes; a lab does not sell by the
-	# bed. Rounding the generations to one is what turned a third of 10,000
-	# into 4,000 -- the arithmetic was right and the step was somebody else's.
-	# One by default, so the pool divides as cleanly as the numbers allow.
 	order_qty = cint(v.get("min_order_qty")) or 1
 	life = cint(v.motherstock_life_weeks)
 	need_weeks = len(demand)
 	# The span the line has to stay alive across, not how many weeks are in it.
-	# 38 sticking weeks that run from January to December need the line alive for
-	# 46 weeks, and comparing 41 cutting weeks to the count of 38 said yes to a
-	# pool that dies six sticking weeks before the end.
 	last_stick = max(demand)
 	span_weeks = (getdate(last_stick) - getdate(first_stick)).days // 7
 	# A generation ramps before it cuts at full rate, so the pool has to START
-	# cutting that much before the field wants anything. Without this the first
-	# cutting week and the first sticking week were the same, and the pool was at
-	# 25% in a week that needed 25,000 cuttings -- 22,250 short across the ramp.
 	ramp_lead = max(0, len(v.ramp_ratios() or [1.0]) - 1)
 
 	ramp = v.ramp_ratios() or [1.0]
 	options = []
 	for c in range(0, cint(max_cycles) + 1):
 		# The pool divided by the generations standing. That is all it is, and
-		# all the farm ever meant by it: no multiplication buys the whole pool,
-		# one buys half and grows half, two buy a third, and each share is a
-		# whole planting area because you cannot buy part of a bed.
-		#
-		# This replaces two hand-made splits and a search between them. The
-		# search found smaller orders that still covered the season -- 3,000
-		# where half of 10,000 is 5,000 -- and it was right that they covered
-		# it, and wrong to offer them. A multiplication is a thing the farm
-		# DOES a counted number of times, and what it is worth has to be
-		# arithmetic anyone can check on the back of an envelope. An answer
-		# nobody can predict is not a lever, however well it optimises.
 		mothers = peak / per_week
 		split = even_generations(mothers, c + 1, order_qty) or [
 			round_up_to_area(mothers, order_qty)]
@@ -590,13 +450,6 @@ def peak_sizing(plan, cycles=None, max_cycles=None):
 			{"by": first_stick, "mothers": b} for b in batches]
 
 		# Two ends of a range, not one date. The earliest is the old anchor --
-		# the whole pool standing before the field wants anything -- and the
-		# latest is generation one ramped up exactly as the season opens, with
-		# the rest arriving during it. The line is walked across the range and
-		# the last of the best starts wins, because every week bought early is
-		# a week of mothers cut into nothing AND a week off the end.
-		# A generation needs time to be GATHERED as well as grown, and every
-		# generation climbs its own build-up, not just the last one.
 		gather = max(1, int(math.ceil(1.0 / (flt(per_week) or 1.0))))
 		earliest = add_days(getdate(first_stick),
 		                    -7 * (c * (regen + gather + ramp_lead) + ramp_lead))
@@ -607,7 +460,6 @@ def peak_sizing(plan, cycles=None, max_cycles=None):
 
 		order_by = add_days(started, -7 * (lead + estab))
 		# The line lives one motherstock life from its FIRST cut, so what it has
-		# left for the season is counted from the day it starts cutting.
 		cut_weeks = max(0, life - max(0, (getdate(first_stick) - started).days // 7))
 		options.append({
 			"cycles": c, "generations": round(gens, 2),
@@ -629,14 +481,6 @@ def peak_sizing(plan, cycles=None, max_cycles=None):
 		})
 
 	# What the protocol says, and nothing cleverer. "Max times re-rooted" is
-	# the farm's own answer to how often this variety is multiplied: it caps
-	# the lever AND sets where it starts. A suggestion worked out from coverage
-	# was a second opinion on a question already answered, and it argued with
-	# the form -- the protocol allowed one and the card proposed two.
-	#
-	# Still clamped to what the options hold, because a protocol that allows
-	# five on a line that can only be walked three times should not point at an
-	# option that is not there.
 	suggested = max(0, min(cint(max_cycles), len(options) - 1))
 	chosen = cint(cycles) if cycles not in (None, "") else suggested
 	chosen = max(0, min(chosen, cint(max_cycles)))
@@ -659,9 +503,6 @@ def peak_sizing(plan, cycles=None, max_cycles=None):
 		"life_weeks": life,
 		"options": options,
 		# The cap that actually applied, which is the protocol's where it states
-		# one and the farm's habit otherwise. Published because the card has to
-		# say WHICH limit it hit: "only 1 could be sent" over a line with 32,900
-		# spare cuttings a week reads as a shortage, and it is a rule.
 		"max_cycles": cint(max_cycles),
 		"suggested": suggested,
 		"chosen": chosen,
@@ -669,19 +510,7 @@ def peak_sizing(plan, cycles=None, max_cycles=None):
 	}
 
 def even_generations(mothers, generations, per_area):
-	"""The peak in equal instalments, which is how the farm says it.
-
-	"Two multiplications" means a third bought and two more grown, and anyone
-	sizing an order by hand divides the peak by three. The step-shaped split
-	below does something cleverer and, on a season that opens near its peak,
-	much worse: a curve rising 23,000 -> 24,000 spends its one multiplication
-	on the 1,000 and buys 23,000, where two instalments of 12,000 cover the
-	same peak for half the order.
-
-	Neither split is right every time -- a generation that cannot be productive
-	before the field opens is no use however it is sized -- so both are walked
-	and the better one wins. This is only the candidate.
-	"""
+	"""The peak in equal instalments, which is how the farm says it."""
 	g = max(1, cint(generations))
 	need = int(math.ceil(flt(mothers)))
 	if need <= 0:
@@ -698,43 +527,14 @@ def even_generations(mothers, generations, per_area):
 
 def _walk_line(demand, buy, c, regen, per_week, life, ramp, per_area, first_cut,
                sends_allowed=None, batches=None):
-	"""One motherstock line, week by week, from a given first cut.
-
-	The engine. Everything that reports a line goes through here, so the card,
-	the document, the what-if and the order cannot walk it differently.
-
-	The farm's rule, in its own words: even in ramp one the cut can go to
-	hardening and then to the farm. So the field is served first, every week,
-	from the very first cut -- a ramping pool still roots and hardens and those
-	plants are plantable. Only what the field does not ask for goes back as
-	mothers, and a generation leaves only when a full batch has been gathered.
-	Multiplication is a thing you do a counted number of times, never more than
-	MAX_MULTIPLICATIONS.
-
-	The pool is not kept at its peak all season. A mother standing in a week that
-	needs a thousand cuttings is a bed that could be growing something else, so
-	mothers are cut off as soon as no week still ahead of them needs them -- the
-	pool is held for the biggest week LEFT, not the biggest week of the year. It
-	only ever shrinks, because a mother cut off cannot be grown back inside a
-	week.
-
-	Every generation is cleared together, one motherstock life after the FIRST
-	cut, so a later one simply gets fewer weeks. They come off the same order of
-	plantlets and they go at the same time.
-	"""
+	"""One motherstock line, week by week, from a given first cut."""
 	first_cut = getdate(first_cut)
 	line_end = add_days(first_cut, 7 * cint(life))
 	# Each multiplication is its own size: the step in demand it was raised for.
-	# Without this every generation was a copy of the order, which is only right
-	# when the season arrives in equal instalments.
 	given = [cint(b) for b in (batches or []) if cint(b) > 0]
 	batches = given or [cint(buy)] * min(cint(c), max_multiplications())
 	if sends_allowed is None:
 		# The farm's four is the DEFAULT, not a law. A caller that hands over an
-		# explicit list of batches has already decided how many rounds it wants
-		# -- that is the whole point of asking "what must I do to a small order"
-		# -- and capping it here answered a different question and labelled the
-		# result "4 of 4".
 		sends_allowed = len(batches) if given else min(len(batches),
 		                                              max_multiplications())
 
@@ -747,7 +547,6 @@ def _walk_line(demand, buy, c, regen, per_week, life, ramp, per_area, first_cut,
 	batch_from = None
 
 	# The biggest week still ahead, week by week: what the pool has to be able to
-	# cut from here on. Everything above it is a mother nobody will need again.
 	from upande_summer_flowers.summer_flowers.lifecycle_sim import ramp_ratio
 
 	per_area = cint(per_area) or 1
@@ -773,8 +572,6 @@ def _walk_line(demand, buy, c, regen, per_week, life, ramp, per_area, first_cut,
 			event.append(_("Generation {0} starts cutting").format(g["generation"]))
 
 		# Cut off what the rest of the season cannot use, oldest mothers first: a
-		# block is thinned from the bed that has been cut longest. Only once the
-		# pool is whole, so the build-up is not thinned before it is finished.
 		removed = 0
 		if sends >= sends_allowed and not arrivals:
 			live = [g for g in gens if getdate(g["first_cut_date"]) <= week]
@@ -801,8 +598,6 @@ def _walk_line(demand, buy, c, regen, per_week, life, ramp, per_area, first_cut,
 		cut = int(round(cut))
 
 		# Field first -- this is the correction. What is left over is the only
-		# thing that can be multiplied, which is why a line that is already fully
-		# committed to the farm cannot multiply at all and must be bought outright.
 		wants = cint(demand.get(week, 0))
 		to_field = min(cut, wants)
 		surplus = cut - to_field
@@ -842,8 +637,6 @@ def _walk_line(demand, buy, c, regen, per_week, life, ramp, per_area, first_cut,
 			"to_multiplication": to_mult,
 			"to_field": to_field, "cumulative_to_field": run,
 			# Cut and neither planted nor sent back. Without this column 37,000
-			# was cut, 25,000 went to the field and 12,000 simply vanished off
-			# the table with nothing to say where.
 			"cuttings_spare": max(0, cut - to_field - to_mult),
 			"mothers_removed": removed,
 			"demand": wants, "shortfall": max(0, wants - to_field),
@@ -857,9 +650,6 @@ def _walk_line(demand, buy, c, regen, per_week, life, ramp, per_area, first_cut,
 			              "mothers": held})
 
 	# Taken before the clearance row is added. That row is a note, not a week of
-	# cutting: where the block happens to be cleared ON a sticking week it would
-	# otherwise stand in for it, zeros and all, and the week the field actually
-	# wanted plants in would be passed over as already covered.
 	walked = {r["week_start"] for r in rows}
 
 	rows.append({"week_no": n + 1, "week_start": str(line_end),
@@ -869,10 +659,6 @@ def _walk_line(demand, buy, c, regen, per_week, life, ramp, per_area, first_cut,
 	             "mothers_removed": 0,
 	             "cumulative_to_field": run, "demand": 0, "shortfall": 0})
 	# A sticking week the line never reaches is still a week the field wants
-	# plants in. The walk covers the line's own life and nothing else, so those
-	# weeks had no row at all -- and the schedule, which is the part anybody
-	# actually scrolls, showed every week met while the header beside it said 27
-	# of 44. The totals were right and the table contradicted them.
 	for d, nn in sorted(demand.items()):
 		if str(d) in walked:
 			continue
@@ -892,11 +678,6 @@ def _walk_line(demand, buy, c, regen, per_week, life, ramp, per_area, first_cut,
 		r["week_no"] = i
 
 	# Over EVERY demand week, not only the ones the line is alive for -- and
-	# SUMMED per week rather than read off one row, because two rows can share a
-	# date: the clearance lands on a sticking week often enough, and keying a
-	# dict by date let that empty row hide the real one behind it. The week then
-	# read as wholly unmet and the total was 5,000 cuttings worse than the table
-	# it was printed beside.
 	by_week = {}
 	for r in rows:
 		by_week[r["week_start"]] = by_week.get(r["week_start"], 0) + cint(r["to_field"])
@@ -909,12 +690,6 @@ def _walk_line(demand, buy, c, regen, per_week, life, ramp, per_area, first_cut,
 		else:
 			short += nn - got
 	# How long each generation is actually CUT, which is not how long it could
-	# be. The figure reported was the motherstock life counted from the first
-	# cut -- 52 weeks -- while the pool is cut off the week nothing ahead needs
-	# it and every week after that cuts nothing. On this Aster that is 18 weeks
-	# of cutting and 34 weeks of a line standing at zero, both reported as 52.
-	# The life is kept beside it, because what the block is TIED UP for is a
-	# different and equally real number.
 	last_cut = None
 	for r in rows:
 		if flt(r.get("cuttings_cut")):
@@ -932,13 +707,10 @@ def _walk_line(demand, buy, c, regen, per_week, life, ramp, per_area, first_cut,
 	        "sends_made": sends, "sends_allowed": sends_allowed,
 	        "peak_pool": max((cint(r["mothers_standing"]) for r in rows), default=0),
 	        # Thinning only. The last step takes the pool to nothing because no
-	        # sticking week is left, and counting that as "cut off" made the whole
-	        # pool read as thrown away.
 	        "mothers_removed": sum(cint(r["mothers_removed"]) for r in rows
 	                               if cint(r["mothers_standing"])),
 	        "cuttings_spare": sum(cint(r["cuttings_spare"]) for r in rows),
 	        # What the pool actually does over the season, which is the thing
-	        # worth reading: 37,000 down to 14,000 down to 5,000, and when.
 	        "pool_steps": steps,
 	        "line_end_date": str(line_end),
 	        "first_cut_date": str(first_cut),
@@ -947,30 +719,13 @@ def _walk_line(demand, buy, c, regen, per_week, life, ramp, per_area, first_cut,
 
 def best_start(demand, buy, c, regen, per_week, life, ramp, per_area,
                earliest, latest, batches=None):
-	"""The LATEST first cut that still covers as much as the earliest would.
-
-	Starting early is not free, and the old anchor made it look free: it put the
-	first cut far enough back that the WHOLE pool was standing in the first
-	sticking week. At two multiplications that was twenty-five weeks of cutting
-	thirteen thousand cuttings a week into nothing -- no orders, a year of
-	managing mothers -- and because the block is cleared one life after its FIRST
-	cut, every one of those weeks was also taken off the end of the season. The
-	line died in July with sticking weeks still to come.
-
-	It does not need the whole pool on the first day. Generation one goes to the
-	farm while generation two is still rooting, which is how the farm works it,
-	so the line only has to be big enough each week rather than finished before
-	the season opens. Walking the candidates and keeping the last of the best
-	ones buys as late as the coverage allows.
-	"""
+	"""The LATEST first cut that still covers as much as the earliest would."""
 	best, week = None, getdate(earliest)
 	latest = getdate(latest)
 	while week <= latest:
 		r = _walk_line(demand, buy, c, regen, per_week, life, ramp, per_area, week,
 		               batches=batches)
 		# More planting weeks met first, then fewer cuttings short. On a tie the
-		# later start wins, which is the whole point: it is the same coverage for
-		# less standing motherstock and more of the line left for the season.
 		key = (r["weeks_met"], -r["shortfall"])
 		if best is None or key >= best[0]:
 			best = (key, week, r)
@@ -988,10 +743,6 @@ def peak_schedule(plan, sizing, cycles=None, tc=None, first_cut=None):
 
 	c = cint(sizing["chosen"] if cycles in (None, "") else cycles)
 	# The options stop at the protocol's cap, so a bigger ask was already being
-	# answered by the last of them -- but only the SIZING was clamped, not the
-	# count. The line then reported "3 multiplications" over the order for one,
-	# and three asks in a row looked like the same answer with nothing to say
-	# why. Clamp the count here so what is quoted and what is counted agree.
 	c = max(0, min(c, len(sizing["options"]) - 1))
 	pick = sizing["options"][c]
 	buy = cint(tc) if cint(tc) else cint(pick["buy"])
@@ -1009,7 +760,6 @@ def peak_schedule(plan, sizing, cycles=None, tc=None, first_cut=None):
 		out = _walk_line(*args, first_cut=started, batches=batches)
 	else:
 		# An overridden order changes what each batch can be, so the steps are
-		# scaled with it rather than left at the sizes the suggestion worked out.
 		if batches and cint(pick["buy"]):
 			f = flt(buy) / flt(pick["buy"])
 			batches = [max(1, int(round(b * f))) for b in batches]
@@ -1026,20 +776,7 @@ def peak_schedule(plan, sizing, cycles=None, tc=None, first_cut=None):
 
 
 def multiplications_for_tc(plan, tc, max_search=24):
-	"""How many times a given order has to be multiplied to still cover the season.
-
-	The other direction. peak_sizing answers "I will multiply n times, what do I
-	buy"; this answers "I can afford this many plantlets, what must I do to them"
-	-- which is the question somebody with a budget actually has.
-
-	A smaller order is not refused, it is costed: fewer plantlets means more
-	rounds of multiplication, an earlier order date, and more of the early cut
-	going back as mothers instead of to the field. It is allowed to exceed
-	MAX_MULTIPLICATIONS, because the farm's four is a habit rather than a law and
-	a small order may simply need more; the answer says when it has.
-
-	Returns the fewest rounds that cover the season, or the best it could reach.
-	"""
+	"""How many times a given order has to be multiplied to still cover the season."""
 	v = frappe.get_cached_doc("Crop Protocol Version", plan.protocol)
 	demand = demand_by_sticking_week(plan)
 	if not demand or cint(tc) <= 0:
@@ -1048,10 +785,6 @@ def multiplications_for_tc(plan, tc, max_search=24):
 	per_week = flt(v.cuttings_per_plant_per_week) or 1.0
 	per_area = cint(v.plants_per_bed) or cint(v.min_planting_area_sqm) or 1
 	# What a propagation order is rounded to, which is NOT the planting area.
-	# A bed is how much ground a planting takes; a lab does not sell by the
-	# bed. Rounding the generations to one is what turned a third of 10,000
-	# into 4,000 -- the arithmetic was right and the step was somebody else's.
-	# One by default, so the pool divides as cleanly as the numbers allow.
 	order_qty = cint(v.get("min_order_qty")) or 1
 	regen = cint(v.weeks_on_tray) + cint(v.weeks_on_pot)
 	life = cint(v.motherstock_life_weeks)
@@ -1061,17 +794,10 @@ def multiplications_for_tc(plan, tc, max_search=24):
 	peak_mothers = max(demand.values()) / per_week
 
 	# The arithmetic floor: generations of the order's own size, enough of them
-	# to stand up the peak week. Below that no schedule can cover, whatever the
-	# timing, so the search starts there instead of grinding up from zero.
 	floor = max(0, int(math.ceil(peak_mothers / float(tc))) - 1)
 
 	def batches_for(c):
-		"""Rounds of at most one order each, the last trimmed to what is left.
-
-		A full order every round overshoots: five rounds of 25,000 stand up
-		125,000 mothers for a peak that wants 37,000, which is not a plan
-		anybody would carry out.
-		"""
+		"""Rounds of at most one order each, the last trimmed to what is left."""
 		out, running = [], float(tc)
 		for _i in range(c):
 			if running >= peak_mothers:
@@ -1084,21 +810,8 @@ def multiplications_for_tc(plan, tc, max_search=24):
 	tried, best = [], None
 	for c in range(floor, min(floor + cint(max_search), 60) + 1):
 		# A generation needs time to be GATHERED as well as grown. The window
-		# allowed c establishments and not one week of cutting, so a line whose
-		# second generation had to be productive on the opening week could
-		# never start early enough to manage it -- and the sizing then read
-		# the multiplication as useless when it was only late. A pool of B
-		# mothers cutting per_week each takes 1/per_week weeks to yield B.
 		gather = max(1, int(math.ceil(1.0 / (flt(per_week) or 1.0))))
 		# Every generation climbs its own build-up, not just the last one. The
-		# window allowed ramp_lead ONCE for the whole chain, and a generation
-		# cutting at 20, 50, 75% cannot gather a full batch at the rate the
-		# gather term assumes -- so the line could not start early enough for
-		# the one it feeds to reach full rate by the week that needs it. On this
-		# Aster the window was exactly a week too narrow: one multiplication cut
-		# 8,750 against 9,600 because the second generation was still at 75% in
-		# the only week that mattered, while none at all and two both delivered.
-		# A lever that gets worse and then better again is not a lever.
 		earliest = add_days(getdate(first_stick),
 		                    -7 * (c * (regen + gather + ramp_lead) + ramp_lead))
 		latest = add_days(getdate(first_stick), -7 * ramp_lead)
@@ -1143,7 +856,6 @@ def multiplications_for_tc(plan, tc, max_search=24):
 		"tried": tried,
 		"schedule": walk,
 		# Which weeks the cuttings go back rather than to the field, and how
-		# many -- the thing somebody has to actually do.
 		"to_propagation": [
 			{"week_no": r["week_no"], "week_start": r["week_start"],
 			 "cuttings": cint(r["to_multiplication"]), "event": r["event"]}

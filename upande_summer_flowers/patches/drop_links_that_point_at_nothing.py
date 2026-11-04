@@ -1,26 +1,8 @@
-"""Remove Connections links that point at a doctype or field the site lacks.
-
-A customisation file ADDS and UPDATES DocType Link rows; it never deletes them.
-So taking a link out of the shipped JSON leaves it in place on every site that
-already had it, and a link whose field does not exist on this site is not
-inert -- get_open_count builds a WHERE on that column and the whole Connections
-tab dies with it:
-
-    Unknown column 'custom_crop_cycle' in 'WHERE'
-
-That is exactly what Marginpar hit. The link came from this bench's Stock
-Entry, which carries a "Trial Batch (Crop Cycle)" field from another app
-entirely; the shipped file stopped listing it, and the row stayed behind.
-
-Only the doctypes we ship links for are touched, and only rows that are
-structurally dead: no such doctype, or no such field on it. A row that is
-merely unused is left alone -- it still works.
-"""
+"""Remove Connections links that point at a doctype or field the site lacks."""
 
 import frappe
 
 # The doctypes whose Connections we ship. Everything else on the site is
-# somebody else's to clean.
 OURS = [
 	"Summer Flower Market Demand", "Summer Flower Production Plan",
 	"Summer Flower Procurement Plan", "Summer Flower Propagation Plan",

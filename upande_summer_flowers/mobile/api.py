@@ -1,24 +1,5 @@
 # Copyright (c) 2026, James Kiruga and contributors
-# For license information, please see license.txt
-"""Mobile API -- every endpoint the Upande Propagation app calls.
-
-One module, so the phone has one surface to know about and the server keeps its
-own shape. Nothing here does arithmetic. The work stays where it belongs:
-
-	planning_api    the plan, the protocol sheet, the motherstock line
-	crop_protocol   the approval
-	plant_receipt   what arrived, and the draft receipt for it
-	tc_supply       the labs there are to order from
-
-so a figure the app shows is the same figure the dashboard shows, worked out
-once. What this adds is a stable name per call: the app is released separately
-from the server and cannot be made to follow a refactor, so the names here are
-the contract and the imports behind them are free to move.
-
-Two of these replace generic frappe.client.get_list calls the app used to make.
-A list endpoint that names its own filters is one the server can change without
-a release, and one that cannot be asked for a doctype nobody meant to expose.
-"""
+"""Mobile API -- every endpoint the Upande Propagation app calls."""
 
 import frappe
 from frappe import _
@@ -50,11 +31,7 @@ def propagation_units():
 
 @frappe.whitelist()
 def propagation_plans():
-	"""Propagation plans this phone can record against, newest season first.
-
-	A rejected plan is left out: it is not something anyone should be writing
-	actuals against, and offering it only invites the mistake.
-	"""
+	"""Propagation plans this phone can record against, newest season first."""
 	_guard()
 	return frappe.get_all(
 		"Summer Flower Propagation Plan",
@@ -85,11 +62,7 @@ def record_propagation_actual(propagation_plan, event, actual_date, units=0,
                               plants=0, against_week=None, reference=None,
                               supplier=None, warehouse=None, reason=None,
                               remarks=None):
-	"""Write down one thing that happened in the unit.
-
-	The same document the desk raises, submitted the same way, so a figure typed
-	here is corrected by cancelling it rather than by typing over it.
-	"""
+	"""Write down one thing that happened in the unit."""
 	_guard()
 	return _planning.record_propagation_actual(
 		propagation_plan=propagation_plan, event=event, actual_date=actual_date,

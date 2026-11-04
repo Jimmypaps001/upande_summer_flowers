@@ -1,18 +1,5 @@
 # Copyright (c) 2026, James Kiruga and contributors
-# For license information, please see license.txt
-"""The production plan in the shape it is actually read in.
-
-"Aster Pink Flush planning.xlsx" lays a plan out as one row per planting and one
-column per week: block, planting week, dates, area, beds, plants, then the stems
-that planting yields in each week of the season, its season total and its
-lifetime total. Under the plantings come weekly and monthly production, the split
-by stem length, demand on the same two bases, the difference, and the area
-standing. At the bottom sit the assumptions -- which is the crop protocol.
-
-The plan held all of it except the middle: which planting puts which stems in
-which week. _populate now records that as it folds the numbers in, so this module
-only arranges what the plan already computed. Nothing here recalculates a stem.
-"""
+"""The production plan in the shape it is actually read in."""
 
 import json
 
@@ -49,7 +36,6 @@ def build(plan):
 			"planting_date": str(row.planting_date or ""),
 			"pinch_date": str(row.pinch_date or ""),
 			# Rounded: net_area_ha carries the division by 10,000 that made it, and
-			# 28 beds of 50 m2 printed as 1400.0000000000002.
 			"net_area_sqm": round(flt(row.net_area_ha) * 10_000, 2),
 			"uproot_date": extra.get("uproot", ""),
 			"beds": cint(row.beds),
@@ -58,9 +44,6 @@ def build(plan):
 			"season_total": sum(weekly),
 			"lifetime_total": cint(row.lifetime_stems),
 			# The workbook's last column is not a lifetime total, which is what it
-			# looks like: it is the season's yield intensity per hectare, which is how
-			# the farm compares one planting with another. Quoted per hectare of BED,
-			# because that is the only area this app carries.
 			"season_stems_per_ha": (
 				sum(weekly) / (flt(row.net_area_ha) or 1)
 				if flt(row.net_area_ha) else 0),
@@ -74,8 +57,6 @@ def build(plan):
 	area = {(cint(w.year), cint(w.week_no)): flt(w.area_ha) for w in plan.plan_weeks}
 
 	# Monthly figures are shown against the first week of each month, exactly as the
-	# workbook does -- a monthly total spread across its weeks would double-count when
-	# read down a column.
 	monthly_prod, monthly_dem = [0] * len(grid), [0] * len(grid)
 	first_of_month = {}
 	for i, (y, w, m) in enumerate(grid):
@@ -87,8 +68,6 @@ def build(plan):
 		monthly_dem[first_of_month[key]] += weekly_dem[i]
 
 	# The split by stem length comes off the protocol's grade allocation, so changing
-	# it there changes the sheet. Where the percentages are missing the rows are shown
-	# empty rather than silently splitting evenly.
 	grades = []
 	total_pct = 0
 	# Every grade is valued at the variety Item's valuation; nothing is typed per grade.
@@ -138,12 +117,7 @@ def build(plan):
 
 
 def assumptions(v):
-	"""The protocol, laid out as the workbook's assumptions block.
-
-	Every line here is a field on Crop Protocol, so the way to change the sheet is
-	to change the protocol and have it approved -- which is the point of the
-	protocol being the only place these live.
-	"""
+	"""The protocol, laid out as the workbook's assumptions block."""
 	if not v:
 		return {}
 	return {

@@ -1,28 +1,5 @@
 # Copyright (c) 2026, James Kiruga and contributors
-# For license information, please see license.txt
-"""What the unit did, written once, where the plan reads it.
-
-The propagation unit records real work -- a delivery checked in, plants dying
-on the bench, seedlings going out to the farm, a trough lifted -- and none of
-it reached the production plan. The plan's variance engine reads two sources:
-the stock ledger, and Summer Flower Propagation Actual. Anything that moved
-stock was already visible; everything else happened in a different app and the
-plan never heard about it.
-
-So this is the bridge, and it follows the rule propagation_actuals already
-states rather than inventing a second one: **where the ledger carries an event,
-the ledger wins.** A dispatch that wrote a Stock Entry is already counted, and
-writing a typed record beside it would be a second opinion that loses -- the
-resolution is per event type across the whole season, so one stray typed
-record cannot even be half-counted. It is skipped, and said out loud.
-
-What the ledger never carries is loss. Plants die on a bench without moving
-anywhere, so mortality has no voucher and no movement, and until now the plan
-could not see the one thing most likely to make it wrong.
-
-Every write is keyed to the record it came from, so running it again after a
-correction adds the correction and changes nothing else.
-"""
+"""What the unit did, written once, where the plan reads it."""
 
 import frappe
 from frappe import _
@@ -63,12 +40,7 @@ def _result(name, skipped_because=None):
 
 # ------------------------------------------------------------------- mortality
 def from_mortality(log):
-	"""Plants that died on the bench.
-
-	The one event the ledger can never carry: nothing moves when a tray fails,
-	so without this the plan sees a batch arrive and a smaller batch leave and
-	has no idea which part was loss and which was still standing.
-	"""
+	"""Plants that died on the bench."""
 	d = frappe.get_doc("Daily Propagation Log", log)
 	dead = cint(d.get("mortality_today")) or cint(d.get("affected_qty"))
 	if dead <= 0:
@@ -141,9 +113,6 @@ def from_dispatch(dispatch):
 
 
 # ------------------------------------------------------------------- the hook
-# Called from upande_propagation after each operation. Never fatal: the unit's
-# own record is the thing that must be written, and a plan that misses one
-# event is better than a dispatch that refuses to save.
 EVENTS = {"Daily Propagation Log": from_mortality,
           "Plant Consignment": from_consignment,
           "Seedling Dispatch": from_dispatch}

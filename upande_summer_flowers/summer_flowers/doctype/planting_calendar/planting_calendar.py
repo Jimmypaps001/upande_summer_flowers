@@ -1,11 +1,5 @@
 # Copyright (c) 2026, James Kiruga and contributors
-# For license information, please see license.txt
-"""One planting on one block, approved by a Farm Manager before execution.
-
-A block holds one planting at a time, so occupancy is checked as a date-range
-overlap rather than by summing beds. The parameters come from the Crop Protocol
-Version in force on the planting date, and stay pinned to it afterwards.
-"""
+"""One planting on one block, approved by a Farm Manager before execution."""
 
 import datetime
 
@@ -20,19 +14,13 @@ from upande_summer_flowers.summer_flowers.planning import iso_year_week
 # What counts as standing on a block *today* for coverage reporting.
 STANDING_STATES = ("Approved", "Planted")
 # What reserves a block's date window. A draft still reserves it, otherwise two
-# overlapping plantings can both be created and only collide later at approval.
 RESERVING_STATES = ("Draft", "Pending Approval", "Approved", "Planted")
 
 
 class PlantingCalendar(Document):
 	@property
 	def version(self):
-		"""The protocol version this planting runs on.
-
-		Resolved lazily rather than assigned in validate: whitelisted methods are
-		called on a freshly loaded document, where validate has not run, and an
-		instance attribute set there would not exist yet.
-		"""
+		"""The protocol version this planting runs on."""
 		if not self.crop_protocol_version:
 			frappe.throw(_("{0} has no Crop Protocol Version.").format(
 				self.name or _("This planting")))
@@ -60,13 +48,7 @@ class PlantingCalendar(Document):
 		self.issue_plants_if_planted()
 
 	def issue_plants_if_planted(self):
-		"""Take the plants out of stock the day they go in the ground.
-
-		Never fatal. A planting that happened is a fact about the field, and a
-		store that cannot spare the stock, an item nobody enabled or a warehouse
-		nobody named must not make it unrecordable. What is said instead is that
-		the ledger is behind, and the button raises it by hand.
-		"""
+		"""Take the plants out of stock the day they go in the ground."""
 		if not self.get("actual_planting_date") or self.get("stock_entry"):
 			return
 		from upande_summer_flowers.summer_flowers import plant_issue
@@ -123,9 +105,6 @@ class PlantingCalendar(Document):
 		if not farm:
 			return None
 		# Crop Protocol is per variety AND farm, so the farm has to be in the
-		# lookup: the same variety yields 22.3 stems at Carzan Ks and 15.5 at
-		# Kariki Juja, and picking whichever row came back first would silently
-		# plan the calendar off another farm's numbers.
 		protocol = frappe.db.get_value(
 			"Crop Protocol", {"variety": self.variety, "farm": farm}, "name")
 		if not protocol:
@@ -139,19 +118,12 @@ class PlantingCalendar(Document):
 	def set_size(self):
 		v = self.version
 		# Derived only where nothing was given. A planting written from a plan
-		# arrives knowing its own plant count, worked out from the demand and the
-		# cohort it belongs to; recomputing it from beds x the protocol's density
-		# silently replaced it -- and where that density is wrong, catastrophically
-		# so. One Eryngium plan standing 572,928 plants became 288, across
-		# eighteen plantings that all reported as written, because its protocol
-		# says a bed is 0 m2 and so holds 16 plants.
 		per_bed = cint(v.plants_per_bed)
 		derived = cint(self.beds or 0) * per_bed
 		if not cint(self.plants):
 			self.plants = derived
 		elif derived and abs(cint(self.plants) - derived) > max(1, derived * 0.5):
 			# Kept, and said out loud. The two disagree by more than half, which
-			# is a protocol whose bed density is wrong rather than a rounding.
 			frappe.msgprint(_(
 				"{0} was planned with {1} plants on {2} bed(s), but {3} says a bed "
 				"holds {4} -- which would make it {5}. The planned figure is kept. "
@@ -164,23 +136,13 @@ class PlantingCalendar(Document):
 		self.net_area_ha = ((self.beds or 0) * (v.sqm_net_per_bed or 0)) / 10_000
 
 	def effective_planting_date(self):
-		"""The date everything downstream is counted from.
-
-		A flush lands so many weeks after the plants went in the ground, not so many
-		weeks after somebody planned that they would. So once the actual date is
-		recorded it is the one that governs -- pinch, uprooting and every harvest
-		week move with it. Before then the planned date stands in, because a plan
-		with no dates is no use either.
-		"""
+		"""The date everything downstream is counted from."""
 		return getdate(self.actual_planting_date or self.planting_date)
 
 	def set_dates(self):
 		v = self.version
 		planted = self.effective_planting_date()
 		# The planting WEEK stays the planned one. It is what the production plan
-		# committed to and what the weekly grid is keyed on; moving it would make a
-		# late planting look like it was always meant for that week, and the slip --
-		# the thing worth seeing -- would disappear.
 		self.planting_year, self.planting_week = iso_year_week(getdate(self.planting_date))
 		self.harvest_dates_from = ("Actual planting" if self.actual_planting_date
 		                           else "Planned planting")
@@ -194,7 +156,6 @@ class PlantingCalendar(Document):
 		if self.actual_planting_date and self.calendar_status == "Approved":
 			self.calendar_status = "Planted"
 		# The beds follow the planting: reserved until the day it went in, planted
-		# from then, and left alone once one has been individually uprooted.
 		for r in (self.bed_allocation or []):
 			if not r.actual_uproot_date and r.bed_status != "Producing":
 				r.bed_status = self.bed_state()
@@ -203,12 +164,7 @@ class PlantingCalendar(Document):
 		return getdate(self.actual_uproot_date or self.planned_uproot_date)
 
 	def first_harvest(self):
-		"""(year, week) of flush 1, or (None, None) before the projection is built.
-
-		There is no stored first_harvest_year/week field: the first flush is simply
-		the head of flush_projection, so reading it from there keeps the two from
-		drifting when the protocol version or planting date changes.
-		"""
+		"""(year, week) of flush 1, or (None, None) before the projection is built."""
 		for r in sorted(self.flush_projection, key=lambda r: r.flush_number or 0):
 			return r.year, r.week_no
 		return None, None
@@ -224,24 +180,11 @@ class PlantingCalendar(Document):
 			)
 
 	def check_block_not_double_booked(self):
-		"""A block holds as many plantings as it has beds for, and no more.
-
-		It used to refuse ANY overlap: two plantings whose windows crossed were a
-		clash whatever their size. But Allocate Blocks places plantings by free
-		BEDS -- a forty-bed block legitimately takes two twenty-bed cohorts -- so
-		the allocator said yes and the calendar then said no to the same pair, and
-		an approval that had been allocated came apart in a wall of refusals for
-		ground that was genuinely free.
-
-		One rule now, the allocator's: what is standing over this window, in beds,
-		against what the block has.
-		"""
+		"""A block holds as many plantings as it has beds for, and no more."""
 		if self.calendar_status == "Cancelled" or not self.block:
 			return
 
 		# Occupancy is a fact about the ground, so it runs from when the plants
-		# actually went in -- a planting three weeks late leaves the block free for
-		# those three weeks and holds it three weeks longer at the other end.
 		mine_start, mine_end = self.effective_planting_date(), self.end_date()
 		total = cint(frappe.db.get_value("Block", self.block, "custom_total_beds"))
 		others = frappe.get_all(
@@ -256,12 +199,6 @@ class PlantingCalendar(Document):
 			        "actual_uproot_date"],
 		)
 		# The most beds held at any one moment, not the sum of everything that
-		# touches this window. Summing double counts plantings that follow one
-		# another: two twenty-bed cohorts six months apart in a forty-bed block
-		# use twenty beds, not forty, and summing them refused a third planting
-		# onto ground that was free the whole time. The allocator has always
-		# counted the peak, and this is the same rule -- which is what makes the
-		# two agree, rather than one proposing what the other then refuses.
 		overlapping = []
 		for o in others:
 			other_end = getdate(o.actual_uproot_date or o.planned_uproot_date)
@@ -293,22 +230,13 @@ class PlantingCalendar(Document):
 			title=_("Not enough beds free"))
 
 	def bed_state(self):
-		"""What a bed of this planting is: reserved, planted, or out.
-
-		The planting's own dates decide it. Nothing is planted because a block was
-		allocated; it is planted on the day somebody records that it was.
-		"""
+		"""What a bed of this planting is: reserved, planted, or out."""
 		if self.get("actual_uproot_date"):
 			return "Uprooted"
 		return "Planted" if self.get("actual_planting_date") else "Reserved"
 
 	def bed_record_state(self, row):
-		"""And what the Bed record itself should say.
-
-		Bed has an Empty state that the allocation table has not got: a bed merely
-		reserved for a future planting is empty ground today, and anyone looking at
-		the farm's beds should see that rather than a crop that is not there.
-		"""
+		"""And what the Bed record itself should say."""
 		if row.actual_uproot_date:
 			return "Uprooted"
 		state = row.bed_status or self.bed_state()
@@ -318,11 +246,7 @@ class PlantingCalendar(Document):
 
 	# --------------------------------------------------------------------- beds
 	def allocate_beds(self):
-		"""Attach individual beds so one can be uprooted independently.
-
-		Beds ship grouped by greenhouse, so they are drawn from the ones assigned to
-		this block. Rows already carrying an uproot date are preserved.
-		"""
+		"""Attach individual beds so one can be uprooted independently."""
 		existing = {r.bed: r for r in self.bed_allocation if r.bed}
 		want = self.beds or 0
 
@@ -351,8 +275,6 @@ class PlantingCalendar(Document):
 				self.append("bed_allocation", {
 					"bed": b["name"], "bed_number": b["bed"], "plants": per_bed,
 					# Allocated is not planted. A bed born "Planted" had the ground
-					# reporting a crop standing on it months before anything went in
-					# -- 858 bed rows here said Planted against no planting at all.
 					"bed_status": prior.bed_status if prior else self.bed_state(),
 					"actual_uproot_date": prior.actual_uproot_date if prior else None,
 					"uproot_reason": prior.uproot_reason if prior else None,
@@ -373,11 +295,7 @@ class PlantingCalendar(Document):
 		)
 
 	def plants_standing_on(self, when):
-		"""Plants still in the ground on a date, after per-bed uprooting.
-
-		Falls back to the header count when no beds are allocated, so the maths
-		still works for a planting recorded without bed detail.
-		"""
+		"""Plants still in the ground on a date, after per-bed uprooting."""
 		if not self.bed_allocation:
 			return self.plants or 0
 		when = getdate(when)
@@ -434,8 +352,6 @@ class PlantingCalendar(Document):
 
 	def check_seedling_source(self):
 		# Not while a procurement plan is writing the season's calendar. Twenty-eight
-		# plantings meant twenty-eight identical nags stacked over the one message
-		# the reader needed.
 		if self.flags.get("built_in_bulk"):
 			return
 		if self.seedling_source == "Purchased from Breeder" and not self.supplier:
@@ -489,13 +405,7 @@ class PlantingCalendar(Document):
 	# ------------------------------------------------------------- crop cycle
 	@frappe.whitelist()
 	def create_crop_cycle(self):
-		"""An approved calendar becomes a Crop Cycle for its block.
-
-		One cycle per block-planting, not per greenhouse. The doctype's native
-		naming is `field:greenhouse`, which would have made every block in a
-		greenhouse share one record and overwrite each other's dates; the summer
-		flower subclass names the cycle after this calendar instead.
-		"""
+		"""An approved calendar becomes a Crop Cycle for its block."""
 		if self.calendar_status not in ("Approved", "Planted"):
 			frappe.throw(_("Approve the planting calendar first."))
 		if self.crop_cycle and frappe.db.exists("Crop Cycle", self.crop_cycle):
@@ -504,25 +414,16 @@ class PlantingCalendar(Document):
 		v = self.version
 		cycle = frappe.new_doc("Crop Cycle")
 		# greenhouse is left empty on purpose: it carries a unique index, and one
-		# greenhouse holds many blocks. The subclass records it in
-		# custom_greenhouse, derived from the block.
 		cycle.farm = self.farm
 		cycle.company = self.company
 
 		cycle.custom_is_summer_flower_cycle = 1
 		# The doctype serves roses too and Rose is the first option, so a cycle
-		# that never set this was filed as a rose -- and nothing downstream that
-		# filters on crop class would have found it.
 		cycle.custom_crop_class = "Summer Flower"
 		cycle.variety = self.variety
 		cycle.crop_protocol = frappe.db.get_value(
 			"Crop Protocol Version", self.crop_protocol_version, "crop_protocol")
 		# Say the scope outright. is_block_scoped() reads custom_cycle_scope first and
-		# only falls back to "has a block", so leaving it unset left the cycle looking
-		# greenhouse-scoped -- and greenhouse-scoped cycles must carry a greenhouse,
-		# which a block planting deliberately does not. Every attempt to build a cycle
-		# from a calendar failed on that, which is why the site has no summer flower
-		# crop cycles at all.
 		cycle.custom_cycle_scope = "Block"
 		cycle.custom_block = self.block
 		cycle.custom_planting_calendar = self.name
@@ -532,8 +433,6 @@ class PlantingCalendar(Document):
 			"Summer Flower Market Demand",
 			{"variety": self.variety, "farm": self.farm}, "name")
 		# Where the plants came from. A calendar written before the source was
-		# recorded leaves this blank, and the cycle then says nothing about how
-		# its crop was got -- so it is read off the plan that bought it.
 		source = self.seedling_source
 		if not source:
 			q = frappe.db.get_value(
@@ -549,20 +448,11 @@ class PlantingCalendar(Document):
 		cycle.custom_propagation_batch = self.propagation_batch
 		cycle.custom_sf_cycle_status = "Active"
 		# The date the crop actually went in. A cycle dated from the plan would put
-		# its age, its flushes and its uprooting on a day that did not happen.
 		cycle.custom_planting_date = self.effective_planting_date()
 		# The doctype's own fields, not only the summer flower twins beside them.
-		# They are what the rest of ERPNext reads, and a cycle that carried 27,100
-		# plants in one field and zero in the other was two answers to one
-		# question -- planting_date is mandatory, and only ignore_mandatory let
-		# this save at all.
 		cycle.planting_date = cycle.custom_planting_date
 		cycle.title = "{0} @ {1}".format(self.variety, self.block or self.farm)
 		# What actually went in, not what was asked for. A cycle opened on the
-		# planned figure counts stems off plants that were never delivered: 900
-		# of this planting's 28,000 did not arrive, and every flush, every grade
-		# and the whole season's yield would have been worked out as though they
-		# had.
 		cycle.custom_live_plant_count = (cint(self.plants_received)
 		                                 or cint(self.plants))
 		cycle.custom_plants_planned = cint(self.plants)
@@ -575,10 +465,6 @@ class PlantingCalendar(Document):
 		cycle.plants_standing = cycle.custom_live_plant_count
 		cycle.planted_area = flt(self.net_area_sqm)
 		# The subclass derives pinch, uproot, age, the flush schedule and the
-		# per-grade weekly targets from the protocol on save.
-		# No ignore_mandatory. A cycle that cannot pass its own doctype's checks
-		# is one nobody could have made through the form, and writing it anyway
-		# is how a Rose-classed summer flower with no planting date came to exist.
 		cycle.flags.ignore_permissions = True
 		cycle.insert()
 
@@ -591,14 +477,7 @@ class PlantingCalendar(Document):
 # ---------------------------------------------------------------------------
 
 def coverage_of(block, total_beds=None):
-	"""What is standing on a block today, as a dict of the fields that record it.
-
-	Split out from refresh_coverage so a block can compute its own occupancy while it
-	is being saved. The figures depend on the block's bed count as well as on the
-	plantings, and this was only ever recomputed when a planting changed -- so
-	reloading Karen's blocks from 40 beds to 80 left every one of them reporting the
-	free beds it had before: "occupied 19, free 21" against a block of 80.
-	"""
+	"""What is standing on a block today, as a dict of the fields that record it."""
 	today = getdate(nowdate())
 	rows = frappe.get_all(
 		"Planting Calendar",
@@ -624,7 +503,6 @@ def coverage_of(block, total_beds=None):
 		"custom_coverage_pct": (beds / total * 100) if total else 0,
 		"custom_plants_standing": plants,
 		# Several plantings can stand in one block now that beds are allocated
-		# individually, so this is the earliest of them rather than the only one.
 		"custom_current_planting": holders[0] if holders else None,
 	}
 
@@ -635,18 +513,7 @@ def refresh_coverage(block):
 
 
 class _CycleAsPlanting:
-	"""A Crop Cycle read as a planting, so planning can see it.
-
-	What is actually standing on a block is recorded as a Crop Cycle -- that is
-	where the farm writes its actuals. A Planting Calendar is raised by the
-	planner and often never exists for ground that was planted before this
-	system, or planted straight onto a block. Reading only calendars made a
-	farm carrying 1.4 million standing plants look like empty ground, and the
-	plan bought the whole season again.
-
-	The flush table is the same child doctype on both documents, so the figures
-	downstream need no translation.
-	"""
+	"""A Crop Cycle read as a planting, so planning can see it."""
 
 	def __init__(self, doc):
 		self._doc = doc
@@ -663,8 +530,6 @@ class _CycleAsPlanting:
 		# The planner measures ground in hectares; a cycle records square metres.
 		self.net_area_ha = flt(doc.get("custom_area_planted_sqm")) / 10_000.0
 		# The rest of what a plan row asks of a planting. A cycle keeps the same
-		# facts under its own names, or derives them from the planting date --
-		# there is no second source for any of these, so nothing is invented.
 		self.pinch_date = (doc.get("custom_actual_pinch_date")
 		                   or doc.get("custom_planned_pinch_date"))
 		self.expected_stems_life = cint(doc.get("custom_expected_stems_life"))
@@ -693,13 +558,7 @@ class _CycleAsPlanting:
 
 
 def standing_plantings(farm, variety, as_of=None):
-	"""Everything of this variety still in the ground at `farm` on `as_of`.
-
-	Two sources, because the farm uses two documents: the planner's Planting
-	Calendar and the Crop Cycle the farm actually records against a block. A
-	cycle raised FROM a calendar is skipped so one planting is not counted
-	twice.
-	"""
+	"""Everything of this variety still in the ground at `farm` on `as_of`."""
 	as_of = getdate(as_of or nowdate())
 	names = frappe.get_all(
 		"Planting Calendar",
@@ -748,13 +607,7 @@ def production_by_week(doc):
 
 @frappe.whitelist()
 def calendar_events(start, end, filters=None, field_map=None):
-	"""Plantings as bars across the calendar, ending when the block is actually free.
-
-	frappe.desk.calendar.get_events would do for a single date field, but the end here
-	is two fields: actual_uproot_date once a planting has come out, planned_uproot_date
-	until then. A planting uprooted early releases its block early, and a calendar that
-	kept showing the planned date would hide that the block is available.
-	"""
+	"""Plantings as bars across the calendar, ending when the block is actually free."""
 	conditions = []
 	values = {"start": getdate(start), "end": getdate(end)}
 	for key in ("farm", "block", "variety", "calendar_status"):

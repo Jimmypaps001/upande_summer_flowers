@@ -1,27 +1,5 @@
 # Copyright (c) 2026, James Kiruga and contributors
-# For license information, please see license.txt
-"""What the supplier has agreed to send, week by week.
-
-A plan is a perfect thing: it asks for exactly the material each planting week
-needs, on the day it needs it, and it has never once been told whether anybody
-can supply that. The order went out and the farm found out what was coming when
-it arrived.
-
-So the order is drafted and left as a draft, and this is where it is agreed. One
-row a delivery, two figures to change -- how many and which week -- and
-submitting the order is the act of confirming the schedule. After that the farm
-is planning against what a supplier said they would send rather than against
-what the farm wished for.
-
-Nothing here is a new record. The Purchase Order already IS the delivery
-schedule: a line per delivery, each with its own required-by date, and ERPNext
-tracks what has been received against each. A second document holding the same
-promise could only disagree with it.
-
-Whoever opens it may fill it in. A lab keying its own schedule is the point; a
-buyer keying it off an email is the same fact arriving another way. Every save
-is versioned, so who said what is answerable either way.
-"""
+"""What the supplier has agreed to send, week by week."""
 
 import frappe
 from frappe import _
@@ -31,16 +9,7 @@ from upande_summer_flowers.summer_flowers.planning import season_year
 
 
 def _plan_orders(procurement_plan):
-	"""The orders drafted for this plan.
-
-	Found through the requests the plan raised, not through the purchase
-	allocation. The allocation records WHO was chosen to sell, and a plan can
-	have raised its orders without anybody having been chosen -- which is the
-	normal state of a plan between approval and the first allocation, and it is
-	exactly when somebody wants to see the schedule. Reading the link off the
-	allocation found nothing for those plans and the tab showed no orders at
-	all, for orders that plainly existed.
-	"""
+	"""The orders drafted for this plan."""
 	mrs = {r.source_doc for r in frappe.get_all(
 		"Planting Material Requirement",
 		filters={"parent": procurement_plan,
@@ -86,17 +55,12 @@ def schedule_for(procurement_plan):
 	plan = frappe.get_doc("Summer Flower Procurement Plan", procurement_plan)
 
 	# What the plan asked for, per request line, so a confirmed figure can be
-	# shown against the thing it is answering rather than against itself.
 	asked = {}
 	for r in plan.requirements:
 		if r.source_doctype == "Material Request" and r.source_doc:
 			asked.setdefault(r.source_doc, []).append(r)
 
 	# Before anything is raised, the thing to confirm against is the plan's own
-	# requirement lines: what the farm wants, week by week. There is no order
-	# yet and there should not be -- what is ordered is what a supplier agreed
-	# to, and nobody has been asked. Once the schedule IS agreed the order
-	# carries it, and this reads that instead.
 	if not _plan_orders(plan.name):
 		return {"plan": plan.name, "variety": plan.variety, "farm": plan.farm,
 		        "orders": [_from_requirements(plan)]}
@@ -128,7 +92,6 @@ def schedule_for(procurement_plan):
 			"purchase_order": po.name,
 			"requirement_of": None,
 			# The same two keys the requirement-sourced shape carries, so one
-			# renderer draws both without asking which it is looking at.
 			"needs_sellers": 0,
 			"sellers": [po.supplier] if po.supplier else [],
 			"supplier": po.supplier,
@@ -137,7 +100,6 @@ def schedule_for(procurement_plan):
 			"docstatus": po.docstatus,
 			"editable": 1 if po.docstatus == 0 else 0,
 			# What is being bought, in the protocol's own words -- seeds, roots,
-			# tubers, plantlets. The card has never been about tissue culture.
 			"unit": o.entry_stage or plan.entry_stage or _("units"),
 			"confirmation_no": po.get("order_confirmation_no"),
 			"confirmation_date": str(po.get("order_confirmation_date") or "") or None,
@@ -154,8 +116,6 @@ def _from_requirements(plan):
 	"""The plan's own wants, shaped like an order so one table draws both."""
 	lines, asked, qty = [], 0, 0
 	# What is bought, and nothing else. A route that digs its material off the
-	# farm's own crop writes a line per cohort too, and listing those here asked
-	# a buyer to confirm a delivery date with a supplier nobody is buying from.
 	for r in plan.purchase_lines():
 		want = cint(r.qty_to_order)
 		# What has been keyed so far, or the ask where nothing has.
@@ -167,9 +127,6 @@ def _from_requirements(plan):
 			"asked_qty": want,
 			"asked_week": _week_of(r.required_at_site_date),
 			# Which seller this week's delivery comes from. A crop bought from
-			# two labs is not two proportions of every week -- it is some weeks
-			# from one and some from the other -- and that is a thing somebody
-			# decides, week by week, not an arithmetic split.
 			"supplier": r.supplier,
 			"qty": agreed,
 			# The date keyed so far, else the one the plan asked for.
@@ -179,22 +136,16 @@ def _from_requirements(plan):
 			"received_qty": 0,
 		})
 	# Named off the lines being bought. Taking the first stage on the document
-	# labelled a column of Tubers "Tubers (Own)" -- the thing the farm digs,
-	# which is precisely what these are not.
 	stage = next((r.entry_stage for r in plan.purchase_lines() if r.entry_stage), None)
 	sellers = [{"supplier": r.supplier, "share_pct": flt(r.share_pct)}
 	           for r in (plan.get("purchase_allocation") or []) if r.supplier]
 	return {
 		"purchase_order": None, "requirement_of": plan.name,
 		# Nothing to confirm against until somebody says who sells it: an order
-		# has to be placed with a supplier, and a schedule agreed with nobody is
-		# not an agreement.
 		"sellers": [x["supplier"] for x in sellers],
 		"needs_sellers": 0 if sellers else 1,
 		"supplier": plan.supplier or (sellers[0]["supplier"] if sellers else None),
 		# Named from the sellers, not from the plan's single supplier field --
-		# which is blank whenever a crop is bought from more than one, and so
-		# read "not chosen yet" over a table listing two of them.
 		"supplier_name": (" + ".join(x["supplier"] for x in sellers)
 		                  if sellers else (plan.supplier or _("nobody yet"))),
 		"status": _("Not ordered"), "docstatus": 0, "editable": 1,
@@ -207,12 +158,7 @@ def _from_requirements(plan):
 
 @frappe.whitelist()
 def save_requirements(procurement_plan, lines):
-	"""Write what the supplier says they can send onto the plan's own lines.
-
-	Before an order exists this is where a confirmation lives. Nothing is
-	ordered by saving it: the quantities are the farm's record of what was
-	agreed, and raising the documents is a separate, deliberate step.
-	"""
+	"""Write what the supplier says they can send onto the plan's own lines."""
 	if isinstance(lines, str):
 		lines = frappe.parse_json(lines)
 	doc = frappe.get_doc("Summer Flower Procurement Plan", procurement_plan)
@@ -243,13 +189,7 @@ def save_requirements(procurement_plan, lines):
 
 @frappe.whitelist()
 def confirm_and_raise(procurement_plan):
-	"""Agree the schedule, then raise the request and the order for it.
-
-	The order of these two is the whole point. The documents carry what a
-	supplier said they would send, so nothing has to be amended the first time
-	a lab says no -- and the plan is told, because a planting fed by a short
-	delivery is a smaller planting.
-	"""
+	"""Agree the schedule, then raise the request and the order for it."""
 	doc = frappe.get_doc("Summer Flower Procurement Plan", procurement_plan)
 	frappe.has_permission("Summer Flower Procurement Plan", "write", doc, throw=True)
 	if not any(cint(r.get("delivery_confirmed")) for r in doc.requirements):
@@ -260,7 +200,6 @@ def confirm_and_raise(procurement_plan):
 	doc.reload()
 	doc.raise_material_requests()
 	# A short confirmation makes a smaller planting, and the plan has to be
-	# rebuilt from it or the calendar goes on believing what was asked for.
 	from upande_summer_flowers.summer_flowers.doctype \
 		.summer_flower_procurement_plan.summer_flower_procurement_plan import (
 			write_plantings,
@@ -269,9 +208,6 @@ def confirm_and_raise(procurement_plan):
 	plan = frappe.get_doc("Summer Flower Production Plan", doc.production_plan)
 	write_plantings(plan, doc)
 	# And the bench is told what to raise, now that there is a confirmed figure
-	# to raise. Where an outside propagator has the share instead, the order
-	# raised above is their instruction and the plan carries the week the plants
-	# are due -- plants_from on the allocation, which the card shows.
 	if cint(doc.get("propagates_here")) or doc.get("propagation_allocation"):
 		from upande_summer_flowers.summer_flowers.doctype \
 			.summer_flower_propagation_plan.summer_flower_propagation_plan import (
@@ -290,13 +226,7 @@ def confirm_and_raise(procurement_plan):
 
 @frappe.whitelist()
 def save_schedule(purchase_order, lines):
-	"""Write what the supplier says they can send onto the draft order.
-
-	Only a draft is written to. Once the order is submitted it is an agreement,
-	and an agreement that one side can quietly rewrite is not one -- ERPNext has
-	its own ways to change a submitted order and they leave a trail this does
-	not need to duplicate.
-	"""
+	"""Write what the supplier says they can send onto the draft order."""
 	if isinstance(lines, str):
 		lines = frappe.parse_json(lines)
 	po = frappe.get_doc("Purchase Order", purchase_order)
@@ -319,15 +249,11 @@ def save_schedule(purchase_order, lines):
 		if when:
 			when = getdate(when)
 			# A delivery cannot be required before the order is placed, and
-			# ERPNext refuses the whole document for it -- per row, so one week
-			# in the past loses the other thirteen.
 			if when < today:
 				moved_back.append(str(when))
 				when = today
 			row.schedule_date = when
 	# A line the supplier cannot send at all is not a line. Dropping it here
-	# keeps the order a list of deliveries that will happen; the plan still
-	# carries what it asked for, which is where the gap is read.
 	dropped = [r for r in po.items if cint(r.qty) <= 0]
 	if dropped and len(dropped) == len(po.items):
 		frappe.throw(_("Every delivery has been set to nothing. Cancel the order "
@@ -379,16 +305,7 @@ def _plan_of(purchase_order):
 
 
 def _write_back(procurement_plan):
-	"""Put the confirmed week and number back on the requirement lines.
-
-	The plan asked for one thing and is getting another, and the difference is
-	the only part of this worth reading later: a planting whose material comes
-	a fortnight late, or short by a third, is a planting that will not produce
-	what the plan says it will. Stored on the line rather than worked out on
-	demand because a confirmation is a fact about a moment -- what was agreed,
-	when -- and an order can be received, closed or cancelled afterwards without
-	that ever having been untrue.
-	"""
+	"""Put the confirmed week and number back on the requirement lines."""
 	plan = frappe.get_doc("Summer Flower Procurement Plan", procurement_plan)
 	confirmed = {}
 	for o in _plan_orders(plan.name):
@@ -402,10 +319,6 @@ def _write_back(procurement_plan):
 				confirmed[i.material_request_item] = i
 
 	# Every request that now sits under a confirmed order. A line of one of
-	# these that has NO order line left has been answered too: the supplier
-	# struck that delivery out, and save_schedule dropped it. Without this it
-	# reads as a question nobody answered, and the planting goes in at full
-	# size against a delivery that is never coming.
 	answered = set()
 	for o in _plan_orders(plan.name):
 		if not frappe.db.exists("Purchase Order", o.purchase_order):
@@ -417,16 +330,12 @@ def _write_back(procurement_plan):
 	if not answered:
 		return
 	# A requirement line reaches its order line through the request line it
-	# became, which raise_material_requests records as it writes them. One
-	# requirement line is one delivery is one request line is one order line,
-	# which is why the grouping puts a line per delivery on the request.
 	for r in plan.requirements:
 		if r.source_doc not in answered:
 			continue
 		row = confirmed.get(r.get("source_row"))
 		if not row:
 			# Struck out. Nothing is coming for this week, and saying so is the
-			# whole point: a planting with no material is not a smaller planting.
 			r.db_set("delivery_confirmed", 1, update_modified=False)
 			r.db_set("confirmed_qty", 0, update_modified=False)
 			r.db_set("confirmed_delivery_week", None, update_modified=False)
@@ -437,7 +346,5 @@ def _write_back(procurement_plan):
 		         update_modified=False)
 		r.db_set("confirmed_qty", cint(row.qty), update_modified=False)
 		# Set both ways. A flag that is only ever raised is a flag that stays
-		# raised: a line short on the first confirmation and covered on the
-		# second still read as short, and the plan counted it.
 		r.db_set("short_ordered", 1 if cint(row.qty) < cint(r.qty_to_order) else 0,
 		         update_modified=False)

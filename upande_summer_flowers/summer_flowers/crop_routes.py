@@ -1,21 +1,5 @@
 # Copyright (c) 2026, James Kiruga and contributors
-# For license information, please see license.txt
-"""The farm's crop categories: how each variety's material is got, and how it yields.
-
-Two things decide how a crop is planned, and they are independent of each other.
-
-The ROUTE is how plant material becomes a plant in the ground. Eleven of them are
-written down, and they are eleven paths through one short list of stages -- so they
-are held as ordered stages rather than as eleven names. A twelfth route is then data.
-
-The CYCLE is how the plant yields once it is there. Distinct flushes are scheduled
-one at a time, which is the only thing the planner can currently do. Continuous
-produces every week across a window. A single flush is cut once and the block comes
-out. The last two are recorded here and not yet acted on: naming them is the point
-of this pass.
-
-Source: Crop Categories, 14 August 2026.
-"""
+"""The farm's crop categories: how each variety's material is got, and how it yields."""
 
 import frappe
 from frappe import _
@@ -30,44 +14,27 @@ CONTINUOUS = "Perennial - continuous"
 SINGLE = "Single flush cycle"
 
 # Route name -> the stages it passes through, in order. The name is for reading;
-# the stages are what anything downstream measures.
-#
-# These are only the routes a site starts with: the patch add_material_routes
-# writes them as Material Route records, and from then on the records are the
-# routes. A new way in is a new record, not an edit here.
 SEED_ROUTES = {
 	"TC to motherstock": ["TC", "Motherstock", "Plants"],
 	"TC to propagation": ["TC", "Rooting", "Plants"],
 	# Roots bought from a root supplier, not grown from our own tissue culture.
-	# Eryngium buys both, in the same year, for the same variety: fifteen weeks of
-	# supplier lead against seven, and fifteen weeks of hardening against seven.
 	"Bought as roots": ["Roots", "Rooting", "Plants"],
 	"Seed raised": ["Seeds", "Rooting", "Plants"],
 	"Bought as plants": ["Bought-in Plants", "Plants"],
 	# Own cuttings are a draw from a motherstock, and the motherstock was tissue
-	# culture. So there is no route that starts at a cutting: this crop runs the
-	# same TC line as the rest, and "we are not buying TC this year" is what the
-	# netting says when the pool already standing covers the peak week, not a
-	# property of the crop.
 	"Own cuttings": ["TC", "Motherstock", "Plants"],
 	"Own cuttings, rooted": ["Cuttings (Own)", "Rooting", "Plants"],
 	"Own roots, cooled": ["Roots (Own)", "Cooling", "Plants"],
 	"Own roots, direct": ["Roots (Own)", "Plants"],
 	"Budwood": ["Budwoods", "Rooting", "Plants"],
 	# Tubers. Not in the categories document of 14 August -- Dahlia is listed there
-	# under TC to motherstock, which is not how a tuber crop is raised. Added so the
-	# process can be planned before the farm reaches it.
 	"Own tubers, direct": ["Tubers (Own)", "Plants"],
 	"Tubers through cuttings": ["Tubers", "Sprouting", "Rooting", "Plants"],
 }
 
 
 class _Routes:
-	"""Route name -> stages, read from the Material Route records.
-
-	Looks like the dict it replaced so its readers did not change. Read per request
-	(cached on frappe.local), so a route added on the site is seen straight away.
-	"""
+	"""Route name -> stages, read from the Material Route records."""
 
 	def _all(self):
 		cache = getattr(frappe.local, "_sf_routes", None)
@@ -102,8 +69,6 @@ class _Routes:
 ROUTES = _Routes()
 
 # (route, cycle, [varieties]). Written out as the document has them, including the
-# spellings, so a name that does not match a site's Item is visible as a miss
-# rather than being quietly approximated.
 CATALOGUE = [
 	("TC to motherstock", DISTINCT, [
 		"Aster (Novi Belgii Grp) Dark Milka",
@@ -114,8 +79,6 @@ CATALOGUE = [
 		"Aster (Novi-belgii Grp) Double Date Pink",
 		"Aster (Novi-belgii Grp) 'Flash'",
 		# Not in the categories document of 14 August, but grown at Carzan Ks with a
-		# full protocol -- 103 weeks, 12-week flushes, 16 stems a plant. The document
-		# missed it rather than the farm dropping it.
 		"Aster Double Date Dusk",
 		"Aster Teeny Tiny White",
 		"Phlox (Paniculata Grp) Pink Eyes",
@@ -134,8 +97,6 @@ CATALOGUE = [
 		"Scabiosa atropurpurea Saura",
 	]),
 	# Delphinium and Helleborus only. The Eryngiums are listed under this route AND
-	# under "TC through roots" in the source document; they are resolved below
-	# rather than being claimed by whichever entry ran last.
 	("TC to propagation", CONTINUOUS, [
 		"Delphinium Andes Azure",
 		"Delphinium Andes White",
@@ -205,17 +166,12 @@ CATALOGUE = [
 		"Agapanthus 'Gletsjer'",
 	]),
 	# Dahlia produces from roughly 9-12 weeks after the tuber goes in and then keeps
-	# producing for as long as the season lasts; with no frost to end it, continuous
-	# is the closer reading. The source document has it under distinct flushes --
-	# worth a second opinion from the farm before any of it is planted.
 	("Tubers through cuttings", CONTINUOUS, [
 		"Dahlia",
 	]),
 ]
 
 # The stage material is bought at, per route. Only the first stage is a purchase
-# unless the farm says otherwise; own cuttings and own roots are taken, not bought,
-# so nothing on those routes is marked bought.
 CATEGORY_FARMS = {
 	("TC to motherstock", DISTINCT): ("Carzan Ks", "Kariki Juja", "Carzan St"),
 	("TC to motherstock", CONTINUOUS): ("Carzan Mr",),
@@ -272,13 +228,6 @@ def _lookup():
 
 
 #: How far ahead each bought stage has to be ordered. Unlike the weeks and the
-#: losses -- which are per farm and per crop and have to be typed by somebody who
-#: knows them -- these two are a property of the material itself and the same
-#: wherever it is grown, so they are seeded rather than left at zero.
-#:
-#: Roots are a year: by the time a root reaches a farm it has been grown and
-#: lifted already, whether at a supplier or in our own block. Tissue culture is
-#: fifteen weeks in the lab.
 
 
 def lead_weeks():
@@ -306,16 +255,7 @@ def stages_for(route):
 
 @frappe.whitelist()
 def classify(dry_run=1, farm=None):
-	"""Write the route and the cycle onto every Crop Protocol we have a category for.
-
-	Matches on the protocol's variety. Weeks and losses are left at zero: this pass
-	records WHICH route a crop takes, not how long each stage of it lasts -- those
-	are per farm and per crop and have to be typed by someone who knows them.
-
-	Nothing is overwritten. A protocol that already carries a route is left alone
-	and reported, so running this twice is safe and so is running it after someone
-	has corrected one by hand.
-	"""
+	"""Write the route and the cycle onto every Crop Protocol we have a category for."""
 	dry_run = int(dry_run or 0)
 	by_variety, clash = _lookup()
 
@@ -325,8 +265,6 @@ def classify(dry_run=1, farm=None):
 	protocols = frappe.get_all(PROTOCOL_DOCTYPE, filters=f,
 	                           fields=["name", "variety", "farm"])
 	# Whether a protocol already carries a route is read from the stages, not from
-	# a summary column: Crop Protocol has no room for one, so the table is the
-	# only record of it.
 	routed = {r.parent for r in frappe.get_all(
 		"Crop Material Stage",
 		filters={"parenttype": PROTOCOL_DOCTYPE,
@@ -354,7 +292,6 @@ def classify(dry_run=1, farm=None):
 		done.append("%s: %s | %s" % (p.name, " -> ".join(ROUTES[route]), cycle))
 
 	# Varieties the catalogue knows that this site has no protocol for. Worth
-	# saying: it is the list of protocols still to be written, not an error.
 	have = {p.variety for p in protocols}
 	no_protocol = sorted(v for v in by_variety if v not in have)
 
@@ -371,13 +308,7 @@ def classify(dry_run=1, farm=None):
 
 
 def report(dry_run=1):
-	"""Readable version of classify(), for the console.
-
-	    bench --site SITE execute \
-	        upande_summer_flowers.summer_flowers.crop_routes.report
-	    bench --site SITE execute \
-	        upande_summer_flowers.summer_flowers.crop_routes.report --kwargs "{'dry_run': 0}"
-	"""
+	"""Readable version of classify(), for the console."""
 	r = classify(dry_run=dry_run)
 	print("DRY RUN -- nothing written\n" if r["dry_run"] else "WRITTEN\n")
 	for key, label in (
@@ -425,8 +356,6 @@ def _ensure_item(variety, dry_run):
 	doc.stock_uom = "Nos" if frappe.db.exists("UOM", "Nos") else \
 		frappe.db.get_value("UOM", {}, "name")
 	# Matched to the summer flower items this site already has. A site rule refuses
-	# an Item that is neither stocked, an asset nor a service, and a variety here is
-	# stocked: Craspedia Gold Drum is the model.
 	doc.is_stock_item = 1
 	doc.is_purchase_item = 1
 	doc.is_sales_item = 1
@@ -438,19 +367,7 @@ def _ensure_item(variety, dry_run):
 
 @frappe.whitelist()
 def provision(farm, dry_run=1, only_route=None):
-	"""Create the varieties and their protocols for one farm.
-
-	One farm at a time, because a Crop Protocol is per variety AND farm -- the same
-	crop is grown differently at Kudenga and at Bondet, which is the whole reason
-	the protocol carries the farm. Run it once per farm as each is rolled out.
-
-	Protocols are created carrying their route and their growing cycle and nothing
-	else. Density, flush schedule, losses and lead times are per crop and per farm
-	and are not in the categories document, so they are left empty rather than
-	guessed: an approved protocol full of invented numbers plans real plantings.
-	A protocol created here cannot be approved until someone fills them in, which
-	is the intended order.
-	"""
+	"""Create the varieties and their protocols for one farm."""
 	dry_run = int(dry_run or 0)
 	if not frappe.db.exists("Farm", farm):
 		frappe.throw(_("No farm called {0} on this site.").format(frappe.bold(farm)))
@@ -493,12 +410,7 @@ def provision(farm, dry_run=1, only_route=None):
 
 
 def provision_report(farm, dry_run=1, only_route=None):
-	"""Readable provision(), for the console.
-
-	    bench --site SITE execute \
-	        upande_summer_flowers.summer_flowers.crop_routes.provision_report \
-	        --kwargs "{'farm': 'Kudenga'}"
-	"""
+	"""Readable provision(), for the console."""
 	r = provision(farm=farm, dry_run=dry_run, only_route=only_route)
 	print("%s -- %s\n" % (r["farm"], "DRY RUN, nothing written" if r["dry_run"] else "WRITTEN"))
 	print("items: %s" % r["items"])
@@ -511,9 +423,6 @@ def provision_report(farm, dry_run=1, only_route=None):
 
 
 # The shape of a season is a fact about a crop, so it is not written here. A crop
-# states its own on its protocol; a farm states a house default in Summer Flower
-# Settings; and the weights are relative, normalised across however many producing
-# weeks the protocol states, so one shape fits a 20-week season and a 40-week one.
 def _weights(raw):
 	out = []
 	for part in str(raw or "").replace(";", ",").split(","):
@@ -540,20 +449,12 @@ def season_shape_for(doc):
 
 
 def season_weights(weeks, shape):
-	"""Relative weight per producing week, for `weeks` weeks.
-
-	The shape rises, holds and falls. A long season gets the whole of it with the
-	peak stretched to fill the middle; a short one -- four weeks of picking before
-	the block comes out -- is the same shape sampled at four points, so it still
-	rises and still falls. Trimming the ends instead used to hand a four-week flush
-	a curve that only went up, which is not how anything is picked.
-	"""
+	"""Relative weight per producing week, for `weeks` weeks."""
 	build = list(shape.get("build") or [])
 	tail = list(shape.get("tail") or [])
 	peak = shape.get("peak", 100.0)
 	if not build and not tail:
 		# Nothing stated: the season is flat, which is at least a shape someone chose
-		# rather than one this module invented.
 		return [peak] * weeks
 	if weeks <= 1:
 		return [peak] * max(weeks, 0)
@@ -569,24 +470,13 @@ def season_weights(weeks, shape):
 
 @frappe.whitelist()
 def spread_season(protocol, dry_run=1, shape=None):
-	"""Allocate a continuous crop's whole life across its producing weeks.
-
-	A crop that cuts every week has no flushes, but it has the same thing underneath:
-	a hundred percent of a life, handed out over a season until it is used up. So it
-	gets a row per producing week carrying that week's share, and from there it is
-	read, planned and totalled exactly like a crop that flushes.
-
-	The share is not flat. A dahlia in its first producing week is not the plant it is
-	ten weeks later, and it is winding down before the season ends.
-	"""
+	"""Allocate a continuous crop's whole life across its producing weeks."""
 	from upande_summer_flowers.summer_flowers.crop_protocol import PROTOCOL_DOCTYPE
 
 	dry_run = int(dry_run or 0)
 	doc = frappe.get_doc(PROTOCOL_DOCTYPE, protocol)
 	weeks = cint(doc.get("custom_sf_productive_weeks"))
 	# Where the picking starts. Stated outright on a continuous crop; on a crop that
-	# flushes it is already the offset of its first flush, so it is read from there
-	# rather than asked for twice.
 	first = (cint(doc.get("custom_sf_weeks_planting_to_first_cut"))
 	         or cint(doc.get("custom_sf_first_harvest_offset_weeks")))
 	life = flt(doc.get("custom_sf_stated_stems_per_plant_life")) or \

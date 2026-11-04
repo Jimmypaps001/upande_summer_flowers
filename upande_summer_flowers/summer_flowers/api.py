@@ -1,5 +1,4 @@
 # Copyright (c) 2026, James Kiruga and contributors
-# For license information, please see license.txt
 """Read-only endpoints backing the Summer Flowers dashboard."""
 
 import frappe

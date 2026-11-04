@@ -1,11 +1,5 @@
 # Copyright (c) 2026, James Kiruga and contributors
-# For license information, please see license.txt
-"""Write endpoints for the crop cycle dashboard.
-
-crop_cycle_api reads. Everything here writes, and every one of them loads the
-document and calls its controller, so the dashboard is held to the same rules as
-the desk form.
-"""
+"""Write endpoints for the crop cycle dashboard."""
 
 import frappe
 from frappe import _

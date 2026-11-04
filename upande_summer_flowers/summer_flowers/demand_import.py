@@ -1,34 +1,5 @@
 # Copyright (c) 2026, James Kiruga and contributors
-# For license information, please see license.txt
-"""Read the market demand workbook the way the farm writes it.
-
-"3 YEAR PINK FLUSH MARKET DEMAND.xlsx" is one block per financial year:
-
-    Financial year  Crop   Variety            Grade split  Total   W27 W28 ... W26
-    2026-27         Aster  Aster Pink Flush   50           310,000 5,000 ...
-                                              60           930,000 15,000 ...
-                                              70         1,085,000 17,500 ...
-                                              80         1,085,000 17,500 ...
-                                              Total      3,410,000 55,000 ...
-
-Three things about that layout decide everything here.
-
-The year is a FINANCIAL year, July to June, so its weeks run W27 to W52 (or W53)
-and then W1 to W26 of the following calendar year. Reading the week number
-without that split puts eleven months of demand in the wrong year.
-
-A 53-week year is real: 2026-27 has one and the other two do not. The count is a
-property of the ISO calendar, not a mistake, and a year given a W53 it does not
-have is a mistake -- so both are checked rather than assumed.
-
-The rows are grades and the last one is their total. Demand is stored per week,
-not per grade -- the split lives on the crop protocol, where it is used to price
-and to size -- so the grades are read to check the arithmetic and to report the
-split, and it is the Total row that becomes the register.
-
-Nothing here writes. parse and preview read; only import_demand writes, and it
-says what it did.
-"""
+"""Read the market demand workbook the way the farm writes it."""
 
 import base64
 import csv
@@ -61,11 +32,7 @@ def _num(v):
 
 
 def iso_weeks_in_year(year):
-    """53 if that ISO year has a 53rd week, else 52.
-
-    A year has 53 ISO weeks when 1 January falls on a Thursday, or on a Wednesday
-    in a leap year -- equivalently, when 28 December lands in week 53.
-    """
+    """53 if that ISO year has a 53rd week, else 52."""
     return datetime.date(int(year), 12, 28).isocalendar()[1]
 
 
@@ -80,7 +47,6 @@ def _rows_from_xlsx(content):
 def _rows_from_text(content):
     text = content.decode("utf-8-sig", errors="replace")
     # Tab first: pasting out of a spreadsheet gives tabs, and a comma inside a
-    # thousands separator would tear a CSV row apart.
     delim = "\t" if "\t" in text.split("\n")[0] else ","
     return [r for r in csv.reader(io.StringIO(text), delimiter=delim)]
 
@@ -101,7 +67,6 @@ def parse(content, filename=""):
             continue
 
         # Week columns, in the order the sheet gives them, with the column each
-        # sits in -- a block may be 52 or 53 weeks wide.
         weeks = []
         for col in range(5, len(row)):
             label = str(row[col] or "").strip().upper()
@@ -173,7 +138,6 @@ def check(blocks):
                               "{2}.").format(fy, tot["stated_total"], sum(tot["weekly"])))
 
         # A 53rd week the ISO calendar has not got would silently land in the next
-        # year, which is how a year of demand goes missing.
         start = cint(str(fy).split("-")[0])
         has53 = [w for (_c, w) in b["weeks"] if w == 53]
         if has53 and iso_weeks_in_year(start) != 53:
@@ -186,12 +150,7 @@ def check(blocks):
 
 
 def _register_for(variety, farm=None):
-    """The demand register for this variety, and the farms that have one.
-
-    Named farm wins. With no farm named, a single register is unambiguous and is
-    used; several are not, and the caller is told rather than being given one of
-    them at random.
-    """
+    """The demand register for this variety, and the farms that have one."""
     rows = frappe.get_all("Summer Flower Market Demand",
                           filters={"variety": variety}, fields=["name", "farm"])
     farms = sorted(r.farm for r in rows if r.farm)
@@ -217,8 +176,6 @@ def preview(filename, content, farm=None):
     variety = next((b["variety"] for b in blocks if b["variety"]), None)
     known = bool(variety and frappe.db.exists("Item", variety))
     # A register is one farm's order book, so a variety can have several. Looking one
-    # up by variety alone returns whichever the database happens to hand back first,
-    # and the file would land on a farm nobody named.
     existing, others = _register_for(variety, farm) if known else (None, [])
     if others and not farm:
         problems.append(_("{0} has a demand register at {1}. Name the farm this file "
@@ -274,15 +231,7 @@ def preview(filename, content, farm=None):
 
 @frappe.whitelist()
 def import_demand(filename, content, variety=None, farm=None, mode="replace"):
-    """Write the Total row of every block into the variety's demand register.
-
-    mode=replace clears the weeks the file covers and writes the file's figures --
-    the file is the statement of record for the years it names. mode=add leaves
-    every week already there alone and fills only the gaps.
-
-    Grades are not written. The split is the protocol's, where it prices and sizes
-    the crop; storing a second copy here is how the two come to disagree.
-    """
+    """Write the Total row of every block into the variety's demand register."""
     if frappe.session.user == "Guest":
         frappe.throw(_("Please sign in."), frappe.PermissionError)
     blocks = parse(content, filename)

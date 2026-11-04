@@ -1,10 +1,4 @@
-"""Each own-crop stage gets the stage it is bought at when the farm runs short.
-
-Backfilled from the name, which is how every site spells them today: Tubers
-(Own) is bought as Tubers. A stage whose plain name is not itself bought --
-cuttings, which nobody sells unrooted -- is left blank on purpose, and the
-procurement plan reports that gap instead of filling it.
-"""
+"""Each own-crop stage gets the stage it is bought at when the farm runs short."""
 
 import frappe
 

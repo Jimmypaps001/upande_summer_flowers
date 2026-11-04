@@ -1,15 +1,5 @@
 # Copyright (c) 2026, James Kiruga and contributors
-"""Work out what each route stage is and how long it takes, instead of asking.
-
-is_purchase and weeks were typed on the route. Nobody ticked is_purchase -- it is
-a box confirming that tissue culture is bought, which is a question with one
-answer -- and a procurement plan refused to build without it, on a protocol whose
-route was plainly there. The weeks were the tray and pot weeks written a second
-time, free to disagree with the protocol they came from.
-
-Both are derived now, so both are re-derived here: on every protocol, and on the
-versions already approved, which are snapshots and would otherwise never hear.
-"""
+"""Work out what each route stage is and how long it takes, instead of asking."""
 
 import frappe
 

@@ -1,31 +1,5 @@
 # Copyright (c) 2026, James Kiruga and contributors
-# For license information, please see license.txt
-"""The motherstock line, decided and written down.
-
-The procurement plan says what to buy. This says what happens after it arrives:
-when each generation starts cutting, how many mothers are standing each week,
-how that week's cut splits between going back as more mothers and going out to
-the field, and whether the field got what it asked for.
-
-It is meant to be played with. The two numbers at the top are the only decisions
--- plantlets to order, and how many times to multiply -- and Rebuild works the
-other fifty-odd weeks out from them. Somebody who knows the market and the
-plants can move either and watch what it does before committing to it.
-
-The order it sits in matters. The production plan says what the field wants; this
-says what line of mothers would supply it and, out of that, how many plantlets to
-buy; the procurement plan then orders THAT figure. Sizing used to happen inside
-the procurement plan, which put the decision after the purchase order it was
-supposed to justify.
-
-The weekly split is demand-led. The field is served first, every week, from the
-very first cut -- a ramping pool still roots and hardens, and those plants are
-plantable -- and only what the field does not ask for can go back as mothers.
-The farm sends back four times at the most.
-
-The propagation plan is built from this rather than from the production plan,
-because this is where the weekly supply of plants actually comes from.
-"""
+"""The motherstock line, decided and written down."""
 
 import frappe
 from frappe import _
@@ -61,11 +35,6 @@ class SummerFlowerMotherstockPlan(Document):
 		plan = frappe.get_doc("Summer Flower Production Plan", self.production_plan)
 
 		# Not every crop has a motherstock, and peak_sizing will happily size one
-		# for a crop that has not got one -- it only divides a peak week. The old
-		# divert-model rebuild asked this first and the rewrite onto the peak
-		# model dropped it, so a propagation plan for Eryngium quietly minted a
-		# motherstock line of 1,280,720 plantlets for a crop that is bought as
-		# tissue culture or as roots and never stands as a cut-from pool.
 		from upande_summer_flowers.summer_flowers import sourcing
 
 		v = frappe.get_cached_doc("Crop Protocol Version", self.protocol)
@@ -99,7 +68,6 @@ class SummerFlowerMotherstockPlan(Document):
 
 		self.order_by_date = sch["order_by"]
 		# The plantlets land one establishment before the first cut, not on the
-		# order date -- that was reading the order date back out of the option.
 		self.tc_arrival_date = add_days(getdate(sch["first_cut_date"]),
 		                                -7 * cint(sizing["establishment_weeks"]))
 		self.first_cut_date = sch["first_cut_date"]
@@ -157,15 +125,7 @@ class SummerFlowerMotherstockPlan(Document):
 @frappe.whitelist()
 def for_plan(production_plan, tc_to_order=None, multiplications=None,
              divert_weeks=None):
-	"""Make or refresh the motherstock plan behind a production plan.
-
-	One per production plan: two of them would be two answers to a question that
-	has one, and neither the propagation plan nor the procurement plan would know
-	which it was built from.
-
-	``divert_weeks`` is accepted and ignored so older callers and saved links do
-	not break on it.
-	"""
+	"""Make or refresh the motherstock plan behind a production plan."""
 	existing = frappe.db.get_value("Summer Flower Motherstock Plan",
 	                               {"production_plan": production_plan}, "name")
 	doc = (frappe.get_doc("Summer Flower Motherstock Plan", existing) if existing

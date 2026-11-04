@@ -1,15 +1,5 @@
 # Copyright (c) 2026, James Kiruga and contributors
-"""Tell existing procurement plans how their material is got.
-
-propagates_here, in_house_stages and route_verdict were added when buying and
-propagating stopped being alternatives. Every procurement plan raised before that
-carries them empty, so the chain reads "nothing bought; planted as it arrives" on
-a crop whose propagation plan sits in the next step asking for 370,000 cuttings --
-two steps of the same chain contradicting each other on the same screen.
-
-Read off each plan's own protocol version, which is where the answer has always
-been. A plan whose version has no route is left alone: there is nothing to read.
-"""
+"""Tell existing procurement plans how their material is got."""
 
 import frappe
 
@@ -37,9 +27,6 @@ def execute():
 			"route_verdict": decided["reason"],
 		}
 		# The stage bought was never recorded on a plan raised before the route was
-		# read. Where the protocol names one, it is the answer; where the plan says
-		# Propagate on a route that buys, the route is right -- that choice was the
-		# either/or the route has since replaced.
 		if decided["method"] == "Purchase" and not d.entry_stage:
 			values["entry_stage"] = decided["entry_stage"]
 			values["method"] = "Purchase"

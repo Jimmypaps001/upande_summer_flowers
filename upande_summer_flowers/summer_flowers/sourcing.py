@@ -1,23 +1,5 @@
 # Copyright (c) 2026, James Kiruga and contributors
-# For license information, please see license.txt
-"""Where a plan's material comes from, how much of it, and when to order.
-
-A plan says what to plant and when. It has never said what to BUY -- only what
-tissue culture to buy, on the one route that starts at tissue culture. Ask it what
-happens if you buy rooted plants instead, or tubers, or seed, and it has no answer,
-because the question was only ever asked of Aster.
-
-The route knows. It is an ordered chain, each stage carrying how long it takes, what
-it loses, what it multiplies and how long the supplier needs. So the answer is a walk
-backwards along it from the day the plants go in the ground:
-
-    order date = planting date - weeks from that stage to the ground - supplier lead
-    order qty  = plants needed / everything the stages between here and there do to it
-
-The stage you start from is a CHOICE, not a property of the crop. Buying TC is cheap
-and slow; buying rooted plants is dear and fast; and the same crop can be planned
-either way. That choice is what this module exists to price and to date.
-"""
+"""Where a plan's material comes from, how much of it, and when to order."""
 
 import datetime
 import math
@@ -56,13 +38,7 @@ def _survival(rows):
 
 
 def journey(version, from_stage):
-	"""What it takes to turn one unit of `from_stage` into plants in the ground.
-
-	Returns the weeks it takes, the plants one unit becomes, and the supplier's lead
-	time. Walking forward from the stage bought: each stage loses some of what it
-	holds, its steps lose more while time passes, and a stage that multiplies hands
-	on more than it received.
-	"""
+	"""What it takes to turn one unit of `from_stage` into plants in the ground."""
 	blocks = _blocks(version)
 	names = [s.stage for s, _st in blocks]
 	if from_stage not in names:
@@ -70,12 +46,6 @@ def journey(version, from_stage):
 	start = names.index(from_stage)
 
 	# Only this stage's own chain. A route can be bought into more than one way --
-	# Eryngium is bought as TC and as roots, in the same year for the same variety --
-	# and the chains run one after another down the same table. Walking to the end
-	# of the table from the first of them swallowed the second: TC came out at 22
-	# weeks instead of 7, because it was given the roots leg's fifteen, and one TC
-	# jar was credited with 10.2 plants, because the roots' x15 lift was applied to
-	# it. A chain ends where the next way in begins.
 	end = next((i for i in range(start + 1, len(blocks))
 	            if blocks[i][0].stage in ROUTE_ENTRY), len(blocks))
 	chain = blocks[start:end]
@@ -86,27 +56,11 @@ def journey(version, from_stage):
 	for stage, steps in chain:
 		if cint(stage.get("is_standing")):
 			# A pool is not a step on a conveyor. Carrying its multiplication into
-			# plants_per_unit would say one plantlet becomes four plants, when what it
-			# becomes is four mothers that give cuttings every week for a year. The
-			# number is right in requirement(); here it would only mislead.
-			#
-			# A lifted block is the other case: it is cut once, not weekly, and
-			# the thing it hands on is roots rather than a season of cuttings. It
-			# is deliberately NOT marked standing, so it falls through to the
-			# multiplication below.
 			standing = stage.stage
 		plants_per_unit *= _survival([stage])
 		# A stage's yield is what it hands on when material LEAVES it, so it applies
-		# to the stage bought as well: buying mother plants still gives you that
-		# mother's cuttings. Plants is the end of the road and multiplies nothing.
 		if stage.stage != ROUTE_END:
 			# A one-off lift IS a conveyor, which is why the exclusion above does
-			# not reach it. A block of Eryngium stands for a year, is uprooted
-			# once and returns about fifteen roots a plant, and then it is gone --
-			# so one plantlet really does become fifteen plants, and saying so is
-			# the difference between buying 10,000 plantlets and buying 667.
-			# returns_per_plant has existed on every route row since the model was
-			# written and nothing has ever read it.
 			lift = flt(stage.get("returns_per_plant") or 0)
 			plants_per_unit *= lift if lift > 0 else flt(stage.yields_per_unit or 1)
 			plants_per_unit *= _survival(steps)
@@ -116,7 +70,6 @@ def journey(version, from_stage):
 		"weeks_to_ground": weeks,
 		"standing": standing,
 		# Only meaningful on a route that has no pool in it. Where there is one, the
-		# order is sized from the busiest week -- see requirement().
 		"plants_per_unit": plants_per_unit,
 		"lead_weeks": cint(blocks[start][0].lead_weeks),
 		"rate": flt(blocks[start][0].rate),
@@ -127,19 +80,7 @@ def journey(version, from_stage):
 
 @frappe.whitelist()
 def route_plan(version):
-	"""What the protocol already says about how this crop's material is got.
-
-	Buying and propagating are not alternatives, and treating them as a choice
-	between two is what made a procurement plan for Aster do one or the other. The
-	farm buys tissue culture AND propagates it: the purchase is where the route
-	STARTS, and propagation is every stage between there and the ground. A route
-	can have both, either, or -- for a crop cut off its own stock and planted
-	straight out -- neither.
-
-	So there is only one thing left to ask a person, and only when the protocol
-	leaves it open: which of several buyable stages to enter at. Everything else
-	here is read off the route.
-	"""
+	"""What the protocol already says about how this crop's material is got."""
 	v = (version if hasattr(version, "material_route")
 	     else frappe.get_cached_doc("Crop Protocol Version", version))
 	blocks = _blocks(v)
@@ -152,8 +93,6 @@ def route_plan(version):
 	names = [st.stage for st, _s in blocks]
 	buyable = [st.stage for st, _s in blocks if cint(st.is_purchase)]
 	# A route that marks nothing bought still starts somewhere. If that somewhere is
-	# the farm's own stock the answer is genuinely "nothing is bought"; if it is TC
-	# or seed, the protocol is unfinished and saying so beats defaulting silently.
 	entry = buyable[0] if buyable else None
 	first = names[0]
 	unmarked = not buyable and first not in OWN_STAGES
@@ -188,26 +127,16 @@ def route_plan(version):
 	        "buyable": buyable, "propagates": propagates, "in_house": in_house,
 	        "first_stage": first, "unmarked": unmarked, "reason": reason,
 	        # Every way in, with its share and its own lead time. A crop bought one
-	        # way has one of these and it carries the whole order; Eryngium has two,
-	        # eight weeks of supplier lead apart, and quoting either one of them for
-	        # the whole order is eight weeks wrong for the other.
 	        "ways_in": entry_ways(v)}
 
 
 def entry_ways(version):
-	"""Each chain of the route that buys something: stage, share, lead, what follows.
-
-	Read off the route rather than asked for. A second chain exists because
-	somebody put a second entry stage on the protocol, which is the act of saying
-	the material is also bought that way.
-	"""
+	"""Each chain of the route that buys something: stage, share, lead, what follows."""
 	from upande_summer_flowers.summer_flowers.crop_protocol import (
 		ROUTE_END, chain_share, route_chains,
 	)
 
 	# A Crop Protocol or a Crop Protocol Version, whichever is handed over: the
-	# route reads the same off both, and the protocol is the only one that can be
-	# edited, so a check has to be able to ask it.
 	v = version
 	if isinstance(version, str):
 		v = frappe.get_cached_doc("Crop Protocol Version", version)
@@ -235,13 +164,7 @@ def entry_ways(version):
 
 
 def standing_stage(version, from_stage=None):
-	"""The stage on this route that is established once and cut from, if any.
-
-	A motherstock is not consumed by a planting. One of them supplies every cohort
-	in a plan, week after week, so what it costs is decided by the busiest week --
-	not by adding up the season. Sizing it per cohort is how a plan came to ask for
-	136,851 plantlets where 3,024 was the answer.
-	"""
+	"""The stage on this route that is established once and cut from, if any."""
 	blocks = _blocks(version)
 	names = [s.stage for s, _st in blocks]
 	start = names.index(from_stage) if from_stage in names else 0
@@ -252,20 +175,7 @@ def standing_stage(version, from_stage=None):
 
 
 def own_stock(version, farm, variety, on_date, exclude=None):
-	"""What the farm's own standing crop can hand over on `on_date`.
-
-	A route that starts at Tubers (Own), Roots (Own) or Cuttings (Own) buys
-	nothing -- it is cut, lifted or dug off a crop the farm already has. That is
-	only true while the farm HAS one. The plan said "nothing is bought; it is
-	all raised here through to planting" without once asking whether there was
-	anything standing to raise it from, so a first season of a crop the farm has
-	never grown planned itself happily out of a field that does not exist.
-
-	What one standing plant hands over is returns_per_plant on the own stage --
-	a plant lifted for tubers gives several, a stock plant gives cuttings. The
-	plantings this plan is itself creating are excluded: a crop cannot be cut
-	from itself.
-	"""
+	"""What the farm's own standing crop can hand over on `on_date`."""
 	from upande_summer_flowers.summer_flowers.doctype.planting_calendar \
 		.planting_calendar import standing_plantings
 
@@ -274,17 +184,6 @@ def own_stock(version, farm, variety, on_date, exclude=None):
 	from_plantings = sum(cint(r.get("plants_expected_standing") or r.get("plants"))
 	                     for r in rows)
 	# And what the blocks themselves say is growing. Two records of one crop:
-	# the planner's calendar, which is what was MEANT to go in, and the block's
-	# own varieties_grown register, which is what the farm says is there. They
-	# disagree badly -- one variety reads 816 plants from a single calendar
-	# entry against 757,600 in the register -- and reading only the calendar
-	# would have told a farm to buy three quarters of a million tubers it is
-	# standing on.
-	#
-	# The larger wins, because the two are not additive (they describe the same
-	# ground) and the expensive mistake is the small one: buying what you have.
-	# Which was used is said out loud so nobody reads a figure whose basis they
-	# cannot see.
 	from_register = cint(frappe.db.sql("""
 		select ifnull(sum(gv.plants), 0) from `tabGreenhouse Variety` gv
 		join tabBlock b on b.name = gv.parent
@@ -296,15 +195,9 @@ def own_stock(version, farm, variety, on_date, exclude=None):
 	per_plant = flt(stage.get("returns_per_plant")) if stage else 0.0
 	per_plant = per_plant if per_plant > 0 else 1.0
 	# And where the difference comes from when there is not enough standing. The
-	# supplier's lead is the stage record's, not the route's: the bought form of
-	# own material is by definition not ON the route -- that is why it is being
-	# bought -- so there is no row to read a lead time off.
 	own_stage = stage.stage if stage else None
 	buy_stage = _stages.bought_as(own_stage) if own_stage else None
 	# The stage's usual lead, and failing that the one this crop's protocol
-	# states. Nobody has ever had to type a lead time for material the farm digs
-	# itself, so the stage record carries none for most of them -- and a zero
-	# there reads as "order it the day you plant it".
 	buy_lead = cint(_stages.info(buy_stage).get("default_lead_weeks")) if buy_stage else 0
 	if buy_stage and not buy_lead:
 		buy_lead = cint(version.get("supplier_lead_weeks"))
@@ -325,14 +218,7 @@ def own_stock(version, farm, variety, on_date, exclude=None):
 
 
 def standing_pool_capacity(version, on_date):
-	"""Cuttings the motherstock already standing can give in the week of `on_date`.
-
-	The same batches, the same build-up curve and the same window the propagation
-	plan uses, because an order sized as though nothing were standing buys a pool
-	the farm already owns. A batch counts only between its first sticking date and
-	its expiry: one that has not established yet, or is past renewal, cannot cut
-	for the week being planned.
-	"""
+	"""Cuttings the motherstock already standing can give in the week of `on_date`."""
 	if not on_date:
 		return 0, []
 	from upande_summer_flowers.summer_flowers.lifecycle_sim import ramp_ratio
@@ -342,8 +228,6 @@ def standing_pool_capacity(version, on_date):
 	monday = getdate(on_date)
 	total, used = 0, []
 	# Submitted only, and not expired -- the same rule the propagation plan uses.
-	# Netting an order against a pool that exists on a draft is how a farm comes to
-	# buy nothing and have nothing.
 	for b in frappe.get_all("Summer Flower Motherstock Batch",
 	                        filters={"variety": version.variety, "farm": version.farm,
 	                                 "docstatus": 1,
@@ -368,22 +252,7 @@ def standing_pool_capacity(version, on_date):
 
 def requirement(version, from_stage, plants, weekly_plants=None, peak_date=None,
                 cycles=None, units_override=None):
-	"""What to buy at `from_stage`, and in what shape, to grow `plants` plants.
-
-	Two routes, two shapes of answer, and the shape is the whole point:
-
-	  flow-through -- seed, tubers, rooted cuttings, plants bought ready. Every
-	    plant costs a unit, so the order is the season's plants divided by what
-	    survives the walk to the ground. One order per planting.
-
-	  standing -- the route passes a motherstock. The purchase builds a pool and
-	    the pool is cut every week, so the order is sized from the busiest week's
-	    draw and placed once. Buying it per planting buys the same motherstock as
-	    many times as there are plantings.
-
-	`plants` is the whole plan; `weekly_plants` is the most that must be stuck in
-	any one week. A standing route needs the second and ignores the first.
-	"""
+	"""What to buy at `from_stage`, and in what shape, to grow `plants` plants."""
 	j = journey(version, from_stage)
 	if not j:
 		return None
@@ -397,32 +266,22 @@ def requirement(version, from_stage, plants, weekly_plants=None, peak_date=None,
 		                  .format(plants, per_unit))
 
 	# The pool's own arithmetic, which is the protocol's and not a second opinion
-	# about it: cuttings to stick for the week, mothers to cut them from, plantlets
-	# to raise those mothers. Every step of it is a named protocol field.
 	weekly = cint(weekly_plants or 0)
 	per_week = flt(stage.get("yields_per_week"))
 	# The protocol's cycle count unless the reader is trying another. Cycles are the
-	# one lever worth turning here: more of them buys fewer plantlets and spends
-	# more of the line's life getting there.
 	cycles = cint(cycles) if cycles not in (None, "") else cint(
 		version.max_multiplication_cycles)
 	cuttings = cint(version.cuttings_for_plants(weekly)) if weekly else 0
 	# Net off the pool the farm already stands. Sizing the order against the gross
-	# requirement buys a motherstock that is partly already there, which on a crop
-	# in its second season is most of it.
 	standing, from_batches = standing_pool_capacity(version, peak_date)
 	short = max(0, cuttings - standing)
 	mothers = int(math.ceil(short / per_week)) if (short and per_week) else 0
 	calculated = int(math.ceil(version.tc_plants_for(mothers, cycles))) if mothers else 0
 	# A figure typed by a person is the order; the calculation becomes advice about
-	# it. Both are carried, because "you asked for 30,000 where the sum says 37,792"
-	# is the only useful thing to say about an override.
 	units = cint(units_override) if cint(units_override or 0) > 0 else calculated
 	blocked = None
 	if weekly and not per_week:
 		# Yields nothing per week and the route still says it multiplies: the answer
-		# would be an order sized as though every cutting had to be bought. Refusing
-		# is the point -- this is the shape of the 45x error.
 		blocked = _(
 			"{0} stands and is cut from, but the protocol does not say how many "
 			"cuttings one {1} gives in a week. Without that the order cannot be "
@@ -450,13 +309,7 @@ def requirement(version, from_stage, plants, weekly_plants=None, peak_date=None,
 
 @frappe.whitelist()
 def entry_options(version):
-	"""Every stage this crop's material could be bought at, priced and dated.
-
-	More than one may be possible, and they are genuinely different plans: buying
-	tissue culture means ordering most of a year early and raising it yourself;
-	buying rooted plants means ordering weeks ahead and paying for someone else's
-	year. The plan should be able to show both and let a person choose.
-	"""
+	"""Every stage this crop's material could be bought at, priced and dated."""
 	v = frappe.get_cached_doc("Crop Protocol Version", version)
 	out = []
 	for stage, _steps in _blocks(v):
@@ -472,12 +325,7 @@ def entry_options(version):
 
 @frappe.whitelist()
 def order_schedule(plan, stage=None):
-	"""What to buy and when, for every planting in a plan.
-
-	One row per planting: the day the plants must be in the ground, the quantity of
-	bought material that produces them, and the last day an order can be placed and
-	still arrive in time.
-	"""
+	"""What to buy and when, for every planting in a plan."""
 	p = frappe.get_doc("Summer Flower Production Plan", plan)
 	v = frappe.get_cached_doc("Crop Protocol Version", p.protocol)
 
@@ -514,7 +362,6 @@ def order_schedule(plan, stage=None):
 			"cost": units * chosen["rate"],
 			"order_by": str(order_by),
 			# An order that had to be placed before today cannot be placed. Saying so
-			# is the whole value of working the date out at all.
 			"late": order_by < today,
 			"days_left": (order_by - today).days,
 		})
@@ -566,24 +413,13 @@ def report(plan, stage=None):
 
 @frappe.whitelist()
 def harvest_chain(plan, stage=None):
-	"""One row per planting, read the way a grower reads it: backwards from the cut.
-
-	The plan has always known these dates; it has never put them on one line. So the
-	question "we want stems in week 31 -- when does that get ordered, stuck and
-	planted, and when does the bed come back" took four tabs and some arithmetic.
-
-	Every date here is the plan's own or the protocol's. Nothing is recomputed that
-	the plan already decided, because a calendar that works its own dates out is a
-	second opinion nobody asked for.
-	"""
+	"""One row per planting, read the way a grower reads it: backwards from the cut."""
 	p = frappe.get_doc("Summer Flower Production Plan", plan)
 	v = frappe.get_cached_doc("Crop Protocol Version", p.protocol)
 
 	sched = order_schedule(plan, stage)
 	orders = {r["row"]: r for r in sched.get("rows", [])}
 	# The stage actually used, not the one asked for: called with nothing, the
-	# schedule picks the route's first purchasable stage, and the page should say
-	# which -- "bought as Seeds" is the whole point of asking.
 	stage = sched.get("stage")
 	first_off = cint(v.first_harvest_offset_weeks)
 	life = cint(v.total_weeks_in_ground)

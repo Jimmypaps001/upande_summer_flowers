@@ -6,57 +6,25 @@ app_email = "james@upande.com"
 app_license = "mit"
 
 # Apps
-# ------------------
 
 # Commented out so the app installs on a bench that does not carry these apps.
-# Both are still needed at runtime: erpnext for Item / Warehouse / Customer, and
-# upande_core for the doctypes this app links to. Put the line back once they are
-# installed on the target bench.
-# Commented out on request, and here is what it would say if it were not. Verified
-# against the doctypes this app actually extends, overrides or reads:
-#
-#   erpnext             Item, Warehouse, Company, Material Request, Stock Entry, accounts
-#   upande_core         Farm and Bed -- Bed is the unit of space every planting occupies
-#   upande_agriculture  Crop Protocol, which this app extends with 88 custom fields and
-#                       is the source of every planning number; and Crop Cycle, which
-#                       override_doctype_class replaces the controller of
-#   upande_propagation  Block, which a planting is placed in, and Seedling Request
-#
-# A site with only frappe and erpnext will now install this app cleanly and then have
-# no Crop Protocol, Block, Bed, Crop Cycle or Seedling Request for it to work on: the
-# install log says "DocType Crop Cycle does not exist. Skipping fixture syncing" and
-# 86 custom fields are silently not applied.
-#
-# required_apps = ["erpnext", "upande_core", "upande_agriculture", "upande_propagation"]
 
 # Fixtures
-# ------------------
-# The approval workflow and its roles travel with the app so a fresh site gets a
-# working demand -> plan -> approve -> budget chain without manual setup.
 
 fixtures = [
 	{
 		# Our own propagation units are warehouses of this type; route cards, the
-		# procurement plan and the board offer only these as "our unit".
 		"dt": "Warehouse Type",
 		"filters": [["name", "in", ["Propagation Unit"]]],
 	},
 	{
 		# All three workflows this module owns, not just the plan's. The other two
-		# govern doctypes this app defines, and widening them for the manager roles
-		# would not have travelled to another site while only one was listed.
 		"dt": "Workflow",
 		# Crop Protocol Version Approval is deliberately absent. A version is no
-		# longer approved or edited: it is the snapshot written when a Crop Protocol
-		# is approved, so a workflow on it has nothing to govern and its transition
-		# validation actively refused the snapshot being born Active.
 		"filters": [["name", "in", [
 			"Summer Flower Production Plan Approval",
 			"Planting Calendar Approval",
 			# The protocol's own approval. Every state change to a protocol goes
-			# through it, including the automatic return to Draft when a number
-			# changes behind an approved protocol -- hence the Revise transition,
-			# without which that edit is refused outright.
 			"Crop Protocol Approval",
 		]]],
 	},
@@ -74,18 +42,11 @@ fixtures = [
 	},
 	{
 		# The page itself. Like the Packhouse workspace this is modelled on, the
-		# workspace draws exactly one thing -- this block -- so the tiles, their
-		# routes and their colours live here rather than in twenty-four link rows.
 		"dt": "Custom HTML Block",
 		"filters": [["name", "in", ["Summer Flowers Navigation"]]],
 	},
 	{
 		# "Summer Flowers Planning" carries no module, so developer_mode cannot
-		# export it to summer_flowers/workspace/ and migrate's workspace sync never
-		# looks at it. That is deliberate -- it is the one a site can rearrange in
-		# the UI -- but it still has to reach a new site somehow, and a fixture is
-		# the only route left. The module-owned "Summer Flowers" workspace ships
-		# hidden beside it; see summer_flowers/workspace/summer_flowers/.
 		"dt": "Workspace",
 		"filters": [["name", "in", ["Summer Flowers Planning"]]],
 	},
@@ -100,26 +61,6 @@ fixtures = [
 ]
 
 # Shown on the /apps screen. The mark is an SVG so it stays sharp from 16px up and
-# needs no external request, which the dashboards' CSP would block anyway.
-#
-# The route is the workspace, not the planning dashboard. The dashboard is a www
-# page and therefore outside the desk: routing the app at it dropped you straight
-# onto one screen with no sidebar and no way back to the other twenty-three
-# doctypes, so picking Summer Flowers from the apps screen looked like the module
-# WAS that one page. The workspace opens the menu, and the dashboard is the first
-# link in it, under Dashboard.
-#
-# Without this hook the app is simply not on the desk, whatever its workspaces
-# say: frappe/apps.py get_apps() reads add_to_apps_screen per installed app and
-# skips any app that does not declare one -- `if not len(app_details): continue`.
-# No workspace, sidebar or permission substitutes for it.
-#
-# /desk, not /app: this is the base the sidebar itself builds links with
-# (sidebar_item.js -> "/desk/" + frappe.router.slug(...)), and frappe.router.slug
-# lowercases and hyphenates, so the workspace named "Summer Flowers" is at
-# /desk/summer-flowers. It must name the workspace that is SHOWN -- the route
-# used to point at "Summer Flowers Planning", which is now the hidden one, so
-# the tile would have opened a page nobody is meant to land on.
 add_to_apps_screen = [
 	{
 		"name": "upande_summer_flowers",
@@ -130,21 +71,13 @@ add_to_apps_screen = [
 ]
 
 # Setting app_logo_url would replace the navbar mark for the WHOLE site, not just
-# this module, so it is deliberately left alone on a multi-module bench.
-# app_logo_url = "/assets/upande_summer_flowers/images/summer_flowers.svg"
 
 # Includes in <head>
-# ------------------
 
 # include js, css files in header of desk.html
-# app_include_css = "/assets/upande_summer_flowers/css/upande_summer_flowers.css"
-# The child-table calendar renderer, shared by every form that has dated rows.
-# Frappe's own calendar view plots documents, and a child row is not a document, so
-# demand weeks, plan weeks, plantings and sticking weeks had no calendar at all.
 app_include_js = [
 	"/assets/upande_summer_flowers/js/sf_calendar.js",
 	# The walkthrough launcher. Included app-wide rather than per doctype because
-	# the doctype_js files below all call into it.
 	"/assets/upande_summer_flowers/js/sf_walkthrough.js",
 ]
 
@@ -154,189 +87,102 @@ doctype_js = {
 		"public/js/crop_protocol_walkthrough.js",
 		"public/js/crop_protocol_ways.js",
 		# Stems per Plant, Lifetime is an input: typing it rewrites every flush
-		# row from its share of the life.
 		"public/js/crop_protocol_flush_shares.js",
 	],
 	# Crop Cycle belongs to upande_agriculture. The plants a cycle stands on were
-	# bought and are still stock until something consumes them, and this is the
-	# document a grower opens when the crop is in the ground.
 	"Crop Cycle": "public/js/crop_cycle_planting.js",
 }
 
 # Block belongs to upande_propagation, so its list view is customised from here.
-# Drawing a block over a run of beds is the only way to make one that carries its
-# own area and capacity, and nothing in any app offered it.
 doctype_list_js = {"Block": "public/js/block_list.js"}
 
 # Checked before the migrate that would trip over it, so a malformed customization
-# file in ANY installed app is reported by path instead of killing the run with a
-# KeyError that names nothing. See summer_flowers/customization_check.py.
 before_migrate = "upande_summer_flowers.summer_flowers.customization_check.before_migrate"
 
 # after_migrate, not a patch, for the two things a patch cannot do:
-#
-#   frappe.migrate syncs customisations AFTER patches run, so on the migrate that
-#   creates a Custom Field shadowing one of agriculture's native fields, a patch
-#   has already been and gone. Only this phase sees the shadow.
-#
-#   and a site whose agriculture predates crop_type cannot be reconciled at all
-#   until agriculture is deployed. A patch would be recorded as run and never
-#   return; this comes back every migrate, and everything it does is idempotent.
 after_migrate = [
 	"upande_summer_flowers.summer_flowers.protocol_merge.after_migrate",
     "upande_summer_flowers.summer_flowers.tours.sync_form_tours",
 	# The plant inspection template and its parameters are records, not schema, so
-	# they cannot ship in a fixture without a fixture force-overwriting thresholds
-	# a farm has since corrected. This creates what is missing and leaves the rest.
 	"upande_summer_flowers.summer_flowers.setup.plant_quality.install",
 	# The propagation units' capacity fields are schema; the figures on them are
-	# a site's own. Shipping the fields through a Warehouse customisation export
-	# would have taken sixteen other apps' fields and seven property setters with
-	# them, so our app would own -- and overwrite -- customisations it did not
-	# make.
 	"upande_summer_flowers.summer_flowers.setup.propagation_units.install",
 ]
 
 # include js, css files in header of web template
-# web_include_css = "/assets/upande_summer_flowers/css/upande_summer_flowers.css"
-# web_include_js = "/assets/upande_summer_flowers/js/upande_summer_flowers.js"
 
 # include custom scss in every website theme (without file extension ".scss")
-# website_theme_scss = "upande_summer_flowers/public/scss/website"
 
 # include js, css files in header of web form
-# webform_include_js = {"doctype": "public/js/doctype.js"}
-# webform_include_css = {"doctype": "public/css/doctype.css"}
 
 # include js in page
-# page_js = {"page" : "public/js/file.js"}
 
 # include js in doctype views
-# doctype_js = {"doctype" : "public/js/doctype.js"}
-# doctype_list_js = {"doctype" : "public/js/doctype_list.js"}
-# doctype_tree_js = {"doctype" : "public/js/doctype_tree.js"}
-# doctype_calendar_js = {"doctype" : "public/js/doctype_calendar.js"}
 
 # Svg Icons
-# ------------------
-# include app icons in desk
-# app_include_icons = "upande_summer_flowers/public/icons.svg"
 
 # Home Pages
-# ----------
 
 # application home page (will override Website Settings)
-# home_page = "login"
 
 # website user home page (by Role)
-# role_home_page = {
-# 	"Role": "home_page"
-# }
 
 # Generators
-# ----------
 
 # automatically create page for each record of this doctype
-# website_generators = ["Web Page"]
 
 # automatically load and sync documents of this doctype from downstream apps
-# importable_doctypes = [doctype_1]
 
 # Jinja
-# ----------
 
 # add methods and filters to jinja environment
-# jinja = {
-# 	"methods": "upande_summer_flowers.utils.jinja_methods",
-# 	"filters": "upande_summer_flowers.utils.jinja_filters"
-# }
 
 # Installation
-# ------------
 
 # before_install = "upande_summer_flowers.install.before_install"
-# after_install = "upande_summer_flowers.install.after_install"
 
 # Uninstallation
-# ------------
 
 # before_uninstall = "upande_summer_flowers.uninstall.before_uninstall"
-# after_uninstall = "upande_summer_flowers.uninstall.after_uninstall"
 
 # Integration Setup
-# ------------------
-# To set up dependencies/integrations with other apps
-# Name of the app being installed is passed as an argument
 
 # before_app_install = "upande_summer_flowers.utils.before_app_install"
-# after_app_install = "upande_summer_flowers.utils.after_app_install"
 
 # Integration Cleanup
-# -------------------
-# To clean up dependencies/integrations with other apps
-# Name of the app being uninstalled is passed as an argument
 
 # before_app_uninstall = "upande_summer_flowers.utils.before_app_uninstall"
-# after_app_uninstall = "upande_summer_flowers.utils.after_app_uninstall"
 
 # Build
-# ------------------
-# To hook into the build process
 
 # after_build = "upande_summer_flowers.build.after_build"
 
 # Desk Notifications
-# ------------------
-# See frappe.core.notifications.get_notification_config
 
 # notification_config = "upande_summer_flowers.notifications.get_notification_config"
 
 # Permissions
-# -----------
-# Permissions evaluated in scripted ways
 
 # permission_query_conditions = {
-# 	"Event": "frappe.desk.doctype.event.event.get_permission_query_conditions",
-# }
-#
-# has_permission = {
-# 	"Event": "frappe.desk.doctype.event.event.has_permission",
-# }
 
 # Class Overrides
-# ---------------
-# Crop Cycle lives in upande_agriculture and carries live records for other crops.
-# The subclass adds the summer flower lifecycle behind the
-# custom_is_summer_flower_cycle flag and, for those cycles only, names them per
-# block-planting instead of per greenhouse -- the native `field:greenhouse` rule
-# would otherwise collapse every block in a greenhouse into one record.
 
 override_doctype_class = {
 	# Bed, so a bed can live in a block with no greenhouse. The greenhouse path is
-	# untouched: a bed that has one runs upande_core's validate unaltered.
 	"Bed": "upande_summer_flowers.summer_flowers.bed.SummerFlowerBed",
 	"Crop Cycle": "upande_summer_flowers.summer_flowers.crop_cycle.SummerFlowerCropCycle",
 }
 
 # Document Events
-# ---------------
-# Hook on document methods and events
 
 doc_events = {
 	# Crop Protocol is the variety master for every crop. The summer flower
-	# parameters live on it as custom_sf_ fields and every derived figure is
-	# computed here, so the protocol is edited in one place and Crop Protocol
-	# Version is only ever the read-only snapshot taken when a change is approved.
-	# validate and on_update both return immediately for a protocol that is not a
-	# summer flower, so a rose protocol runs upande_agriculture's controller alone.
 	"Crop Protocol": {
 		# Unconditional: it derives the summer-flower flag from crop_type, so it
-		# cannot be behind a guard that reads that flag.
 		"before_validate": "upande_summer_flowers.summer_flowers.crop_protocol"
 		                   ".before_validate",
 		"validate": "upande_summer_flowers.summer_flowers.crop_protocol.validate",
 		# The workflow moves the status; this turns reaching Approved into an actual
-		# snapshot, which is the only thing that creates a Crop Protocol Version.
 		"on_update": "upande_summer_flowers.summer_flowers.crop_protocol.on_update",
 	},
 	# A warehouse of type Propagation Unit is one of our own propagation units.
@@ -348,34 +194,19 @@ doc_events = {
 		"autoname": "upande_summer_flowers.summer_flowers.bed_naming.block_autoname",
 	},
 	# Bed is the unit of space, so its area has to be right and it has to have one
-	# owner. Unconditional, unlike the others: a wrong area or a bed claimed by both
-	# a block and a greenhouse miscounts the land for every crop, not just these.
 	"Bed": {
 		"validate": "upande_summer_flowers.summer_flowers.bed.validate_bed",
 		# Summer flower beds are in open blocks, not greenhouses, so they cannot be
-		# named after one or take their farm through one.
 		"autoname": "upande_summer_flowers.summer_flowers.bed_naming.bed_autoname",
 		"before_validate":
 			"upande_summer_flowers.summer_flowers.bed_naming.bed_farm_from_block",
 	},
 	# Material Request IS the crop input order sheet -- there is no parallel
-	# doctype. This only derives quantities from area and application rate, and
-	# returns immediately unless custom_sf_block is set, which matters on a site
-	# with 11,609 requests and a dozen other scripts on the doctype.
 	"Material Request": {
 		"validate": "upande_summer_flowers.summer_flowers.material_request"
 		            ".validate_input_request",
 	},
 	# Plant material is bought, so it arrives on a Purchase Receipt or a Purchase
-	# Invoice and ERPNext already handles the receipt, the rejection and the
-	# quality inspection. These handlers add only the planting context, the plan
-	# comparison, and the one thing ERPNext does not do: require an incoming
-	# inspection on an invoice that does not update stock, which is every
-	# submitted invoice on this site.
-	#
-	# Each returns immediately unless the document carries a plant line, which
-	# matters on a doctype with 8,380 invoice lines and 7,094 receipt lines
-	# belonging to everything else the farm buys.
 	"Purchase Order": {
 		"validate": "upande_summer_flowers.summer_flowers.plant_receipt"
 		            ".set_line_context",
@@ -392,7 +223,6 @@ doc_events = {
 		"validate": "upande_summer_flowers.summer_flowers.plant_receipt"
 		            ".set_line_context",
 		# before_submit, not on_submit: an inspection that is missing has to stop
-		# the submission, not be discovered after the ledger has moved.
 		"before_submit": "upande_summer_flowers.summer_flowers.plant_receipt"
 		                 ".require_inspection",
 		"on_submit": "upande_summer_flowers.summer_flowers.plant_receipt"
@@ -403,112 +233,38 @@ doc_events = {
 }
 
 # Scheduled Tasks
-# ---------------
 
 # scheduler_events = {
-# 	"all": [
-# 		"upande_summer_flowers.tasks.all"
-# 	],
-# 	"daily": [
-# 		"upande_summer_flowers.tasks.daily"
-# 	],
-# 	"hourly": [
-# 		"upande_summer_flowers.tasks.hourly"
-# 	],
-# 	"weekly": [
-# 		"upande_summer_flowers.tasks.weekly"
-# 	],
-# 	"monthly": [
-# 		"upande_summer_flowers.tasks.monthly"
-# 	],
-# }
 
 # Testing
-# -------
 
 # before_tests = "upande_summer_flowers.install.before_tests"
 
 # Extend DocType Class
-# ------------------------------
-#
-# Specify custom mixins to extend the standard doctype controller.
-# extend_doctype_class = {
-# 	"Task": "upande_summer_flowers.custom.task.CustomTaskMixin"
-# }
 
 # Overriding Methods
-# ------------------------------
-#
-# override_whitelisted_methods = {
-# 	"frappe.desk.doctype.event.event.get_events": "upande_summer_flowers.event.get_events"
-# }
-#
-# each overriding function accepts a `data` argument;
-# generated from the base implementation of the doctype dashboard,
-# along with any modifications made in other Frappe apps
-# override_doctype_dashboards = {
-# 	"Task": "upande_summer_flowers.task.get_dashboard_data"
-# }
 
 # exempt linked doctypes from being automatically cancelled
-#
-# auto_cancel_exempted_doctypes = ["Auto Repeat"]
 
 # Ignore links to specified DocTypes when deleting documents
-# -----------------------------------------------------------
 
 # ignore_links_on_delete = ["Communication", "ToDo"]
 
 # Request Events
-# ----------------
-# before_request = ["upande_summer_flowers.utils.before_request"]
-# after_request = ["upande_summer_flowers.utils.after_request"]
 
 # Job Events
-# ----------
-# before_job = ["upande_summer_flowers.utils.before_job"]
-# after_job = ["upande_summer_flowers.utils.after_job"]
 
 # User Data Protection
-# --------------------
 
 # user_data_fields = [
-# 	{
-# 		"doctype": "{doctype_1}",
-# 		"filter_by": "{filter_by}",
-# 		"redact_fields": ["{field_1}", "{field_2}"],
-# 		"partial": 1,
-# 	},
-# 	{
-# 		"doctype": "{doctype_2}",
-# 		"filter_by": "{filter_by}",
-# 		"partial": 1,
-# 	},
-# 	{
-# 		"doctype": "{doctype_3}",
-# 		"strict": False,
-# 	},
-# 	{
-# 		"doctype": "{doctype_4}"
-# 	}
-# ]
 
 # Authentication and authorization
-# --------------------------------
 
 # auth_hooks = [
-# 	"upande_summer_flowers.auth.validate"
-# ]
 
 # Automatically update python controller files with type annotations for this app.
-# export_python_type_annotations = True
 
 # default_log_clearing_doctypes = {
-# 	"Logging DocType Name": 30  # days to retain logs
-# }
 
 # Translation
-# ------------
-# List of apps whose translatable strings should be excluded from this app's translations.
-# ignore_translatable_strings_from = []
 

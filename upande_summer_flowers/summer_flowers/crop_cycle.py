@@ -1,22 +1,5 @@
 # Copyright (c) 2026, James Kiruga and contributors
-# For license information, please see license.txt
-"""Summer flower behaviour for Crop Cycle.
-
-Crop Cycle belongs to upande_agriculture and carries 61 live records for other
-crops, so this subclass does two things and nothing else:
-
-  * it names summer flower cycles per block-planting instead of per greenhouse,
-    because the native ``autoname = field:greenhouse`` would collapse every
-    block in a greenhouse into a single record, and all twelve summer flower
-    blocks at Karen sit in one greenhouse;
-  * it runs the summer flower lifecycle after the native ``validate``, gated on
-    ``custom_is_summer_flower_cycle`` so nothing else changes behaviour.
-
-The native rollups derive ``area_planted``/``number_of_plants`` from bed ranges,
-which a summer flower cycle does not use. Rather than fight that, the summer
-flower geometry lives in its own ``custom_*`` fields and the native ones are
-left to the bed-range crops.
-"""
+"""Summer flower behaviour for Crop Cycle."""
 
 import datetime
 import json
@@ -41,12 +24,7 @@ def _has_role(roles=None):
 
 
 class EffectiveProtocol:
-	"""The protocol a cycle actually runs on: the version, plus cycle overrides.
-
-	Overrides are deliberately read through this one object so that every
-	derived date and yield uses the same numbers, and so the master protocol is
-	never mutated to express a single planting's deviation.
-	"""
+	"""The protocol a cycle actually runs on: the version, plus cycle overrides."""
 
 	SCALARS = (
 		("weeks_to_pinch", "custom_ovr_weeks_to_pinch"),
@@ -124,30 +102,17 @@ class SummerFlowerCropCycle(CropCycle):
 			parent()
 
 	def settle_crop_class(self):
-		"""Crop Class is the one question asked first; the rest follows it.
-
-		`custom_is_summer_flower_cycle` is what eighty-odd fields hang their
-		depends_on off, so it stays -- but it is now derived from the class
-		rather than typed, which is how a cycle came to be flagged one way and
-		planned the other.
-		"""
+		"""Crop Class is the one question asked first; the rest follows it."""
 		cls = self.get("custom_crop_class")
 		if not cls:
 			# An existing cycle has no class yet. Read it from the flag it was
-			# saved with, so nothing already recorded changes meaning.
 			cls = "Summer Flower" if cint(self.get("custom_is_summer_flower_cycle")) \
 				else "Rose"
 			self.custom_crop_class = cls
 		self.custom_is_summer_flower_cycle = 1 if cls == "Summer Flower" else 0
 
 	def fill_farm_from_block(self):
-		"""A block cycle's farm comes from its block.
-
-		Done in before_validate as well as in sync_block_geometry, because the farm
-		is read-only on the form: nobody can type it, and anything that runs before
-		the geometry sync -- a permission check, another app's validate -- would
-		otherwise see it empty.
-		"""
+		"""A block cycle's farm comes from its block."""
 		if self.get("farm") or not self.get("custom_block"):
 			return
 		farm = frappe.db.get_value("Block", self.custom_block, "farm")
@@ -156,19 +121,13 @@ class SummerFlowerCropCycle(CropCycle):
 
 	# --------------------------------------------------------------- naming
 	def autoname(self):
-		"""Name summer flower cycles per block-planting.
-
-		Frappe calls this before applying the doctype's own ``field:greenhouse``
-		rule and only falls back to that rule when ``self.name`` is still unset,
-		so leaving the name alone for other crops preserves their naming exactly.
-		"""
+		"""Name summer flower cycles per block-planting."""
 		if not self.get("custom_is_summer_flower_cycle"):
 			return
 		if self.get("custom_planting_calendar"):
 			self.name = "CC-{0}".format(self.custom_planting_calendar)
 			return
 		# A block is replanted many times over, so the block alone is not unique;
-		# the planting week is what separates one cycle from its successor.
 		if self.get("custom_block") and self.get("custom_planting_date"):
 			y, w = iso_year_week(getdate(self.custom_planting_date))
 			self.name = "CC-{0}-{1}W{2:02d}".format(self.custom_block, y, w)
@@ -180,16 +139,10 @@ class SummerFlowerCropCycle(CropCycle):
 		super().validate()
 
 		# Scope is what the cycle occupies; the summer flower flag is which planning
-		# engine applies to it. They are separate on purpose: a block-scoped cycle
-		# for another crop is a legitimate thing to want, and a greenhouse-scoped
-		# summer flower cycle should still get its flush forecast.
 		if self.is_block_scoped():
 			self.sync_block_geometry()
 		else:
 			# greenhouse is unique on this doctype, so only a block-scoped cycle may
-			# leave it empty. Relaxing the mandatory flag for that would have quietly
-			# removed the guarantee from every bed-range crop, so it is re-imposed
-			# here for everything still described by a greenhouse.
 			if not self.get("greenhouse"):
 				frappe.throw(_("Greenhouse is required on a greenhouse-scoped cycle."))
 
@@ -199,9 +152,6 @@ class SummerFlowerCropCycle(CropCycle):
 		self._version = self._resolve_version()
 		if self._version is None:
 			# Recorded, not planned. The block, the beds and the dates are facts
-			# and they are kept; everything below is a forecast, and a forecast
-			# needs a protocol. The cycle sits in the register as it is and
-			# starts forecasting the day a protocol is approved and named on it.
 			self.set_plant_age()
 			self.check_uproot_deviation()
 			self.sync_cycle_status()
@@ -220,29 +170,17 @@ class SummerFlowerCropCycle(CropCycle):
 		self.sync_biological_asset()
 
 	# ------------------------------------------------------------------ scope
-	# A crop cycle occupies one of two things and they are not interchangeable. A
-	# rose occupies a greenhouse and is described by a bed range on the Greenhouse
-	# ledger; a summer flower occupies a block and is described by the beds that
-	# block holds. The selector existed but nothing filled it in and nothing
-	# enforced it, so a cycle could carry a greenhouse AND a block, or neither, and
-	# which engine ran was decided by whichever field happened to be set.
 	def settle_scope(self):
 		"""Work the scope out from the crop, then hold the record to it."""
 		if not self.get("custom_cycle_scope"):
 			self.custom_cycle_scope = ("Block" if self.summer_flower_crop()
 			                           else "Greenhouse")
 		# The flag and the scope answer different questions -- which planner, and
-		# which thing is occupied -- but the crop decides the first, so it is set
-		# from the crop rather than left for someone to tick.
 		if self.summer_flower_crop() and not self.get("custom_is_summer_flower_cycle"):
 			self.custom_is_summer_flower_cycle = 1
 
 	def summer_flower_crop(self):
-		"""Whether this cycle's variety is planned as a summer flower.
-
-		Asked of the protocol, which is where the farm says so, rather than of the
-		cycle's own tick box -- a new cycle has not got one yet.
-		"""
+		"""Whether this cycle's variety is planned as a summer flower."""
 		if cint(self.get("custom_is_summer_flower_cycle")):
 			return True
 		variety = self.get("variety") or self.get("custom_sf_variety")
@@ -255,13 +193,7 @@ class SummerFlowerCropCycle(CropCycle):
 		                              "custom_is_summer_flower": 1}))
 
 	def check_scope(self):
-		"""One thing occupied, and the right one.
-
-		Refused rather than guessed: a cycle holding both a greenhouse and a block
-		says the same crop is standing in two places, and every figure hanging off
-		it -- capacity, coverage, what is free to plant -- is then wrong for one of
-		them.
-		"""
+		"""One thing occupied, and the right one."""
 		scope = self.get("custom_cycle_scope")
 		block, house = self.get("custom_block"), self.get("greenhouse")
 		if scope == "Block":
@@ -291,27 +223,14 @@ class SummerFlowerCropCycle(CropCycle):
 					title=_("Both a greenhouse and a block"))
 
 	def is_block_scoped(self):
-		"""Block-scoped when scope says so, or when a block is set.
-
-		The fallback matters for records created before the scope field existed and
-		for anyone who fills in the block without touching the selector.
-		"""
+		"""Block-scoped when scope says so, or when a block is set."""
 		scope = self.get("custom_cycle_scope")
 		if scope:
 			return scope == "Block"
 		return bool(self.get("custom_block"))
 
 	def _resolve_version(self):
-		"""The protocol this cycle is planned against, where there is one.
-
-		A crop cycle is two things at once: the record of what is standing on a
-		piece of ground, and the plan for what it will give. Only the second
-		needs a protocol. Refusing the first without one turned a missing plan
-		into a missing crop -- 307 plantings the farm had already made could not
-		be written down, because nobody had yet written a protocol for
-		Delphinium, Limonium, Clematis or Phlox. The ground is a fact whether or
-		not anyone has planned it.
-		"""
+		"""The protocol this cycle is planned against, where there is one."""
 		if not self.get("custom_crop_protocol_version"):
 			return None
 		return frappe.get_cached_doc("Crop Protocol Version",
@@ -319,32 +238,15 @@ class SummerFlowerCropCycle(CropCycle):
 
 	# ------------------------------------------------------------- geometry
 	def sync_block_geometry(self):
-		"""Align a block-scoped cycle with the block it occupies.
-
-		The area is read from the block on every save rather than copied once,
-		because a block's net area legitimately changes over time. The native
-		bed-range fields are left alone: a block cycle is described by the block's
-		own beds, not by ranges typed onto the cycle.
-		"""
+		"""Align a block-scoped cycle with the block it occupies."""
 		if not self.get("custom_block"):
 			frappe.throw(_("A block-scoped cycle needs a Block."))
 		# A block cycle naming its beds is how the farm records a planting: the
-		# block register says "beds 1 to 44 of B24", and those bed numbers are
-		# what the field works to. This used to be refused, on the reading that
-		# a block cycle's beds belong to the block rather than to the cycle --
-		# which left every planting as a bed COUNT with no way to say which
-		# beds, and left the native planted_area and qty_planted at zero
-		# because they are summed from the bed rows.
-		# The native greenhouse field is unique, so it stays empty; the greenhouse is
-		# still recorded, derived from the block, so reports do not lose it.
 		self.greenhouse = None
 		house, farm = frappe.db.get_value("Block", self.custom_block,
 		                                  ["greenhouse", "farm"])
 		self.custom_greenhouse = house
 		# Farm is read-only and fetched from greenhouse.custom_farm, which a block
-		# cycle has not got -- so hiding the greenhouse left the farm permanently
-		# blank and the cycle unsaveable. The block knows which farm it is on; that
-		# is where a block cycle's farm comes from.
 		if farm:
 			self.farm = farm
 		elif house:
@@ -355,26 +257,12 @@ class SummerFlowerCropCycle(CropCycle):
 		self.custom_block_area_sqm = area_sqm
 
 		# The doctype names itself after its greenhouse, which a block cycle
-		# deliberately has not got -- so every one of them read "Variety @ None".
-		# A block cycle is named after its block.
-		# The variety reads as its name, not its code. Items are coded now --
-		# 92001, 120907 -- and a title saying "92001 @ Kariki Naivasha - Block
-		# A6B" names a crop nobody on the farm calls that. The Link fields
-		# already resolve to the item name; only the title still shouted the
-		# number. The code is kept as the fallback so a cycle on an item that
-		# has lost its name still says something.
 		self.title = "{0} @ {1}".format(variety_name(
 			self.variety or self.get("custom_sf_variety")), self.custom_block)
 		# planted_area is summed from the bed rows, and a block cycle recorded by
-		# bed COUNT has none -- so the native area sat at zero beside a custom
-		# field holding the real figure. Where the beds are not itemised, the
-		# area this planting actually occupies is the answer.
 		if not self.get("beds") and flt(self.get("custom_area_planted_sqm")):
 			self.planted_area = flt(self.custom_area_planted_sqm)
 			# And the figure derived from it. The agriculture controller works
-			# implied_plants out before this hook runs, off an area that is still
-			# zero at that point, so it reported none against a cycle standing
-			# 27,100 plants.
 			density = flt(self.get("custom_planting_density_per_sqm")) or flt(
 				self.get("plants_per_sqm"))
 			if density:
@@ -382,10 +270,6 @@ class SummerFlowerCropCycle(CropCycle):
 
 		if not flt(self.custom_planting_density_per_sqm):
 			# _version is resolved further down validate(), after the summer flower
-			# gate -- so it is not there yet when the geometry runs, and reaching for
-			# it threw AttributeError on every block cycle whose density was blank,
-			# which is every new one. Read it off the version the cycle names, and
-			# leave the density alone when it names none.
 			version = getattr(self, "_version", None)
 			if version is None and self.get("custom_crop_protocol_version"):
 				version = frappe.get_cached_doc(
@@ -402,11 +286,6 @@ class SummerFlowerCropCycle(CropCycle):
 			         round(area_sqm, 2)))
 
 		# Beds are what a grower records -- "we planted nineteen beds". Area is
-		# what the maths needs. Deriving one from the other is the difference
-		# between a cycle that knows what is standing in it and one that reports
-		# nothing: of 341 loaded cycles, 339 carried a bed count and no area, so
-		# every plant count, every block rollup and every biological asset value
-		# on them was zero.
 		if not flt(self.custom_area_planted_sqm) and cint(self.custom_beds_planted):
 			block = None
 			if self.get("custom_block"):
@@ -429,36 +308,17 @@ class SummerFlowerCropCycle(CropCycle):
 
 	# ---------------------------------------------------------------- dates
 	def on_update(self):
-		"""The block is written after the cycle exists, not during validate.
-
-		The bed range put on the block links back to this cycle by name. Doing
-		that in validate meant the link was written while the cycle was still
-		unsaved, and every insert died on "Could not find Row #1: Crop Cycle:
-		CC-...". A document cannot be referred to until it is there.
-		"""
+		"""The block is written after the cycle exists, not during validate."""
 		parent = getattr(super(), "on_update", None)
 		if callable(parent):
 			parent()
 		if self.get("custom_cycle_scope") == "Block" and \
 				not self.flags.get("skip_block_ledger"):
 			# A bulk reload saves hundreds of cycles onto the same block; each
-			# save would rewrite the block's whole bed ledger. The caller sets
-			# this flag and rebuilds the block once at the end instead.
 			self.write_block_ledger()
 
 	def _per_bed_area(self, block):
-		"""How big one bed on this block is, in m2.
-
-		The ledger multiplies bed_length by bed_width to get a bed's area, so
-		whatever goes in those two fields has to describe ONE bed. Writing the
-		block's own length and width there -- which is what this used to do --
-		gave every bed the area of the whole block, and a 6.8 ha block came out
-		carrying two billion plants.
-
-		Three sources, best first. None of them is invented: if the ground is
-		not described anywhere, no bed range is written at all, because a made-up
-		bed size would be indistinguishable from a measured one once it is saved.
-		"""
+		"""How big one bed on this block is, in m2."""
 		beds = cint(self.get("custom_beds_planted"))
 		if beds <= 0:
 			return 0.0
@@ -467,16 +327,10 @@ class SummerFlowerCropCycle(CropCycle):
 		if planted > 0:
 			return planted / beds
 		# 2. A bed the block already has. This is deliberately ahead of the
-		# block's area, because `custom_total_beds` is kept equal to the beds
-		# actually PLANTED -- so dividing the block's area by it makes the bed
-		# shrink every time more is planted, and the next cycle saved against
-		# the same block gets a different bed size. A bed that exists is a
-		# measurement; the division is a moving average of occupancy.
 		for b in (block.get("individual_beds") or []):
 			if flt(b.get("area_m2")) > 0:
 				return flt(b.area_m2)
 		# 3. The block's area over the beds it is cut into. Right only while
-		# the block is not over-planted, which is why it comes after a real bed.
 		capacity = cint(block.get("custom_total_beds"))
 		area = flt(block.get("block_area")) or \
 			flt(block.get("custom_net_area_ha")) * 10_000
@@ -488,14 +342,7 @@ class SummerFlowerCropCycle(CropCycle):
 		return flt(avg)
 
 	def _is_standing(self):
-		"""Is this cycle still holding ground today?
-
-		Beds are replanted season after season. Kariki Naivasha's block holds
-		1,951 beds and its cycles plant 6,495 of them across 2024-2027 -- the
-		same ground, three times over. Giving every cycle its own fresh bed
-		numbers made the block read as three times the size it is, so a cycle
-		only occupies beds while it is actually in the ground.
-		"""
+		"""Is this cycle still holding ground today?"""
 		if self.get("custom_sf_cycle_status") in ENDED_STATES:
 			return False
 		if self.get("custom_actual_uproot_date"):
@@ -506,22 +353,8 @@ class SummerFlowerCropCycle(CropCycle):
 		return True
 
 	def write_block_ledger(self):
-		"""Put this cycle's planting onto the Block, as a greenhouse cycle does.
-
-		A greenhouse cycle has always written its beds onto the Greenhouse's own
-		ledger -- that is what makes the greenhouse know what is standing in it.
-		A block cycle read the block's area and wrote nothing back, so a block
-		never knew what it was carrying and every figure derived from its beds
-		was a figure about empty ground.
-
-		The Block now carries the same tables as the Greenhouse, so the same
-		thing can be said on it: one bed range for this cycle, which the block
-		expands into its own beds and rolls up on save.
-		"""
+		"""Put this cycle's planting onto the Block, as a greenhouse cycle does."""
 		# A summer flower cycle can carry its variety in either field: the native
-		# `variety` or the summer flower `custom_sf_variety`. Reading only the
-		# first made a cycle with the second silently skip the block ledger --
-		# the planting happened, the block never heard about it.
 		variety = self.variety or self.get("custom_sf_variety")
 		if not self.get("custom_block") or not variety:
 			return
@@ -536,12 +369,10 @@ class SummerFlowerCropCycle(CropCycle):
 			return            # an older Block that has not been mirrored yet
 
 		# One row per cycle, replaced rather than added to, so re-saving a cycle
-		# does not plant its beds twice.
 		rows = [r for r in (block.get("bed_range") or [])
 		        if (r.crop_cycle or "") != self.name]
 		if not self._is_standing():
 			# Uprooted or ended: the cycle keeps its own record, but it stops
-			# occupying the block so the ground it used can be replanted.
 			if len(rows) != len(block.get("bed_range") or []):
 				block.set("bed_range", rows)
 				block.flags.ignore_permissions = True
@@ -557,16 +388,10 @@ class SummerFlowerCropCycle(CropCycle):
 				indicator="orange", alert=True)
 			return
 		# The block's length is the length of a bed running down it, which is how
-		# the Karen blocks are already laid out (38.46 m beds, 1.3 m apart); the
-		# width is then whatever that length and the bed's area imply.
 		length = flt(block.get("block_length")) or round(per_bed ** 0.5, 4)
 		width = round(per_bed / length, 4)
 
 		# The cycle is what actually stands on the ground, so the block has to
-		# agree with IT, not with the protocol's intended density. Where the
-		# cycle knows both its plants and its area, that ratio is the density --
-		# otherwise a block rolled up 19,000 plants for a cycle recording
-		# 12,632 and both numbers claimed to describe the same nineteen beds.
 		density = 0.0
 		if cint(self.get("custom_live_plant_count")) and flt(self.get("custom_area_planted_sqm")):
 			density = (cint(self.custom_live_plant_count)
@@ -591,12 +416,7 @@ class SummerFlowerCropCycle(CropCycle):
 		block.save()
 
 	def set_dates(self):
-		"""Planned dates from the effective protocol; actuals override forward.
-
-		Once an actual pinch date is recorded, every downstream date is measured
-		from it rather than from the planned pinch, so a late pinch moves the
-		whole remaining cycle instead of silently compressing it.
-		"""
+		"""Planned dates from the effective protocol; actuals override forward."""
 		if not self.get("custom_planting_date"):
 			return
 		planted = getdate(self.custom_planting_date)
@@ -614,11 +434,7 @@ class SummerFlowerCropCycle(CropCycle):
 			planted, 7 * p.total_weeks_in_ground + drift)
 
 	def set_plant_age(self):
-		"""Age today, or age at uprooting once that has actually happened.
-
-		An uproot booked for a future date must not age the crop forward: the
-		plants are still in the ground and their age is still today's.
-		"""
+		"""Age today, or age at uprooting once that has actually happened."""
 		if not self.get("custom_planting_date"):
 			return
 		end = getdate(nowdate())
@@ -658,11 +474,7 @@ class SummerFlowerCropCycle(CropCycle):
 
 	# ------------------------------------------------------------- override
 	def check_override_approval(self):
-		"""A cycle-level protocol override needs justification and sign-off.
-
-		The master protocol values are snapshotted at approval so the deviation
-		stays comparable even if the protocol is later amended.
-		"""
+		"""A cycle-level protocol override needs justification and sign-off."""
 		if not cint(self.get("custom_has_protocol_override")):
 			self.custom_protocol_original_values = None
 			self.custom_override_approved_by = None
@@ -697,11 +509,6 @@ class SummerFlowerCropCycle(CropCycle):
 			    or self.get("custom_planned_uproot_date")) else None
 		plants = cint(self.custom_live_plant_count)
 		# Two figures, because they answer two questions. What comes off the
-		# plant is what the pickers cut and what the harvest is counted against;
-		# what grades out of it is what the market gets and what the farm is
-		# targeted on. The plan has always sized the crop on the second -- the
-		# cycle forecast only ever held the first, so a crop rejecting a fifth
-		# carried that fifth in its targets as output.
 		from upande_summer_flowers.summer_flowers.doctype \
 			.summer_flower_production_plan.summer_flower_production_plan import saleable
 
@@ -734,11 +541,8 @@ class SummerFlowerCropCycle(CropCycle):
 		self.custom_total_harvested_stems = sum(cint(r.actual_stems) for r in done)
 		self.custom_expected_stems_life = sum(cint(r.expected_stems) for r in rows)
 		# The same life, net of what fails grading. Kept beside the gross rather
-		# than replacing it: the pickers are measured on what they cut and the
-		# market on what it can be sold.
 		self.custom_saleable_stems_life = sum(cint(r.saleable_stems) for r in rows)
 		# Variance is against what the harvested flushes were expected to yield,
-		# not against the whole life, or an early cycle always looks catastrophic.
 		self.custom_harvest_variance_stems = (
 			self.custom_total_harvested_stems
 			- sum(cint(r.expected_stems) for r in done)
@@ -757,11 +561,7 @@ class SummerFlowerCropCycle(CropCycle):
 
 	# ------------------------------------------------------ weekly targets
 	def build_weekly_targets(self):
-		"""Expected stems per harvest week per grade.
-
-		Only harvest weeks get rows: between flushes the expectation is zero by
-		definition, and storing 111 zero rows per cycle would bury the real ones.
-		"""
+		"""Expected stems per harvest week per grade."""
 		grades = [(g.grade, flt(g.allocation_pct))
 		          for g in (self.get("custom_grade_split") or [])]
 		if not grades:
@@ -776,10 +576,6 @@ class SummerFlowerCropCycle(CropCycle):
 			return
 
 		# Actuals and hand-set targets survive the rebuild; auto-defaulted targets
-		# are recomputed. Whether a target was hand-set is recorded on the row
-		# rather than inferred from it differing from the expectation -- inference
-		# is self-perpetuating, because one save that changed the expectation while
-		# keeping the target would make the pair look hand-set forever.
 		prev = {
 			(cint(r.year), cint(r.week_no), r.grade): (
 				cint(r.target_stems), cint(r.is_manual), cint(r.actual_stems), r.notes)
@@ -789,8 +585,6 @@ class SummerFlowerCropCycle(CropCycle):
 		for fl in (self.get("custom_flush_schedule") or []):
 			for grade, pct in grades:
 				# The share of what grades out, not of what is cut: a target is
-				# what the farm undertakes to deliver, and rejects are not
-				# delivered.
 				expected = int(round(cint(fl.saleable_stems) * pct / 100.0))
 				key = (cint(fl.year), cint(fl.week_no), grade)
 				old_target, manual, actual, notes = prev.get(key, (0, 0, 0, None))
@@ -854,12 +648,7 @@ class SummerFlowerCropCycle(CropCycle):
 
 	# ---------------------------------------------------- biological asset
 	def sync_biological_asset(self):
-		"""A standing crop is a biological asset, so make it a real Asset.
-
-		The value moves as plants are uprooted, so it is recomputed on every save
-		while the asset is still a draft. Once submitted the asset is an accounting
-		document and is left alone -- adjusting it then is a write-down, not an edit.
-		"""
+		"""A standing crop is a biological asset, so make it a real Asset."""
 		self.custom_biological_asset_value = (
 			flt(self.custom_cost_per_plant) * cint(self.custom_live_plant_count))
 		if not cint(self.get("custom_is_biological_asset")):
@@ -955,13 +744,7 @@ class SummerFlowerCropCycle(CropCycle):
 
 	@frappe.whitelist()
 	def record_harvest(self, flush_number, actual_stems, harvest_date=None):
-		"""Close a flush with what was actually cut and roll the forecast on.
-
-		The date checked is the one the harvest actually happened on -- the
-		supplied date if there is one, else the flush's planned date. Cutting
-		earlier than planned is a real thing and is allowed; recording a cut that
-		has not happened yet is not.
-		"""
+		"""Close a flush with what was actually cut and roll the forecast on."""
 		row = next((r for r in (self.get("custom_flush_schedule") or [])
 		            if cint(r.flush_number) == cint(flush_number)), None)
 		if not row:
@@ -992,11 +775,7 @@ class SummerFlowerCropCycle(CropCycle):
 
 	@frappe.whitelist()
 	def record_cuttings(self, quantity, taken_on=None):
-		"""Cuttings taken off this cycle for propagation.
-
-		Cuttings do not reduce the plant count -- the plant stays in the ground --
-		so this is tracked separately from uprooting.
-		"""
+		"""Cuttings taken off this cycle for propagation."""
 		qty = cint(quantity)
 		if qty <= 0:
 			frappe.throw(_("Cutting quantity must be positive."))
@@ -1041,22 +820,12 @@ def _monday(year, week):
 
 
 # ---------------------------------------------------------------------------
-# Biological assets
-# ---------------------------------------------------------------------------
 
 BIO_CATEGORY = "BIOLOGICAL ASSETS (PLANTS)"
 
 
 def bio_asset_item(variety):
-	"""The fixed-asset Item that stands for a variety as a biological asset.
-
-	The variety's own Item is a stock item -- it is the stems that get sold -- so it
-	cannot double as the asset. One fixed-asset item per variety keeps asset
-	reporting readable without turning the variety into something it is not.
-
-	A site-wide item can be nominated in Summer Flower Settings instead, which
-	avoids taking every new variety through item approval.
-	"""
+	"""The fixed-asset Item that stands for a variety as a biological asset."""
 	nominated = frappe.db.get_single_value("Summer Flower Settings",
 	                                       "biological_asset_item")
 	if nominated:
@@ -1077,9 +846,6 @@ def bio_asset_item(variety):
 	item.is_fixed_asset = 1
 	item.is_stock_item = 0
 	# Set as an integer on purpose. Asset.validate_item reads this through
-	# get_cached_value, which for a freshly inserted Item hands back the field
-	# default as the string "0" -- and "0" is truthy, so the asset would refuse the
-	# item as disabled.
 	item.disabled = 0
 	item.asset_category = BIO_CATEGORY
 	item.description = _(
@@ -1093,12 +859,7 @@ def bio_asset_item(variety):
 
 
 def _check_item_usable(code):
-	"""This site auto-disables any Item that is not through item approval.
-
-	Forcing it enabled would step around a real control, so the asset stops here
-	and says what has to happen instead. Nominating an already-approved item in
-	Summer Flower Settings avoids the round trip for every new variety.
-	"""
+	"""This site auto-disables any Item that is not through item approval."""
 	row = frappe.db.get_value("Item", code,
 	                          ["disabled", "workflow_state"], as_dict=True)
 	if not row:
@@ -1117,8 +878,6 @@ def _asset_location(farm, greenhouse=None):
 	"""Asset needs a Location. Prefer the farm's own, then its name."""
 	if farm:
 		# custom_location is another app's field on Farm, and a site can be without
-		# it. Asking anyway is a SELECT on a column that is not there, which takes
-		# the whole asset creation down rather than falling back to the farm name.
 		loc = (frappe.db.get_value("Farm", farm, "custom_location")
 		       if frappe.get_meta("Farm").has_field("custom_location") else None)
 		if loc and frappe.db.exists("Location", loc):
@@ -1134,8 +893,6 @@ def _asset_location(farm, greenhouse=None):
 
 
 # Asset renamed its value fields across versions -- this one has purchase_amount and
-# net_purchase_amount, older ones gross_purchase_amount -- so write whichever exist
-# rather than pinning to one spelling.
 ASSET_VALUE_FIELDS = ("gross_purchase_amount", "purchase_amount",
                       "net_purchase_amount")
 
@@ -1155,13 +912,7 @@ def _set_asset_value(asset, value, quantity):
 
 
 def create_biological_asset(cycle):
-	"""Create a non-depreciating Asset for a standing crop.
-
-	Non-depreciating because the site's category has no accumulated depreciation
-	account configured; a depreciating asset would fail on submit. The asset is
-	left as a draft for finance to submit, which is also what keeps the value
-	editable while plants are still going in and coming out.
-	"""
+	"""Create a non-depreciating Asset for a standing crop."""
 	variety = cycle.get("custom_sf_variety") or cycle.get("variety")
 	if not variety:
 		frappe.throw(_("A biological asset needs a variety."))

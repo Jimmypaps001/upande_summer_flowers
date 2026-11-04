@@ -1,21 +1,5 @@
 # Copyright (c) 2026, James Kiruga and contributors
-# For license information, please see license.txt
-"""What a production plan asks of the land, against what the farm has.
-
-This used to be eleven fields and a block-by-block table written onto every
-production plan on every save. Nothing read them: they were there to be looked
-at, once, by somebody deciding whether to approve the plan. Stored, they were
-eleven more numbers to keep true and a table that went stale the moment a block
-changed; worked out on demand they are the same answer, always current, and the
-plan is eleven fields shorter.
-
-Two capacity columns, deliberately, because they disagree. The stated figure is
-what each block claims through its area history; the measured one is the sum of
-its beds' own length and width. Where most blocks have no beds pointing at them
-the measured column reads low -- which is a statement about the bed register,
-not about the land, and saying so is more use than averaging the two into one
-number nobody can act on.
-"""
+"""What a production plan asks of the land, against what the farm has."""
 
 from collections import defaultdict
 
@@ -25,10 +9,7 @@ from frappe.utils import cint, flt
 
 
 def analyse(plan):
-	"""Returns the totals, the block-by-block rows and the verdict.
-
-	`plan` is a Summer Flower Production Plan document or its name.
-	"""
+	"""Returns the totals, the block-by-block rows and the verdict."""
 	from upande_summer_flowers.summer_flowers.doctype.planting_calendar \
 		.planting_calendar import standing_plantings
 	from upande_summer_flowers.summer_flowers.doctype.summer_flower_production_plan \
@@ -51,8 +32,6 @@ def analyse(plan):
 	sqm_per_bed = bed_sqm(v) if v else 0
 	t["space_required_ha"] = (t["beds_required_peak"] * sqm_per_bed) / 10_000
 	# No bed size, no land answer. Reporting hectares from a bed nobody has
-	# measured is worse than reporting none, because a plan that says it fits
-	# gets approved.
 	bed_size_unknown = not sqm_per_bed
 
 	plants_peak = sum(cint(r.plants) for r in plan.plan_blocks
@@ -112,10 +91,6 @@ def analyse(plan):
 		if t["space_stated_ha"] else 0)
 
 	# Land at this farm that belongs to no block. A bed sits under a block or
-	# directly under a greenhouse, never both, so this is the rest of the farm --
-	# and it is where the answer to "we have no space" usually is. A farm with no
-	# blocks at all and 14.4 ha of beds has a different problem from one with no
-	# land, and needs a different thing done about it.
 	unblocked = frappe.db.sql('''
 		select count(*) n, ifnull(sum(b.bed_area), 0) sqm
 		from tabBed b join tabWarehouse w on w.name = b.greenhouse
@@ -127,8 +102,6 @@ def analyse(plan):
 	notes = out["notes"]
 	not_placed = cint(plan.plantings_not_placed)
 	# Said first and on its own, because everything after it is arithmetic on a
-	# bed size nobody has given. A plan that reports hectares it cannot know gets
-	# approved on the strength of them.
 	if bed_size_unknown:
 		notes.append(_(
 			"The land figures below cannot be trusted: {0} does not say how big a "
@@ -167,14 +140,10 @@ def analyse(plan):
 		         round(t["space_stated_ha"], 3), not_placed))
 	elif not_placed:
 		# Same fact, without the claim about land. Saying the figures cannot be
-		# trusted and then "there is enough land in total" in the next breath is
-		# worse than either line alone.
 		notes.append(_(
 			"{0} plantings are waiting on a block. Whether the farm has room for "
 			"them cannot be said until the bed size is set.").format(not_placed))
 	# Its own note, not part of the chain above. Land the plan cannot reach is
-	# worth saying, but never at the price of suppressing the reason plantings
-	# failed -- that line is the one a planner acts on.
 	if blocks and t["beds_unblocked"]:
 		notes.append(_(
 			"A further {0} beds ({1} ha) at this farm belong to no block, so the "

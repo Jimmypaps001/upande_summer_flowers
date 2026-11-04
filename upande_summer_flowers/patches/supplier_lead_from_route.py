@@ -1,22 +1,4 @@
-"""The supplier's lead time, onto the protocols and versions that lost it.
-
-A route's entry stage has always carried its own lead -- tissue culture at
-fifteen weeks, roots at fifty-two -- and the procurement plan reads it there, so
-an order placed against a planting has always been dated right. The protocol
-header carries one lead as well, and propagation_solver sizes the motherstock
-against that one: when a pool has to be built, the TC is ordered the header's
-lead ahead of the first sticking.
-
-On protocols saved before sync_route_from_ways filled the header, it is zero --
-fourteen Eryngium versions on the live site say nothing is bought at all -- and a
-zero there is not "no wait", it is "ordered the week it is needed", fifteen weeks
-late every time. The route knew; nothing passed it on.
-
-Taken from the route rather than typed, so it cannot disagree with the order the
-plan places. Versions are written too: a version is the snapshot a plan was built
-against, and leaving them alone would mean no plan that already exists ever sees
-it. Only a lead that is missing is filled; a figure somebody entered is left.
-"""
+"""The supplier's lead time, onto the protocols and versions that lost it."""
 
 import frappe
 from frappe.utils import cint
@@ -66,13 +48,7 @@ def _fill(doctype, names, table, field):
 
 
 def _mark_bought(protocols):
-    """A way whose route starts at a bought stage says so.
-
-    The flag is set on every save, but a protocol saved before that is stored
-    with a zero -- and the route card reads it to decide whether the supplier
-    lead box can be typed in, so the one field a buyer needs to correct is the
-    one greyed out. Nothing is planned off it; this is so the form is usable.
-    """
+    """A way whose route starts at a bought stage says so."""
     if not frappe.db.table_exists("Crop Protocol Way"):
         return 0
     from upande_summer_flowers.summer_flowers import stages as _stages

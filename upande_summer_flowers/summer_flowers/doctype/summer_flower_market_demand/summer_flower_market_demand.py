@@ -1,5 +1,4 @@
 # Copyright (c) 2026, James Kiruga and contributors
-# For license information, please see license.txt
 
 import frappe
 from frappe import _
@@ -47,23 +46,10 @@ class SummerFlowerMarketDemand(Document):
 			row.idx = idx
 
 	def check_one_per_variety_and_farm(self):
-		"""One register per variety per farm, and only one.
-
-		The market sheet is stated by farm -- Carzan St wants 4,464,900 stems of
-		Double Date Pink, Kariki Juja wants its own of Teeny Tiny Pink -- so the
-		register is one farm's order book for one crop, and the pair is its name.
-		A second register for the same pair makes every downstream question
-		ambiguous: which demand did this plan come from, which one is the demand.
-		Extend the horizon or edit the weeks instead of starting another.
-
-		The same variety at a second farm is a different register, not a duplicate.
-		"""
+		"""One register per variety per farm, and only one."""
 		if not self.variety or not self.farm:
 			return
 		# Not "name != self.name": autoname runs before validate, so a new document
-		# already carries the name it is about to collide with and would exclude the
-		# very record it duplicates -- leaving a raw "Duplicate entry" from MySQL
-		# instead of an explanation.
 		filters = {"variety": self.variety, "farm": self.farm}
 		if not self.is_new():
 			filters["name"] = ["!=", self.name]
@@ -126,11 +112,7 @@ class SummerFlowerMarketDemand(Document):
 	# ----------------------------------------------------------------- extend
 	@frappe.whitelist()
 	def extend_horizon(self, weeks=None, copy_from_last_year=1):
-		"""Append weeks so the register reaches the target years ahead.
-
-		Demand is entered progressively, so this only ever adds empty (or
-		last-year-seeded) weeks to the end -- it never touches existing rows.
-		"""
+		"""Append weeks so the register reaches the target years ahead."""
 		copy_from_last_year = frappe.utils.cint(copy_from_last_year)
 		weeks = frappe.utils.cint(weeks) or self.horizon_gap_weeks
 		if not weeks:
@@ -145,7 +127,6 @@ class SummerFlowerMarketDemand(Document):
 			start_year, start_week = current_week()
 
 		# Seed each new week from the same week one year earlier, so a progressive
-		# horizon starts from last year's shape rather than zero.
 		prior = {(r.year, r.week_no): r.demand_stems for r in self.demand_weeks}
 
 		added = 0
@@ -175,12 +156,7 @@ class SummerFlowerMarketDemand(Document):
 	@frappe.whitelist()
 	def create_production_plan(self, farm=None, season_start_year=None,
 	                           from_year=None, from_week=None, weeks=None):
-		"""Build a Production Plan for one season of this demand register.
-
-		Keyword arguments, deliberately. build_from_demand grew a farm and a season in
-		front of its old positional list, and this call was still positional -- so the
-		year went into the farm and the planner looked for a protocol at farm "2026".
-		"""
+		"""Build a Production Plan for one season of this demand register."""
 		from upande_summer_flowers.summer_flowers.doctype.summer_flower_production_plan.summer_flower_production_plan import (
 			build_from_demand,
 		)

@@ -1,14 +1,5 @@
 # Copyright (c) 2026, James Kiruga and contributors
-# For license information, please see license.txt
-"""Site-wide settings for summer flower planning.
-
-The only thing with rules of its own is the lift profile. A consignment is not
-handed over in one go: roots go to the trough, are lifted in waves, and each
-wave is a share of the consignment. Those shares are the whole arithmetic --
-5,000 roots at fifteen plants each is 75,000 plants, and 45/30/25 is 33,750
-then 22,500 then 18,750 -- so a set that does not add to a hundred is not a
-rounding question, it is plants invented or lost.
-"""
+"""Site-wide settings for summer flower planning."""
 
 import frappe
 from frappe import _
@@ -16,7 +7,6 @@ from frappe.model.document import Document
 from frappe.utils import cint, flt
 
 # A share may miss a hundred by this much and still be rounding rather than a
-# mistake: three equal lifts are 33.3 each.
 SLACK = 0.5
 
 
