@@ -809,7 +809,6 @@ class SummerFlowerProductionPlan(Document):
 		# plan for the same crop and season rebuilds it instead of starting a rival.
 		return build_from_plan(self.name, as_dict=True)
 
-	@frappe.whitelist()
 	def _warn_if_agreement_stale(self, before):
 		"""Say so when a rebuild has moved the ground under an agreed order.
 
@@ -833,6 +832,7 @@ class SummerFlowerProductionPlan(Document):
 			title=_("The agreed material no longer matches the plan"),
 			indicator="orange")
 
+	@frappe.whitelist()
 	def regenerate(self, adopt_current_protocol=1):
 		"""Rebuild the weekly grid and planting proposals against the current protocol.
 
