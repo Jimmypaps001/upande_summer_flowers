@@ -25,6 +25,7 @@
   "reject_pct",
   "plants_per_sqm_net",
   "min_planting_area_sqm",
+  "min_order_qty",
   "custom_summer_flowers_section",
   "approval_section",
   "approved_by",
@@ -1326,6 +1327,13 @@
    "fieldname": "version_record_section",
    "fieldtype": "Section Break",
    "label": "This snapshot"
+  },
+  {
+   "fieldname": "min_order_qty",
+   "fieldtype": "Int",
+   "label": "Minimum Order Quantity",
+   "default": "1",
+   "description": "The step a propagation order is rounded to -- what a supplier will sell in. Not the planting area, which is ground."
   }
  ],
  "grid_page_length": 50,

@@ -545,6 +545,12 @@ def peak_sizing(plan, cycles=None, max_cycles=None):
 	lead = cint(v.supplier_lead_weeks)
 	per_week = flt(v.cuttings_per_plant_per_week) or 1.0
 	per_area = cint(v.plants_per_bed) or cint(v.min_planting_area_sqm) or 1
+	# What a propagation order is rounded to, which is NOT the planting area.
+	# A bed is how much ground a planting takes; a lab does not sell by the
+	# bed. Rounding the generations to one is what turned a third of 10,000
+	# into 4,000 -- the arithmetic was right and the step was somebody else's.
+	# One by default, so the pool divides as cleanly as the numbers allow.
+	order_qty = cint(v.get("min_order_qty")) or 1
 	life = cint(v.motherstock_life_weeks)
 	need_weeks = len(demand)
 	# The span the line has to stay alive across, not how many weeks are in it.
@@ -575,8 +581,8 @@ def peak_sizing(plan, cycles=None, max_cycles=None):
 		# arithmetic anyone can check on the back of an envelope. An answer
 		# nobody can predict is not a lever, however well it optimises.
 		mothers = peak / per_week
-		split = even_generations(mothers, c + 1, per_area) or [
-			round_up_to_area(mothers, per_area)]
+		split = even_generations(mothers, c + 1, order_qty) or [
+			round_up_to_area(mothers, order_qty)]
 		buy, batches = cint(split[0]), [cint(x) for x in split[1:]]
 		gens = len(split)
 		raw = mothers / max(1, gens)
@@ -646,6 +652,7 @@ def peak_sizing(plan, cycles=None, max_cycles=None):
 		"season_cuttings": sum(demand.values()),
 		"cuttings_per_mother_per_week": per_week,
 		"min_planting_area": per_area,
+		"min_order_qty": order_qty,
 		"establishment_weeks": estab,
 		"regen_weeks": regen,
 		"ramp_lead_weeks": ramp_lead,
@@ -1166,6 +1173,12 @@ def multiplications_for_tc(plan, tc, max_search=24):
 	tc = cint(tc)
 	per_week = flt(v.cuttings_per_plant_per_week) or 1.0
 	per_area = cint(v.plants_per_bed) or cint(v.min_planting_area_sqm) or 1
+	# What a propagation order is rounded to, which is NOT the planting area.
+	# A bed is how much ground a planting takes; a lab does not sell by the
+	# bed. Rounding the generations to one is what turned a third of 10,000
+	# into 4,000 -- the arithmetic was right and the step was somebody else's.
+	# One by default, so the pool divides as cleanly as the numbers allow.
+	order_qty = cint(v.get("min_order_qty")) or 1
 	regen = cint(v.weeks_on_tray) + cint(v.weeks_on_pot)
 	life = cint(v.motherstock_life_weeks)
 	ramp = v.ramp_ratios() or [1.0]
@@ -1190,7 +1203,7 @@ def multiplications_for_tc(plan, tc, max_search=24):
 			if running >= peak_mothers:
 				break
 			take = min(float(tc), peak_mothers - running)
-			out.append(max(1, round_up_to_area(take, per_area)))
+			out.append(max(1, round_up_to_area(take, order_qty)))
 			running += out[-1]
 		return out
 

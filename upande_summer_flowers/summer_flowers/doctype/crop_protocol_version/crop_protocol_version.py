@@ -32,6 +32,12 @@ def bed_sqm_per_ha():
 	return _b(BED_SQM_PER_HA)
 
 
+# What a stage is assumed to lose when the protocol does not say. Five per
+# cent at rooting, five at establishment, five at grading: a house allowance,
+# not a measurement, and replaced the moment somebody states the real one.
+DEFAULT_STAGE_LOSS_PCT = 5.0
+
+
 class CropProtocolVersion(Document):
 	def guard_snapshot_only(self):
 		"""A version is written by approving a Crop Protocol, and by nothing else.
@@ -574,6 +580,24 @@ class CropProtocolVersion(Document):
 				_("Grade allocation totals {0}%, not 100%.").format(self.grade_total_pct),
 				indicator="orange", title=_("Check grade split"),
 			)
+
+		# A stage nobody has measured still loses plants. Thirty-three of the
+		# Active protocols here state 100% rooting and 100% establishment,
+		# which is not a measurement -- it is the field never having been
+		# filled in -- and the orders sized from it were short by whatever
+		# really dies. A house allowance of 5% a stage stands in until somebody
+		# measures the variety, and the card says it is an allowance rather
+		# than letting it pass for a figure the protocol stated.
+		#
+		# Only where nothing was said. A protocol that states 95%, or 80%, or
+		# any other number keeps it; this never argues with a measurement.
+		if not flt(self.rooting_success_pct) or flt(self.rooting_success_pct) == 100:
+			self.rooting_success_pct = 100.0 - DEFAULT_STAGE_LOSS_PCT
+		if (not flt(self.field_establishment_pct)
+				or flt(self.field_establishment_pct) == 100):
+			self.field_establishment_pct = 100.0 - DEFAULT_STAGE_LOSS_PCT
+		if not flt(self.cutting_reject_pct):
+			self.cutting_reject_pct = DEFAULT_STAGE_LOSS_PCT
 
 		rooting = (self.rooting_success_pct or 100) / 100
 		field = (self.field_establishment_pct or 100) / 100
