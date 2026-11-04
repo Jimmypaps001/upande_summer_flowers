@@ -56,13 +56,6 @@ LIFTS = "custom_sf_lifts"
 # outside propagator who delivers plants and charges for each. A route without one
 # (bought as plants, own roots straight in) has nobody to choose.
 PROPAGATING = _stages.StageSet((_stages.MOTHERSTOCK, _stages.PROPAGATION))
-def unit_type():
-	from upande_summer_flowers.summer_flowers.settings import propagation_unit_type
-
-	return propagation_unit_type()
-# A consignment handed over in lifts is a tissue-culture or a roots delivery: the
-# planning that reads lifts (tc_supply, propagation_actuals) knows them by these
-# names. A lift belongs to a way; its form is read off that way's first stage.
 class _LiftForms:
 	"""{stage: lift form}, read from the Material Stage records."""
 

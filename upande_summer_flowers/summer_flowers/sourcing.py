@@ -629,23 +629,3 @@ def harvest_chain(plan, stage=None):
 		             "sticking_weeks": stick},
 		"rows": rows,
 	}
-
-
-def chain_report(plan, stage=None):
-	"""Readable harvest_chain(), for the console."""
-	r = harvest_chain(plan, stage)
-	pr = r["protocol"]
-	print("%s -- %s at %s (%s)" % (r["plan"], r["variety"], r["farm"], r["cycle"]))
-	print("protocol: plant -> first cut %s wks, %s harvest(s), %s wks in ground, "
-	      "%s wks turnaround\n" % (pr["weeks_to_first_cut"], pr["harvests"],
-	                               pr["weeks_in_ground"], pr["turnaround_weeks"]))
-	print("%-12s %-12s %-12s %-12s %-12s %-12s %6s" % (
-		"ORDER BY", "start prop", "PLANT", "FIRST CUT", "last cut", "bed free", "beds"))
-	for x in r["rows"][:20]:
-		print("%-12s %-12s %-12s %-12s %-12s %-12s %6s%s" % (
-			x["order_by"] or "-", x["start_prop"], x["plant"], x["first_cut"],
-			x["last_cut"], x["bed_free"], x["beds"],
-			"  <- order date has passed" if x["order_late"] else ""))
-	if len(r["rows"]) > 20:
-		print("   ... and %d more" % (len(r["rows"]) - 20))
-	return r

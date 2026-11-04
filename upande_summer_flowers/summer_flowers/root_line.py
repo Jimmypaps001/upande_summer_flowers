@@ -1514,38 +1514,6 @@ def agree_material_plan(production_plan, tc_qty=None, roots_qty=None,
 			                     "error": frappe.utils.strip_html(str(e))[:200]})
 	return out
 
-
-def _after_material_agreement(production_plan, tc):
-	from upande_summer_flowers.summer_flowers.doctype \
-		.summer_flower_procurement_plan.summer_flower_procurement_plan import build
-	from upande_summer_flowers.summer_flowers.doctype \
-		.summer_flower_propagation_plan.summer_flower_propagation_plan import (
-			build_from_plan,
-		)
-
-	def procurement():
-		# Both levers, because which one bites depends on the route and the card
-		# does not need to know. tc_qty sizes a pool; units_qty trims an order
-		# bought one unit per plant -- and passing only the first is why a crop
-		# bought as plants was agreed at 4,000 and its procurement plan went on
-		# saying 6,000.
-		name = build(production_plan, replace=1,
-		             tc_qty=tc or None, units_qty=tc or None)
-		apply_held_choices(production_plan)
-		return {"name": name}
-
-	def propagation():
-		r = build_from_plan(production_plan, as_dict=True)
-		return r if isinstance(r, dict) else {"name": r}
-
-	# Agreeing a quantity is a decision about the PLAN. It used to build the
-	# propagation plan here as well, which commits the bench to raising a figure
-	# nobody has agreed to buy yet -- the supplier has not been asked, and what
-	# is raised has to be what arrives. The propagation plan is built where that
-	# is known: when the schedule is confirmed on the Procurement tab.
-	return [(_("Procurement Plan"), procurement)]
-
-
 @frappe.whitelist()
 def propagation_units(farm=None):
 	"""The benches that could raise this plan's material."""

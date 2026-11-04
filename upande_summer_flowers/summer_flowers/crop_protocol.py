@@ -480,23 +480,6 @@ def farm_bed_geometry(farm):
 		   where farm=%s and ifnull(custom_total_beds,0)>0""", farm)[0][0]
 	return (round(flt(area), 4) or None), (cint(round(flt(beds))) or None)
 
-
-def set_farm_geometry(doc):
-	"""Fill the bed figures from the farm. NOT called when a protocol is saved.
-
-	A protocol is what a variety does; beds and blocks are the ground it is planted
-	in. This is here for whatever plans against real ground and needs to know how
-	many plants a bed of that farm holds.
-	"""
-	if not is_summer_flower(doc):
-		return
-	area, beds = farm_bed_geometry(doc.get("farm"))
-	if area:
-		doc.custom_sf_sqm_net_per_bed = area
-	if beds:
-		doc.custom_sf_beds_per_block = beds
-
-
 def number_flushes(doc):
 	"""Number the harvest rows by where they sit.
 

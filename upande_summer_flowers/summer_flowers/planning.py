@@ -61,17 +61,6 @@ def iso_monday(year, week):
 	"""Date of the Monday starting ISO `week` of ISO `year`."""
 	return datetime.date.fromisocalendar(int(year), int(week), 1)
 
-
-def weeks_in_iso_year(year):
-	"""53 if this ISO year has a week 53, else 52."""
-	year = int(year)
-	try:
-		datetime.date.fromisocalendar(year, 53, 1)
-		return 53
-	except ValueError:
-		return 52
-
-
 def iso_year_week(date):
 	"""(iso_year, iso_week) for a date, string or datetime."""
 	if isinstance(date, str):
@@ -80,12 +69,6 @@ def iso_year_week(date):
 		date = date.date()
 	cal = date.isocalendar()
 	return cal[0], cal[1]
-
-
-def add_weeks(year, week, delta):
-	"""Move `delta` ISO weeks from (year, week), honouring 53-week years."""
-	return iso_year_week(iso_monday(year, week) + datetime.timedelta(weeks=int(delta)))
-
 
 def week_sequence(start_year, start_week, count):
 	"""[(year, week, monday_date), ...] of `count` consecutive ISO weeks."""

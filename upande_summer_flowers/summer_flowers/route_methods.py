@@ -115,30 +115,6 @@ def sync_route_from_methods(doc):
 	for r in rows:
 		doc.append(ROUTE_FIELD, r)
 
-
-def split_route_into_methods(doc):
-	rows = _stages(doc)
-	if not rows:
-		return 0
-	chains = _split(rows)
-	for no, chain in zip(METHODS, chains):
-		head = chain[0]
-		doc.set(_f(no, "entry"), head.get("stage"))
-		doc.set(_f(no, "entry_weeks"), cint(head.get("weeks")))
-		doc.set(_f(no, "entry_loss_pct"), flt(head.get("loss_pct")))
-		doc.set(_f(no, "share_pct"), flt(head.get("share_pct")))
-		doc.set(_f(no, "lead_weeks"), cint(head.get("lead_weeks")))
-		doc.set(_f(no, "steps"), [])
-		for r in chain[1:]:
-			doc.append(_f(no, "steps"), _row(r))
-	if len(chains) > len(METHODS):
-		frappe.msgprint(
-			_("{0} has {1} ways in and only {2} methods are held. The rest are "
-			  "still in the route table and still planned; they are not shown "
-			  "above.").format(doc.name, len(chains), len(METHODS)))
-	return min(len(chains), len(METHODS))
-
-
 def sync_methods_from_route(doc):
 	if not any_method_set(doc):
 		return
