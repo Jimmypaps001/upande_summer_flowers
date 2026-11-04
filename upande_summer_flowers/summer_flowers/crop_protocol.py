@@ -210,6 +210,32 @@ def before_validate(doc, method=None):
 	# the form read "Variety" twice. variety is the one that is typed and the one
 	# the naming rule uses; variety_item is filled from it because
 	# upande_agriculture reads that name.
+	# Two fields the SNAPSHOT used to invent and the protocol did not have, so a
+	# version came out holding a company and a build-up profile its protocol left
+	# blank -- and the two then read as different documents. They are derived here
+	# instead, on the protocol, which is the thing a person edits and the thing
+	# the version is a copy of.
+	#
+	# The company is the farm's. A protocol is approved for a variety at a farm
+	# and a farm belongs to one company, so there is nothing to choose. It used
+	# to arrive from whatever Company the session happened to default to, which
+	# is not an answer, just a habit.
+	if doc.get("farm") and not doc.get("custom_sf_company"):
+		doc.custom_sf_company = frappe.db.get_value("Farm", doc.get("farm"), "company")
+	# The build-up profile carried a default on the version field and none on the
+	# protocol, so every version said 25,50,75,100 over a protocol that said
+	# nothing. Same value, written where it can be seen and changed.
+	if not doc.get("custom_sf_ramp_profile"):
+		doc.custom_sf_ramp_profile = "25,50,75,100"
+	# An empty Select reads as NULL on rows written before the field existed and
+	# as "" on anything Frappe has inserted since -- it fills an unset Select
+	# with the first option, which is blank. The two mean the same thing and
+	# compared as different, so a snapshot of an untouched protocol came back
+	# reporting three fields changed. Said one way here.
+	for f in doc.meta.fields:
+		if f.fieldtype == "Select" and doc.get(f.fieldname) is None:
+			doc.set(f.fieldname, "")
+
 	if doc.get("variety") and not doc.get("variety_item"):
 		doc.variety_item = doc.get("variety")
 	elif doc.get("variety_item") and not doc.get("variety"):
@@ -808,7 +834,14 @@ def derive(doc):
 	# rows once they carry their own. Without this it was derived on the snapshot and
 	# never returned, so a crop cutting every week showed a blank interval on the very
 	# form that had just worked it out.
-	if cint(probe.flush_interval_weeks) and not cint(doc.get("weeks_between_flushes")):
+	# ... and returned whenever the rows settle it, not only when the form was
+	# left blank. The snapshot reads the interval off the flush rows every time,
+	# so a protocol still holding a typed value the rows disagree with was the
+	# one case where a version could not match the protocol it came from: the
+	# rows said 13 weeks between flushes and the form went on saying 1. The
+	# rows win in both places now, which is what the snapshot already meant by
+	# "not a second, stale opinion".
+	if cint(probe.flush_interval_weeks):
 		doc.weeks_between_flushes = cint(probe.flush_interval_weeks)
 
 	# The flush rows gain their derived columns too.

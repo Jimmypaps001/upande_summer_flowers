@@ -619,7 +619,6 @@
    "fieldname": "total_stems_per_plant_life",
    "fieldtype": "Float",
    "label": "Total Stems Per Plant Life",
-   "precision": "2",
    "read_only": 1
   },
   {
@@ -962,7 +961,6 @@
    "fieldname": "life_expectancy_years",
    "fieldtype": "Float",
    "label": "Life Expectancy (years)",
-   "precision": "2",
    "read_only": 1
   },
   {
