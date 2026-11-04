@@ -28,6 +28,19 @@ frappe.ui.form.on("Summer Flower Production Plan", {
 				true
 			);
 		}, ACTIONS);
+		// The step between proposing the plantings and approving them, and the one
+		// the menu did not offer at all -- it had to be reached by opening the
+		// planning page and finding the plan again. The hash lands on the tab
+		// rather than the top of the page, because being dropped on Overview and
+		// told to look for Materials Planning is most of the way to not finding it.
+		frm.add_custom_button(__("Plan Materials"), () => {
+			const q = new URLSearchParams({
+				plan: frm.doc.name,
+				variety: frm.doc.variety || "",
+				farm: frm.doc.farm || "",
+			});
+			window.open(`/summer-flowers-planning?${q}#motherstock`, "_blank");
+		}, ACTIONS);
 		frm.add_custom_button(__("Edit Crop Protocol"), () => {
 			// The assumptions at the foot of the sheet are this protocol. Editing it
 			// puts it back to Draft for re-approval, which then writes a new version

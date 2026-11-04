@@ -919,13 +919,30 @@ def protocol_freshness(plan):
 		notes.append(_("{0} is now the version in force for {1} at {2}.")
 		             .format(in_force, plan.variety, plan.farm))
 
+	# Edits sitting on the Crop Protocol that were never approved. A plan is
+	# built on a VERSION, so those cannot reach it however many times it is
+	# regenerated -- and the note said "Regenerate to rebuild from the protocol
+	# as it stands now", which reads as a promise it cannot keep. Say the step
+	# that is actually missing.
+	unapproved = None
+	if v.crop_protocol:
+		unapproved = frappe.db.get_value("Crop Protocol", v.crop_protocol,
+		                                 "custom_sf_pending_changes")
+	if unapproved:
+		notes.append(_("{0} has changes that have not been approved: {1}")
+		             .format(v.crop_protocol, unapproved))
+
 	return {
 		"status": status,
 		"stale": 1 if notes else 0,
 		"in_force": in_force,
 		"note": "\n".join(notes + [
+			_("Approve the protocol first -- that is what writes a version -- "
+			  "then Regenerate to rebuild the weekly grid and the planting "
+			  "proposals on it.")
+			if unapproved else
 			_("Regenerate to rebuild the weekly grid and the planting proposals "
-			  "from the protocol as it stands now.")
+			  "from the version in force.")
 		]) if notes else None,
 	}
 
