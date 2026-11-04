@@ -66,6 +66,37 @@ class SummerFlowerProductionPlan(Document):
 		self.check_protocol_freshness()
 		self.sync_status()
 
+	def before_submit(self):
+		"""Materials are agreed before approval, not after.
+
+		The order the farm works in: propose the plantings, agree what will be
+		bought for them, let the agreement settle the plantings, and only then
+		send it up. Approval is the moment the plantings become a commitment, so
+		committing to plantings nobody has costed is the wrong way round.
+
+		Nothing enforced that, and the trap is easy to fall into because
+		approving is two clicks away from creating. SFPP-2026-00420 was created
+		at 11:46 and approved at 11:47, and the materials card then refused it
+		-- correctly, since the numbers had been approved -- with no way back
+		except cancelling and amending. Refusing here costs a click; refusing
+		there costs the plan.
+
+		Only where there is something to agree. A plan whose plantings are all
+		already in the ground buys nothing, and has nothing to be stopped for.
+		"""
+		if cint(self.tc_choice_committed):
+			return
+		if not any(cint(b.is_new_planting) for b in self.plan_blocks):
+			return
+		frappe.throw(
+			_("Agree the materials for {0} before sending it for approval. It "
+			  "proposes {1} plants and nothing has been ordered for them yet: "
+			  "open Materials Planning, agree the line, and the plantings will "
+			  "settle to what that order can plant. Approving first fixes the "
+			  "numbers and the materials card will refuse to change them."
+			  ).format(self.name, "{:,}".format(cint(self.new_plants_required))),
+			title=_("The materials have not been agreed"))
+
 	def on_submit(self):
 		"""Approval is the workflow transition that submits the plan.
 
@@ -220,7 +251,13 @@ class SummerFlowerProductionPlan(Document):
 		v = frappe.get_cached_doc("Crop Protocol Version", self.protocol)
 		# The form shows the protocol, so it is filled from the version wherever
 		# the version was settled first -- an older plan, or the default above.
-		self.crop_protocol = v.crop_protocol or self.crop_protocol
+		# Only when that link actually belongs to this farm: some version rows
+		# carry a crop_protocol from somewhere else, and copying one put
+		# "...-Kariki Juja" on the form of a Kariki Naivasha plan.
+		if v.crop_protocol and not self.crop_protocol:
+			owner_farm = frappe.db.get_value("Crop Protocol", v.crop_protocol, "farm")
+			if not owner_farm or owner_farm == self.farm:
+				self.crop_protocol = v.crop_protocol
 		if v.variety != self.variety or v.farm != self.farm:
 			frappe.throw(_(
 				"{0} is the protocol for {1} at {2}, but this plan is for {3} at "
