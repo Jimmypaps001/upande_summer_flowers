@@ -584,8 +584,17 @@ def peak_sizing(plan, cycles=None, max_cycles=None):
 		# the multiplication as useless when it was only late. A pool of B
 		# mothers cutting per_week each takes 1/per_week weeks to yield B.
 		gather = max(1, int(math.ceil(1.0 / (flt(per_week) or 1.0))))
+		# Every generation climbs its own build-up, not just the last one. The
+		# window allowed ramp_lead ONCE for the whole chain, and a generation
+		# cutting at 20, 50, 75% cannot gather a full batch at the rate the
+		# gather term assumes -- so the line could not start early enough for
+		# the one it feeds to reach full rate by the week that needs it. On this
+		# Aster the window was exactly a week too narrow: one multiplication cut
+		# 8,750 against 9,600 because the second generation was still at 75% in
+		# the only week that mattered, while none at all and two both delivered.
+		# A lever that gets worse and then better again is not a lever.
 		earliest = add_days(getdate(first_stick),
-		                    -7 * (c * (regen + gather) + ramp_lead))
+		                    -7 * (c * (regen + gather + ramp_lead) + ramp_lead))
 		latest = add_days(getdate(first_stick), -7 * ramp_lead)
 		started, walk = best_start(
 			demand, buy, c, regen, per_week, life, ramp, per_area,
@@ -615,12 +624,35 @@ def peak_sizing(plan, cycles=None, max_cycles=None):
 		# to be bought rather than grown. Search for the smallest that does as
 		# well, and a multiplication buys what a multiplication should.
 		total = cint(buy) + sum(cint(x) for x in (batches or []))
-		if c and total and cint(buy) > cint(per_area):
+		# ... and only when the line actually serves somebody. Where it meets no
+		# planting week at all -- a crop that is bought rather than cut, so the
+		# pool walk has nothing to simulate -- "the smallest order that does as
+		# well" is the smallest order there is, and Eryngium Scorpius came back
+		# proposing 16 plants grown into 46,192. Nothing is being optimised
+		# there; it is the wrong card for that crop, and it should at least not
+		# invent a number.
+		if (c and total and cint(buy) > cint(per_area)
+				and cint(walk["weeks_met"]) > 0):
+			# Never worse than buying the lot. Multiplying cannot take coverage
+			# away, because the same pool bought outright is always still an
+			# option -- so the bar the search has to clear is whatever NO
+			# multiplication achieves, not whatever the hand-made split managed.
+			# Without this, a split that covered 28 weeks where none covered 31
+			# was accepted as the answer for one multiplication, and the lever
+			# read as making the plan worse.
+			#
+			# The search is allowed up to the whole pool for the same reason. It
+			# only ever looked DOWN from the candidate, so when the candidate
+			# was already short there was nowhere for it to go. At the top of
+			# that range it buys everything and grows nothing, which is the
+			# honest answer where multiplying this line cannot help.
+			floor = ((cint(options[0]["weeks_met"]), -cint(options[0]["shortfall"]))
+			         if options else (0, 0))
+			target = max((cint(walk["weeks_met"]), -cint(walk["shortfall"])), floor)
 			shrunk = smallest_first_generation(
 				demand, total, c, regen, per_week, life, ramp, per_area,
-				earliest, latest,
-				(cint(walk["weeks_met"]), -cint(walk["shortfall"])), cint(buy))
-			if shrunk and cint(shrunk[0]) < cint(buy):
+				earliest, latest, target, total)
+			if shrunk and cint(shrunk[0]) != cint(buy):
 				buy, batches, started, walk = shrunk
 				by_dates = [x["by"] for x in gplan] or [first_stick]
 				gplan = [{"by": by_dates[0], "mothers": buy}] + [
@@ -702,16 +734,28 @@ def rest_after_first(total, first, generations_after, per_area):
 	pool arrives in equal instalments, each a whole planting area.
 	"""
 	rest = max(0, cint(total) - cint(first))
-	if rest <= 0 or cint(generations_after) <= 0:
+	n = cint(generations_after)
+	if rest <= 0 or n <= 0:
 		return []
-	each = round_up_to_area(rest / float(cint(generations_after)), per_area)
-	out, running = [], 0
-	for _ in range(cint(generations_after)):
-		if running >= rest:
-			break
-		take = round_up_to_area(min(each, rest - running), per_area)
-		out.append(take)
-		running += take
+	# Whole planting areas, dealt out so that n cycles give n batches. Rounding
+	# each share UP and stopping once the total was covered produced fewer
+	# batches than cycles -- 9,000 over four came out as 3,000 + 3,000 + 3,000
+	# and nothing left for the fourth, which is why asking for four
+	# multiplications gave exactly what three gave. Dealing the remainder one
+	# area at a time keeps every cycle real: 3,000 + 2,000 + 2,000 + 2,000.
+	area = max(1, cint(per_area))
+	units = int(math.ceil(rest / float(area)))
+	if units < n:
+		# Not enough material to give every cycle a whole area. Fewer, bigger
+		# batches is the truthful answer; the option then does what a smaller
+		# number of multiplications does, and the suggestion prefers that one.
+		n = units
+	if n <= 0:
+		return []
+	base, extra = divmod(units, n)
+	out = []
+	for i in range(n):
+		out.append((base + (1 if i < extra else 0)) * area)
 	return out
 
 
@@ -1225,8 +1269,17 @@ def multiplications_for_tc(plan, tc, max_search=24):
 		# the multiplication as useless when it was only late. A pool of B
 		# mothers cutting per_week each takes 1/per_week weeks to yield B.
 		gather = max(1, int(math.ceil(1.0 / (flt(per_week) or 1.0))))
+		# Every generation climbs its own build-up, not just the last one. The
+		# window allowed ramp_lead ONCE for the whole chain, and a generation
+		# cutting at 20, 50, 75% cannot gather a full batch at the rate the
+		# gather term assumes -- so the line could not start early enough for
+		# the one it feeds to reach full rate by the week that needs it. On this
+		# Aster the window was exactly a week too narrow: one multiplication cut
+		# 8,750 against 9,600 because the second generation was still at 75% in
+		# the only week that mattered, while none at all and two both delivered.
+		# A lever that gets worse and then better again is not a lever.
 		earliest = add_days(getdate(first_stick),
-		                    -7 * (c * (regen + gather) + ramp_lead))
+		                    -7 * (c * (regen + gather + ramp_lead) + ramp_lead))
 		latest = add_days(getdate(first_stick), -7 * ramp_lead)
 		started, walk = best_start(
 			demand, tc, c, regen, per_week, life, ramp, per_area,
