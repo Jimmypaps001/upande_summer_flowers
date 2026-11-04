@@ -290,7 +290,7 @@ def simulate(p, tc_qty, order_date, num_cycles=None, farm_overrides=None,
 
 	for c in cycles:
 		n = c["cycle"]
-		ev(c["order_sw"], f"TC order #{n} ({c['tc_qty']:,} plantlets)")
+		ev(c["order_sw"], f"TC order #{n} ({c['tc_qty']:,} TC plants)")
 		ev(c["arrive_sw"], f"TC #{n} arrives")
 		ev(c["arrive_sw"] + p["weeks_on_tray"], "Tray ends, pot stage begins")
 		ev(c["arrive_sw"] + p["weeks_on_tray"] + p["weeks_on_pot"],

@@ -933,7 +933,7 @@ def process_overview(variety=None, farm=None, plan=None, season=None):
 		late = pr.tc_order_date and getdate(pr.tc_order_date) < today
 		stage("tc", "TC order", pr.name,
 		      _("overdue") if late else _("to place"),
-		      "{:,}".format(cint(pr.tc_plants_required)) + _(" plantlets"),
+		      "{:,}".format(cint(pr.tc_plants_required)) + _(" TC plants"),
 		      _("order by {0}, {1} {2}").format(
 			      pr.tc_order_date, "{:,}".format(cint(pr.tc_cost)),
 			      pr.currency or ""),

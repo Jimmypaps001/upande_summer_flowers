@@ -442,7 +442,7 @@ def requirement(version, from_stage, plants, weekly_plants=None, peak_date=None,
 	            overridden=bool(cint(units_override or 0) > 0
 	                            and cint(units_override) != calculated),
 	            basis=_("{0} plants stuck in the busiest week needs {1} cuttings.{2} "
-	                    "That is {3} mother plants, raised from {4} plantlets at {5} "
+	                    "That is {3} mother plants, raised from {4} TC plants at {5} "
 	                    "multiplication cycles.")
 	                  .format(f"{weekly:,}", f"{cuttings:,}", netting, f"{mothers:,}",
 	                          f"{units:,}", cycles))

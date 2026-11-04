@@ -568,16 +568,16 @@ def tc_derivation(plan=None, variety=None, farm=None):
 	mf = v.multiplication_factor()
 	factor_txt = ("%g" % mf)
 	steps.append({
-		"step": "TC plantlets required", "value": required, "unit": "plantlets",
+		"step": "TC plants required", "value": required, "unit": "TC plants",
 		"note": "%s mother plants / %s, because %s multiplication cycles turn one "
-		        "plantlet into %s plants"
+		        "TC plant into %s plants"
 		        % (mothers, factor_txt, cint(v.max_multiplication_cycles), factor_txt),
 	})
 	if flt(v.tc_order_loss_pct):
 		steps.append({
 			"step": "TC order loss allowance", "value": flt(v.tc_order_loss_pct),
 			"unit": "%",
-			"note": "plantlets lost between the lab and the bench, so the order is "
+			"note": "TC plants lost between the lab and the bench, so the order is "
 			        "the requirement / %.2f" % (1 - flt(v.tc_order_loss_pct) / 100),
 		})
 	steps.append({
@@ -968,7 +968,7 @@ def _solve_tc_for_demand(plan_doc, version, order_date, target_pct=100.0,
 		return None
 	if top["coverage_pct"] < floor_pct:
 		top["solved"] = False
-		top["reason"] = "even %s plantlets only reaches %.1f%%" % (
+		top["reason"] = "even %s TC plants only reaches %.1f%%" % (
 			f"{hi:,}", top["coverage_pct"])
 		return top
 	for _ in range(18):
@@ -1079,7 +1079,7 @@ def tc_purchase(plan=None, variety=None, farm=None, tc_qty=None, tolerance_pct=1
 	if solved and not solved.get("solved"):
 		if cint(p.plantings_not_placed):
 			binding = _(
-				"Buying more plantlets cannot close this. {0} of the {1} proposed "
+				"Buying more TC plants cannot close this. {0} of the {1} proposed "
 				"plantings have no block free for their whole life, so {2} stems of "
 				"demand have nowhere to grow -- blocks are the constraint here, not "
 				"tissue culture."
@@ -1090,7 +1090,7 @@ def tc_purchase(plan=None, variety=None, farm=None, tc_qty=None, tolerance_pct=1
 			binding = _(
 				"No order size within the ceiling lands the demand, and every proposed "
 				"planting has a block, so the gap is in the demand's timing rather "
-				"than in the plantlets: the earliest sticking weeks are too close to "
+				"than in the TC plants: the earliest sticking weeks are too close to "
 				"today for any order to reach them.")
 
 	base = cint(solved["tc_qty"]) if (solved and solved.get("solved")) else (
@@ -2764,9 +2764,9 @@ def event_calendar(plan=None, variety=None, farm=None, year=None):
 		        "tc_on_farm_date", "max_pc_date", "expiry_date"],
 	):
 		add(b.tc_order_date, "tc_order",
-		    f"Order {(b.tc_plants_required or 0):,} TC plantlets", b.name, None,
+		    f"Order {(b.tc_plants_required or 0):,} TC plants", b.name, None,
 		    b.tc_plants_required)
-		add(b.tc_on_farm_date, "tc_arrive", "TC plantlets on farm", b.name)
+		add(b.tc_on_farm_date, "tc_arrive", "TC plants on farm", b.name)
 		add(b.max_pc_date, "ms_first_cut", "Motherstock productive", b.name)
 		add(b.expiry_date, "ms_expiry", "Motherstock expires", b.name)
 
@@ -3176,7 +3176,7 @@ def confirm_tc_choice(plan, tc_qty=None, order_date=None, cycles=None, reason=No
 		row.qty_at_field = int(round(v.mother_plants_for(tc_qty, cycles)))
 		qd.pool_plants = row.qty_at_field
 		qd.sizing_basis = _(
-			"Confirmed on the dashboard: {0} plantlets at {1} multiplication cycles, "
+			"Confirmed on the dashboard: {0} TC plants at {1} multiplication cycles, "
 			"ordering {2}. This is a decision, not the calculation -- what the "
 			"protocol works out is on the production plan."
 		).format(f"{tc_qty:,}", cycles, order_date or _("(no date)"))
@@ -3213,7 +3213,7 @@ def confirm_tc_choice(plan, tc_qty=None, order_date=None, cycles=None, reason=No
 		"supplied_coverage_pct": flt(p.supplied_coverage_pct),
 	}
 
-	note = _("Confirmed {0} plantlets, {1} cycles, ordering {2}. That order supplies "
+	note = _("Confirmed {0} TC plants, {1} cycles, ordering {2}. That order supplies "
 	         "{3} stems, {4}% of the demand.").format(
 		after["tc_qty"], after["cycles"], after["order_date"] or _("(no date)"),
 		after["supplied_stems"], round(after["supplied_coverage_pct"], 1))
@@ -3530,7 +3530,7 @@ def propagation_schedule(propagation_plan=None, plan=None, variety=None,
 
 	t = detail["totals"]
 	add(t.get("tc_order_date"), "tc_order",
-	    _("Order {0} tissue culture plantlets").format(t.get("tc_plants") or 0),
+	    _("Order {0} tissue culture plants").format(t.get("tc_plants") or 0),
 	    qty=t.get("tc_plants"), source="plan")
 	add(t.get("tc_on_farm_date"), "tc_arrive",
 	    _("Tissue culture due on farm"), qty=t.get("tc_plants"), source="plan")
@@ -3651,7 +3651,7 @@ MS_EVENT_TYPES = {
 # controller uses and fall back to a substring for anything new.
 _MS_STEP_KINDS = (
 	("Place TC order", "ms_tc_order"),
-	("TC plantlets on farm", "ms_tc_arrive"),
+	("TC plants on farm", "ms_tc_arrive"),
 	("TC generation cuttable", "ms_cuttable"),
 	("Multiplication cycle", "ms_multiply"),
 	("Multiplied generation productive", "ms_productive"),

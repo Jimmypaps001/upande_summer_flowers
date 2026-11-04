@@ -187,7 +187,7 @@ def least_tc_for(version, divert_weeks, demand, first_sticking, tc_loss_pct=0.0)
 			"blocked": _("Diverting {0} weeks pulls the order {0} weeks earlier, so "
 			             "the block would be cleared on {1}. The season's last "
 			             "planting is {2}, and the block has to outlast it. No "
-			             "quantity of plantlets changes that.")
+			             "quantity of TC plants changes that.")
 			.format(cint(divert_weeks), probe["line_end_date"], last_sticking),
 		}
 
@@ -206,7 +206,7 @@ def least_tc_for(version, divert_weeks, demand, first_sticking, tc_loss_pct=0.0)
 		return {
 			"tc": None, "divert_weeks": cint(divert_weeks),
 			"order_by": probe["order_by"], "covers": False,
-			"blocked": _("Even {0} plantlets do not cover every planting week at "
+			"blocked": _("Even {0} TC plants do not cover every planting week at "
 			             "{1} weeks of diversion.").format(f"{MAX_TC:,}",
 			                                               cint(divert_weeks)),
 		}
@@ -370,10 +370,10 @@ def _assumptions(v):
 	if not cint(v.motherstock_life_weeks):
 		out.append(_("Motherstock life is not set, so the block is never cleared."))
 	if not cint(v.supplier_lead_weeks):
-		out.append(_("Supplier lead is not set, so the plantlets are treated as "
+		out.append(_("Supplier lead is not set, so the TC plants are treated as "
 		             "arriving the week they are ordered."))
 	if not flt(v.tc_order_loss_pct):
-		out.append(_("No TC order loss allowance, so every plantlet ordered is "
+		out.append(_("No TC order loss allowance, so every TC plant ordered is "
 		             "assumed to survive the transfer."))
 	return out
 
@@ -604,6 +604,23 @@ def peak_sizing(plan, cycles=None, max_cycles=None):
 				             if gplan else first_stick, "mothers": b}
 				            for i, b in enumerate(f_batches)])
 				gens = len(gplan)
+		# Both candidates are guesses at one number: how much of the pool has
+		# to be bought rather than grown. Search for the smallest that does as
+		# well, and a multiplication buys what a multiplication should.
+		total = cint(buy) + sum(cint(x) for x in (batches or []))
+		if c and total and cint(buy) > cint(per_area):
+			shrunk = smallest_first_generation(
+				demand, total, c, regen, per_week, life, ramp, per_area,
+				earliest, latest,
+				(cint(walk["weeks_met"]), -cint(walk["shortfall"])), cint(buy))
+			if shrunk and cint(shrunk[0]) < cint(buy):
+				buy, batches, started, walk = shrunk
+				by_dates = [x["by"] for x in gplan] or [first_stick]
+				gplan = [{"by": by_dates[0], "mothers": buy}] + [
+					{"by": by_dates[min(i + 1, len(by_dates) - 1)], "mothers": b}
+					for i, b in enumerate(batches)]
+				gens = len(gplan)
+
 		order_by = add_days(started, -7 * (lead + estab))
 		# The line lives one motherstock life from its FIRST cut, so what it has
 		# left for the season is counted from the day it starts cutting.
@@ -627,13 +644,20 @@ def peak_sizing(plan, cycles=None, max_cycles=None):
 			"pool": cint(walk["peak_pool"]),
 		})
 
-	# The most multiplication that still covers every planting week. Every extra
-	# one is plantlets saved, so the cheapest workable answer is the last of
-	# them. Each option has now actually been walked, so this is coverage
+	# Coverage first, then the smallest order that achieves it, then the fewest
+	# multiplications. Each option has actually been walked, so this is coverage
 	# measured rather than cutting weeks standing in for it.
-	workable = [o for o in options if o["covers_season"]]
-	suggested = workable[-1]["cycles"] if workable else max(
-		options, key=lambda o: (o["weeks_met"], -o["shortfall"], -o["cycles"])
+	#
+	# Two branches used to decide this and they disagreed. Where something
+	# covered the whole season it took the MOST multiplication, which is right
+	# -- every extra one is plantlets saved. Where nothing could, it took the
+	# FEWEST, without looking at the order at all. So a line whose 52 weeks
+	# cannot span 117 weeks of sticking was told to buy 47,000 when 32,000
+	# reached exactly the same 27 weeks. One rule now, and it gives the old
+	# answer wherever the old answer was defensible.
+	suggested = max(
+		options,
+		key=lambda o: (o["weeks_met"], -o["shortfall"], -o["buy"], -o["cycles"])
 	)["cycles"]
 	chosen = cint(cycles) if cycles not in (None, "") else suggested
 	chosen = max(0, min(chosen, cint(max_cycles)))
@@ -663,6 +687,66 @@ def peak_sizing(plan, cycles=None, max_cycles=None):
 		"chosen": chosen,
 		"pick": options[chosen],
 	}
+
+def rest_after_first(total, first, generations_after, per_area):
+	"""Whatever generation one is not, split evenly over the ones that follow.
+
+	The shape the farm uses once the first batch is settled: the rest of the
+	pool arrives in equal instalments, each a whole planting area.
+	"""
+	rest = max(0, cint(total) - cint(first))
+	if rest <= 0 or cint(generations_after) <= 0:
+		return []
+	each = round_up_to_area(rest / float(cint(generations_after)), per_area)
+	out, running = [], 0
+	for _ in range(cint(generations_after)):
+		if running >= rest:
+			break
+		take = round_up_to_area(min(each, rest - running), per_area)
+		out.append(take)
+		running += take
+	return out
+
+
+def smallest_first_generation(demand, total, c, regen, per_week, life, ramp,
+                              per_area, earliest, latest, target, hi):
+	"""The smallest plantlet order that still does as well as `hi` does.
+
+	Two hand-made splits were being compared and the better one kept: the
+	step-shaped one, sized to the increments in the demand curve, and the flat
+	one, equal instalments of the peak. On a curve with a tiny last step both
+	are wrong, and badly. Dark Milka wants 46,680 cuttings at its peak but
+	30,820 in its fifth week, eleven weeks before a second generation can be
+	productive: the step split spends its one multiplication on a 2,000 plant
+	increment and buys 45,000, and the flat split halves the order but cannot
+	cover the fifth week and loses five planting weeks for it. The answer
+	neither of them offers is 32,000 bought and 15,000 grown on -- the same 27
+	weeks met as buying all 47,000, for 15,000 fewer plantlets.
+
+	So the split is searched rather than guessed. The pool is the same size
+	either way; what is being chosen is how much of it has to be BOUGHT, and
+	that is set by how much the field wants before generation two can cut. A
+	bigger generation one covers those weeks at least as well as a smaller one,
+	so the usable sizes are an interval with the answer at its bottom edge --
+	which a halving search finds in about six walks instead of fifty.
+	"""
+	step = max(1, cint(per_area))
+	hi_u = max(1, cint(hi) // step)
+	lo_u, best = 1, None
+	while lo_u <= hi_u:
+		mid_u = (lo_u + hi_u) // 2
+		mid = mid_u * step
+		batches = rest_after_first(total, mid, c, per_area)
+		started, walk = best_start(demand, mid, c, regen, per_week, life, ramp,
+		                           per_area, earliest=earliest, latest=latest,
+		                           batches=batches or None)
+		if (cint(walk["weeks_met"]), -cint(walk["shortfall"])) >= target:
+			best = (mid, batches, started, walk)
+			hi_u = mid_u - 1
+		else:
+			lo_u = mid_u + 1
+	return best
+
 
 def even_generations(mothers, generations, per_area):
 	"""The peak in equal instalments, which is how the farm says it.

@@ -312,7 +312,7 @@
         <div class="pl-card-head">
           <div><h2>{{ _("Try it before you commit") }}</h2></div>
           <span class="pl-actions">
-            <label class="pl-inline">{{ _("Plantlets") }}
+            <label class="pl-inline">{{ _("TC plants") }}
               <input type="number" id="wi-tc" min="0" step="50"></label>
             <label class="pl-inline">{{ _("Multiply") }}
               <input type="number" id="wi-prop" min="0" max="4" step="1"></label>
@@ -573,9 +573,9 @@
       <div class="pl-card">
         <div class="pl-card-head">
           <div><h2>{{ _("The motherstock line") }}</h2>
-               <p class="pl-note">{{ _("Sized by the busiest sticking week, because cuttings cannot be banked. Type plantlets and it works out the multiplications; type multiplications and it works out the order. Only Agree this line writes anything.") }}</p></div>
+               <p class="pl-note">{{ _("Sized by the busiest sticking week, because cuttings cannot be banked. Type TC plants and it works out the multiplications; type multiplications and it works out the order. Only Agree this line writes anything.") }}</p></div>
           <span class="pl-actions">
-            <label class="pl-inline">{{ _("Plantlets") }}
+            <label class="pl-inline">{{ _("TC plants") }}
               <input type="number" id="tc-qty" min="0" step="50"></label>
             <label class="pl-inline">{{ _("Multiply") }}
               <input type="number" id="tc-divert" min="0" max="4" step="1"></label>
@@ -1875,7 +1875,7 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
       // The TC order is the long pole in this whole process -- 22 to 26 weeks of
       // lead before a single cutting exists -- so it belongs on the first screen,
       // not three tabs in.
-      { k: "TC plantlets", v: num(tc.tc_plants || 0),
+      { k: "TC plants", v: num(tc.tc_plants || 0),
         m: tc.tc_order_date
           ? `order by ${esc(tc.tc_order_date)}${tc.tc_late ? " — already past" : ""}`
           : "no TC order sized yet",
@@ -2077,7 +2077,7 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
       row("Mother plants required", num(tc.mothers_required || 0),
           `${tc.bench_sqm || 0} m² of bench`),
       row("TC required", num(tc.tc_plants || 0),
-          tc.tc_late ? "order date already past" : "plantlets to buy",
+          tc.tc_late ? "order date already past" : "TC plants to buy",
           tc.tc_late ? "--critical" : ""),
     ]));
 
@@ -3020,7 +3020,7 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
     if (a.tc_received || a.roots_withdrawn) {
       tiles.splice(1, 0, {
         k: "Material in", v: num(a.tc_received + a.roots_withdrawn),
-        m: `${num(a.tc_received)} plantlets, ${num(a.roots_withdrawn)} roots` });
+        m: `${num(a.tc_received)} TC plants, ${num(a.roots_withdrawn)} roots` });
     }
     if (a.plants_lost) {
       tiles.push({ k: "Lost at the unit", v: num(a.plants_lost), c: "--warning",
@@ -4082,7 +4082,7 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
         ["Summer flower blocks", num(p.blocks)],
       ];
       if (p.tc) {
-        rows.push(["Tissue culture to buy", `${num(p.tc.plantlets)} plantlets`]);
+        rows.push(["Tissue culture to buy", `${num(p.tc.plantlets)} TC plants`]);
         rows.push(["Which multiply into",
           `${num(p.tc.mother_plants)} mother plants, cutting ${num(p.tc.cuttings)} in ${
             esc(p.tc.peak_week)}`]);
@@ -4128,7 +4128,7 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
             if (pg && pg.error) {
               msg += ` ${pg.error}`;
             } else if (pg && pg.name) {
-              msg += ` Sourcing ${pg.name}: ${num(pg.tc_plants_required)} plantlets, ` +
+              msg += ` Sourcing ${pg.name}: ${num(pg.tc_plants_required)} TC plants, ` +
                 `${num(pg.mother_plants_required)} mother plants`;
               msg += pg.plants_short
                 ? `, but ${num(pg.plants_short)} plants cannot be stuck ` +
@@ -4287,7 +4287,7 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
       notes.push(`<b>The season climbs in steps.</b> ` +
         c.steps.map((x, i) => `${i ? "then +" : ""}${num(x.mothers)} by ` +
           `${fdate(x.by)}`).join(", ") +
-        `. Generation one is bought — ${num(c.tc)} plantlets — and each later ` +
+        `. Generation one is bought — ${num(c.tc)} TC plants — and each later ` +
         `generation is a batch of cuttings taken off it, sized to the step it ` +
         `is raised for, not to an equal share of the peak.`);
     }
@@ -4392,12 +4392,12 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
     $("pn-ms").innerHTML = [
       { k: "Mother plants", v: num(tc.mothers_required || 0),
         m: `${tc.bench_sqm || 0} m² of bench${wholePlan()}` },
-      { k: "TC plantlets", v: num(tc.tc_plants || 0),
+      { k: "TC plants", v: num(tc.tc_plants || 0),
         m: tc.tc_source ? esc(String(tc.tc_source)) : "not sized yet" },
       { k: "Order TC by", v: esc(tc.tc_order_date || "—"),
         m: tc.tc_late ? "already past" : "still achievable",
         c: tc.tc_late ? "--critical" : "--good" },
-      { k: "On farm", v: esc(tc.tc_on_farm_date || "—"), m: "plantlets delivered" },
+      { k: "On farm", v: esc(tc.tc_on_farm_date || "—"), m: "TC plants delivered" },
       { k: "First cutting", v: esc(tc.first_sticking_date || "—"),
         m: tc.ramp_weeks
           ? `full capacity ${fdate(tc.full_capacity_date)} after a ` +
@@ -4433,7 +4433,7 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
     const committed = !!(dv && dv.tc_committed);
     const caption = committed
       ? `<p class="pl-note"><b>Supplied</b> is what the confirmed order of ` +
-        `${num(dv.tc_plants_committed)} plantlets` +
+        `${num(dv.tc_plants_committed)} TC plants` +
         (dv.tc_order_date_committed
           ? `, placed ${esc(dv.tc_order_date_committed)},` : "") +
         ` can put in the ground. Where it falls below Production, the cuttings ` +
@@ -4543,7 +4543,7 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
           `${delta >= 0 ? "+" : ""}${delta.toFixed(1)} points</b>.`
         : Math.abs(delta) < 0.05
           ? ` — the same as the plan on file.`
-          : ` at the plan's own order of ${num(r.tc_qty)} plantlets. The plan on file ` +
+          : ` at the plan's own order of ${num(r.tc_qty)} TC plants. The plan on file ` +
             `claims <b>${base.coverage_pct.toFixed(1)}%</b>, which assumes every ` +
             `planting gets its cuttings; counting the cuttings it is ` +
             `<b style="color:var(--serious)">${delta.toFixed(1)} points</b> lower.`) +
@@ -4555,7 +4555,7 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
       `</div>`;
 
     $("wi-tiles").innerHTML = [
-      { k: "Plantlets", v: num(r.tc_qty),
+      { k: "TC plants", v: num(r.tc_qty),
         m: r.recommended_tc
           ? `least that covers at this diversion: ${num(r.recommended_tc)}`
           : "sized here" },
@@ -4788,7 +4788,7 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
     $("ag-title").textContent = w.procurement
       ? "Revise the procurement plan?" : "Create the procurement plan?";
     $("ag-sub").textContent =
-      `${num(c.tc)} plantlets at ${c.multiplications} multiplication` +
+      `${num(c.tc)} TC plants at ${c.multiplications} multiplication` +
       `${c.multiplications === 1 ? "" : "s"}, ordered by ${fdate(c.order_by)}` +
       ` — for ${esc(w.variety || "")} at ${esc(w.farm || "")}.`;
 
@@ -4805,7 +4805,7 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
         (w.procurement.docstatus === 1
           ? " — it is submitted, so it is cancelled and amended"
           : " — it is a draft, so it is rewritten")
-      : `created for ${num(c.tc)} plantlets`);
+      : `created for ${num(c.tc)} TC plants`);
     rows += step("Propagation Plan", w.propagation
       ? `${esc(w.propagation.name)} rebuilt from the new line`
       : "created from the new line");
@@ -4852,7 +4852,7 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
     const labels = head.querySelectorAll("label.pl-inline");
     if (labels.length >= 2) {
       // Quantities, not a percentage: a percentage is not what anybody buys.
-      labels[0].childNodes[0].nodeValue = mother ? "Plantlets" : one;
+      labels[0].childNodes[0].nodeValue = mother ? "TC plants" : one;
       labels[1].style.display = mother ? "" : "none";
     }
     const rl = $("tc-roots-l");
@@ -5941,7 +5941,7 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
     }).then((r) => {
       $("ag-dlg").close();
       const bad = (r.steps || []).filter((x) => !x.ok);
-      toast(`Agreed as ${r.name}: ${num(r.tc_to_order)} plantlets` +
+      toast(`Agreed as ${r.name}: ${num(r.tc_to_order)} TC plants` +
         (bad.length ? ` — ${bad.length} step(s) did not run` : ", chain rebuilt"),
         bad.length > 0);
       bad.forEach((x) => toast(`${x.step}: ${x.error}`, true));
@@ -5990,13 +5990,13 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
     $("tc-tiles").innerHTML = [
       { k: "TC to buy", v: num(c.tc),
         m: (c.batches || []).length
-          ? `plantlets; ${(c.batches || []).map(num).join(" + ")} more come off them`
-          : `plantlets for week ${(t.peak || {}).week_label || "—"}` },
+          ? `TC plants; ${(c.batches || []).map(num).join(" + ")} more come off them`
+          : `TC plants for week ${(t.peak || {}).week_label || "—"}` },
       { k: "Multiply", v: `${c.multiplications}`,
         m: q
           ? (q.beyond_protocol
-              ? `needed for ${num(q.tc)} plantlets — more than the usual ${q.max_usual}`
-              : `needed for ${num(q.tc)} plantlets`)
+              ? `needed for ${num(q.tc)} TC plants — more than the usual ${q.max_usual}`
+              : `needed for ${num(q.tc)} TC plants`)
           : (() => {
               // Same distinction as the plan card: the protocol's cap is a
               // rule, running out of cuttings to gather is a fault.
@@ -6045,7 +6045,7 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
 
     const notes = [];
     if (rec.buy && rec.buy !== c.tc) {
-      notes.push(`The arithmetic suggests ${num(rec.buy)} plantlets at ` +
+      notes.push(`The arithmetic suggests ${num(rec.buy)} TC plants at ` +
         `${rec.cycles} multiplication${rec.cycles === 1 ? "" : "s"}, ordered by ` +
         `${fdate(rec.order_by)}.`);
     }
@@ -6068,7 +6068,7 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
     if (t.saved && t.saved.name) {
       notes.push(`Agreed as <a href="/app/summer-flower-motherstock-plan/` +
         `${encodeURIComponent(t.saved.name)}">${esc(t.saved.name)}</a>: ` +
-        `${num(t.saved.tc_to_order)} plantlets, ` +
+        `${num(t.saved.tc_to_order)} TC plants, ` +
         `${t.saved.multiplications} multiplication` +
         `${t.saved.multiplications === 1 ? "" : "s"}. That is the figure ` +
         `procurement orders. Try another above and press <b>Agree this line</b> ` +
@@ -6433,7 +6433,7 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
     if (!$("ls-key")) return;
     const r = S.ls; if (!r) return;
     const t = r.totals, p = r.params;
-    $("ls-sub").textContent = `${num(r.tc_qty)} plantlets ordered ${r.order_date} · ` +
+    $("ls-sub").textContent = `${num(r.tc_qty)} TC plants ordered ${r.order_date} · ` +
       `supplier lead ${p.supplier_lead_weeks}w → establishment ${p.ms_establishment_weeks}w → ` +
       `${p.ms_life_weeks}w of cutting · cutting to harvest ${p.cutting_to_harvest_weeks}w`;
     // The five figures this card is about: what has to be cut at the peak, what
@@ -7251,7 +7251,7 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
           $("ls-date").value = r.order_date || "";
           $("ls-confirm-note").innerHTML =
             `<p class="pl-note">${cyc} build-up cycle${cyc === "1" ? "" : "s"} — ` +
-            `order ${num(r.recommended_tc)} plantlets by ${fdate(r.order_date)}, ` +
+            `order ${num(r.recommended_tc)} TC plants by ${fdate(r.order_date)}, ` +
             `lead time ${r.lead_time_weeks} weeks, ×${r.multiplication_factor} to ` +
             `${num(r.mother_plants_from_order)} mother plants.</p>`;
         }
@@ -7286,7 +7286,7 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
     const d = S.deriv || {};
     const moved = [];
     if (d.tc_plants && qty !== d.tc_plants) {
-      moved.push(`${num(qty)} plantlets instead of the calculated ${num(d.tc_plants)}`);
+      moved.push(`${num(qty)} TC plants instead of the calculated ${num(d.tc_plants)}`);
     }
     if (d.tc_order_date && date && date !== d.tc_order_date) {
       moved.push(`ordering ${date} instead of ${d.tc_order_date}`);
@@ -7295,7 +7295,7 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
       moved.push(`${cycles} build-up cycles instead of ${d.build_up_cycles}`);
     }
     const msg = [
-      `Confirm ${num(qty)} plantlets` + (date ? `, ordered ${date}` : "") +
+      `Confirm ${num(qty)} TC plants` + (date ? `, ordered ${date}` : "") +
         (cycles != null ? `, ${cycles} build-up cycles?` : "?"),
       "",
       moved.length ? "This differs from the calculation: " + moved.join("; ") + "."
@@ -7595,7 +7595,7 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
 
     $("pw-title").textContent = `${r.variety} at ${r.farm} — ${r.plan}`;
     $("pw-sub").textContent =
-      `${num(r.tc_qty)} plantlets, ${r.cycles} build-up cycles, ordered ` +
+      `${num(r.tc_qty)} TC plants, ${r.cycles} build-up cycles, ordered ` +
       `${r.order_date}. Lead time ${r.lead_time_weeks} weeks, ×${r.multiplication_factor} ` +
       `to ${num(r.mother_plants_from_order)} mother plants. Nothing is saved.`;
 
@@ -7623,7 +7623,7 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
       { k: "First cut", v: esc(b.first_cut_week || "—"),
         m: `${r.lead_time_weeks} weeks after the order` },
       { k: "Against the current order", v: num(r.tc_qty - (cur.tc_qty || 0)),
-        m: `plantlets more than the ${num(cur.tc_qty)} on the plan now` },
+        m: `TC plants more than the ${num(cur.tc_qty)} on the plan now` },
     ];
 
     const weeks = b.weeks || [];

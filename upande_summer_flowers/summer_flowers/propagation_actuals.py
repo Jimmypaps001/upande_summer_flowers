@@ -730,13 +730,13 @@ def _headroom(doc, version=None):
 	if over > 0:
 		out["tc_plants"] = over
 		out["why"].append(_(
-			"{0} plantlets allocated to labs beyond the {1} the order needs"
+			"{0} TC plants allocated to labs beyond the {1} the order needs"
 		).format("{:,}".format(over), "{:,}".format(cint(doc.tc_plants_required))))
 	return out
 
 
 def _over_allocated(doc):
-	"""Plantlets the labs are down for in excess of the committed order."""
+	"""TC plants the labs are down for in excess of the committed order."""
 	if not doc.production_plan:
 		return 0
 	raw = frappe.db.get_value("Summer Flower Production Plan",
