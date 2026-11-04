@@ -48,6 +48,35 @@ NATIVE = {
 	# snapshot takes it under the same name rather than inventing a summer
 	# flower copy of a field every crop already has.
 	"reject_pct": "reject_pct",
+	# The rest of Crop Protocol, taken under the name it already has there.
+	# A version is the protocol as approved, so every field the protocol
+	# carries has a field behind it here -- the only ones left behind are the
+	# five that describe the VERSIONING itself (which version is current, what
+	# is unapproved, how many there are), because a snapshot recording which
+	# snapshot is current says nothing and ages badly.
+	# Three are renamed because the name was already taken by a summer flower
+	# field that means something else: the protocol's own flush_schedule is
+	# the generic one, while the version's holds custom_sf_flush_schedule.
+	"actual_stems_per_cut": "actual_stems_per_cut",
+	"breeder": "breeder",
+	"color": "color",
+	"crop_flush_interval_weeks": "flush_interval_weeks",
+	"crop_flush_schedule": "flush_schedule",
+	"crop_type": "crop_type",
+	"grade_mix": "grade_mix",
+	"growth_stages": "growth_stages",
+	"is_summer_flower": "custom_is_summer_flower",
+	"max_stems_per_plant_per_cut": "max_stems_per_plant_per_cut",
+	"productive_life_weeks": "productive_life_weeks",
+	"productive_life_years": "productive_life_years",
+	"protocol_name": "protocol_name",
+	"stems_per_cut": "stems_per_cut",
+	"stems_per_plant_first_harvest": "stems_per_plant_first_harvest",
+	"variety_item": "variety_item",
+	"weeks_between_cuts": "weeks_between_cuts",
+	"weeks_to_first_bending": "weeks_to_first_bending",
+	"weeks_to_first_flush": "weeks_to_first_flush",
+	"weeks_to_second_bending": "weeks_to_second_bending",
 }
 # The doctype this app's protocol lives on. Back on upande_agriculture's Crop
 # Protocol: variety and farm are re-declared as Custom Fields from this app, so

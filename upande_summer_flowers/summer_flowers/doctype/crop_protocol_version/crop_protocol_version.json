@@ -144,7 +144,42 @@
   "way_stages",
   "field_activities",
   "lift_section",
-  "lifts"
+  "lifts",
+  "protocol_carbon_copy_section",
+  "actual_stems_per_cut",
+  "breeder",
+  "color",
+  "crop_type",
+  "is_summer_flower",
+  "m1_entry",
+  "m1_entry_loss_pct",
+  "m1_entry_weeks",
+  "m1_lead_weeks",
+  "m1_route",
+  "m1_share_pct",
+  "m1_steps",
+  "m2_entry",
+  "m2_entry_loss_pct",
+  "m2_entry_weeks",
+  "m2_lead_weeks",
+  "m2_route",
+  "m2_share_pct",
+  "m2_steps",
+  "crop_flush_interval_weeks",
+  "crop_flush_schedule",
+  "grade_mix",
+  "growth_stages",
+  "max_stems_per_plant_per_cut",
+  "productive_life_weeks",
+  "productive_life_years",
+  "protocol_name",
+  "stems_per_cut",
+  "stems_per_plant_first_harvest",
+  "variety_item",
+  "weeks_between_cuts",
+  "weeks_to_first_bending",
+  "weeks_to_first_flush",
+  "weeks_to_second_bending"
  ],
  "fields": [
   {
@@ -1003,6 +1038,194 @@
    "options": "Crop Field Activity",
    "label": "Field Activities",
    "description": "What the plant does in the field and when. A planting calendar is built from it, so it belongs in the snapshot."
+  },
+  {
+   "fieldname": "protocol_carbon_copy_section",
+   "fieldtype": "Section Break",
+   "label": "Everything else the protocol carries"
+  },
+  {
+   "fieldname": "actual_stems_per_cut",
+   "fieldtype": "Float",
+   "label": "Actual Stems Per Cut"
+  },
+  {
+   "fieldname": "breeder",
+   "fieldtype": "Link",
+   "label": "Breeder",
+   "options": "Supplier"
+  },
+  {
+   "fieldname": "color",
+   "fieldtype": "Select",
+   "label": "Color",
+   "options": "\nRed\nWhite\nPink soft\nPink strong\nPink\nCerise\nYellow\nOrange-Yellow\nOrange\nLavender\nLavender dark\nBicolor\nOther"
+  },
+  {
+   "fieldname": "crop_type",
+   "fieldtype": "Select",
+   "label": "Crop Type",
+   "options": "\nRoses\nSummer Flowers"
+  },
+  {
+   "fieldname": "is_summer_flower",
+   "fieldtype": "Check",
+   "label": "Is Summer Flower"
+  },
+  {
+   "fieldname": "m1_entry",
+   "fieldtype": "Select",
+   "label": "Bought as / taken as",
+   "options": "\nBought-in Plants\nBudwoods\nCuttings (Own)\nRoots\nRoots (Own)\nSeeds\nTC\nTubers\nTubers (Own)"
+  },
+  {
+   "fieldname": "m1_entry_loss_pct",
+   "fieldtype": "Percent",
+   "label": "Loss % at this stage"
+  },
+  {
+   "fieldname": "m1_entry_weeks",
+   "fieldtype": "Int",
+   "label": "Weeks at this stage"
+  },
+  {
+   "fieldname": "m1_lead_weeks",
+   "fieldtype": "Int",
+   "label": "Supplier lead (weeks)"
+  },
+  {
+   "fieldname": "m1_route",
+   "fieldtype": "Select",
+   "label": "Start from a standard route",
+   "options": "\nBought as plants\nBought as roots\nBudwood\nOwn cuttings\nOwn cuttings, rooted\nOwn roots, cooled\nOwn roots, direct\nOwn tubers, direct\nSeed raised\nTC to motherstock\nTC to propagation\nTubers through cuttings"
+  },
+  {
+   "fieldname": "m1_share_pct",
+   "fieldtype": "Percent",
+   "label": "Share of the order"
+  },
+  {
+   "fieldname": "m1_steps",
+   "fieldtype": "Table",
+   "label": "Steps after it arrives",
+   "options": "Crop Material Stage"
+  },
+  {
+   "fieldname": "m2_entry",
+   "fieldtype": "Select",
+   "label": "Bought as / taken as",
+   "options": "\nBought-in Plants\nBudwoods\nCuttings (Own)\nRoots\nRoots (Own)\nSeeds\nTC\nTubers\nTubers (Own)"
+  },
+  {
+   "fieldname": "m2_entry_loss_pct",
+   "fieldtype": "Percent",
+   "label": "Loss % at this stage"
+  },
+  {
+   "fieldname": "m2_entry_weeks",
+   "fieldtype": "Int",
+   "label": "Weeks at this stage"
+  },
+  {
+   "fieldname": "m2_lead_weeks",
+   "fieldtype": "Int",
+   "label": "Supplier lead (weeks)"
+  },
+  {
+   "fieldname": "m2_route",
+   "fieldtype": "Select",
+   "label": "Start from a standard route",
+   "options": "\nBought as plants\nBought as roots\nBudwood\nOwn cuttings\nOwn cuttings, rooted\nOwn roots, cooled\nOwn roots, direct\nOwn tubers, direct\nSeed raised\nTC to motherstock\nTC to propagation\nTubers through cuttings"
+  },
+  {
+   "fieldname": "m2_share_pct",
+   "fieldtype": "Percent",
+   "label": "Share of the order"
+  },
+  {
+   "fieldname": "m2_steps",
+   "fieldtype": "Table",
+   "label": "Steps after it arrives",
+   "options": "Crop Material Stage"
+  },
+  {
+   "fieldname": "crop_flush_interval_weeks",
+   "fieldtype": "Int",
+   "label": "Flush Interval (Weeks) - rose model"
+  },
+  {
+   "fieldname": "crop_flush_schedule",
+   "fieldtype": "Table",
+   "label": "Flush Schedule",
+   "options": "Crop Protocol Flush"
+  },
+  {
+   "fieldname": "grade_mix",
+   "fieldtype": "Table",
+   "label": "Grade Mix",
+   "options": "Crop Protocol Grade Mix"
+  },
+  {
+   "fieldname": "growth_stages",
+   "fieldtype": "Table",
+   "label": "Growth Stages",
+   "options": "Crop Protocol Growth Stage"
+  },
+  {
+   "fieldname": "max_stems_per_plant_per_cut",
+   "fieldtype": "Float",
+   "label": "Max Stems Per Plant Per Cut"
+  },
+  {
+   "fieldname": "productive_life_weeks",
+   "fieldtype": "Int",
+   "label": "Productive Life (Weeks)"
+  },
+  {
+   "fieldname": "productive_life_years",
+   "fieldtype": "Float",
+   "label": "Productive Life (Years)"
+  },
+  {
+   "fieldname": "protocol_name",
+   "fieldtype": "Data",
+   "label": "Protocol Name"
+  },
+  {
+   "fieldname": "stems_per_cut",
+   "fieldtype": "Float",
+   "label": "Stems Per Cut"
+  },
+  {
+   "fieldname": "stems_per_plant_first_harvest",
+   "fieldtype": "Float",
+   "label": "Stems Per Plant, First Harvest"
+  },
+  {
+   "fieldname": "variety_item",
+   "fieldtype": "Link",
+   "label": "Variety (Item link)",
+   "options": "Item"
+  },
+  {
+   "fieldname": "weeks_between_cuts",
+   "fieldtype": "Int",
+   "label": "Cut to Cut Cycle (Weeks)"
+  },
+  {
+   "fieldname": "weeks_to_first_bending",
+   "fieldtype": "Int",
+   "label": "Weeks to First Bending"
+  },
+  {
+   "fieldname": "weeks_to_first_flush",
+   "fieldtype": "Int",
+   "label": "Weeks to First Flush"
+  },
+  {
+   "fieldname": "weeks_to_second_bending",
+   "fieldtype": "Int",
+   "label": "Weeks to Second Bending"
   }
  ],
  "grid_page_length": 50,
