@@ -685,14 +685,25 @@ class SummerFlowerProductionPlan(Document):
 			# same rule applied where it was still missing.
 			b.plants = cint(b.plants_from_demand)
 
+		# Which engine answers depends on how the crop is RAISED, not on whether
+		# one of them happened to return rows. A pool crop that falls through to
+		# the units engine is answered catastrophically wrongly: root_line reads
+		# one plantlet as one plant, so Aster Flash came back needing 498,000 TC
+		# for 498,000 plants where the pool needs 34,000 -- each mother cutting
+		# once a week for a year. Agreeing the correct order would then have read
+		# as 7% of the requirement and trimmed the plan to almost nothing.
+		#
+		# The route says which it is, and says so on every version: a stage that
+		# stands and yields week after week is a pool. raised_from_pool only
+		# reached Crop Protocol Version yesterday, so it is blank on every
+		# version approved before that and cannot be asked on its own.
+		pool = bool(cint(v.get("raised_from_pool"))) or any(
+			cint(r.is_standing) for r in (v.material_route or []))
 		got = (built or {}).get("supplied_by_row") or {}
-		if not any(cint(x) for x in got.values()):
-			# The pool walk models a motherstock standing and being cut. A crop
-			# that is not raised from a pool has none, so every planting comes
-			# back at zero -- which is not an answer about this plan, it is the
-			# wrong engine. Eryngium Scorpius is bought as TC and as roots and
-			# never cut from mothers; its materials are agreed as quantities,
-			# and how many plants those quantities cover is what trims it.
+		if not pool and not any(cint(x) for x in got.values()):
+			# Bought, not cut: there is no pool to simulate. Eryngium Scorpius
+			# arrives as TC and as roots, and how many plants those quantities
+			# are worth after the route's losses is what trims it.
 			got = self.plants_the_agreed_units_cover(v)
 		if not got:
 			return
