@@ -67,6 +67,12 @@ MACHINERY = {
 	# The snapshot's own heading. It carries the version number, so copying it
 	# back would put "... v1" on the protocol, and the protocol writes its own.
 	"title",
+	# Worked out by the version's own controller, not copied from anywhere, so
+	# a parity check should not look for a protocol field behind them. There is
+	# none and none is meant: route_summary is built by route_summary(), and
+	# bed_area_assumed is set in set_geometry() from whether a bed area had to
+	# be assumed. Everything else on the version does come from the protocol.
+	"route_summary", "bed_area_assumed",
 }
 
 
