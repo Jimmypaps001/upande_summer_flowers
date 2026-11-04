@@ -766,7 +766,14 @@ class SummerFlowerProductionPlan(Document):
 				continue
 			can = cint(got[b.name])
 			b.plants = can
-			b.plants_to_plant = can
+			# What goes IN the ground, which is more than what stands in it.
+			# Establishment kills a share after planting, so a planting that
+			# must stand 560 is planted at 800 when 70% establish. Writing the
+			# standing figure into both lost that distinction, and the planting
+			# is the number the field is handed.
+			estab = flt(v.field_establishment_pct) / 100.0
+			b.plants_to_plant = (int(math.ceil(can / estab - 1e-9))
+			                     if estab > 0 else can)
 			b.trimmed_to_materials = 1 if can < cint(b.plants_from_demand) else 0
 			if per_bed:
 				b.beds = int(math.ceil(can / float(per_bed))) if can else 0

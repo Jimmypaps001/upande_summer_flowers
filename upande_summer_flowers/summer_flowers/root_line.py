@@ -357,16 +357,43 @@ def arrival_plan(plan, tc_share=None, returns_per_plant=None,
 	ways = _ways_in(v)
 	one_way = len(ways) < 2
 
+	# What the ROUTE does to a bought unit on its way to the ground, which is a
+	# different thing from the supply provision above. `keep` is a buffer for
+	# what never arrives; this is the germinating and establishing the protocol
+	# already states, and the card already prints it -- "1,680 plants need 3,000
+	# seeds, 1.786 a plant". It was missing from the arithmetic that answers
+	# "what does this order cover", so 2,000 seeds read as 2,000 plants on a
+	# route that loses 20% rooting and 30% establishing. Two engines, two
+	# answers, on the same card.
+	# From the percentages themselves, not from the reciprocal the protocol
+	# stores. cuttings_per_plant_required is rounded to three decimals, and
+	# 1/1.786 is 0.55991 rather than 0.56 -- enough to turn an order that
+	# covers the season exactly into one reported a plant short.
+	root_ok = flt(v.rooting_success_pct)
+	field_ok = flt(v.field_establishment_pct)
+	if root_ok and field_ok:
+		route_keep = (root_ok / 100.0) * (field_ok / 100.0)
+	else:
+		per_plant = flt(v.cuttings_per_plant_required) or 1.0
+		route_keep = (1.0 / per_plant) if per_plant > 0 else 1.0
+	route_keep = max(0.0, min(1.0, route_keep)) or 1.0
+
 	origin = "protocol"
 	if cint(tc_qty) or cint(roots_qty):
-		from_tc = int(cint(tc_qty) * keep)
+		from_tc = int(round(cint(tc_qty) * keep * route_keep))
 		from_roots = (int(cint(roots_qty) * per_root * keep_roots)
 		              if per_root > 0 else 0)
 		covered = from_tc + from_roots
 		share = (1.0 if one_way
 		         else max(0.0, min(1.0, (float(from_tc) / wanted) if wanted else 1.0)))
 		asked = {
-			"tc_qty": from_tc, "roots_qty": cint(roots_qty),
+			# The QUANTITY asked for, not what it is worth. These were the same
+			# number while nothing was lost on the way to the field, so one key
+			# carried both meanings and nobody could tell. Once the route's
+			# losses are counted they part company, and agreeing a line wrote
+			# the plants back as if they were the seeds: ask for 3,000 and the
+			# plan recorded 1,680 ordered.
+			"tc_qty": cint(tc_qty), "roots_qty": cint(roots_qty),
 			"plants_from_tc": from_tc, "plants_from_roots": from_roots,
 			"plants_covered": covered,
 			"short_by": max(0, wanted - covered),
@@ -1446,6 +1473,20 @@ def agree_material_plan(production_plan, tc_qty=None, roots_qty=None,
 			allocations if isinstance(allocations, str)
 			else frappe.as_json(allocations))
 	plan.db_set(fields, update_modified=False)
+	# ... and then let the plan work the agreement through to its plantings.
+	# db_set writes the columns and nothing else -- validate never runs -- so on
+	# a bought crop the trim that makes the plantings say what the order can
+	# actually plant never happened at all. Changing the seeds changed the
+	# stored figure and left the plan saying what the market asked for, which is
+	# exactly what it looked like from the card: a number typed and nothing
+	# downstream moving. The motherstock half has always saved the plan here.
+	#
+	# A draft only. A submitted plan is left as it is, which is the same rule
+	# the trim applies for itself: approved plantings are not rewritten
+	# underneath an approval.
+	if not cint(plan.docstatus):
+		plan.reload()
+		plan.save(ignore_permissions=True)
 	frappe.clear_document_cache("Summer Flower Production Plan", plan.name)
 	frappe.db.commit()
 
