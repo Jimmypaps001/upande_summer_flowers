@@ -1439,6 +1439,40 @@ def submit_for_approval(protocol):
 
 
 @frappe.whitelist()
+def active_versions(doc):
+	"""Every Active version of this protocol, the newest first.
+
+	Keyed on the protocol, because (variety, farm) is not a stable identity.
+	The October item merge repointed protocols onto numbered items, and a
+	version snapshotted before it still carries the variety NAME: looking for
+	what was in force under the item code simply did not see it, superseded
+	nothing, and left two rows at is_current = 1. The farm spelling moves too --
+	3359-Bondet-v2 and 3359-Kariki Nanyuki-v1 are one protocol at one farm under
+	two names -- so both keys are asked and the answers merged.
+
+	Newest first is by version, then by the date it takes effect, so the caller
+	can take [0] as the one being replaced and retire the whole list.
+	"""
+	seen, out = set(), []
+	# The farm is on both keys. A protocol is approved for a variety AT A FARM,
+	# and some rows carry a crop_protocol belonging to a different farm, so
+	# asking by the protocol alone would retire another farm's live version.
+	for f in ({"crop_protocol": doc.name, "farm": doc.get("farm"),
+	           "version_status": "Active"},
+	          {"variety": doc.get("variety"), "farm": doc.get("farm"),
+	           "version_status": "Active"}):
+		if not all(v for v in f.values()):
+			continue
+		for r in frappe.get_all("Crop Protocol Version", filters=f,
+		                        fields=["name", "version", "effective_from"]):
+			if r.name not in seen:
+				seen.add(r.name)
+				out.append(r)
+	out.sort(key=lambda r: (cint(r.version), str(r.effective_from or "")),
+	         reverse=True)
+	return out
+
+
 def approve(protocol):
 	"""Approve the protocol, which is the only thing that writes a version.
 
@@ -1462,10 +1496,8 @@ def approve(protocol):
 		frappe.throw(_("Nothing has changed since {0} was approved.").format(
 			doc.get("custom_sf_current_version")))
 
-	prior = frappe.db.get_value("Crop Protocol Version",
-	                            {"variety": doc.variety, "farm": doc.farm,
-	                             "version_status": "Active"},
-	                            ["name", "effective_from"], as_dict=True)
+	priors = active_versions(doc)
+	prior = priors[0] if priors else None
 	prior_name = prior.name if prior else None
 
 	# A reason records what moved, so there has to be something it moved from. The
@@ -1474,8 +1506,12 @@ def approve(protocol):
 	if prior_name and not doc.get("custom_sf_change_reason"):
 		frappe.throw(_("A reason is required: it is what the history records. "
 		               "{0} is in force, so say what this changes.").format(prior_name))
+	# Over the same scope the priors were found in. Numbering off (variety, farm)
+	# alone restarted at 1 for a protocol whose variety link had been repointed,
+	# so a second v1 was created beside the first.
 	last = frappe.db.sql("""select ifnull(max(version), 0) from `tabCrop Protocol Version`
-		where variety = %s and farm = %s""", (doc.variety, doc.farm))[0][0]
+		where crop_protocol = %s or (variety = %s and farm = %s)""",
+		(doc.name, doc.variety, doc.farm))[0][0]
 
 	v = to_version(doc)
 	v.version = cint(last) + 1
@@ -1501,8 +1537,11 @@ def approve(protocol):
 	v.flags.ignore_mandatory = True
 	v.insert()
 
-	if prior_name:
-		p = frappe.get_doc("Crop Protocol Version", prior_name)
+	# EVERY one of them, not the one a get_value happened to return. Two rows
+	# left standing as Active is how a protocol goes on reporting the older of
+	# them as in force after the newer was approved.
+	for row in priors:
+		p = frappe.get_doc("Crop Protocol Version", row.name)
 		p.db_set("superseded_by", v.name, update_modified=False)
 		p.db_set("version_status", "Superseded", update_modified=False)
 		p.db_set("is_current", 0, update_modified=False)
