@@ -607,6 +607,11 @@
           </span>
         </div>
         <div class="pl-tiles pl-tiles-sm" id="tc-tiles"></div>
+        <!-- The same loss ladder the bought-material card draws. A pool crop
+             loses plants to grading and to establishment exactly like any
+             other, and the card that never showed it was the card for the
+             crops whose protocols most often state no loss at all. -->
+        <div id="tc-ladder"></div>
         <div id="tc-note"></div>
         <div id="tc-sup"></div>
         <div id="tc-batches" class="pl-scroll"></div>
@@ -4756,8 +4761,16 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
           }).then((m) => { S.mat = m; renderTc(); })
             .catch((e) => { S.mat = { error: e.message }; renderTc(); });
         }
+        // A pool crop needs the other engine too -- not for the order, which
+        // the motherstock line owns, but for the LOSSES. Grading and
+        // establishment happen to a cutting exactly as they happen to a seed,
+        // and the card that never showed them was the card for the crops whose
+        // protocols most often state none. Only the ladder is taken from it.
         S.mat = null;
         renderTc();
+        callRl("arrivals_for", { production_plan: r.plan })
+          .then((m) => { S.matLadder = m; renderTc(); })
+          .catch(() => { S.matLadder = null; });
       })
       .catch((e) => { S.tc = { error: e.message }; renderTc(); });
   }
@@ -5990,6 +6003,22 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
     if (dv) dv.max = String((t.peak || {}).max ?? 4);
     if (dv && document.activeElement !== dv) dv.value = c.multiplications ?? "";
     const q = t.from_quantity;
+
+    const lad = $("tc-ladder");
+    if (lad) {
+      // Only the groups this engine can finish. On a pool crop the order is
+      // the motherstock line's answer, not this one's, so the propagation
+      // group ends in a dash -- and a step that stops mid-sentence reads as a
+      // fault rather than as a division of labour. What belongs here is the
+      // part that is true whatever raises the crop: stems wanted, grading,
+      // what must stand, establishment, what goes in the ground.
+      const L = (S.matLadder || {}).ladder;
+      const keep = (L && L.groups || []).filter((g) => g.result != null);
+      lad.innerHTML = keep.length
+        ? renderLadder({ ladder: { groups: keep,
+                                   any_loss_stated: L.any_loss_stated } })
+        : "";
+    }
 
     const met = c.weeks_met || 0, all = c.weeks || 0;
     $("tc-tiles").innerHTML = [

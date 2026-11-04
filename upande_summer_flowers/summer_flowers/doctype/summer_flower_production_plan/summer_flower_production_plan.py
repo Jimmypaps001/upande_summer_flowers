@@ -61,6 +61,19 @@ class SummerFlowerProductionPlan(Document):
 		# the requirement, and the requirement does not move because an order was
 		# agreed against it.
 		new_rows = [b for b in self.plan_blocks if b.is_new_planting]
+		# What goes IN the ground, kept in step with what stands in it on every
+		# save. It was written once when the plan was built and then left, so a
+		# planting that moved -- trimmed to an agreed order, rebuilt against a
+		# new protocol, or edited by hand -- went on quoting the figure it was
+		# born with. It is the number the field is handed, so it follows the
+		# plan rather than remembering it.
+		try:
+			v = getattr(self, "_version", None) or frappe.get_cached_doc(
+				"Crop Protocol Version", self.protocol)
+			for b in new_rows:
+				b.plants_to_plant = plants_to_plant(v, cint(b.plants))
+		except Exception:
+			pass
 		self.new_beds_required = sum((b.beds or 0) for b in new_rows)
 		self.new_plants_required = sum((b.plants or 0) for b in new_rows)
 		self.check_protocol_freshness()
@@ -766,14 +779,8 @@ class SummerFlowerProductionPlan(Document):
 				continue
 			can = cint(got[b.name])
 			b.plants = can
-			# What goes IN the ground, which is more than what stands in it.
-			# Establishment kills a share after planting, so a planting that
-			# must stand 560 is planted at 800 when 70% establish. Writing the
-			# standing figure into both lost that distinction, and the planting
-			# is the number the field is handed.
-			estab = flt(v.field_establishment_pct) / 100.0
-			b.plants_to_plant = (int(math.ceil(can / estab - 1e-9))
-			                     if estab > 0 else can)
+			# plants_to_plant follows from it, and is worked out in one place
+			# for every planting on every save -- see set_totals.
 			b.trimmed_to_materials = 1 if can < cint(b.plants_from_demand) else 0
 			if per_bed:
 				b.beds = int(math.ceil(can / float(per_bed))) if can else 0
