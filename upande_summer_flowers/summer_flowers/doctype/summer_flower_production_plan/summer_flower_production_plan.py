@@ -181,7 +181,34 @@ class SummerFlowerProductionPlan(Document):
 		self.resolve_protocol()
 
 	def resolve_protocol(self):
-		"""Default to the version in force, and refuse another crop's protocol."""
+		"""Settle which protocol, and which version of it, this plan is built on.
+
+		A plan is grown to a PROTOCOL -- the document somebody edits and
+		approves -- so that is what is picked and what the form shows. What the
+		figures are BUILT from is a version of it, because they have to stay
+		put: approving a new protocol in March cannot rewrite a plan signed off
+		in January underneath it. Both are held, and the version is read once.
+
+		Picking a protocol with no version behind it, or swapping it for a
+		different one, reads the version in force for it. A plan that then falls
+		behind says so through protocol_stale rather than moving on its own.
+		"""
+		if self.crop_protocol:
+			belongs = (frappe.db.get_value("Crop Protocol Version", self.protocol,
+			                               "crop_protocol") if self.protocol else None)
+			if belongs != self.crop_protocol:
+				current = frappe.db.get_value("Crop Protocol", self.crop_protocol,
+				                              "custom_sf_current_version")
+				if current and frappe.db.exists("Crop Protocol Version", current):
+					self.protocol = current
+				else:
+					rows = frappe.get_all(
+						"Crop Protocol Version",
+						filters={"crop_protocol": self.crop_protocol,
+						         "farm": self.farm, "version_status": "Active"},
+						pluck="name", order_by="version desc", limit=1)
+					if rows:
+						self.protocol = rows[0]
 		if not self.protocol:
 			self.protocol = current_version(self.variety, self.farm)
 			if not self.protocol:
@@ -191,6 +218,9 @@ class SummerFlowerProductionPlan(Document):
 				).format(self.variety, self.farm))
 
 		v = frappe.get_cached_doc("Crop Protocol Version", self.protocol)
+		# The form shows the protocol, so it is filled from the version wherever
+		# the version was settled first -- an older plan, or the default above.
+		self.crop_protocol = v.crop_protocol or self.crop_protocol
 		if v.variety != self.variety or v.farm != self.farm:
 			frappe.throw(_(
 				"{0} is the protocol for {1} at {2}, but this plan is for {3} at "

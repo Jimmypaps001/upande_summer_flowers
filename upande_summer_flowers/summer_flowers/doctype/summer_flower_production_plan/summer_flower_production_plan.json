@@ -15,6 +15,7 @@
   "market_demand",
   "variety",
   "farm",
+  "crop_protocol",
   "protocol",
   "protocol_status",
   "protocol_stale",
@@ -150,11 +151,12 @@
    "reqd": 1
   },
   {
-   "description": "The agronomic assumptions this plan is built on: density, cycle length, flush curve. Change it and Regenerate to see the effect on the numbers.",
+   "description": "The snapshot the figures were worked out from. Set from the Crop Protocol above, and kept, so the plan can always say which version it was built on.",
    "fieldname": "protocol",
    "fieldtype": "Link",
-   "label": "Crop Protocol Version",
-   "options": "Crop Protocol Version"
+   "label": "Built On Version",
+   "options": "Crop Protocol Version",
+   "read_only": 1
   },
   {
    "allow_on_submit": 1,
@@ -701,6 +703,14 @@
    "label": "Plants The Demand Asked For",
    "read_only": 1,
    "description": "The plantings as the market sized them, before any order was agreed. Every figure that SIZES an order is worked out from this, so agreeing an order cannot shrink the requirement it was agreed against."
+  },
+  {
+   "fieldname": "crop_protocol",
+   "fieldtype": "Link",
+   "options": "Crop Protocol",
+   "label": "Crop Protocol",
+   "in_standard_filter": 1,
+   "description": "The protocol this plan is grown to -- the document a person edits and approves. Pick it here; the approved version in force for it is read and recorded below, and that version is what the numbers are built from, so approving a new protocol later cannot quietly rewrite a plan that was already signed off."
   }
  ],
  "grid_page_length": 50,
