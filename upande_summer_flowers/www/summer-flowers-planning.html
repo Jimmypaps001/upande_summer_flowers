@@ -5243,7 +5243,11 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
       // ground. The column under the name of the thing bought used to hold the
       // PLANTS, so a week needing 10,000 plants read "10,000 seeds" on a
       // protocol that loses 44% of them before planting.
-      `<table class="pl-t"><thead><tr><th>Wanted</th><th>Week</th>` +
+      // Sowing first, then planting. The two dates a person acts on: the week
+      // the seed goes in the tray and the week what it becomes reaches the
+      // field. The old first column was the planting date in long form beside
+      // the same week in ISO -- one date written twice.
+      `<table class="pl-t"><thead><tr><th>Sow week</th><th>Planting week</th>` +
       // The harvest end of the chain comes first, because it is the answer to
       // "why plant more than we need": a stem that fails grading was still
       // grown, and the plants had to be standing to grow it.
@@ -5251,8 +5255,11 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
       (m.grading_reject_pct
         ? `<th class="n">Lost grading ${m.grading_reject_pct}%</th>` +
           `<th class="n">Stems to cut</th>` : "") +
-      `<th class="n">Plants needed</th>` +
-      `<th class="n">${esc(wayOne(m))} to buy</th>` +
+      // Not "Plants needed": that is Plants standing, further along the same
+      // row, and a column cannot be two things.
+      // Bought once or in batches; SOWN week by week. What a week carries is
+      // the sowing, which is why the sow week now sits beside it.
+      `<th class="n">${esc(wayOne(m))} to sow</th>` +
       (m.tc_first_loss_pct && m.tc_first_loss_pct < 100
         ? `<th class="n">Lost germinating ` +
           `${(100 - m.tc_first_loss_pct).toFixed(0)}%</th>` : "") +
@@ -5267,14 +5274,13 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
       (m.weeks || []).map((w) => {
         const got = cintish(w.by_tc) + cintish(w.by_roots);
         const v = got - cintish(w.plants);
-        return `<tr><td>${fdate(w.week)}</td>` +
+        return `<tr><td>${esc(w.sow_iso || "")}</td>` +
           `<td class="text-muted">${esc(w.week_iso || "")}</td>` +
           `<td class="n">${w.stems_saleable ? num(w.stems_saleable) : ""}</td>` +
           (m.grading_reject_pct
             ? `<td class="n" style="color:var(--critical)">` +
               `${w.stems_lost_grading ? "−" + num(w.stems_lost_grading) : ""}</td>` +
               `<td class="n">${w.stems_cut ? num(w.stems_cut) : ""}</td>` : "") +
-          `<td class="n">${num(w.plants)}</td>` +
           `<td class="n">${w.units_tc ? num(w.units_tc) : ""}</td>` +
           (m.tc_first_loss_pct && m.tc_first_loss_pct < 100
             ? `<td class="n" style="color:var(--critical)">` +
@@ -5298,7 +5304,6 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
         ? `<th class="n" style="color:var(--critical)">` +
           `−${num(m.stems_lost_grading_total)}</th>` +
           `<th class="n">${num(m.stems_cut_total)}</th>` : "") +
-      `<th class="n">${num(m.plants_total)}</th>` +
       `<th class="n">${num(m.tc_units_total)}</th>` +
       (m.tc_first_loss_pct && m.tc_first_loss_pct < 100
         ? `<th class="n" style="color:var(--critical)">` +

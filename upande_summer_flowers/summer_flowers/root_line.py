@@ -554,6 +554,14 @@ def arrival_plan(plan, tc_share=None, returns_per_plant=None,
 		# and are taken out week by week as the plantings need them -- early
 		# enough that what they become lands with the tissue culture. So what a
 		# week has against it is not an order, it is a withdrawal from store.
+		# When the seed goes in the tray, which is not when it was ordered and
+		# not when it reaches the field. The order is placed a supplier lead
+		# before sowing; the sowing is the route's weeks-to-ground before
+		# landing. The card had the order week and the landing week and nothing
+		# for the act in between, which is the one the propagation unit works
+		# to: these are the seeds to SOW that week.
+		w["sow_week"] = str(add_days(land, -7 * tc_weeks))
+		w["sow_iso"] = iso(w["sow_week"])
 		w["tc_order_week"] = str(add_days(land, -7 * (tc_lead + tc_weeks)))
 		w["root_out_week"] = (str(add_days(land, -7 * root_weeks))
 		                      if roots else None)
