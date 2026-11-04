@@ -568,29 +568,84 @@ class SummerFlowerProductionPlan(Document):
 			return
 		v = getattr(self, "_version", None) or frappe.get_cached_doc(
 			"Crop Protocol Version", self.protocol)
-		order_date = self.tc_order_date_committed or self.tc_order_by_date
-		if not order_date:
-			return
-
 		from upande_summer_flowers.summer_flowers.planning_api import _tc_production
 
-		try:
-			built = _tc_production(self, v, cint(self.tc_plants_committed),
-			                       getdate(order_date))
-		except Exception:
-			# A plan that cannot be simulated is still a plan; it just cannot say
-			# what the order supplies. Losing the save over it would be worse.
-			frappe.log_error(frappe.get_traceback(), "TC constraint on %s" % self.name)
-			return
+		# The pool walk needs a date to start the line from. A crop that is
+		# bought rather than cut may not have one, and that is not a reason to
+		# leave its plantings saying what the demand asked for -- so the walk is
+		# what is skipped here, not the trim. Returning at this point was why an
+		# agreed order only reached the plantings on the NEXT save of the plan.
+		built = None
+		order_date = self.tc_order_date_committed or self.tc_order_by_date
+		if order_date:
+			try:
+				built = _tc_production(self, v, cint(self.tc_plants_committed),
+				                       getdate(order_date))
+			except Exception:
+				# A plan that cannot be simulated is still a plan; it just cannot
+				# say what the order supplies. Losing the save over it is worse.
+				frappe.log_error(frappe.get_traceback(),
+				                 "TC constraint on %s" % self.name)
+				built = None
 
-		supplied = {(cint(r["year"]), cint(r["week_no"])): cint(r["production"])
-		            for r in built.get("weeks") or []}
-		for w in self.plan_weeks:
-			w.supplied_production_stems = supplied.get(
-				(cint(w.year), cint(w.week_no)), 0)
-		self.supplied_production_stems = cint(built.get("production_stems"))
-		self.supplied_coverage_pct = flt(built.get("coverage_pct"))
+		if built:
+			supplied = {(cint(r["year"]), cint(r["week_no"])): cint(r["production"])
+			            for r in built.get("weeks") or []}
+			for w in self.plan_weeks:
+				w.supplied_production_stems = supplied.get(
+					(cint(w.year), cint(w.week_no)), 0)
+			self.supplied_production_stems = cint(built.get("production_stems"))
+			self.supplied_coverage_pct = flt(built.get("coverage_pct"))
 		self.apply_agreed_materials_to_plantings(built, v)
+
+	def plants_the_agreed_units_cover(self, v):
+		"""How many plants the agreed TC and roots come to, planting by planting.
+
+		For a crop bought rather than cut. There is no pool to simulate: the
+		decision is a pair of quantities, and what they are worth is how many
+		plants survive the route from them -- which the materials card already
+		works out and reports as plants_covered.
+
+		Spread earliest sticking week first, because that is the order the
+		material arrives in and the order the field wants it. A week that the
+		remainder cannot fill is rounded down to a whole planting area, since a
+		third of a bed is not a planting.
+		"""
+		from upande_summer_flowers.summer_flowers import root_line
+
+		try:
+			m = root_line.arrival_plan(self, tc_qty=cint(self.tc_plants_committed),
+			                           roots_qty=cint(self.roots_committed))
+		except Exception:
+			frappe.log_error(frappe.get_traceback(), "Units cover on %s" % self.name)
+			return {}
+		covered = cint(((m or {}).get("asked") or {}).get("plants_covered"))
+		if not covered:
+			return {}
+		rows = sorted(
+			[b for b in self.plan_blocks if cint(b.is_new_planting)],
+			key=lambda b: (cint(b.sticking_year), cint(b.sticking_week)))
+		# The version's own density. plants_per_bed_for answers 0 on a protocol
+		# with no sqm_net_per_bed -- this Eryngium is one -- and a zero there
+		# silently turned the rounding off, so a planting came out at 20,201
+		# plants where a bed holds 16.
+		per_bed = cint(v.plants_per_bed) or cint(v.min_planting_plants) or 0
+		out, left = {}, covered
+		for b in rows:
+			want = cint(b.get("plants_from_demand")) or cint(b.plants)
+			if left <= 0:
+				out[b.name] = 0
+				continue
+			if left >= want:
+				out[b.name] = want
+				left -= want
+				continue
+			take = left
+			if per_bed:
+				take = (take // per_bed) * per_bed
+			out[b.name] = cint(take)
+			left = 0
+		return out
 
 	def apply_agreed_materials_to_plantings(self, built, v):
 		"""Make the plantings say what the agreed materials can actually plant.
@@ -611,7 +666,34 @@ class SummerFlowerProductionPlan(Document):
 		Nothing happens before an order is agreed, and nothing happens to a
 		planting already in the ground -- no order can change what is planted.
 		"""
+		# Recorded for every new planting the first time through, before any
+		# trimming, so the requirement survives whatever happens next. Doing it
+		# only for rows the walk answered left the rest at zero, and a zero here
+		# reads as "no demand figure", which sends the next save back to the
+		# already-trimmed b.plants and shrinks it again.
+		for b in self.plan_blocks:
+			if not cint(b.is_new_planting):
+				continue
+			if not cint(b.get("plants_from_demand")):
+				b.plants_from_demand = cint(b.plants)
+			# Put the requirement back before anything measures it. The units
+			# path asks root_line what the agreed quantities cover, and
+			# root_line works that out from the plan's OWN plantings -- so on
+			# the second save it was reading figures the first save had already
+			# trimmed, and trimmed them again. The pool walk reads
+			# plants_from_demand directly and never had the problem; this is the
+			# same rule applied where it was still missing.
+			b.plants = cint(b.plants_from_demand)
+
 		got = (built or {}).get("supplied_by_row") or {}
+		if not any(cint(x) for x in got.values()):
+			# The pool walk models a motherstock standing and being cut. A crop
+			# that is not raised from a pool has none, so every planting comes
+			# back at zero -- which is not an answer about this plan, it is the
+			# wrong engine. Eryngium Scorpius is bought as TC and as roots and
+			# never cut from mothers; its materials are agreed as quantities,
+			# and how many plants those quantities cover is what trims it.
+			got = self.plants_the_agreed_units_cover(v)
 		if not got:
 			return
 		# Never underneath an approval. Approved plantings are what somebody
@@ -619,10 +701,10 @@ class SummerFlowerProductionPlan(Document):
 		# same rule confirm_tc_choice already applies to the order itself.
 		if self.docstatus != 0:
 			return
-		# A walk that supplies NOTHING is not a decision to plant nothing. It is
-		# what a passed order date looks like: no pool can cut before the first
-		# sticking week, so every planting comes back at zero. Zeroing the plan
-		# over it would turn a scheduling problem into a deleted season. It is
+		# Supplying NOTHING is not a decision to plant nothing. It is what a
+		# passed order date looks like: nothing can reach the first sticking
+		# week, so every planting comes back at zero. Zeroing the plan over it
+		# would turn a scheduling problem into a deleted season, and it is
 		# already said in words on tc_status, which is where it belongs.
 		if not any(cint(x) for x in got.values()):
 			return
