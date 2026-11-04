@@ -562,103 +562,42 @@ def peak_sizing(plan, cycles=None, max_cycles=None):
 	ramp = v.ramp_ratios() or [1.0]
 	options = []
 	for c in range(0, cint(max_cycles) + 1):
-		# Sized to the shape of the season, not to a flat division of its peak.
-		# Only generation one is bought; the rest are cuttings taken off it, so
-		# the plantlet order is generation one's size alone.
-		gplan = generation_plan(demand, per_week, per_area, c + 1)
-		gens = len(gplan) or 1
+		# The pool divided by the generations standing. That is all it is, and
+		# all the farm ever meant by it: no multiplication buys the whole pool,
+		# one buys half and grows half, two buy a third, and each share is a
+		# whole planting area because you cannot buy part of a bed.
+		#
+		# This replaces two hand-made splits and a search between them. The
+		# search found smaller orders that still covered the season -- 3,000
+		# where half of 10,000 is 5,000 -- and it was right that they covered
+		# it, and wrong to offer them. A multiplication is a thing the farm
+		# DOES a counted number of times, and what it is worth has to be
+		# arithmetic anyone can check on the back of an envelope. An answer
+		# nobody can predict is not a lever, however well it optimises.
 		mothers = peak / per_week
-		buy = cint(gplan[0]["mothers"]) if gplan else round_up_to_area(mothers, per_area)
-		batches = [cint(x["mothers"]) for x in gplan[1:]]
+		split = even_generations(mothers, c + 1, per_area) or [
+			round_up_to_area(mothers, per_area)]
+		buy, batches = cint(split[0]), [cint(x) for x in split[1:]]
+		gens = len(split)
 		raw = mothers / max(1, gens)
+		gplan = [{"by": first_stick, "mothers": buy}] + [
+			{"by": first_stick, "mothers": b} for b in batches]
+
 		# Two ends of a range, not one date. The earliest is the old anchor --
 		# the whole pool standing before the field wants anything -- and the
 		# latest is generation one ramped up exactly as the season opens, with
 		# the rest arriving during it. The line is walked across the range and
-		# the last of the best starts wins, because every week bought early is a
-		# week of mothers cut into nothing AND a week off the end of the season.
-		# A generation needs time to be GATHERED as well as grown. The window
-		# allowed c establishments and not one week of cutting, so a line whose
-		# second generation had to be productive on the opening week could
-		# never start early enough to manage it -- and the sizing then read
-		# the multiplication as useless when it was only late. A pool of B
-		# mothers cutting per_week each takes 1/per_week weeks to yield B.
+		# the last of the best starts wins, because every week bought early is
+		# a week of mothers cut into nothing AND a week off the end.
+		# A generation needs time to be GATHERED as well as grown, and every
+		# generation climbs its own build-up, not just the last one.
 		gather = max(1, int(math.ceil(1.0 / (flt(per_week) or 1.0))))
-		# Every generation climbs its own build-up, not just the last one. The
-		# window allowed ramp_lead ONCE for the whole chain, and a generation
-		# cutting at 20, 50, 75% cannot gather a full batch at the rate the
-		# gather term assumes -- so the line could not start early enough for
-		# the one it feeds to reach full rate by the week that needs it. On this
-		# Aster the window was exactly a week too narrow: one multiplication cut
-		# 8,750 against 9,600 because the second generation was still at 75% in
-		# the only week that mattered, while none at all and two both delivered.
-		# A lever that gets worse and then better again is not a lever.
 		earliest = add_days(getdate(first_stick),
 		                    -7 * (c * (regen + gather + ramp_lead) + ramp_lead))
 		latest = add_days(getdate(first_stick), -7 * ramp_lead)
 		started, walk = best_start(
 			demand, buy, c, regen, per_week, life, ramp, per_area,
-			earliest=earliest, latest=latest, batches=batches)
-		# The same number of generations, split the way a grower would: equal
-		# instalments of the peak. Walked too, and kept when it does at least as
-		# well for a smaller order -- which on a season that opens near its peak
-		# is most of the time, and by a wide margin.
-		flat = even_generations(mothers, c + 1, per_area)
-		if flat and cint(flat[0]) < buy:
-			f_buy, f_batches = cint(flat[0]), [cint(x) for x in flat[1:]]
-			f_started, f_walk = best_start(
-				demand, f_buy, c, regen, per_week, life, ramp, per_area,
-				earliest=earliest, latest=latest, batches=f_batches)
-			# Weeks met first: a cheaper order that leaves the field short is
-			# not cheaper, it is a different plan. Then the smaller order.
-			if (cint(f_walk["weeks_met"]), -cint(f_walk["shortfall"])) >= (
-					cint(walk["weeks_met"]), -cint(walk["shortfall"])):
-				buy, batches, started, walk = f_buy, f_batches, f_started, f_walk
-				gplan = ([{"by": gplan[0]["by"] if gplan else first_stick,
-				           "mothers": f_buy}]
-				         + [{"by": gplan[min(i + 1, len(gplan) - 1)]["by"]
-				             if gplan else first_stick, "mothers": b}
-				            for i, b in enumerate(f_batches)])
-				gens = len(gplan)
-		# Both candidates are guesses at one number: how much of the pool has
-		# to be bought rather than grown. Search for the smallest that does as
-		# well, and a multiplication buys what a multiplication should.
-		total = cint(buy) + sum(cint(x) for x in (batches or []))
-		# ... and only when the line actually serves somebody. Where it meets no
-		# planting week at all -- a crop that is bought rather than cut, so the
-		# pool walk has nothing to simulate -- "the smallest order that does as
-		# well" is the smallest order there is, and Eryngium Scorpius came back
-		# proposing 16 plants grown into 46,192. Nothing is being optimised
-		# there; it is the wrong card for that crop, and it should at least not
-		# invent a number.
-		if (c and total and cint(buy) > cint(per_area)
-				and cint(walk["weeks_met"]) > 0):
-			# Never worse than buying the lot. Multiplying cannot take coverage
-			# away, because the same pool bought outright is always still an
-			# option -- so the bar the search has to clear is whatever NO
-			# multiplication achieves, not whatever the hand-made split managed.
-			# Without this, a split that covered 28 weeks where none covered 31
-			# was accepted as the answer for one multiplication, and the lever
-			# read as making the plan worse.
-			#
-			# The search is allowed up to the whole pool for the same reason. It
-			# only ever looked DOWN from the candidate, so when the candidate
-			# was already short there was nowhere for it to go. At the top of
-			# that range it buys everything and grows nothing, which is the
-			# honest answer where multiplying this line cannot help.
-			floor = ((cint(options[0]["weeks_met"]), -cint(options[0]["shortfall"]))
-			         if options else (0, 0))
-			target = max((cint(walk["weeks_met"]), -cint(walk["shortfall"])), floor)
-			shrunk = smallest_first_generation(
-				demand, total, c, regen, per_week, life, ramp, per_area,
-				earliest, latest, target, total)
-			if shrunk and cint(shrunk[0]) != cint(buy):
-				buy, batches, started, walk = shrunk
-				by_dates = [x["by"] for x in gplan] or [first_stick]
-				gplan = [{"by": by_dates[0], "mothers": buy}] + [
-					{"by": by_dates[min(i + 1, len(by_dates) - 1)], "mothers": b}
-					for i, b in enumerate(batches)]
-				gens = len(gplan)
+			earliest=earliest, latest=latest, batches=batches or None)
 
 		order_by = add_days(started, -7 * (lead + estab))
 		# The line lives one motherstock life from its FIRST cut, so what it has
@@ -683,21 +622,16 @@ def peak_sizing(plan, cycles=None, max_cycles=None):
 			"pool": cint(walk["peak_pool"]),
 		})
 
-	# Coverage first, then the smallest order that achieves it, then the fewest
-	# multiplications. Each option has actually been walked, so this is coverage
-	# measured rather than cutting weeks standing in for it.
+	# What the protocol says, and nothing cleverer. "Max times re-rooted" is
+	# the farm's own answer to how often this variety is multiplied: it caps
+	# the lever AND sets where it starts. A suggestion worked out from coverage
+	# was a second opinion on a question already answered, and it argued with
+	# the form -- the protocol allowed one and the card proposed two.
 	#
-	# Two branches used to decide this and they disagreed. Where something
-	# covered the whole season it took the MOST multiplication, which is right
-	# -- every extra one is plantlets saved. Where nothing could, it took the
-	# FEWEST, without looking at the order at all. So a line whose 52 weeks
-	# cannot span 117 weeks of sticking was told to buy 47,000 when 32,000
-	# reached exactly the same 27 weeks. One rule now, and it gives the old
-	# answer wherever the old answer was defensible.
-	suggested = max(
-		options,
-		key=lambda o: (o["weeks_met"], -o["shortfall"], -o["buy"], -o["cycles"])
-	)["cycles"]
+	# Still clamped to what the options hold, because a protocol that allows
+	# five on a line that can only be walked three times should not point at an
+	# option that is not there.
+	suggested = max(0, min(cint(max_cycles), len(options) - 1))
 	chosen = cint(cycles) if cycles not in (None, "") else suggested
 	chosen = max(0, min(chosen, cint(max_cycles)))
 
