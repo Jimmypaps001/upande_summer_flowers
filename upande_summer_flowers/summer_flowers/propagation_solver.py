@@ -1037,7 +1037,13 @@ def peak_schedule(plan, sizing, cycles=None, tc=None, first_cut=None):
 	from upande_summer_flowers.summer_flowers.lifecycle_sim import ramp_ratio  # noqa
 
 	c = cint(sizing["chosen"] if cycles in (None, "") else cycles)
-	pick = sizing["options"][min(c, len(sizing["options"]) - 1)]
+	# The options stop at the protocol's cap, so a bigger ask was already being
+	# answered by the last of them -- but only the SIZING was clamped, not the
+	# count. The line then reported "3 multiplications" over the order for one,
+	# and three asks in a row looked like the same answer with nothing to say
+	# why. Clamp the count here so what is quoted and what is counted agree.
+	c = max(0, min(c, len(sizing["options"]) - 1))
+	pick = sizing["options"][c]
 	buy = cint(tc) if cint(tc) else cint(pick["buy"])
 	args = (demand, buy, c, cint(sizing["regen_weeks"]),
 	        flt(sizing["cuttings_per_mother_per_week"]) or 1.0,

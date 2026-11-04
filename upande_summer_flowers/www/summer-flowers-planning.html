@@ -5979,6 +5979,10 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
     const c = t.chosen || {}, rec = t.recommended || {}, need = t.need || {};
     const qty = $("tc-qty"), dv = $("tc-divert");
     if (qty && document.activeElement !== qty) qty.value = c.tc || "";
+    // The box carried a hard-coded max of 4 while most protocols allow fewer,
+    // so it accepted a number it was always going to throw away. The cap on
+    // screen is now the cap that applies to THIS variety.
+    if (dv) dv.max = String((t.peak || {}).max ?? 4);
     if (dv && document.activeElement !== dv) dv.value = c.multiplications ?? "";
     const q = t.from_quantity;
 
@@ -5997,13 +6001,20 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
               // Same distinction as the plan card: the protocol's cap is a
               // rule, running out of cuttings to gather is a fault.
               const cap = (t.peak || {}).max ?? 4;
+              // Asked for more than the protocol allows. Only the APPLIED
+              // figure used to come back, so the box snapped to the cap and
+              // this line read as agreement -- which is why 2, 3 and 4 all
+              // looked like 1 with nothing to say why.
+              if (c.capped)
+                return `you asked for ${c.multiplications_asked} — this ` +
+                       `protocol allows ${cap}`;
               if (c.sends_made === c.multiplications)
                 return `times, of ${cap} the protocol allows`;
               if (c.multiplications > cap)
                 return `asked — the protocol allows ${cap}`;
               return `asked; only ${c.sends_made} could be gathered`;
             })(),
-        c: q && q.beyond_protocol ? "--warning" : "" },
+        c: (q && q.beyond_protocol) || c.capped ? "--warning" : "" },
       { k: "Order by", v: fdate(c.order_by), m: c.order_late ? "already passed" : "" },
       // The cost nobody sees until they read the table: weeks of cutting a pool
       // into nothing because the field has not opened yet. Every one of them is

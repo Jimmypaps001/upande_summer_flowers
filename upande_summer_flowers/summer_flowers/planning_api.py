@@ -3312,6 +3312,13 @@ def motherstock_line(plan=None, variety=None, farm=None, tc=None,
 		if derived:
 			multiplications = cint(derived["needed"])
 
+	# What was ASKED for, before the protocol's cap is applied to it. The card
+	# could never say "you asked for 2, the protocol allows 1" because only the
+	# applied figure came back: the box snapped to 1 and the tile read as though
+	# 1 was what had been typed. The cap is a rule and the farm is entitled to
+	# see it bite.
+	asked = cint(multiplications) if multiplications not in (None, "") else None
+
 	out = ps.peak_options(name, cycles=multiplications, tc=tc)
 	out["plan"] = name
 	if derived:
@@ -3332,6 +3339,8 @@ def motherstock_line(plan=None, variety=None, farm=None, tc=None,
 		out["chosen"] = {
 			"tc": sch["tc"],
 			"multiplications": sch["cycles"],
+			"multiplications_asked": asked,
+			"capped": bool(asked is not None and asked > cint(sch["cycles"])),
 			"sends_made": sch.get("sends_made"),
 			"sends_allowed": sch.get("sends_allowed"),
 			"order_by": sch["order_by"],
