@@ -347,10 +347,11 @@
       </div>
       <div class="pl-card">
         <div class="pl-card-head">
-          <div><h2>{{ _("Who raises it") }}</h2>
-               <p class="pl-note">{{ _("Our own propagation units raise it free; an outside propagator delivers plants and charges per plant, and gets a purchase order when the procurement plan is approved.") }}</p></div>
+          <div><h2>{{ _("Procurement allocation") }}</h2>
+               <p class="pl-note">{{ _("Who sells each way in and what share of it, what they have confirmed they will send, and what that commits us to plant. Our own propagation units raise it free; an outside propagator delivers plants and charges per plant, and gets a purchase order when the procurement plan is approved.") }}</p></div>
         </div>
         <div id="pc-buying" class="pl-scroll"></div>
+        <div id="pc-impact" class="pl-scroll"></div>
         <div id="pc-deliveries" class="pl-scroll"></div>
         <div id="pc-alloc" class="pl-scroll"></div>
       </div>
@@ -615,6 +616,7 @@
         <div id="tc-note"></div>
         <div id="tc-sup"></div>
         <div id="tc-batches" class="pl-scroll"></div>
+        <div id="tc-buy-plan" class="pl-scroll"></div>
         <div id="tc-root-plan" class="pl-scroll"></div>
         <!-- Motherstock generations. The bought-material path no longer writes
              here, but a crop that IS cut from a pool still does, and taking the
@@ -2620,7 +2622,11 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
       // Cuttings belong to propagation, which is where they are decided and where
       // the pool that supplies them is. On the planting plan they were a figure
       // with nothing to be read against.
-      { k: "Plants", v: num(t.plants), m: num(t.beds) + " beds to fill",
+      // What goes in the ground, which is what has to be bought, carried and
+      // planted. The standing figure is what is left of it once established,
+      // and the materials card counts the same way.
+      { k: "Plants to plant", v: num(t.plants_to_plant || t.plants),
+        m: num(t.plants) + " standing · " + num(t.beds) + " beds to fill",
         why: "plants_required" },
       { k: "Blocks needed", v: num(t.blocks_needed),
         m: num(t.blocks_available) + " available" + (short > 0 ? " · short " + num(short) : ""),
@@ -2661,7 +2667,7 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
     // sequence on screen rather than a row id that moves when the sort changes.
     $("pp-table").innerHTML =
       '<table class="pl-t"><thead><tr><th>#</th><th>Planting week</th>' +
-      '<th>Uprooting week</th><th class="n">Plants</th>' +
+      '<th>Uprooting week</th><th class="n">Plants to plant</th>' +
       '<th class="n">Area m²</th><th class="n">Area ha</th>' +
       '<th class="n">Stems over its life</th>' +
       '<th class="n">Stems / plant</th><th>Flags</th>' +
@@ -2679,7 +2685,7 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
         return `<tr><td>${i + 1}</td>` +
           wk(r.plant, r.planting_date) +
           wk(r.uproot_date ? isoLabel(r.uproot_date) : "", r.uproot_date) +
-          `<td class="n">${num(r.plants)}</td>` +
+          `<td class="n">${num(r.plants_to_plant || r.plants)}</td>` +
           `<td class="n">${num(Math.round(ha * 10000))}</td>` +
           `<td class="n">${ha.toFixed(4)}</td>` +
           `<td class="n">${num(r.lifetime_stems)}</td>` +
@@ -2689,7 +2695,8 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
       // The total is of every planting, not only the 400 drawn, so the figure at
       // the bottom answers for the plan rather than for the page.
       (function () {
-        const tp = rows.reduce((a, r) => a + (Number(r.plants) || 0), 0);
+        const tp = rows.reduce(
+          (a, r) => a + (Number(r.plants_to_plant || r.plants) || 0), 0);
         const ts = rows.reduce((a, r) => a + (Number(r.lifetime_stems) || 0), 0);
         const th = rows.reduce((a, r) => a + (Number(r.net_area_ha) || 0), 0);
         return '<tr class="pl-tot"><th colspan="3">' +
@@ -4904,6 +4911,36 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
   // reading "Tubers (Own) + Roots", a column of roots nobody buys, and a note
   // about a Roots row the protocol does not have.
   const wayTwo = (m) => (!m || (m.ways || 0) < 2 ? null : m.secondary_stage || "Roots");
+  // Whether the second way in can be ordered at all. A Roots row with no
+  // "returns per plant at lift" cannot say how many roots a week needs, so the
+  // plants the split sends down it are plants nobody can buy.
+  const rootsOk = (m) => !wayTwo(m) || !!cintish(m && m.roots_sizeable);
+
+  // A seed is sown and germinates. Tissue culture is ordered, arrives and is
+  // rooted. A root comes out of store. The table said "sow" to all of them, so
+  // a crop with no seed in its route read "TC plants to sow" and lost them
+  // "germinating".
+  const RAISING = {
+    seed: { start: "Sow week", verb: "to sow", first: "Lost germinating",
+            head: "Seeds — order, sow, raise, plant", mid: "Raising",
+            arrive: "Sown" },
+    tc: { start: "Into rooting", verb: "to stick", first: "Lost rooting",
+          head: "Tissue culture — order, arrive, root, plant", mid: "Rooting",
+          arrive: "Arrives" },
+    root: { start: "Out of store", verb: "to plant", first: "Lost rooting",
+            head: "Roots — order, arrive, root, plant", mid: "Rooting",
+            arrive: "Arrives" },
+    cutting: { start: "Stuck in week", verb: "to stick", first: "Lost rooting",
+               head: "Cuttings — order, stick, root, plant", mid: "Rooting",
+               arrive: "Stuck" },
+  };
+  const raising = (m) => {
+    const s = String((m && m.primary_stage) || "").toLowerCase();
+    if (s.indexOf("seed") >= 0) return RAISING.seed;
+    if (s.indexOf("root") >= 0 || s.indexOf("tuber") >= 0) return RAISING.root;
+    if (s.indexOf("cutting") >= 0 || s.indexOf("plug") >= 0) return RAISING.cutting;
+    return RAISING.tc;
+  };
 
   // Who raises what arrives, chosen here rather than a document away. Opens on
   // what is already chosen -- a chooser that opens blank over an allocation
@@ -4927,7 +4964,17 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
     if (!host) {
       host = document.createElement("div");
       host.id = "tc-raise";
-      $("tc-note").prepend(host);
+      // Directly under the button that opens it. It used to be prepended into
+      // the notes, a screenful below the card head, so pressing the button
+      // changed nothing a reader could see and the chooser was reported as
+      // not working.
+      const tiles = $("tc-tiles");
+      if (tiles && tiles.parentElement) {
+        tiles.parentElement.insertBefore(host, tiles);
+      } else {
+        $("tc-note").prepend(host);
+      }
+      host.scrollIntoView({ behavior: "smooth", block: "center" });
     }
     const units = r.units || [], props = r.propagators || [];
     const ways = r.ways && r.ways.length ? r.ways : [""];
@@ -5075,7 +5122,11 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
     // order nobody placed.
     const one = wayOne(m), two = wayTwo(m);
     const tiles = [
-      { k: "Plants needed", v: num(m.plants_total), m: "for the whole season" },
+      // What goes in the ground, not what is left standing in it. The two are
+      // the same only where a protocol states no establishment loss, and the
+      // planting plan counts the same way.
+      { k: "Plants to plant", v: num(m.plants_to_plant_total || m.plants_total),
+        m: `${num(m.plants_total)} standing once established` },
       // Units to buy, and the plants they are bought to stand up. The two part
       // company the moment a protocol states a loss -- 2,120,000 seeds for
       // 1,187,200 plants at 80% rooting by 70% establishment -- and the tile
@@ -5238,6 +5289,7 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
     // consignments that are hardened and lifted; roots are one delivery into a
     // coldroom that is drawn down. Each gets its own block, in the order the
     // work happens, and the plants they both produce meet in the third.
+    renderBought(m);
     renderRoots(m);
 
     wk.innerHTML =
@@ -5260,7 +5312,8 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
       // the seed goes in the tray and the week what it becomes reaches the
       // field. The old first column was the planting date in long form beside
       // the same week in ISO -- one date written twice.
-      `<table class="pl-t"><thead><tr><th>Sow week</th><th>Planting week</th>` +
+      `<table class="pl-t"><thead><tr><th>${esc(raising(m).start)}</th>` +
+      `<th>Planting week</th>` +
       // The harvest end of the chain comes first, because it is the answer to
       // "why plant more than we need": a stem that fails grading was still
       // grown, and the plants had to be standing to grow it.
@@ -5272,9 +5325,9 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
       // row, and a column cannot be two things.
       // Bought once or in batches; SOWN week by week. What a week carries is
       // the sowing, which is why the sow week now sits beside it.
-      `<th class="n">${esc(wayOne(m))} to sow</th>` +
+      `<th class="n">${esc(wayOne(m))} ${esc(raising(m).verb)}</th>` +
       (m.tc_first_loss_pct && m.tc_first_loss_pct < 100
-        ? `<th class="n">Lost germinating ` +
+        ? `<th class="n">${esc(raising(m).first)} ` +
           `${(100 - m.tc_first_loss_pct).toFixed(0)}%</th>` : "") +
       (m.tc_first_loss_pct ? `<th class="n">To plant</th>` : "") +
       (m.tc_second_loss_pct && m.tc_second_loss_pct < 100
@@ -5285,7 +5338,9 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
       `<th class="n">Total</th><th class="n">Variance</th>` +
       `</tr></thead><tbody>` +
       (m.weeks || []).map((w) => {
-        const got = cintish(w.by_tc) + cintish(w.by_roots);
+        // Plants the split sends down a way that cannot be sized are plants
+        // nobody can order, so they do not count as covered.
+        const got = cintish(w.by_tc) + (rootsOk(m) ? cintish(w.by_roots) : 0);
         const v = got - cintish(w.plants);
         return `<tr><td>${esc(w.sow_iso || "")}</td>` +
           `<td class="text-muted">${esc(w.week_iso || "")}</td>` +
@@ -5306,7 +5361,9 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
               `${w.lost_establishing_tc ? "−" + num(w.lost_establishing_tc) : ""}</td>`
             : "") +
           `<td class="n">${w.by_tc ? num(w.by_tc) : ""}</td>` +
-          (wayTwo(m) ? `<td class="n">${w.by_roots ? num(w.by_roots) : ""}</td>` : "") +
+          (wayTwo(m)
+            ? `<td class="n"${rootsOk(m) ? "" : ' style="color:var(--critical)"'}>` +
+              `${w.by_roots ? num(w.by_roots) : ""}</td>` : "") +
           `<td class="n">${num(got)}</td>` +
           `<td class="n"${v < 0 ? ' style="color:var(--critical)"' : ""}>` +
           `${v > 0 ? "+" : ""}${v ? num(v) : "—"}</td></tr>`;
@@ -5327,7 +5384,13 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
         ? `<th class="n" style="color:var(--critical)">` +
           `−${num(m.tc_lost_establishing_total)}</th>` : "") +
       `<th class="n">${num(m.tc_total)}</th>` +
-      (wayTwo(m) ? `<th class="n">${num(m.roots_total)}</th>` : "") +
+      (wayTwo(m)
+        ? `<th class="n"${rootsOk(m) ? "" : ' style="color:var(--critical)"'}>` +
+          // The plants that come off the roots, which is what this column is.
+          // It held roots_total -- a count of roots under a column of plants,
+          // and zero whenever the roots could not be sized at all.
+          `${num((m.weeks || []).reduce((a, w) => a + cintish(w.by_roots), 0))}` +
+          `</th>` : "") +
       `<th colspan="2"></th></tr></tfoot>` +
       `</tbody></table>`;
 
@@ -5400,15 +5463,14 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
         (first
           ? `<td rowspan="${b.lifts.length}" style="vertical-align:top"><b>${i + 1}</b></td>` +
             `<td rowspan="${b.lifts.length}" style="vertical-align:top">` +
-            `${fdate(b.out_of_store)}<br><span class="text-muted">${esc(b.out_iso)}</span></td>` +
+            `${esc(b.out_iso)}</td>` +
             `<td rowspan="${b.lifts.length}" class="n" style="vertical-align:top">` +
             `${num(b.plant_roots || b.roots)}</td>` +
             `<td rowspan="${b.lifts.length}" class="n" style="vertical-align:top">` +
             `${num(b.cuttings || 0)}</td>`
           : "") +
         `<td class="n text-muted">${L.lift_no}</td>` +
-        `<td>${fdate(L.on)}</td>` +
-        `<td class="text-muted">${esc(L.on_iso)}</td>` +
+        `<td>${esc(L.on_iso)}</td>` +
         `<td class="n text-muted">${L.weeks_after}</td>` +
         `<td class="n text-muted">${(+L.share_pct || 0).toFixed(0)}%</td>` +
         `<td class="n">${num(L.asked)}</td>` +
@@ -5423,7 +5485,7 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
       `letter-spacing:.05em;margin:14px 0 4px">Roots — out of the coldroom, ` +
       `lifted to demand</div>` +
       `<p class="pl-note"><b>${num(ro.roots)} plant roots</b> · ordered ` +
-      `${fdate(ro.week)} · in store ${fdate(ro.arrives)} (${m.root_lead_weeks} wk lead) ` +
+      `${esc(ro.week_iso)} · in store ${esc(ro.arrives_iso)} (${m.root_lead_weeks} wk lead) ` +
       `· ${batches.length} withdrawal${batches.length === 1 ? "" : "s"} · ` +
       `${m.returns_per_plant} cuttings a root · ` +
       `${(batches[0] && batches[0].lifts || []).length} lifts · ${num(wanted)} plants wanted` +
@@ -5432,7 +5494,7 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
       `<table class="pl-t"><thead><tr>` +
       `<th class="n">#</th><th>Out of coldroom</th>` +
       `<th class="n">Plant roots</th><th class="n">Cuttings</th>` +
-      `<th class="n">Lift</th><th>Lifted on</th><th>Week</th>` +
+      `<th class="n">Lift</th><th>Lifted</th>` +
       `<th class="n">Age</th><th class="n">Share</th>` +
       `<th class="n">Wanted</th><th class="n">Lifted</th><th class="n">Late</th>` +
       `<th>Weeks it covers</th>` +
@@ -5479,6 +5541,56 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
       `<div class="pl-lads">${L.groups.map(table).join("")}</div>`;
   }
 
+  // The roots block has always said when roots are ordered, when they arrive
+  // and when the plants they become are planted. The way everything else comes
+  // in -- tissue culture, seed, cuttings -- had no such block: it was columns
+  // inside the week table and nothing said when a consignment was ordered or
+  // when it landed. Same shape, same questions answered.
+  function renderBought(m) {
+    const box = $("tc-buy-plan");
+    if (!box) return;
+    const rows = (m.weeks || []).filter((w) => cintish(w.units_tc) || cintish(w.by_tc));
+    // A pool crop buys its tissue culture once to raise mothers; the motherstock
+    // card above says when. A weekly consignment table would state a second,
+    // different order for the same crop.
+    if (cintish(m.raised_from_pool) || !rows.length
+        || !(m.tc_order_schedule || []).length) { box.innerHTML = ""; return; }
+    const r = raising(m), one = wayOne(m);
+    const lead = cintish(m.tc_lead_weeks), grow = cintish(m.tc_weeks_to_ground);
+    // The route cannot always say what one unit becomes, and then the season
+    // total comes back empty while the weeks still carry units. Add them up.
+    const totUnits = cintish(m.tc_units_total)
+      || rows.reduce((a, w) => a + cintish(w.units_tc), 0);
+    const totPlants = cintish(m.tc_total)
+      || rows.reduce((a, w) => a + cintish(w.by_tc), 0);
+    box.innerHTML =
+      `<div class="text-muted small" style="text-transform:uppercase;` +
+      `letter-spacing:.05em;margin:14px 0 4px">${esc(r.head)}</div>` +
+      `<p class="pl-note"><b>${num(totUnits)} ${esc(one.toLowerCase())} ` +
+      `over ${rows.length} consignment${rows.length === 1 ? "" : "s"}.</b> ` +
+      `Each ordered ${lead} week${lead === 1 ? "" : "s"} before it lands and ` +
+      `${grow} week${grow === 1 ? "" : "s"} before the field wants the plants, ` +
+      `so an order week is ${lead + grow} weeks ahead of its planting.</p>` +
+      `<table class="pl-t"><thead><tr>` +
+      `<th class="n">#</th><th>Ordered</th>` +
+      `<th>${esc(r.arrive)}</th><th class="n">${esc(one)}</th>` +
+      `<th class="n">${esc(r.mid)}</th>` +
+      `<th>Planted</th><th class="n">Plants</th>` +
+      `</tr></thead><tbody>` +
+      rows.map((w, i) =>
+        `<tr><td class="n text-muted">${i + 1}</td>` +
+        `<td>${esc(w.tc_order_iso || "")}</td>` +
+        `<td>${esc(w.sow_iso || "")}</td>` +
+        `<td class="n">${num(w.units_tc)}</td>` +
+        `<td class="n text-muted">${grow} wk</td>` +
+        `<td>${esc(w.week_iso || "")}</td>` +
+        `<td class="n">${num(w.by_tc)}</td></tr>`).join("") +
+      `<tfoot><tr><th colspan="3">Season</th>` +
+      `<th class="n">${num(totUnits)}</th><th></th><th></th>` +
+      `<th class="n">${num(totPlants)}</th></tr></tfoot>` +
+      `</tbody></table>`;
+  }
+
   function renderRoots(m) {
     // NOT "tc-roots": that id is the Roots quantity box at the top of the card,
     // and writing a table into it would have replaced the input somebody types
@@ -5502,27 +5614,24 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
       `letter-spacing:.05em;margin:14px 0 4px">Roots — receive once, root in ` +
       `batches, deliver</div>` +
       `<p class="pl-note"><b>${num(ro.roots)} roots, one order.</b> Placed ` +
-      `${fdate(ro.week)} (${esc(ro.week_iso)}), in store by ` +
-      `${fdate(ro.arrives)} (${esc(ro.arrives_iso)}) — ` +
+      `${esc(ro.week_iso)}, in store by ${esc(ro.arrives_iso)} — ` +
       `${m.root_lead_weeks} weeks of lead. Then drawn out over ` +
       `${ro.withdrawals} week${ro.withdrawals === 1 ? "" : "s"}, each ` +
       `withdrawal ${m.root_weeks_to_ground} weeks before its plants are ` +
       `wanted, so they reach the field with the tissue culture. One root ` +
       `becomes ${m.returns_per_plant} plants.</p>` +
       `<table class="pl-t"><thead><tr>` +
-      `<th class="n">#</th><th>Out of store</th><th>Week</th>` +
+      `<th class="n">#</th><th>Out of store</th>` +
       `<th class="n">Roots</th><th class="n">Rooting</th>` +
-      `<th>Plants ready</th><th>Week</th><th class="n">Plants</th>` +
+      `<th>Plants ready</th><th class="n">Plants</th>` +
       `</tr></thead><tbody>` +
       pulls.map((r, i) => {
         const w = byWeek[r.week] || {};
         return `<tr><td class="n text-muted">${i + 1}</td>` +
-          `<td>${fdate(r.week)}</td>` +
-          `<td class="text-muted">${esc(r.week_iso)}</td>` +
+          `<td>${esc(r.week_iso)}</td>` +
           `<td class="n">${num(r.roots)}</td>` +
           `<td class="n text-muted">${m.root_weeks_to_ground} wk</td>` +
-          `<td>${fdate(w.week)}</td>` +
-          `<td class="text-muted">${esc(w.week_iso || "")}</td>` +
+          `<td>${esc(w.week_iso || "")}</td>` +
           `<td class="n">${num(w.by_roots)}</td></tr>`;
       }).join("") + `</tbody></table>`;
   }
@@ -8193,7 +8302,58 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
       .catch((e) => { box.innerHTML = `<p class="pl-empty">${esc(e.message)}</p>`; });
   }
 
+  // What the allocation commits us to, in the grower's units rather than the
+  // buyer's. A share of an order is a percentage; this is the plants it stands
+  // up, which is the number the plan is re-cut to when the order comes back
+  // short.
+  function renderImpact() {
+    const box = $("pc-impact");
+    if (!box) return;
+    const im = (S.dc || {}).impact;
+    if (!im || !im.plants_planned) { box.innerHTML = ""; return; }
+    const unitOf = (st) => (st || "units").toLowerCase();
+    const short = cintish(im.short_by_plants);
+    box.innerHTML =
+      `<div class="text-muted small" style="text-transform:uppercase;` +
+      `letter-spacing:.05em;margin:14px 0 4px">What this commits</div>` +
+      `<p class="pl-note">` +
+      (im.answered
+        ? `<b>${num(im.units_given)} of ${num(im.units_asked)}</b> confirmed, ` +
+          `which stands up <b>${num(im.plants_landing)} of ` +
+          `${num(im.plants_planned)} plants</b>` +
+          (short ? ` — <span style="color:var(--critical)">${num(short)} ` +
+                   `plants fewer than the plan</span>. Approving the schedule ` +
+                   `revises the production plan to this figure.`
+                 : ` — the plan is covered.`)
+        : `Nothing confirmed yet. The plan asks for ` +
+          `<b>${num(im.units_asked)}</b> to stand up ` +
+          `<b>${num(im.plants_planned)} plants</b>; what each seller confirms ` +
+          `is what the plan is re-cut to.`) +
+      `</p>` +
+      `<table class="pl-t"><thead><tr><th>Supplier</th><th>Bought as</th>` +
+      `<th class="r">${esc(im.answered ? "Confirmed" : "To order")}</th>` +
+      `<th class="r">Plants it stands up</th><th class="r">Share of plan</th>` +
+      `<th class="r">Weeks</th><th>First</th></tr></thead><tbody>` +
+      (im.rows || []).map((x) =>
+        `<tr><td>${esc(x.supplier)}${x.placed
+            ? ` <span class="pl-dim">placed</span>` : ""}</td>` +
+        `<td>${esc(x.stage || "—")}</td>` +
+        `<td class="r">${num(x.units)} ${esc(unitOf(x.stage))}</td>` +
+        `<td class="r">${num(x.plants)}</td>` +
+        `<td class="r">${x.pct_of_plants}%</td>` +
+        `<td class="r">${num(x.weeks)}</td>` +
+        `<td>${esc(x.first_week || "—")}</td></tr>`).join("") +
+      `</tbody><tfoot><tr><th colspan="2">Total</th>` +
+      `<th class="r">${num(im.units_given)}</th>` +
+      `<th class="r">${num(im.plants_landing)}</th>` +
+      `<th class="r">${im.plants_planned
+          ? Math.round(100 * im.plants_landing / im.plants_planned) : 0}%</th>` +
+      `<th colspan="2"></th></tr></tfoot></table>`;
+  }
+
   function renderDeliveries() {
+    // Drawn first, so it is there on the paths below that return early.
+    renderImpact();
     const box = $("pc-deliveries");
     if (!box) return;
     const orders = (S.dc && S.dc.orders) || [];
@@ -8221,10 +8381,18 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
         return `<tr data-line="${esc(L.name)}">` +
           `<td>${esc(L.asked_week || "\u2014")}</td>` +
           (sellers.length
-            ? `<td>${ro || sellers.length < 2 ? esc(L.supplier || sellers[0] || "\u2014")
-                : `<select class="dc-sup">${sellers.map((sp) =>
+            ? `<td>${ro || sellers.length < 2
+                ? esc(L.supplier || (sellers.length < 2 ? sellers[0] : "") || "by share")
+                : `<select class="dc-sup">` +
+                  // A week nobody has placed with one seller is split between
+                  // them all by the shares on the allocation. The list used to
+                  // open on seller one with nothing selected, so saving the
+                  // screen gave seller one the whole week.
+                  `<option value=""${L.supplier ? "" : " selected"}>` +
+                  `by share</option>` +
+                  sellers.map((sp) =>
                     `<option${sp === L.supplier ? " selected" : ""}>${esc(sp)}</option>`
-                  ).join("")}</select>`}</td>`
+                  ).join("") + `</select>`}</td>`
             : "") +
           `<td class="r">${num(L.asked_qty)}</td>` +
           `<td class="r">${ro ? num(L.qty)
@@ -8282,12 +8450,19 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
   }
 
   function dcRows(table) {
-    return [...table.querySelectorAll("tbody tr")].map((tr) => ({
-      name: tr.dataset.line,
-      qty: flt((tr.querySelector(".dc-q") || {}).value),
-      schedule_date: (tr.querySelector(".dc-d") || {}).value || null,
-      supplier: (tr.querySelector(".dc-sup") || {}).value || null,
-    }));
+    return [...table.querySelectorAll("tbody tr")].map((tr) => {
+      const sel = tr.querySelector(".dc-sup");
+      const row = {
+        name: tr.dataset.line,
+        qty: flt((tr.querySelector(".dc-q") || {}).value),
+        schedule_date: (tr.querySelector(".dc-d") || {}).value || null,
+      };
+      // Sent only where the week has a seller box. An empty string is an
+      // answer -- split this week by the shares -- and omitting the key
+      // leaves whatever the row already says alone.
+      if (sel) row.supplier = sel.value;
+      return row;
+    });
   }
 
   function bindDeliveries() {

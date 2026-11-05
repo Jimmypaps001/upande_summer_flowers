@@ -52,7 +52,7 @@ frappe.ui.form.on("Summer Flower Production Plan", {
 		if (frm.doc.docstatus === 0) {
 			frm.add_custom_button(__("Regenerate"), () => {
 				frappe.confirm(
-					__("Rebuild the weekly grid and planting proposals from current demand and plantings?"),
+					__("Rebuild the weekly grid and planting proposals from current demand and plantings? Unapproved edits on the Crop Protocol are approved first, so the rebuild uses them."),
 					() =>
 						frm
 							.call({

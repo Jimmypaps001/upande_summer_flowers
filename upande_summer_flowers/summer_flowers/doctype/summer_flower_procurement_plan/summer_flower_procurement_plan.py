@@ -26,6 +26,20 @@ class SummerFlowerProcurementPlan(Document):
 		return bool(cint(self.propagates_here) or (self.in_house_stages or "").strip()
 		            or self.get("propagation_allocation"))
 
+	def raises_here(self):
+		"""Whether any of it is raised on OUR bench.
+
+		A propagation plan is an instruction to our own unit. Material an
+		outside propagator raises is bought from them on a purchase order, and
+		material that arrives ready to plant is not raised at all -- neither has
+		anything for a propagation plan to say."""
+		rows = self.get("propagation_allocation") or []
+		if rows:
+			return any(r.alloc_type != "Outside Propagator" and r.propagation_unit
+			           for r in rows)
+		# Nothing allocated yet, so the route's own verdict stands in for it.
+		return bool(cint(self.propagates_here))
+
 	def purchase_lines(self):
 		"""The requirement lines a supplier is actually asked for."""
 		return [r for r in (self.requirements or [])
@@ -108,6 +122,10 @@ class SummerFlowerProcurementPlan(Document):
 				elif sole[stage] != row.supplier:
 					sole[stage] = None
 			for r in (self.requirements or []):
+				# A week somebody has already placed with one seller keeps it.
+				# Rewriting it from the table wiped the choice on every save.
+				if cint(r.get("delivery_confirmed")) and r.supplier:
+					continue
 				stage = r.entry_stage or self.entry_stage or ""
 				if stage in sole:
 					r.supplier = sole[stage]
@@ -363,7 +381,7 @@ class SummerFlowerProcurementPlan(Document):
 		# Plants raised by an outside propagator are bought from them: one order
 		self.raise_propagator_orders()
 		# An allocation is itself the statement that this is raised here, so it
-		if cint(self.propagates_here) or self.get("propagation_allocation"):
+		if self.raises_here():
 			self.build_propagation_plan()
 		# Whichever way the material was got, the farm needs to know what to plant
 		self.build_planting_plan()
@@ -795,6 +813,14 @@ class SummerFlowerProcurementPlan(Document):
 		             and r.propagation_unit and cint(r.plants) > 0]
 		if allocated:
 			return self._build_allocated_plans(allocated, build_from_plan)
+		# Somebody HAS been named and it is not us. The fall-through below would
+		# build a plan for a bench that is raising none of it.
+		if not self.raises_here():
+			frappe.msgprint(
+				_("No propagation plan: every plant on {0} is raised by an outside "
+				  "propagator, who is sent a purchase order instead."
+				  ).format(self.name), indicator="blue", title=_("Propagation"))
+			return
 
 		try:
 			outcome = build_from_plan(self.production_plan, as_dict=True)

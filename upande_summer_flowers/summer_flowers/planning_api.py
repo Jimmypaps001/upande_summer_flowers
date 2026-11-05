@@ -1228,6 +1228,9 @@ def planting_plan(plan=None, variety=None, farm=None):
 			"existing_planting": b.existing_planting,
 			"beds": b.beds or 0,
 			"plants": b.plants or 0,
+			# What goes in the ground, which is what the farm orders, carries and
+			# plants. The standing figure is what is left of it once established.
+			"plants_to_plant": cint(b.get("plants_to_plant")) or cint(b.plants or 0),
 			"cuttings": v.cuttings_for_plants(b.plants or 0) if b.plants else 0,
 			"stick": f"{b.sticking_year}-W{b.sticking_week:02d}"
 			if b.sticking_year and b.sticking_week else None,
@@ -1325,6 +1328,7 @@ def planting_plan(plan=None, variety=None, farm=None):
 			"in_past": len([x for x in new_rows if x["in_past"]]),
 			"beds": sum(x["beds"] for x in new_rows),
 			"plants": sum(x["plants"] for x in new_rows),
+			"plants_to_plant": sum(x["plants_to_plant"] for x in new_rows),
 			"cuttings": sum(x["cuttings"] for x in new_rows),
 			"blocks_available": blocks_available,
 			"blocks_needed": len(new_rows),

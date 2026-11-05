@@ -1391,6 +1391,16 @@ def _chain_after_agreement(production_plan):
 		return {"name": build(production_plan, replace=1)}
 
 	def propagation():
+		# Our own bench's instruction. Where an outside propagator raises every
+		# plant, or the material arrives ready to plant, there is nothing for a
+		# propagation plan to say and one should not exist.
+		q = frappe.db.get_value("Summer Flower Procurement Plan",
+		                        {"production_plan": production_plan,
+		                         "docstatus": ["<", 2]}, "name")
+		if q:
+			proc = frappe.get_doc("Summer Flower Procurement Plan", q)
+			if not proc.raises_here():
+				return {"skipped": _("nobody here raises this material")}
 		r = build_from_plan(production_plan, as_dict=True)
 		return r if isinstance(r, dict) else {"name": r}
 

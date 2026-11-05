@@ -275,6 +275,11 @@ def arrival_plan(plan, tc_share=None, returns_per_plant=None,
 		per_plant = flt(v.cuttings_per_plant_required) or 1.0
 		route_keep = (1.0 / per_plant) if per_plant > 0 else 1.0
 	route_keep = max(0.0, min(1.0, route_keep)) or 1.0
+	# The route's own loss_pct and the protocol's stated rooting/establishment
+	# percentages are two names for the same loss once the route carries them.
+	# Charging both put every loss on the order twice.
+	if keep < 1.0:
+		route_keep = 1.0
 
 	origin = "protocol"
 	if cint(tc_qty) or cint(roots_qty):
@@ -425,6 +430,10 @@ def arrival_plan(plan, tc_share=None, returns_per_plant=None,
 		# Who raises each way in, beside who sells it. Choosing a lab answers
 		"raised_by": _raised_by(plan),
 		# The same answer the losses and the ladder were worked out from, rather
+		# Whether the crop is cut from a standing pool. The card above owns the
+		# order for those; the bought-material tables must not state a second one.
+		"raised_from_pool": 1 if (cint(v.get("raised_from_pool"))
+		                          or any(cint(r.get("is_standing")) for r in rows)) else 0,
 		"primary_stage": primary,
 		"secondary_stage": ways[1] if len(ways) > 1 else None,
 		# What was agreed, if anything was. A saved plan that opens as a blank
@@ -436,6 +445,15 @@ def arrival_plan(plan, tc_share=None, returns_per_plant=None,
 		"root_weeks_to_ground": root_weeks, "root_lead_weeks": root_lead,
 		"root_head_start_weeks": (root_lead + root_weeks) - (tc_lead + tc_weeks),
 		"plants_total": sum(weeks[k]["plants"] for k in ordered),
+		# What actually goes in the ground: the standing requirement grossed up
+		# for the losses between planting and establishment.
+		"plants_to_plant_total": sum(
+			cint(b.get("plants_to_plant")) or cint(b.plants)
+			for b in plan.plan_blocks if cint(b.is_new_planting)),
+		# Whether the second way in can be sized at all. A Roots row with no
+		# "returns per plant at lift" cannot say how many roots a week needs, so
+		# the plants the split sends down it are plants nobody can order.
+		"roots_sizeable": 1 if per_root > 0 else 0,
 		"tc_total": sum(weeks[k]["by_tc"] for k in ordered),
 		# Plants are what the field wants; units are what has to be bought to
 		"tc_units_total": _units_total,
@@ -479,9 +497,17 @@ def arrival_plan(plan, tc_share=None, returns_per_plant=None,
 		                      for k, v in sorted(tc_orders.items())],
 		# One line, not fifty. The whole season's roots are bought in one
 		"root_order_schedule": (
+			# Same shape as the one-order line below it: the card tells the
+			# reader when the order lands and how many times it is drawn on,
+			# and this branch used to leave both blank.
 			[{"week": _back(troughs["settings"][0]["set_week"], root_lead),
 			  "week_iso": iso(_back(troughs["settings"][0]["set_week"], root_lead)),
-			  "roots": cint(troughs["roots_total"])}]
+			  "roots": cint(troughs["roots_total"]),
+			  "arrives": str(troughs["settings"][0]["set_week"]),
+			  "arrives_iso": iso(troughs["settings"][0]["set_week"]),
+			  "drawn_from": str(troughs["settings"][0]["set_week"]),
+			  "drawn_to": str(troughs["settings"][-1]["set_week"]),
+			  "withdrawals": len(troughs["settings"])}]
 			if troughs else _root_order(root_pulls, root_lead)),
 		# Out of store in trough-fulls, lifted out to the weeks that want them.
 		"root_batches": [] if troughs else _root_batches(
@@ -522,8 +548,12 @@ def arrival_plan(plan, tc_share=None, returns_per_plant=None,
 		# What the boxes should open on. An empty box asks somebody to invent a
 		"suggested": {
 			# Grossed up by the loss provision: what has to be ORDERED for that
-			"tc": int(math.ceil((_units_total if _units_total is not None
-			                     else sum(weeks[k]["by_tc"] for k in ordered)) / keep)),
+			# The units are worked out week by week from the route, which has
+			# already taken each loss off them. Dividing by the route's survival
+			# a second time asked for 98,966 tc where 89,316 covers the plan.
+			"tc": (int(math.ceil(_units_total)) if _units_total is not None
+			       else int(math.ceil(
+			           sum(weeks[k]["by_tc"] for k in ordered) / keep))),
 			# Already grossed up: a week's roots are by_root / (per_root x
 			"roots": _roots_total,
 			# Named from the route. "100% tissue culture" over a crop lifted as

@@ -63,6 +63,8 @@ def schedule_for(procurement_plan):
 	# Before anything is raised, the thing to confirm against is the plan's own
 	if not _plan_orders(plan.name):
 		return {"plan": plan.name, "variety": plan.variety, "farm": plan.farm,
+		        "production_plan": plan.production_plan,
+		        "impact": commitment_impact(plan),
 		        "orders": [_from_requirements(plan)]}
 
 	out = []
@@ -109,7 +111,86 @@ def schedule_for(procurement_plan):
 			"short_by": max(0, asked_total - qty_total),
 		})
 	return {"plan": plan.name, "variety": plan.variety, "farm": plan.farm,
+	        "production_plan": plan.production_plan,
+	        # What the commitment means for the crop, not for the ledger: the
+	        # buyer reads units, the grower reads plants.
+	        "impact": commitment_impact(plan),
 	        "orders": out}
+
+
+def _sellers_of(plan, row, stage):
+	"""Who a week's units come from: its own seller, else the allocation."""
+	if row.supplier:
+		return [(row.supplier, 100.0)]
+	rows = plan.suppliers_for(stage)
+	if not rows:
+		return [(row.supplier or plan.supplier, 100.0)]
+	return [(r.supplier, flt(r.share_pct)) for r in rows]
+
+
+def commitment_impact(plan):
+	"""What the sellers have committed to, said in plants instead of units."""
+	stages, by_seller = {}, {}
+	units_asked = units_given = plants_planned = plants_landing = 0
+	for r in plan.purchase_lines():
+		stage = r.entry_stage or plan.entry_stage or ""
+		ordered = cint(r.qty_to_order)
+		answered = cint(r.get("delivery_confirmed"))
+		given = cint(r.confirmed_qty) if answered else ordered
+		at_field = cint(r.qty_at_field)
+		# A unit is worth what the line says it is worth, so a short delivery
+		# lands the same share of the plants it was bought to stand up.
+		lands = int(at_field * given / ordered) if ordered else 0
+		units_asked += ordered
+		units_given += given
+		plants_planned += at_field
+		plants_landing += lands
+		st = stages.setdefault(stage, {"stage": stage, "units_asked": 0,
+		                               "units_given": 0, "plants_planned": 0,
+		                               "plants_landing": 0, "weeks": 0,
+		                               "weeks_answered": 0})
+		st["units_asked"] += ordered
+		st["units_given"] += given
+		st["plants_planned"] += at_field
+		st["plants_landing"] += lands
+		st["weeks"] += 1
+		st["weeks_answered"] += 1 if answered else 0
+		sellers = _sellers_of(plan, r, stage)
+		total = sum(sh for _s, sh in sellers) or 100.0
+		taken_u = taken_p = 0
+		for i, (name, share) in enumerate(sellers):
+			last = i == len(sellers) - 1
+			u = given - taken_u if last else int(round(given * share / total))
+			pl = lands - taken_p if last else int(round(lands * share / total))
+			taken_u += u
+			taken_p += pl
+			if not (u or pl):
+				continue
+			k = (name or "", stage)
+			e = by_seller.setdefault(k, {
+				"supplier": name or _("nobody named"), "stage": stage,
+				"units": 0, "plants": 0, "weeks": 0, "first_week": None,
+				"placed": 1 if r.supplier else 0})
+			e["units"] += u
+			e["plants"] += pl
+			e["weeks"] += 1
+			when = r.confirmed_delivery_week or _week_of(r.required_at_site_date)
+			if when and (not e["first_week"] or when < e["first_week"]):
+				e["first_week"] = when
+	rows = sorted(by_seller.values(), key=lambda x: -x["plants"])
+	for x in rows:
+		x["pct_of_plants"] = (round(100.0 * x["plants"] / plants_planned, 1)
+		                      if plants_planned else 0)
+	return {
+		"rows": rows,
+		"stages": sorted(stages.values(), key=lambda x: -x["plants_planned"]),
+		"units_asked": units_asked, "units_given": units_given,
+		"plants_planned": plants_planned, "plants_landing": plants_landing,
+		"short_by_plants": max(0, plants_planned - plants_landing),
+		"short_by_units": max(0, units_asked - units_given),
+		"answered": any(cint(r.get("delivery_confirmed"))
+		                for r in plan.purchase_lines()),
+	}
 
 
 def _from_requirements(plan):
@@ -144,7 +225,10 @@ def _from_requirements(plan):
 		# Nothing to confirm against until somebody says who sells it: an order
 		"sellers": [x["supplier"] for x in sellers],
 		"needs_sellers": 0 if sellers else 1,
-		"supplier": plan.supplier or (sellers[0]["supplier"] if sellers else None),
+		# Not the first seller. A plan split between two of them has no single
+		# supplier, and naming one made the screen read as if it had.
+		"supplier": plan.supplier or (sellers[0]["supplier"]
+		                              if len(sellers) == 1 else None),
 		# Named from the sellers, not from the plan's single supplier field --
 		"supplier_name": (" + ".join(x["supplier"] for x in sellers)
 		                  if sellers else (plan.supplier or _("nobody yet"))),
@@ -172,8 +256,11 @@ def save_requirements(procurement_plan, lines):
 		if given.get("qty") not in (None, ""):
 			r.db_set("confirmed_qty", max(0, cint(given.get("qty"))),
 			         update_modified=False)
-		if given.get("supplier"):
-			r.db_set("supplier", given.get("supplier"), update_modified=False)
+		# Present and empty is an answer: split this week between the sellers by
+		# the shares on the allocation. Absent leaves the row as it is.
+		if "supplier" in given:
+			r.db_set("supplier", given.get("supplier") or None,
+			         update_modified=False)
 		when = given.get("schedule_date")
 		if when:
 			when = max(getdate(when), today)
@@ -205,10 +292,16 @@ def confirm_and_raise(procurement_plan):
 			write_plantings,
 		)
 
-	plan = frappe.get_doc("Summer Flower Production Plan", doc.production_plan)
+	# The plan said what we wanted; the deliveries say what we get. Approve a
+	# revision carrying the second before anything is written off it.
+	revised = revise_to_confirmed(doc.name)
+	if revised.get("revised"):
+		doc.reload()
+	plan = frappe.get_doc("Summer Flower Production Plan",
+	                      revised.get("revised") or doc.production_plan)
 	write_plantings(plan, doc)
 	# And the bench is told what to raise, now that there is a confirmed figure
-	if cint(doc.get("propagates_here")) or doc.get("propagation_allocation"):
+	if doc.raises_here():
 		from upande_summer_flowers.summer_flowers.doctype \
 			.summer_flower_propagation_plan.summer_flower_propagation_plan import (
 				build_from_plan,
@@ -222,6 +315,242 @@ def confirm_and_raise(procurement_plan):
 			                indicator="orange", title=_("Propagation plan"))
 	frappe.db.commit()
 	return schedule_for(doc.name)
+
+
+# Everything that points at a production plan by name. A revision is a new
+# document, so what hung off the old one has to be told where it went.
+POINTS_AT_PLAN = [
+	("Summer Flower Procurement Plan", "production_plan"),
+	("Summer Flower Propagation Plan", "production_plan"),
+	("Summer Flower Motherstock Plan", "production_plan"),
+	("Summer Flower Motherstock Batch", "production_plan"),
+	("Summer Flower Season Plan", "production_plan"),
+	("Summer Flower Budget", "production_plan"),
+]
+
+
+def _confirmed_by_cohort(proc, plan):
+	"""What each planting can actually stand up, off the confirmed deliveries."""
+	from upande_summer_flowers.summer_flowers.doctype \
+		.summer_flower_procurement_plan.summer_flower_procurement_plan import (
+			confirmed_plants,
+		)
+
+	# In order, not by row name: a revision is a copy, and a copy's rows carry
+	# new names. Position is what survives copying.
+	out = []
+	for row in plan.plan_blocks:
+		if not cint(row.is_new_planting):
+			continue
+		lines = [x for x in (proc.requirements or []) if x.cohort == row.name]
+		wanted = cint(row.get("plants_to_plant")) or cint(row.plants)
+		landing, short = confirmed_plants(lines, wanted)
+		out.append({"row": row.name, "landing": landing, "short": short,
+		            "answered": 1 if lines else 0})
+	return out
+
+
+@frappe.whitelist()
+def revise_to_confirmed(procurement_plan, force=0):
+	"""Re-cut the production plan to the quantities the sellers committed to.
+
+	An approved plan is a commitment, so it is not edited: it is cancelled and
+	a revision of it is approved in its place, carrying what will really be
+	planted."""
+	proc = frappe.get_doc("Summer Flower Procurement Plan", procurement_plan)
+	frappe.has_permission("Summer Flower Procurement Plan", "write", proc, throw=True)
+	if not proc.production_plan:
+		return {"revised": None, "why": _("This plan sources nothing.")}
+	plan = frappe.get_doc("Summer Flower Production Plan", proc.production_plan)
+	if plan.docstatus == 2:
+		return {"revised": None, "why": _("{0} is cancelled.").format(plan.name)}
+	if not any(cint(r.get("delivery_confirmed")) for r in (proc.requirements or [])):
+		return {"revised": None,
+		        "why": _("Nothing has been confirmed, so there is nothing to revise to.")}
+
+	targets = _confirmed_by_cohort(proc, plan)
+	from upande_summer_flowers.summer_flowers.doctype \
+		.summer_flower_production_plan.summer_flower_production_plan import (
+			plants_per_bed_for, plants_standing_from,
+		)
+
+	v = frappe.get_cached_doc("Crop Protocol Version", plan.protocol)
+	per_bed = cint(plants_per_bed_for(v))
+	rows = [b for b in plan.plan_blocks if cint(b.is_new_planting)]
+	moved, lost = [], 0
+	for row, want in zip(rows, targets):
+		if not cint(want["answered"]):
+			continue
+		standing = (cint(plants_standing_from(v, want["landing"]))
+		            if want["landing"] else 0)
+		if standing != cint(row.plants):
+			moved.append((row.name, cint(row.plants), standing))
+			lost += max(0, cint(row.plants) - standing)
+	if not moved and not cint(force):
+		return {"revised": None, "plan": plan.name,
+		        "why": _("{0} already says what the sellers confirmed.").format(plan.name)}
+
+	# A draft needs no revision: it is simply written.
+	if plan.docstatus == 0:
+		_write_confirmed(plan, targets, v, per_bed)
+		plan.flags.plantings_are_confirmed = True
+		plan.flags.ignore_permissions = True
+		plan.save()
+		return {"revised": plan.name, "amended": 0, "rows": len(moved),
+		        "plants_lost": lost}
+
+	# Approved. Cancel it and approve a revision in its place, so the number
+	# somebody committed to and the number that will be planted are two
+	# documents rather than one that quietly changed.
+	plan.flags.ignore_links = True
+	plan.flags.ignore_permissions = True
+	plan.cancel()
+
+	new = frappe.copy_doc(plan)
+	new.amended_from = plan.name
+	new.docstatus = 0
+	new.status = "Draft"
+	# Cleared, not copied. A new document that opens already in the approved
+	# state is a transition out of nowhere, and the workflow refuses it: the
+	# revision walks the same road the plan walked.
+	_clear_workflow_state(new)
+	_write_confirmed(new, targets, v, per_bed)
+	new.flags.plantings_are_confirmed = True
+	new.flags.skip_raise = True
+	new.flags.ignore_permissions = True
+	new.insert()
+	approved = _walk_to_approved(new)
+
+	# The requirement lines name the plantings they buy for, by row. A copy's
+	# rows are new rows, so without this every line points at a planting on a
+	# cancelled plan and nothing downstream can match them up again.
+	was = [t["row"] for t in targets]
+	now = [b.name for b in new.plan_blocks if cint(b.is_new_planting)]
+	moved_rows = dict(zip(was, now))
+	for r in (proc.requirements or []):
+		if r.cohort in moved_rows:
+			frappe.db.set_value("Planting Material Requirement", r.name, "cohort",
+			                    moved_rows[r.cohort], update_modified=False)
+
+	for doctype, field in POINTS_AT_PLAN:
+		for name in frappe.get_all(doctype, filters={field: plan.name}, pluck="name"):
+			frappe.db.set_value(doctype, name, field, new.name,
+			                    update_modified=False)
+	# The calendar is what the farm plants. A planting already written from the
+	# old plan would otherwise stand there at the figure the delivery just
+	# contradicted, and the writer skips rows that already have an entry.
+	revised_rows = _revise_calendar(new, proc.name)
+	frappe.db.commit()
+	frappe.msgprint(
+		_("{0} {1} in place of {2}: {3} planting(s) re-cut to what the sellers "
+		  "confirmed{4}."
+		  ).format(frappe.utils.get_link_to_form(
+			"Summer Flower Production Plan", new.name),
+			_("is approved") if approved else _("is waiting for approval"),
+			plan.name, len(moved),
+			_(", {0} plants fewer").format("{:,}".format(lost)) if lost else ""),
+		title=_("The plan has been revised"), indicator="orange")
+	return {"revised": new.name, "amended": 1, "was": plan.name,
+	        "approved": approved, "state": new.get("workflow_state"),
+	        "rows": len(moved), "plants_lost": lost,
+	        "plantings_revised": revised_rows}
+
+
+def _revise_calendar(plan, procurement_plan):
+	"""Bring plantings already on the calendar down to the confirmed figures."""
+	done = 0
+	for row in plan.plan_blocks:
+		if not cint(row.is_new_planting) or not row.existing_planting:
+			continue
+		if not frappe.db.exists("Planting Calendar", row.existing_planting):
+			continue
+		doc = frappe.get_doc("Planting Calendar", row.existing_planting)
+		# What is in the ground, or out of it, is not a plan any more.
+		if doc.get("calendar_status") in ("Planted", "Uprooted", "Cancelled"):
+			continue
+		if cint(doc.plants) == cint(row.plants) and cint(doc.beds) == cint(row.beds):
+			continue
+		if not cint(doc.get("plants_before_revision")):
+			doc.beds_before_revision = doc.beds
+			doc.plants_before_revision = doc.plants
+		doc.plants = cint(row.plants)
+		doc.beds = cint(row.beds)
+		if not cint(row.plants):
+			doc.calendar_status = "Cancelled"
+		doc.revision_reason = _(
+			"Revised to what the sellers confirmed on {0}.").format(procurement_plan)
+		doc.revised_on = frappe.utils.now_datetime()
+		doc.revised_by = frappe.session.user
+		doc.flags.ignore_permissions = True
+		doc.flags.ignore_validate_update_after_submit = True
+		doc.save()
+		done += 1
+	return done
+
+
+def _clear_workflow_state(doc):
+	"""Put a copied document back at the start of its workflow."""
+	from frappe.model.workflow import get_workflow_name
+
+	wf = get_workflow_name(doc.doctype)
+	if not wf:
+		return
+	field = frappe.db.get_value("Workflow", wf, "workflow_state_field")
+	if field and doc.meta.has_field(field):
+		doc.set(field, None)
+
+
+def _walk_to_approved(doc):
+	"""Take a revision as far through its workflow as this user may take it."""
+	from frappe.model.workflow import (apply_workflow, get_transitions,
+	                                   get_workflow_name)
+
+	if not get_workflow_name(doc.doctype):
+		doc.submit()
+		return 1
+	# Four is the longest road any of these workflows has; a loop without a
+	# bound is one bad transition away from spinning.
+	for _step in range(4):
+		if cint(doc.docstatus) == 1:
+			return 1
+		try:
+			moves = [t.action for t in get_transitions(doc)]
+		except Exception:
+			break
+		# Forward only. Rejecting a revision nobody has read is not progress.
+		nxt = next((a for a in moves
+		            if a not in ("Reject", "Reopen", "Cancel")), None)
+		if not nxt:
+			break
+		try:
+			doc = apply_workflow(doc, nxt)
+		except Exception:
+			break
+	return 1 if cint(doc.docstatus) == 1 else 0
+
+
+def _write_confirmed(plan, targets, v, per_bed):
+	"""Put the confirmed figures on the plantings of a plan being written."""
+	from upande_summer_flowers.summer_flowers.doctype \
+		.summer_flower_production_plan.summer_flower_production_plan import (
+			plants_standing_from, size_planting,
+		)
+
+	rows = [b for b in plan.plan_blocks if cint(b.is_new_planting)]
+	for row, want in zip(rows, targets):
+		if not cint(want["answered"]):
+			continue
+		landing = cint(want["landing"])
+		if not cint(row.get("plants_from_demand")):
+			row.plants_from_demand = cint(row.plants)
+		standing = cint(plants_standing_from(v, landing)) if landing else 0
+		row.plants = standing
+		row.plants_to_plant = landing
+		# Beds off what stands, the way every other planting on the plan is
+		# sized, so a short delivery gives the ground back.
+		row.beds = cint(size_planting(v, standing)[0]) if standing else 0
+		if row.meta.has_field("trimmed_to_materials"):
+			row.trimmed_to_materials = 1 if cint(want["short"]) else 0
 
 
 @frappe.whitelist()

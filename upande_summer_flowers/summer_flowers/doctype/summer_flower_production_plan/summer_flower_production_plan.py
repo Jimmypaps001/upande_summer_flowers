@@ -54,8 +54,11 @@ class SummerFlowerProductionPlan(Document):
 		try:
 			v = getattr(self, "_version", None) or frappe.get_cached_doc(
 				"Crop Protocol Version", self.protocol)
-			for b in new_rows:
-				b.plants_to_plant = plants_to_plant(v, cint(b.plants))
+			# Except on a revision written from confirmed deliveries, where what
+			# goes in the ground is what a seller agreed to send, not arithmetic.
+			if not self.flags.get("plantings_are_confirmed"):
+				for b in new_rows:
+					b.plants_to_plant = plants_to_plant(v, cint(b.plants))
 		except Exception:
 			pass
 		self.new_beds_required = sum((b.beds or 0) for b in new_rows)
@@ -93,10 +96,17 @@ class SummerFlowerProductionPlan(Document):
 
 		if not cint(self.tc_choice_committed):
 			return
+		# A revision approved in place of a plan whose material is already
+		# ordered raises nothing: the order it answers is the one that caused it.
+		if self.flags.get("skip_raise"):
+			return
 		done, failed = [], []
 		for label, fn in documents_that_follow(self.name):
 			try:
-				fn()
+				out = fn()
+				# A step that had nothing to do is not a step that was done.
+				if isinstance(out, dict) and out.get("skipped"):
+					continue
 				done.append(label)
 			except Exception as e:
 				frappe.log_error(frappe.get_traceback(),
@@ -545,6 +555,17 @@ class SummerFlowerProductionPlan(Document):
 
 	def apply_agreed_materials_to_plantings(self, built, v):
 		"""Make the plantings say what the agreed materials can actually plant."""
+		# A plan re-cut to what the sellers confirmed already says what will be
+		# planted. Re-deriving it from the agreement would put back the figure
+		# the deliveries just contradicted.
+		if self.flags.get("plantings_are_confirmed"):
+			return
+		# Approved plantings are what somebody approved. The check used to sit
+		# below the reset, so approving a plan put every planting back to the
+		# demand figure and then returned without re-trimming it: a plan cut to
+		# 7,840 plants by its agreed order was approved carrying 9,520.
+		if self.docstatus != 0:
+			return
 		# Recorded for every new planting the first time through, before any
 		for b in self.plan_blocks:
 			if not cint(b.is_new_planting):
@@ -562,9 +583,6 @@ class SummerFlowerProductionPlan(Document):
 			# Bought, not cut: there is no pool to simulate. Eryngium Scorpius
 			got = self.plants_the_agreed_units_cover(v)
 		if not got:
-			return
-		# Never underneath an approval. Approved plantings are what somebody
-		if self.docstatus != 0:
 			return
 		# Supplying NOTHING is not a decision to plant nothing. It is what a
 		if not any(cint(x) for x in got.values()):
@@ -631,14 +649,58 @@ class SummerFlowerProductionPlan(Document):
 			title=_("The agreed material no longer matches the plan"),
 			indicator="orange")
 
+	def adopt_protocol_edits(self):
+		"""Approve edits sitting on the Crop Protocol, so a rebuild can see them.
+
+		A version is a frozen snapshot, so an edit nobody approved is invisible to
+		every plan. Regenerate approves it first rather than rebuilding on the old
+		snapshot and reporting success."""
+		from upande_summer_flowers.summer_flowers.crop_protocol import (
+			approve as approve_protocol, diff_against_current)
+
+		proto = self.crop_protocol or (
+			frappe.db.get_value("Crop Protocol Version", self.protocol, "crop_protocol")
+			if self.protocol else None)
+		if not proto or not frappe.db.exists("Crop Protocol", proto):
+			return None
+		doc = frappe.get_doc("Crop Protocol", proto)
+		changed = diff_against_current(doc)
+		if not changed:
+			return None
+		# A reason is what the history records; approving refuses without one.
+		if not doc.get("custom_sf_change_reason"):
+			doc.db_set("custom_sf_change_reason",
+			           _("Approved while regenerating {0}.").format(self.name),
+			           update_modified=False)
+		try:
+			out = approve_protocol(proto)
+		except frappe.PermissionError:
+			frappe.throw(
+				_("{0} has changes that were never approved ({1}). A plan is built on "
+				  "a version, and only an approver writes one, so regenerating would "
+				  "rebuild on the old figures. Ask an approver to approve the "
+				  "protocol, then regenerate."
+				  ).format(proto, ", ".join(changed)), frappe.PermissionError)
+		frappe.msgprint(
+			_("Approved {0} as {1} first: {2} had changed on the protocol."
+			  ).format(proto, out["version"], ", ".join(changed)), indicator="blue")
+		return out
+
 	@frappe.whitelist()
-	def regenerate(self, adopt_current_protocol=1):
+	def regenerate(self, adopt_current_protocol=1, approve_protocol_edits=1):
 		"""Rebuild the weekly grid and planting proposals against the current protocol."""
 		if self.docstatus != 0:
 			frappe.throw(_("Only a draft plan can be regenerated."))
 		was = self.protocol
+		if cint(approve_protocol_edits):
+			self.adopt_protocol_edits()
 		if cint(adopt_current_protocol):
-			current = current_version(self.variety, self.farm)
+			current = None
+			if self.crop_protocol:
+				current = frappe.db.get_value(
+					"Crop Protocol", self.crop_protocol, "custom_sf_current_version")
+			if not current or not frappe.db.exists("Crop Protocol Version", current):
+				current = current_version(self.variety, self.farm)
 			if current:
 				self.protocol = current
 		before = _plants_in(self)

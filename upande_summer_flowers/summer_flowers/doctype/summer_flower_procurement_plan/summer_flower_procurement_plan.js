@@ -289,7 +289,7 @@ frappe.ui.form.on("Summer Flower Procurement Plan", {
 			// culture and propagated here needs both: who sells it, and who
 			// raises what they send.
 			if (frm.doc.method === "Purchase") {
-				frm.add_custom_button(__("Choose Suppliers"), () =>
+				frm.add_custom_button(__("Procurement Allocation"), () =>
 					frm.call({
 						doc: frm.doc, method: "propose_purchase", freeze: true,
 						freeze_message: __("Listing what has to be bought..."),
