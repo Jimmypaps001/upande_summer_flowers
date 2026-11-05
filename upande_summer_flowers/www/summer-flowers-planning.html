@@ -8527,6 +8527,12 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
     box.innerHTML = orders.map((o) => {
       const ro = !o.editable;
       const sellers = o.sellers || [];
+      // Who an unplaced week is actually split between. "by share" named
+      // nobody, so a screen with two sellers on it read as if it had none.
+      const shares = (o.seller_shares || []).filter((x) => x.supplier);
+      const splitText = shares.length > 1
+        ? shares.map((x) => `${x.supplier} ${Math.round(x.share_pct)}%`).join(" + ")
+        : (shares.length === 1 ? shares[0].supplier : "by share");
       const unit = (o.unit || "units").toLowerCase();
       const rows = o.lines.map((L) => {
         const moved = L.week && L.asked_week && L.week !== L.asked_week;
@@ -8535,14 +8541,13 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
           `<td>${esc(L.asked_week || "\u2014")}</td>` +
           (sellers.length
             ? `<td>${ro || sellers.length < 2
-                ? esc(L.supplier || (sellers.length < 2 ? sellers[0] : "") || "by share")
+                ? esc(L.supplier || (sellers.length < 2 ? sellers[0] : "") || splitText)
                 : `<select class="dc-sup">` +
                   // A week nobody has placed with one seller is split between
-                  // them all by the shares on the allocation. The list used to
-                  // open on seller one with nothing selected, so saving the
-                  // screen gave seller one the whole week.
+                  // them all by the shares on the allocation, and the option
+                  // now names them: "by share" on its own told nobody who.
                   `<option value=""${L.supplier ? "" : " selected"}>` +
-                  `by share</option>` +
+                  `${esc(splitText)}</option>` +
                   sellers.map((sp) =>
                     `<option${sp === L.supplier ? " selected" : ""}>${esc(sp)}</option>`
                   ).join("") + `</select>`}</td>`
@@ -8551,8 +8556,11 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
           `<td class="r">${ro ? num(L.qty)
             : `<input class="dc-q" type="number" min="0" step="1" value="${L.qty}" ` +
               `style="width:9em;text-align:right">`}</td>` +
-          `<td>${ro ? fdate(L.schedule_date)
-            : `<input class="dc-d" type="date" value="${esc(L.schedule_date || "")}">`}</td>` +
+          // Deliveries are agreed by week, never by the day: a supplier who
+          // says "week 12" was being asked to pick a Monday.
+          `<td>${ro ? esc(L.schedule_week || weekOf(L.schedule_date) || "\u2014")
+            : `<input class="dc-w" type="week" style="width:9.5em" ` +
+              `value="${esc(L.schedule_week || weekOf(L.schedule_date) || "")}">`}</td>` +
           `<td>${short ? `<span style="color:var(--critical)">short ${num(L.asked_qty - L.qty)}</span>`
                 : moved ? `<span style="color:var(--warning)">moved to ${esc(L.week)}</span>`
                 : `<span class="pl-dim">as asked</span>`}</td>` +
@@ -8602,13 +8610,40 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
     bindDeliveries();
   }
 
+  // ISO week <-> the Monday of that week. The screen works in weeks; the
+  // order still carries a date, so one is turned into the other here.
+  function weekOf(d) {
+    if (!d) return "";
+    const t = new Date(d + "T00:00:00");
+    if (isNaN(t)) return "";
+    const x = new Date(Date.UTC(t.getFullYear(), t.getMonth(), t.getDate()));
+    const dow = x.getUTCDay() || 7;
+    x.setUTCDate(x.getUTCDate() + 4 - dow);
+    const y0 = new Date(Date.UTC(x.getUTCFullYear(), 0, 1));
+    const wk = Math.ceil((((x - y0) / 86400000) + 1) / 7);
+    return `${x.getUTCFullYear()}-W${String(wk).padStart(2, "0")}`;
+  }
+
+  function mondayOf(w) {
+    const m = /^(\d{4})-W(\d{2})$/.exec(w || "");
+    if (!m) return null;
+    const year = Number(m[1]), week = Number(m[2]);
+    const jan4 = new Date(Date.UTC(year, 0, 4));
+    const dow = jan4.getUTCDay() || 7;
+    const mon = new Date(jan4);
+    mon.setUTCDate(jan4.getUTCDate() - (dow - 1) + (week - 1) * 7);
+    return mon.toISOString().slice(0, 10);
+  }
+
   function dcRows(table) {
     return [...table.querySelectorAll("tbody tr")].map((tr) => {
       const sel = tr.querySelector(".dc-sup");
       const row = {
         name: tr.dataset.line,
         qty: flt((tr.querySelector(".dc-q") || {}).value),
-        schedule_date: (tr.querySelector(".dc-d") || {}).value || null,
+        // The week box answers "2026-W12"; the order wants that week's Monday.
+        schedule_date: mondayOf((tr.querySelector(".dc-w") || {}).value) || null,
+        schedule_week: (tr.querySelector(".dc-w") || {}).value || null,
       };
       // Sent only where the week has a seller box. An empty string is an
       // answer -- split this week by the shares -- and omitting the key

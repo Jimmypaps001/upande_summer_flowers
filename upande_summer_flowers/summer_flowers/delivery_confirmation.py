@@ -1,6 +1,8 @@
 # Copyright (c) 2026, James Kiruga and contributors
 """What the supplier has agreed to send, week by week."""
 
+import datetime
+
 import frappe
 from frappe import _
 from frappe.utils import cint, flt, getdate, nowdate
@@ -35,6 +37,25 @@ def _plan_orders(procurement_plan):
 			"supplier": frappe.db.get_value("Purchase Order", po, "supplier"),
 			"entry_stage": stage}))
 	return out
+
+
+def _this_monday(day):
+	"""The Monday of the week a date falls in."""
+	day = getdate(day)
+	return day - datetime.timedelta(days=day.weekday())
+
+
+def _monday_of_week(week):
+	"""'2026-W12' -> the Monday of that ISO week."""
+	import re
+
+	m = re.match(r"^(\d{4})-W(\d{1,2})$", str(week or "").strip())
+	if not m:
+		return None
+	try:
+		return datetime.date.fromisocalendar(int(m.group(1)), int(m.group(2)), 1)
+	except ValueError:
+		return None
 
 
 def _week_of(d):
@@ -86,6 +107,7 @@ def schedule_for(procurement_plan):
 				"qty": cint(i.qty),
 				"schedule_date": str(i.schedule_date) if i.schedule_date else None,
 				"week": _week_of(i.schedule_date),
+				"schedule_week": _week_of(i.schedule_date),
 				"received_qty": cint(i.get("received_qty")),
 			})
 		asked_total = sum(x["asked_qty"] for x in lines)
@@ -96,6 +118,8 @@ def schedule_for(procurement_plan):
 			# The same two keys the requirement-sourced shape carries, so one
 			"needs_sellers": 0,
 			"sellers": [po.supplier] if po.supplier else [],
+			"seller_shares": ([{"supplier": po.supplier, "share_pct": 100.0}]
+			                  if po.supplier else []),
 			"supplier": po.supplier,
 			"supplier_name": po.get("supplier_name") or po.supplier,
 			"status": po.status,
@@ -214,6 +238,9 @@ def _from_requirements(plan):
 			"schedule_date": str(r.expected_delivery_date
 			                     or r.required_at_site_date or "") or None,
 			"week": r.confirmed_delivery_week or _week_of(r.required_at_site_date),
+			# The week the keyed date falls in: what the screen confirms against.
+			"schedule_week": _week_of(r.expected_delivery_date
+			                          or r.required_at_site_date),
 			"received_qty": 0,
 		})
 	# Named off the lines being bought. Taking the first stage on the document
@@ -224,6 +251,9 @@ def _from_requirements(plan):
 		"purchase_order": None, "requirement_of": plan.name,
 		# Nothing to confirm against until somebody says who sells it: an order
 		"sellers": [x["supplier"] for x in sellers],
+		# With their shares, so a week nobody has placed with one seller can
+		# say who it is actually split between instead of the words "by share".
+		"seller_shares": sellers,
 		"needs_sellers": 0 if sellers else 1,
 		# Not the first seller. A plan split between two of them has no single
 		# supplier, and naming one made the screen read as if it had.
@@ -261,9 +291,13 @@ def save_requirements(procurement_plan, lines):
 		if "supplier" in given:
 			r.db_set("supplier", given.get("supplier") or None,
 			         update_modified=False)
-		when = given.get("schedule_date")
+		# The screen confirms a week. It sends that week's Monday, and the week
+		# itself where the browser gave no date box to turn into one.
+		when = given.get("schedule_date") or _monday_of_week(given.get("schedule_week"))
 		if when:
-			when = max(getdate(when), today)
+			# A week is confirmed, so a week that has gone moves to this week --
+			# not to today, which turned "week 20" into a Thursday in November.
+			when = max(getdate(when), _this_monday(today))
 			r.db_set("confirmed_delivery_week", _week_of(when),
 			         update_modified=False)
 			r.db_set("expected_delivery_date", when, update_modified=False)
@@ -579,7 +613,9 @@ def save_schedule(purchase_order, lines):
 			continue
 		if given.get("qty") not in (None, ""):
 			row.qty = max(0, cint(given.get("qty")))
-		when = given.get("schedule_date")
+		# The screen confirms a week. It sends that week's Monday, and the week
+		# itself where the browser gave no date box to turn into one.
+		when = given.get("schedule_date") or _monday_of_week(given.get("schedule_week"))
 		if when:
 			when = getdate(when)
 			# A delivery cannot be required before the order is placed, and
