@@ -8182,6 +8182,25 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
       try { PROP_CHOICES = await call("propagator_choices"); }
       catch (e) { PROP_CHOICES = { units: [], suppliers: [] }; }
     }
+    // Our own units are few and they were invisible: an empty box with a
+    // placeholder reads as a dead field until somebody thinks to click it.
+    // They are listed, and one click adds one.
+    const unitChips = () => {
+      const u = PROP_CHOICES.units || [];
+      return `<p class="pl-note" style="margin-top:4px">` +
+        (u.length
+          ? `Our units <span class="pl-dim">(warehouses of type ` +
+            `Propagation Unit)</span>: ` +
+            u.map((x) => `<button type="button" class="pl-btn pl-pick-unit" ` +
+              `data-unit="${esc(x)}" style="margin:0 4px 4px 0">${esc(x)}</button>`
+            ).join("") +
+            ` — an outside propagator is a Supplier, typed in the box above.`
+          : `No propagation unit here yet: a unit is a Warehouse whose type is ` +
+            `Propagation Unit. <a href="/app/warehouse/new">Create one</a>, or ` +
+            `name an outside propagator (a Supplier) in the box above.`) +
+        `</p>`;
+    };
+
     const rows = (r.allocations && r.allocations.rows) || [];
     box.innerHTML = drafts.map((p) => {
       const mine = rows.filter((x) => x.procurement_plan === p.name);
@@ -8206,6 +8225,7 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
           <button class="pl-btn pl-btn-primary pl-alloc-save">Save allocation</button>
           <span class="pl-note pl-alloc-msg"></span>
         </div>
+        ${unitChips()}
       </div>`;
     }).join("");
 
@@ -8220,6 +8240,16 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
       const add = (x) => { tbody.insertAdjacentHTML("beforeend", allocRow(x)); };
       ed.addEventListener("click", (e) => {
         if (e.target.classList.contains("pl-alloc-del")) e.target.closest("tr").remove();
+        if (e.target.classList.contains("pl-pick-unit")) {
+          const u = e.target.dataset.unit;
+          if ([...tbody.querySelectorAll("tr")].some(
+                (tr) => tr.dataset.unit === u)) {
+            msg.textContent = `${u} is already on the list.`;
+            return;
+          }
+          add({ propagation_unit: u, share_pct: 0 });
+          msg.textContent = "";
+        }
       });
       ed.querySelector(".pl-add-unit").addEventListener("change", (e) => {
         const v = e.target.value.trim();
