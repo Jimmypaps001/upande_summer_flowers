@@ -8243,8 +8243,11 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
           <span class="pl-note pl-alloc-msg"></span>
         </div>
         ${unitChips()}
+        <div class="pl-raisers" data-for="${esc(p.name)}"></div>
       </div>`;
     }).join("");
+
+    paintRaisers(box);
 
     box.querySelectorAll(".pl-alloc-edit").forEach((ed) => {
       const plan = ed.dataset.plan;
@@ -8296,6 +8299,73 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
         done(call("save_propagators", { procurement_plan: plan, rows: JSON.stringify(out) }));
       });
     });
+  }
+
+  // What the saved allocation actually asks of each raiser. Our own unit gets
+  // a propagation plan -- start, material in, plants to the field. An outside
+  // propagator gets a delivery schedule -- order by, drop on, plants dropped.
+  // Both where the season is split between them. Plants are after the losses
+  // the protocol states, because that is what the plan is sized on.
+  function paintRaisers(root) {
+    (root || document).querySelectorAll(".pl-raisers").forEach((box) => {
+      const name = box.dataset.for;
+      if (!name) return;
+      call("allocation_plan", { procurement_plan: name })
+        .then((r) => { box.innerHTML = raisersHtml(r); })
+        .catch(() => { box.innerHTML = ""; });
+    });
+  }
+
+  function raisersHtml(r) {
+    const rs = (r && r.raisers) || [];
+    if (!rs.length) return "";
+    return rs.map((x) => {
+      const out = !!x.outside;
+      const unit = (x.raises || r.entry_stage || "units").toLowerCase();
+      const head =
+        `<div class="text-muted small" style="text-transform:uppercase;` +
+        `letter-spacing:.05em;margin:14px 0 4px">${
+          out ? "How they drop the plants" : "What this unit raises"}</div>` +
+        `<p class="pl-note"><b>${esc(x.party)}</b> — ${
+          out ? "outside propagator" : "our unit"}, ${num(x.share_pct)}% of the ` +
+        `${esc(unit)}. ${esc(x.basis || "")}` +
+        (x.propagation_plan
+          ? ` <a href="/app/summer-flower-propagation-plan/${
+              encodeURIComponent(x.propagation_plan)}">${esc(x.propagation_plan)}</a>`
+          : "") +
+        (x.purchase_order
+          ? ` <a href="/app/purchase-order/${encodeURIComponent(x.purchase_order)}">${
+              esc(x.purchase_order)}</a>` : "") +
+        (x.starts_late
+          ? ` <span style="color:var(--critical)">${x.starts_late} of ${
+              x.weeks.length} ${out ? "order weeks" : "start weeks"} ` +
+            `have passed</span>` : "") +
+        `</p>`;
+      return head +
+        `<table class="pl-t"><thead><tr>` +
+        `<th>${out ? "Order by" : "Start"}</th>` +
+        `<th>${out ? "Drops on" : "Wanted"}</th>` +
+        `<th class="r">${esc(x.raises || r.entry_stage || "Units")} in</th>` +
+        `<th class="r">Plants handed over</th>` +
+        `<th class="r">Plants standing</th>` +
+        (out ? `<th class="r">Charge</th>` : "") +
+        `</tr></thead><tbody>` +
+        x.weeks.map((w) =>
+          `<tr><td${w.late ? ' style="color:var(--critical)"' : ""}>${
+            esc(w.start_iso)}${w.late ? " passed" : ""}</td>` +
+          `<td>${esc(w.wanted_iso)}</td>` +
+          `<td class="r">${num(w.units)}</td>` +
+          `<td class="r">${num(w.plants_handed)}</td>` +
+          `<td class="r">${num(w.plants_standing)}</td>` +
+          (out ? `<td class="r">${num(Math.round(w.amount))}</td>` : "") +
+          `</tr>`).join("") +
+        `</tbody><tfoot><tr><th colspan="2">Season</th>` +
+        `<th class="r">${num(x.units_total)}</th>` +
+        `<th class="r">${num(x.plants_handed_total)}</th>` +
+        `<th class="r">${num(x.plants_standing_total)}</th>` +
+        (out ? `<th class="r">${num(Math.round(x.amount_total))}</th>` : "") +
+        `</tr></tfoot></table>`;
+    }).join("");
   }
 
   function allocRow(x, plan) {

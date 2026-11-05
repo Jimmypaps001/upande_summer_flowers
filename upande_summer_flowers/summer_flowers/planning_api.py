@@ -3858,3 +3858,86 @@ def save_propagators(procurement_plan, rows):
 		             .format(round(total, 2)))
 	return _draft_procurement(procurement_plan).propose_allocation(units=units,
 	                                                                suppliers=suppliers)
+
+
+@frappe.whitelist()
+def allocation_plan(procurement_plan):
+	"""What each allocated raiser has to do, week by week.
+
+	Our own unit gets a propagation plan: start, material in, plants handed to
+	the field. An outside propagator gets a delivery schedule: order by, drop
+	on, plants delivered. Every plant figure is after the losses the protocol
+	states, because that is what the plan is sized on."""
+	_guard()
+	doc = frappe.get_doc("Summer Flower Procurement Plan", procurement_plan)
+	frappe.has_permission("Summer Flower Procurement Plan", "read", doc, throw=True)
+
+	# What each cohort puts in the ground, from the production plan it came from.
+	to_plant = {}
+	if doc.production_plan:
+		plan = frappe.get_doc("Summer Flower Production Plan", doc.production_plan)
+		for b in plan.plan_blocks:
+			to_plant[b.name] = (cint(b.get("plants_to_plant")) or cint(b.plants))
+
+	raisers = []
+	for a in (doc.get("propagation_allocation") or []):
+		share = flt(a.share_pct) / 100.0
+		outside = a.alloc_type == "Outside Propagator"
+		weeks, units_t, hand_t, stand_t = [], 0, 0, 0
+		for r in doc.requirements:
+			if (a.raises or "") and (r.entry_stage or "") != a.raises:
+				continue
+			when = getdate(r.planting_date or r.required_at_site_date)
+			if not when:
+				continue
+			units = int(round(cint(r.qty_to_order) * share))
+			stand = int(round(cint(r.qty_at_field) * share))
+			hand = int(round(cint(to_plant.get(r.cohort, 0)) * share)) or stand
+			start = add_days(when, -7 * cint(a.lead_weeks))
+			units_t += units
+			hand_t += hand
+			stand_t += stand
+			weeks.append({
+				"cohort": r.cohort,
+				"start_iso": _iso_week(start), "start_date": str(start),
+				"wanted_iso": _iso_week(when), "wanted_date": str(when),
+				# What has to be started with, what is handed over, and what is
+				# still standing once it has established. Three different numbers
+				# that a single "plants" column used to be asked to be.
+				"units": units, "unit_name": r.entry_stage or doc.entry_stage,
+				"plants_handed": hand, "plants_standing": stand,
+				"amount": flt(a.rate_per_plant) * hand if outside else 0,
+				"late": 1 if start < getdate(nowdate()) else 0,
+			})
+		weeks.sort(key=lambda x: x["wanted_date"])
+		raisers.append({
+			"party": a.party or a.supplier or a.propagation_unit,
+			"outside": 1 if outside else 0,
+			"raises": a.raises, "share_pct": flt(a.share_pct),
+			"lead_weeks": cint(a.lead_weeks),
+			"rate_per_plant": flt(a.rate_per_plant),
+			"propagation_plan": a.propagation_plan,
+			"purchase_order": a.purchase_order,
+			"basis": a.ready_basis,
+			"weeks": weeks,
+			"units_total": units_t,
+			"plants_handed_total": hand_t,
+			"plants_standing_total": stand_t,
+			"amount_total": flt(a.rate_per_plant) * hand_t if outside else 0,
+			"starts_late": sum(1 for w in weeks if w["late"]),
+		})
+	return {
+		"procurement_plan": doc.name,
+		"production_plan": doc.production_plan,
+		"entry_stage": doc.entry_stage,
+		"currency": frappe.db.get_value("Company", doc.get("company"),
+		                                "default_currency") if doc.get("company") else None,
+		"raisers": raisers,
+	}
+
+
+def _iso_week(d):
+	if not d:
+		return None
+	y, w, _dow = getdate(d).isocalendar()
+	return "%s-W%02d" % (y, w)
