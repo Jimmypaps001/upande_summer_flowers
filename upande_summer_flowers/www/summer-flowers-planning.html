@@ -4535,7 +4535,12 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
       return;
     }
     const b = r.built, base = r.baseline;
+    // A crop whose route has no motherstock multiplies nothing: the lever had
+    // no effect and the gathering table answered every week with zero.
+    const mult = r.multiplies !== 0;
     const tcIn = $("wi-tc"), prIn = $("wi-prop");
+    const prLabel = prIn && prIn.closest("label");
+    if (prLabel) prLabel.style.display = mult ? "" : "none";
     if (tcIn && document.activeElement !== tcIn) tcIn.value = r.tc_qty || "";
     if (prIn && document.activeElement !== prIn) {
       prIn.value = (S.wiProp === null || S.wiProp === undefined)
@@ -4559,10 +4564,16 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
           `${delta >= 0 ? "+" : ""}${delta.toFixed(1)} points</b>.`
         : Math.abs(delta) < 0.05
           ? ` — the same as the plan on file.`
-          : ` at the plan's own order of ${num(r.tc_qty)} TC plants. The plan on file ` +
-            `claims <b>${base.coverage_pct.toFixed(1)}%</b>, which assumes every ` +
-            `planting gets its cuttings; counting the cuttings it is ` +
-            `<b style="color:var(--serious)">${delta.toFixed(1)} points</b> lower.`) +
+          // Lower OR higher: the sentence used to say "lower" either way, so a
+          // trial that beat the plan read as if it had fallen short of it.
+          : ` at the plan's own order of ${num(r.tc_qty)} ${
+              esc(r.entry_stage || "TC")} plants. The plan on file claims ` +
+            `<b>${base.coverage_pct.toFixed(1)}%</b>, ${
+              mult ? "which assumes every planting gets its cuttings; counting "
+                   + "the cuttings it is " : "and walked through week by week it is "
+            }<b style="color:var(${delta < 0 ? "--serious" : "--good"})">${
+              Math.abs(delta).toFixed(1)} points</b> ${
+              delta < 0 ? "lower" : "higher"}.`) +
       ` ${num(b.production_stems)} stems against ${num(b.demand_stems)} of demand, ` +
       `${num(b.unmet_stems)} short across ${num(b.weeks_in_deficit)} weeks.` +
       (changed
@@ -4587,7 +4598,7 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
       // is a rule and not a fault: "only 1 could be sent" over a line with
       // 32,900 spare cuttings a week said the material ran out, when what
       // happened is the protocol allows one multiplication and no more.
-      { k: "Multiply", v: `${r.multiplications ?? 0}`,
+      ...(r.multiplies === 0 ? [] : [{ k: "Multiply", v: `${r.multiplications ?? 0}`,
         m: (() => {
           const cap = r.max_multiplications ?? 4;
           const asked = r.multiplications ?? 0;
@@ -4602,7 +4613,7 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
       { k: "Generations", v: num(r.generations || b.generations),
         m: r.line_end_date ? `block cleared ${fdate(r.line_end_date)}` : "" },
       { k: "Planting weeks met", v: `${num(r.weeks_met)} / ${num(r.weeks_required)}`,
-        m: "by the cut, week for week" },
+        m: "by the cut, week for week" }]),
       { k: "Weeks changed", v: num(b.overrides || 0),
         m: b.overrides ? "your splits" : "none — the plan as sized" },
     ].map(tile).join("");
@@ -4610,10 +4621,16 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
     const rows = b.sticking.filter((x) => inPeriod(
       +x.label.slice(0, 4), +x.label.slice(6)));
     $("wi-body").innerHTML =
-      '<p class="pl-note">Click a <b>To field</b> figure to hold cuttings back that ' +
-      'week. The field is served first every week, ramp and all, so what you hold ' +
-      'back is what is left for building another generation. <b>Stuck</b> is what ' +
-      'the plan actually achieves that week once the cuttings are counted.</p>' +
+      (mult
+        ? '<p class="pl-note">Click a <b>To field</b> figure to hold cuttings back ' +
+          'that week. The field is served first every week, ramp and all, so what ' +
+          'you hold back is what is left for building another generation. ' +
+          '<b>Stuck</b> is what the plan actually achieves that week once the ' +
+          'cuttings are counted.</p>'
+        : `<p class="pl-note">${esc(r.entry_stage || "TC")} is bought and ` +
+          `planted on this route — nothing is multiplied here, so the only ` +
+          `lever is how many to buy. <b>Stuck</b> is what the order covers in ` +
+          `each sticking week.</p>`) +
       (periodOn() ? `<p class="pl-note">Showing ${rows.length} of ${b.sticking.length} ` +
         `sticking weeks — ${esc(periodLabel())}.</p>` : "") +
       (rows.length

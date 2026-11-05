@@ -558,8 +558,31 @@ def _first_sticking_for(plan, placed_only=False):
 
 # ---------------------------------------------------------------------------
 
+def _plants_per_bought_unit(plan_doc):
+	"""Plants standing per unit bought, the way the materials card counts it."""
+	from upande_summer_flowers.summer_flowers import root_line
+
+	try:
+		m = root_line.arrival_plan(plan_doc)
+	except Exception:
+		frappe.clear_last_message()
+		return 0.0
+	units = cint(m.get("tc_units_total"))
+	plants = cint(m.get("tc_total"))
+	if units and plants:
+		return flt(plants) / flt(units)
+	return flt(m.get("tc_plants_per_unit")) or 0.0
+
+
+def _entry_order_date(plan_doc, version):
+	"""When the season's first consignment has to be ordered."""
+	return (getdate(plan_doc.tc_order_by_date) if plan_doc.get("tc_order_by_date")
+	        else tc_order_by_date(version, _first_sticking_for(plan_doc.name)))
+
+
 def _tc_production(plan_doc, version, tc_qty, order_date, divert_weeks=0,
-                   max_bench_sqm=None, week_overrides=None, schedule=None):
+                   max_bench_sqm=None, week_overrides=None, schedule=None,
+                   direct=False, plants_per_unit=0):
 	"""Roll a TC quantity all the way through to stems against demand."""
 	from upande_summer_flowers.summer_flowers import lifecycle_sim as ls
 
@@ -609,7 +632,33 @@ def _tc_production(plan_doc, version, tc_qty, order_date, divert_weeks=0,
 	typed_overrides = len(overrides)
 	for i in range(cint(divert_weeks)):
 		overrides.setdefault(first_cut_sw + i, 0)
-	if schedule is not None:
+	if direct:
+		# No motherstock on this route: nothing is gathered and nothing is
+		# multiplied. The order is handed to the plantings in sticking order,
+		# each taking what its own consignment delivers. Running the pool
+		# simulation here produced a season of zeros for a plan that works.
+		# Capacity is counted in the material the field is handed, which is what
+		# cuttings_for_plants() asks for below -- so the pool IS the order.
+		pool = cint(tc_qty)
+		rows = []
+		for b in sorted(
+				[x for x in plan_doc.plan_blocks
+				 if cint(x.is_new_planting) and cint(x.sticking_year)
+				 and cint(x.sticking_week)],
+				key=lambda x: (cint(x.sticking_year), cint(x.sticking_week))):
+			want = v.cuttings_for_plants(
+				cint(b.get("plants_from_demand")) or cint(b.plants))
+			take = min(pool, want)
+			pool -= take
+			rows.append({"year": cint(b.sticking_year), "week_no": cint(b.sticking_week),
+			             "to_farm": take, "total_cap": take, "base_cap": take,
+			             "prop_cap": 0})
+		for r in rows:
+			k = (r["year"], r["week_no"])
+			if k in (week_overrides or {}):
+				r["to_farm"] = cint((week_overrides or {})[k])
+		sim = {"rows": rows, "generations": 0, "num_cycles": 0, "prop_pool_rows": []}
+	elif schedule is not None:
 		# The peak-week line, already worked out, rather than a second simulation
 		rows = []
 		for r in schedule.get("weeks_table") or []:
@@ -1030,6 +1079,14 @@ def plan_whatif(plan=None, variety=None, farm=None, tc_qty=None, week_overrides=
 	prop = prop[0] if prop else None
 
 	from upande_summer_flowers.summer_flowers import propagation_solver as ps
+	from upande_summer_flowers.summer_flowers import sourcing
+
+	# Does this crop multiply at all? A route with no standing stage has no
+	# mother block to gather from, so the cuttings engine answers every week
+	# with nothing and the card reported 0% for a plan that covers its demand.
+	decided = sourcing.route_plan(v)
+	entry = decided.get("entry_stage")
+	multiplies = bool(entry and sourcing.standing_stage(v, entry))
 
 	# The line as the solver works it out, for the multiplication being asked for.
 	agreed = frappe.db.get_value(
@@ -1040,6 +1097,46 @@ def plan_whatif(plan=None, variety=None, farm=None, tc_qty=None, week_overrides=
 		tc_qty = cint(agreed.tc_to_order)
 
 	mult = multiplications if multiplications not in (None, "") else None
+	if not multiplies:
+		# Bought and planted: the only lever is how many to buy.
+		per_unit = _plants_per_bought_unit(p)
+		season_order = cint(p.tc_plants_to_order) or cint(
+			round(cint(p.new_plants_required) / (per_unit or 1)))
+		chosen = cint(tc_qty) if cint(tc_qty) else season_order
+		built = _tc_production(p, v, chosen, _entry_order_date(p, v),
+		                       week_overrides=week_overrides,
+		                       direct=True, plants_per_unit=per_unit)
+		return {
+			"plan": plan, "variety": p.variety, "farm": p.farm, "version": v.name,
+			"status": p.workflow_state or p.status,
+			"order_date": str(_entry_order_date(p, v) or ""),
+			"tc_qty": chosen, "recommended_tc": season_order,
+			# Said plainly, so the card can drop the lever instead of showing
+			# it stuck at a number nothing acts on.
+			"multiplies": 0,
+			"route_reason": decided.get("reason"),
+			"entry_stage": entry,
+			"plants_per_unit": per_unit,
+			"multiplications": 0, "divert_weeks": 0, "generations": 0,
+			"max_multiplications": 0, "farm_max_multiplications": 0,
+			"multiplications_asked": 0, "suggested_multiplications": 0,
+			"sends_made": 0, "weeks_met": 0, "weeks_required": 0,
+			"covers": 1 if built and not cint(built.get("unmet_stems")) else 0,
+			"shortfall": 0,
+			"propagation_plan": prop.name if prop else None,
+			"current": {"tc_qty": cint(prop.tc_plants_required) if prop else 0,
+			            "order_date": (str(prop.tc_order_date)
+			                           if prop and prop.tc_order_date else None),
+			            "divert_weeks": 0},
+			"baseline": {
+				"coverage_pct": flt(p.coverage_pct),
+				"production_stems": cint(p.total_production_stems),
+				"demand_stems": cint(p.total_demand_stems),
+				"weeks_in_deficit": cint(p.weeks_in_deficit),
+				"plants": cint(p.new_plants_required),
+			},
+			"built": built,
+		}
 	sizing = ps.peak_sizing(p, cycles=mult)
 	if not sizing:
 		return {"plan": plan, "error": "No sticking weeks to plan cuttings for."}
