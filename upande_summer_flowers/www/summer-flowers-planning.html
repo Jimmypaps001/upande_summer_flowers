@@ -2669,7 +2669,8 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
       '<table class="pl-t"><thead><tr><th>#</th><th>Planting week</th>' +
       '<th>Uprooting week</th><th class="n">Plants to plant</th>' +
       '<th class="n">Area m²</th><th class="n">Area ha</th>' +
-      '<th class="n">Stems over its life</th>' +
+      '<th class="n">Stems in the season</th>' +
+      '<th class="n">Over its life</th>' +
       '<th class="n">Stems / plant</th><th>Flags</th>' +
       '</tr></thead><tbody>' +
       shown.map((r, i) => {
@@ -2688,7 +2689,8 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
           `<td class="n">${num(r.plants_to_plant || r.plants)}</td>` +
           `<td class="n">${num(Math.round(ha * 10000))}</td>` +
           `<td class="n">${ha.toFixed(4)}</td>` +
-          `<td class="n">${num(r.lifetime_stems)}</td>` +
+          `<td class="n">${num(r.season_stems)}</td>` +
+          `<td class="n text-muted">${num(r.lifetime_stems)}</td>` +
           `<td class="n">${r.plants ? ((r.lifetime_stems || 0) / r.plants).toFixed(1) : "—"}</td>` +
           `<td>${f.join(" ")}</td></tr>`;
       }).join("") +
@@ -2698,13 +2700,15 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
         const tp = rows.reduce(
           (a, r) => a + (Number(r.plants_to_plant || r.plants) || 0), 0);
         const ts = rows.reduce((a, r) => a + (Number(r.lifetime_stems) || 0), 0);
+        const tseason = rows.reduce((a, r) => a + (Number(r.season_stems) || 0), 0);
         const th = rows.reduce((a, r) => a + (Number(r.net_area_ha) || 0), 0);
         return '<tr class="pl-tot"><th colspan="3">' +
           `${num(rows.length)} plantings</th>` +
           `<th class="n">${num(tp)}</th>` +
           `<th class="n">${num(Math.round(th * 10000))}</th>` +
           `<th class="n">${th.toFixed(4)}</th>` +
-          `<th class="n">${num(ts)}</th>` +
+          `<th class="n">${num(tseason)}</th>` +
+          `<th class="n text-muted">${num(ts)}</th>` +
           `<th class="n">${tp ? (ts / tp).toFixed(1) : "—"}</th><th></th></tr>`;
       })() +
       "</tbody></table>" +
@@ -5326,10 +5330,11 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
       // "why plant more than we need": a stem that fails grading was still
       // grown, and the plants had to be standing to grow it.
       `<th>First cut</th>` +
-      `<th class="n">Saleable over its life</th>` +
-      (m.grading_reject_pct
-        ? `<th class="n">Lost grading ${m.grading_reject_pct}%</th>` +
-          `<th class="n">Cut over its life</th>` : "") +
+      // A week's stems, not a lifetime total: these are the figures the
+      // Production Plan sheet adds up against the week's demand.
+      `<th class="n">Stems a week</th>` +
+      `<th>Peak week</th>` +
+      `<th class="n">Stems in the season</th>` +
       // Not "Plants needed": that is Plants standing, further along the same
       // row, and a column cannot be two things.
       // Bought once or in batches; SOWN week by week. What a week carries is
@@ -5354,11 +5359,14 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
         return `<tr><td>${esc(w.sow_iso || "")}</td>` +
           `<td class="text-muted">${esc(w.week_iso || "")}</td>` +
           `<td class="text-muted">${esc(w.first_cut_iso || "")}</td>` +
-          `<td class="n">${w.stems_saleable ? num(w.stems_saleable) : ""}</td>` +
-          (m.grading_reject_pct
-            ? `<td class="n" style="color:var(--critical)">` +
-              `${w.stems_lost_grading ? "−" + num(w.stems_lost_grading) : ""}</td>` +
-              `<td class="n">${w.stems_cut ? num(w.stems_cut) : ""}</td>` : "") +
+          `<td class="n">${w.stems_avg_week ? num(w.stems_avg_week) : ""}` +
+          (w.stems_peak_week && w.stems_peak_week !== w.stems_avg_week
+            ? ` <span class="pl-dim">peak ${num(w.stems_peak_week)}</span>` : "") +
+          `</td>` +
+          `<td class="text-muted">${esc(w.peak_week_iso || "")}</td>` +
+          `<td class="n">${w.stems_in_season ? num(w.stems_in_season) : ""}` +
+          (w.cut_weeks ? ` <span class="pl-dim">${w.cut_weeks} wks</span>` : "") +
+          `</td>` +
           `<td class="n">${w.units_tc ? num(w.units_tc) : ""}</td>` +
           (m.tc_first_loss_pct && m.tc_first_loss_pct < 100
             ? `<td class="n" style="color:var(--critical)">` +
@@ -5379,11 +5387,8 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
           `${v > 0 ? "+" : ""}${v ? num(v) : "—"}</td></tr>`;
       }).join("") +
       `<tfoot><tr><th colspan="3">Season</th>` +
-      `<th class="n">${num(m.stems_saleable_total)}</th>` +
-      (m.grading_reject_pct
-        ? `<th class="n" style="color:var(--critical)">` +
-          `−${num(m.stems_lost_grading_total)}</th>` +
-          `<th class="n">${num(m.stems_cut_total)}</th>` : "") +
+      `<th></th><th></th>` +
+      `<th class="n">${num(m.stems_in_season_total)}</th>` +
       `<th class="n">${num(m.tc_units_total)}</th>` +
       (m.tc_first_loss_pct && m.tc_first_loss_pct < 100
         ? `<th class="n" style="color:var(--critical)">` +
@@ -5584,9 +5589,32 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
     const lifted = prof.length > 1;
     const profText = prof.map((x) =>
       `${x.share_pct}% at ${x.weeks_after}w`).join(" · ");
+    // Before anything else: how much of this schedule is still buyable. An
+    // order week that has gone cannot be placed, and a card that opens with
+    // "403,564 tc over 16 consignments" reads like it can.
+    const gone = rows.filter((w) => w.order_passed);
+    const goneUnits = gone.reduce((a, w) => a + cintish(w.units_tc), 0);
+    const firstOpen = rows.find((w) => !w.order_passed);
+    const warn = gone.length
+      ? `<div style="margin:8px 0;padding:8px 12px;border-radius:6px;` +
+        `border:1px solid #f5c6cb;background:#fdf3f4">` +
+        `<b>${gone.length} of ${rows.length} consignment${
+          rows.length === 1 ? "" : "s"} can no longer be ordered</b> ` +
+        `<span class="text-muted">— ${num(goneUnits)} ${esc(one.toLowerCase())}, ` +
+        `${Math.round((goneUnits / (totUnits || 1)) * 100)}% of the season. ` +
+        `Their order weeks ran from ${esc(rows[0].tc_order_iso || "")} to ${
+          esc(gone[gone.length - 1].tc_order_iso || "")}. ` +
+        (firstOpen
+          ? `The first week still open to buy is ${esc(firstOpen.tc_order_iso)}, ` +
+            `for planting in ${esc(firstOpen.week_iso)}.`
+          : `No week of this schedule can still be bought — the plan has to be ` +
+            `rebuilt on weeks that are still ahead.`) +
+        `</span></div>`
+      : "";
     box.innerHTML =
       `<div class="text-muted small" style="text-transform:uppercase;` +
       `letter-spacing:.05em;margin:14px 0 4px">${esc(r.head)}</div>` +
+      warn +
       `<p class="pl-note"><b>${num(totUnits)} ${esc(one.toLowerCase())} ` +
       `over ${rows.length} consignment${rows.length === 1 ? "" : "s"}.</b> ` +
       `Each ordered ${lead} week${lead === 1 ? "" : "s"} before it lands and ` +
@@ -5634,9 +5662,13 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
   function liftRows(rows) {
     return rows.map((w, i) => {
       const ls = (w.lifts || []);
+      // A week that has already gone cannot be ordered in. Marked here, so a
+      // schedule made of past weeks does not read like one that can be bought.
+      const late = (x) => (x.order_passed
+        ? ` <span style="color:var(--critical)">passed</span>` : "");
       if (!ls.length) {
         return `<tr><td class="n text-muted">${i + 1}</td>` +
-          `<td>${esc(w.tc_order_iso || "")}</td>` +
+          `<td>${esc(w.tc_order_iso || "")}${late(w)}</td>` +
           `<td>${esc(w.sow_iso || "")}</td>` +
           `<td class="n">${num(w.units_tc)}</td>` +
           `<td colspan="3" class="text-muted">no lift stated</td>` +
@@ -5648,7 +5680,7 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
           `<td class="n text-muted" rowspan="${ls.length}" ` +
           `style="vertical-align:top">${i + 1}</td>` +
           `<td rowspan="${ls.length}" style="vertical-align:top">` +
-          `${esc(w.tc_order_iso || "")}</td>` +
+          `${esc(w.tc_order_iso || "")}${late(w)}</td>` +
           `<td rowspan="${ls.length}" style="vertical-align:top">` +
           `${esc(w.sow_iso || "")}</td>` +
           `<td class="n" rowspan="${ls.length}" style="vertical-align:top">` +
@@ -6199,6 +6231,34 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
         ? renderLadder({ ladder: { groups: keep,
                                    any_loss_stated: L.any_loss_stated } })
         : "";
+    }
+
+    // Why we multiply at all, said in TC plants rather than in cycles. A
+    // motherstock crop is cheap because the pool is grown, not bought, and
+    // nothing on this card used to say so.
+    const sv = t.multiplying_saves;
+    // Its own box: the note below is written by the card itself, and two
+    // writers on one element means whichever runs last wins.
+    let noteBox = $("tc-saves");
+    if (!noteBox && $("tc-note")) {
+      noteBox = document.createElement("div");
+      noteBox.id = "tc-saves";
+      $("tc-note").parentNode.insertBefore(noteBox, $("tc-note"));
+    }
+    if (noteBox && sv && sv.tc_saved) {
+      noteBox.innerHTML =
+        `<p class="pl-note"><b>Multiplying ${sv.multiplications} time${
+          sv.multiplications === 1 ? "" : "s"} buys ${num(sv.tc_with_multiplying)} ` +
+        `TC instead of ${num(sv.tc_without_multiplying)}</b> — ${
+          num(sv.tc_saved)} fewer, ${sv.times_fewer}× less, for the same ` +
+        `cuttings. The price is time: order by ${esc(sv.order_by_with || "")} ` +
+        `rather than ${esc(sv.order_by_without || "")}` +
+        (sv.order_late
+          ? ` <span style="color:var(--critical)">— that week has passed, so ` +
+            `this saving is no longer available on this plan</span>` : "") +
+        `.</p>`;
+    } else if (noteBox && !sv) {
+      noteBox.innerHTML = "";
     }
 
     const met = c.weeks_met || 0, all = c.weeks || 0;

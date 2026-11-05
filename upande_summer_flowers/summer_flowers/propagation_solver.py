@@ -254,6 +254,11 @@ def recommend(plan, tc=None, divert_weeks=None):
 			"by_week": [{"date": str(d), "cuttings": n} for d, n in demand.items()],
 			"cuttings_per_plant": flt(v.cuttings_per_plant_required) or 1.0,
 		},
+		# The cost case, said plainly: multiplying our own mothers is what makes
+		# a season cheap, and the comparison is what proves it. A season whose
+		# order weeks have all gone says so here rather than in a date nobody
+		# reads.
+		"buying": _buying(options, usable, placeable, pick),
 		"recommended": pick,
 		"chosen": detail,
 		"options": options,
@@ -279,6 +284,29 @@ def recommend(plan, tc=None, divert_weeks=None):
 			"as_at": str(first_sticking),
 		},
 		"assumed": _assumptions(v),
+	}
+
+
+def _buying(options, usable, placeable, pick):
+	"""How much of the season can still be bought, and what multiplying saves."""
+	flat = next((o for o in usable if not cint(o.get("divert_weeks"))), None)
+	cheapest_open = (min(placeable, key=lambda o: (o["tc"], -o["divert_weeks"]))
+	                 if placeable else None)
+	saved = None
+	if flat and pick and flat.get("tc") and pick.get("tc"):
+		saved = {"tc_without_multiplying": cint(flat["tc"]),
+		         "tc_with_multiplying": cint(pick["tc"]),
+		         "tc_saved": max(0, cint(flat["tc"]) - cint(pick["tc"])),
+		         "times_fewer": (round(flt(flat["tc"]) / flt(pick["tc"]), 1)
+		                         if flt(pick["tc"]) else None),
+		         "cost_without": flat.get("cost"), "cost_with": pick.get("cost")}
+	return {
+		"options": len(options),
+		"covering": len(usable),
+		"still_open": len(placeable),
+		"all_order_weeks_passed": bool(usable and not placeable),
+		"cheapest_still_open": cheapest_open,
+		"saving": saved,
 	}
 
 

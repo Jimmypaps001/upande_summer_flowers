@@ -1219,10 +1219,18 @@ def planting_plan(plan=None, variety=None, farm=None):
 	v = frappe.get_cached_doc("Crop Protocol Version", p.protocol)
 	life_weeks = v.total_weeks_in_ground or 0
 
+	# What each planting cuts INSIDE the plan's weeks, from the plan's own
+	# matrix. A lifetime total answers a question nobody asked of a season.
+	from upande_summer_flowers.summer_flowers.root_line import _weekly_cut
+
+	in_season = {i: sum(cint(q) for q in (wk or {}).values())
+	             for i, wk in (_weekly_cut(p) or {}).items()}
+
 	plantings = []
-	for b in p.plan_blocks:
+	for i, b in enumerate(p.plan_blocks):
 		plantings.append({
 			"idx": b.idx,
+			"season_stems": cint(in_season.get(i, 0)),
 			"is_new": bool(b.is_new_planting),
 			"block": b.block,
 			"existing_planting": b.existing_planting,
@@ -2979,6 +2987,26 @@ def motherstock_line(plan=None, variety=None, farm=None, tc=None,
 			"weeks_table": sch["weeks_table"],
 			"order_late": getdate(sch["order_by"]) < getdate(nowdate()),
 		}
+		# What multiplying buys us, in the only currency that matters here: TC
+		# plants not ordered. Buying the whole pool outright is the comparison,
+		# because that is what a plan with no multiplication does.
+		opts = sizing["options"]
+		flat = next((o for o in opts if not cint(o.get("cycles"))), None)
+		pick_o = opts[sizing["suggested"]]
+		if flat and cint(pick_o.get("buy")):
+			out["multiplying_saves"] = {
+				"tc_without_multiplying": cint(flat["buy"]),
+				"tc_with_multiplying": cint(pick_o["buy"]),
+				"tc_saved": max(0, cint(flat["buy"]) - cint(pick_o["buy"])),
+				"times_fewer": round(flt(flat["buy"]) / flt(pick_o["buy"]), 1),
+				"multiplications": cint(pick_o.get("cycles")),
+				# Multiplying costs time, and the time is the order week. Both
+				# are stated so the saving is never read on its own.
+				"order_by_without": flat.get("order_by"),
+				"order_by_with": pick_o.get("order_by"),
+				"order_late": (getdate(pick_o["order_by"]) < getdate(nowdate())
+				               if pick_o.get("order_by") else None),
+			}
 		out["recommended"] = sizing["options"][sizing["suggested"]]
 		out["options"] = sizing["options"]
 		out["peak"] = {

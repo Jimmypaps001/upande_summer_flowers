@@ -315,13 +315,21 @@ def arrival_plan(plan, tc_share=None, returns_per_plant=None,
 	tc_lead = _lead_for(rows, primary)
 	root_lead = _lead_for(rows, secondary)
 
+	# What each planting actually cuts, week by week, taken from the plan's own
+	# matrix -- the same figures the Production Plan sheet and the weekly rows
+	# are drawn from. A lifetime total says nothing about the week the stems
+	# are wanted in, which is the only question this page is asked.
+	matrix = _weekly_cut(plan)
+
 	weeks, tc_orders, root_pulls = {}, {}, {}
-	for b in plan.plan_blocks:
+	for i, b in enumerate(plan.plan_blocks):
 		if not cint(b.is_new_planting) or not b.get("planting_date"):
 			continue
 		land = _monday(b.planting_date)
-		w = weeks.setdefault(land, {"plants": 0, "first_cut": None})
+		w = weeks.setdefault(land, {"plants": 0, "first_cut": None, "cut_by_week": {}})
 		w["plants"] += cint(b.plants)
+		for wk, qty in (matrix.get(i) or {}).items():
+			w["cut_by_week"][wk] = cint(w["cut_by_week"].get(wk, 0)) + cint(qty)
 		# What this planting is FOR. A row of a material table is a planting,
 		# and a planting is only ever made for the weeks it will cut in.
 		if cint(b.get("first_harvest_year")) and cint(b.get("first_harvest_week")):
@@ -387,8 +395,20 @@ def arrival_plan(plan, tc_share=None, returns_per_plant=None,
 		# headings that read as the week's own stems.
 		_cut = int(round(cint(w["plants"]) * _spp))
 		_sale = int(round(_cut * (1.0 - _reject)))
+		# And the same planting inside the plan's own weeks: what it cuts in
+		# the season, its best week and the weeks it is actually cutting in.
+		series = {k: cint(q) for k, q in (w.get("cut_by_week") or {}).items() if cint(q)}
+		in_season = sum(series.values())
 		w.update({"stems_cut": _cut, "stems_saleable": _sale,
 		          "stems_lost_grading": max(0, _cut - _sale),
+		          "stems_in_season": in_season,
+		          "stems_saleable_in_season": int(round(in_season * (1.0 - _reject))),
+		          "cut_weeks": len(series),
+		          "stems_peak_week": max(series.values()) if series else 0,
+		          "peak_week_iso": (max(series, key=lambda k: series[k])
+		                            if series else None),
+		          "stems_avg_week": (int(round(in_season / float(len(series))))
+		                             if series else 0),
 		          "first_cut_iso": w.get("first_cut")})
 		w.update({"by_tc": by_tc, "by_roots": by_root, "roots_needed": roots,
 		          "units_tc": units_one,
@@ -411,6 +431,13 @@ def arrival_plan(plan, tc_share=None, returns_per_plant=None,
 		w["week_iso"] = iso(land)
 		w["tc_order_iso"] = iso(w["tc_order_week"])
 		w["root_out_iso"] = iso(w["root_out_week"])
+		# An order week that has gone is not an order anybody can place. The
+		# table said nothing, so a schedule built entirely out of last year's
+		# weeks read exactly like one that could still be bought.
+		_today = getdate()
+		w["order_passed"] = 1 if getdate(w["tc_order_week"]) < _today else 0
+		w["sow_passed"] = 1 if getdate(w["sow_week"]) < _today else 0
+		w["planting_passed"] = 1 if getdate(land) < _today else 0
 		if by_tc:
 			tc_orders[w["tc_order_week"]] = tc_orders.get(w["tc_order_week"], 0) + by_tc
 		if roots:
@@ -501,6 +528,12 @@ def arrival_plan(plan, tc_share=None, returns_per_plant=None,
 		                            for k in ordered),
 		"stems_lost_grading_total": sum(cint(weeks[k].get("stems_lost_grading"))
 		                                for k in ordered),
+		# The same plantings inside the plan's own weeks, which is the figure
+		# the week table shows: a week's stems, not a planting's lifetime.
+		"stems_in_season_total": sum(cint(weeks[k].get("stems_in_season"))
+		                             for k in ordered),
+		"stems_saleable_in_season_total": sum(
+			cint(weeks[k].get("stems_saleable_in_season")) for k in ordered),
 		"grading_reject_pct": round(_reject * 100, 2),
 		"stems_per_plant_life": _spp,
 		# The same figures as one chain, because the tiles above answer "how
@@ -675,6 +708,24 @@ def _apportion(weeks, share, exact=None):
 	left = want - sum(out.values())
 	for _frac, k in sorted(rema, reverse=True)[:max(0, left)]:
 		out[k] += 1
+	return out
+
+
+def _weekly_cut(plan):
+	"""Each planting's stems by ISO week, as the plan's matrix recorded them."""
+	out = {}
+	try:
+		data = frappe.parse_json(plan.get("matrix_json") or "{}") or {}
+	except Exception:
+		return out
+	for i, row in enumerate(data.get("rows") or []):
+		mine = {}
+		for key, qty in (row.get("weeks") or {}).items():
+			if not cint(qty):
+				continue
+			year, _sep, week = str(key).partition("-")
+			mine["%s-W%02d" % (cint(year), cint(week))] = cint(qty)
+		out[i] = mine
 	return out
 
 
