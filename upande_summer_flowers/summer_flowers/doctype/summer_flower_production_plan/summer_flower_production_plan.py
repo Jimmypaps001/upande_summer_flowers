@@ -601,7 +601,7 @@ class SummerFlowerProductionPlan(Document):
 			b.trimmed_to_materials = 1 if can < cint(b.plants_from_demand) else 0
 			if per_bed:
 				b.beds = int(math.ceil(can / float(per_bed))) if can else 0
-				b.net_area_ha = flt(b.beds) * flt(v.sqm_net_per_bed or 0) / 10000.0
+			b.net_area_ha = planting_area_ha(v, can, b.beds)
 
 	# ------------------------------------------------------------------ budget
 	def create_budget(self):
@@ -937,6 +937,19 @@ def bed_sqm(v):
 	return fallback if fallback >= MIN_CREDIBLE_BED_SQM else 0.0
 
 
+def planting_area_ha(v, plants=0, beds=0):
+	"""The ground a planting stands on.
+
+	Off the density first -- that is what the protocol actually measures, and
+	it answers for every crop. Bed geometry is the fallback, and it used to be
+	the only source: a protocol with no stated bed size reported every planting
+	as 0.0000 ha, on the plan, the calendar and the area curve alike."""
+	per_sqm = flt(getattr(v, "plants_per_sqm_net", 0))
+	if plants and per_sqm > 0:
+		return flt(plants) / per_sqm / 10000.0
+	return flt(beds) * bed_sqm(v) / 10000.0
+
+
 def plants_per_bed_for(v):
 	"""How many plants a bed holds, worked out if it was not stored."""
 	stored = cint(getattr(v, "plants_per_bed", 0))
@@ -1149,6 +1162,131 @@ def allocate(plan, assignments):
 	        "still_unplaced": cint(p.plantings_not_placed)}
 
 
+def _ground_at(farm, start, end):
+	"""Beds at this farm, and how many of them are free across the season.
+
+	"64 ha at the farm" answers nothing on its own: what decides whether a plan
+	can be planted is the ground nobody has already claimed for those weeks."""
+	have = frappe.db.sql("""
+		select ifnull(sum(custom_total_beds), 0) beds,
+		       ifnull(sum(custom_net_area_ha), 0) ha,
+		       count(*) blocks
+		from tabBlock where farm = %s and custom_is_summer_flower_block = 1
+	""", farm, as_dict=True)[0] if farm else {"beds": 0, "ha": 0, "blocks": 0}
+	# Held: anything standing or planned that overlaps the season, wherever it
+	# came from. A bed carrying a crop into March is not free in January.
+	held = frappe.db.sql("""
+		select ifnull(sum(p.beds), 0) beds, count(distinct p.block) blocks
+		from `tabPlanting Calendar` p join tabBlock b on b.name = p.block
+		where b.farm = %s and ifnull(p.calendar_status, '') not in ('Cancelled', 'Uprooted')
+		  and p.planting_date <= %s
+		  and ifnull(p.actual_uproot_date, ifnull(p.planned_uproot_date, p.planting_date)) >= %s
+	""", (farm, end, start), as_dict=True)[0] if farm else {"beds": 0, "blocks": 0}
+	beds, ha = cint(have["beds"]), flt(have["ha"])
+	taken = min(cint(held["beds"]), beds)
+	per_bed_ha = (ha / beds) if beds else 0
+	return {
+		"beds": beds, "ha": round(ha, 3), "blocks": cint(have["blocks"]),
+		"beds_held": taken, "beds_free": max(0, beds - taken),
+		"ha_free": round(max(0.0, ha - taken * per_bed_ha), 3),
+		"blocks_in_use": cint(held["blocks"]),
+	}
+
+
+def _bench_at(farm, plants_needed):
+	"""Our own propagation units, what they hold and what is already on them."""
+	if not frappe.db.has_column("Warehouse", "custom_sf_is_propagation_unit"):
+		return None
+	rows = frappe.get_all(
+		"Warehouse", filters={"custom_sf_is_propagation_unit": 1},
+		fields=["name", "custom_farm as farm",
+		        "custom_sf_capacity_plants as capacity"])
+	if not rows:
+		return None
+	out, cap, free = [], 0, 0
+	for w in rows:
+		taken = cint(frappe.db.sql("""
+			select ifnull(sum(a.plants), 0)
+			from `tabSummer Flower Propagation Allocation` a
+			join `tabSummer Flower Procurement Plan` p on p.name = a.parent
+			where a.propagation_unit = %s and p.docstatus < 2""", w.name)[0][0])
+		mine = max(0, cint(w.capacity) - taken)
+		cap += cint(w.capacity)
+		free += mine
+		out.append({"unit": w.name, "here": 1 if (farm and w.farm == farm) else 0,
+		            "capacity": cint(w.capacity), "committed": taken, "free": mine})
+	out.sort(key=lambda u: (-u["here"], -u["free"]))
+	return {"units": out, "capacity": cap, "free": free,
+	        "needed": cint(plants_needed),
+	        "short": max(0, cint(plants_needed) - free)}
+
+
+def _route_of(v):
+	"""The road the crop takes, as the protocol draws it."""
+	stages = []
+	for r in (v.get("material_route") or []):
+		if (r.get("row_type") or "Stage") != "Stage":
+			continue
+		stages.append({"stage": r.stage, "weeks": cint(r.weeks),
+		               "loss_pct": flt(r.loss_pct),
+		               "bought": 1 if cint(r.is_purchase) else 0})
+	return {"summary": v.get("route_summary") or " -> ".join(
+		x["stage"] for x in stages), "stages": stages}
+
+
+def _losses_of(v):
+	"""Every loss the plan is grossed up for, in one line."""
+	root = flt(v.rooting_success_pct) or 100.0
+	field = flt(v.field_establishment_pct) or 100.0
+	grade = flt(v.cutting_reject_pct)
+	return {"rooting_pct": root, "establishment_pct": field, "grading_pct": grade,
+	        "survival_pct": round(root * field / 100.0, 1),
+	        "per_plant": flt(v.cuttings_per_plant_required)}
+
+
+def _cut_from_a_pool(v):
+	"""Whether this crop is cut from something standing, or bought and planted."""
+	return bool(cint(v.get("raised_from_pool"))
+	            or any(cint(r.is_standing) for r in (v.get("material_route") or [])))
+
+
+def _entry_stage_of(v):
+	"""What the crop is bought as, off the route, or nothing where it is not."""
+	for r in (v.get("material_route") or []):
+		if cint(r.get("is_purchase")) and (r.get("row_type") or "Stage") == "Stage":
+			return r.stage
+	return None
+
+
+def _lift_profile(v, stage):
+	"""How a consignment of that stage is handed over, where lifts are stated."""
+	from upande_summer_flowers.summer_flowers import crop_protocol as cp
+	from upande_summer_flowers.summer_flowers.route_ways import LIFT_FORM
+
+	form = LIFT_FORM.get(stage) if stage else None
+	if not form:
+		return []
+	try:
+		return [{"lift_no": i + 1, "weeks_after": cint(wk),
+		         "share_pct": round(sh * 100, 1)}
+		        for i, (wk, sh) in enumerate(cp.protocol_lifts(v, form) or [])]
+	except Exception:
+		frappe.clear_last_message()
+		return []
+
+
+def _weeks_to_a_plant(v):
+	"""Arrival to a plant the field can take: the first lift, else the route."""
+	entry = _entry_stage_of(v)
+	lifts = _lift_profile(v, entry)
+	if lifts:
+		return cint(lifts[0]["weeks_after"])
+	from upande_summer_flowers.summer_flowers import sourcing
+
+	j = sourcing.journey(v, entry) if entry else None
+	return cint(j["weeks_to_ground"]) if j else cint(v.sticking_to_planting_weeks)
+
+
 @frappe.whitelist()
 def plan_preview(market_demand, farm=None, season_start_year=None):
 	"""What creating this plan would mean, before anything is written."""
@@ -1232,8 +1370,16 @@ def plan_preview(market_demand, farm=None, season_start_year=None):
 		from upande_summer_flowers.summer_flowers.doctype.summer_flower_motherstock_batch.summer_flower_motherstock_batch import (
 			lab_lead_weeks,
 		)
-		weeks_back = cint(lab_lead_weeks(v)) + cint(v.lead_time_weeks) \
-			+ cint(v.first_harvest_offset_weeks) + cint(v.sticking_to_planting_weeks)
+		# A crop cut from a pool waits for the lab and for the pool to build.
+		# One bought and planted waits for its supplier and for the stage that
+		# raises it -- to its FIRST lift, where the protocol states lifts.
+		if _cut_from_a_pool(v):
+			weeks_back = cint(lab_lead_weeks(v)) + cint(v.lead_time_weeks) \
+				+ cint(v.first_harvest_offset_weeks) \
+				+ cint(v.sticking_to_planting_weeks)
+		else:
+			weeks_back = (cint(v.lead_time_weeks) + _weeks_to_a_plant(v)
+			              + cint(v.first_harvest_offset_weeks))
 		order_by = first - datetime.timedelta(weeks=weeks_back)
 		lead = {"first_demand_week": str(first), "weeks_back": weeks_back,
 		        "order_by": str(order_by), "late": order_by < getdate(nowdate())}
@@ -1256,6 +1402,8 @@ def plan_preview(market_demand, farm=None, season_start_year=None):
 
 	# What it would cost to say yes: the plantlets to buy and the ground to find. Both
 	tc = space = None
+	ground = _ground_at(farm, start, end) if farm else None
+	bench = route = losses = None
 	if version and weeks:
 		v = frappe.get_cached_doc("Crop Protocol Version", version)
 		from upande_summer_flowers.summer_flowers.doctype \
@@ -1276,7 +1424,7 @@ def plan_preview(market_demand, farm=None, season_start_year=None):
 			                 "be given at all"))
 		if not cint(v.min_planting_beds_derived) and not flt(v.min_planting_area_sqm):
 			assumed.append(_("minimum planting area"))
-		if not flt(v.cuttings_per_plant_per_week):
+		if _cut_from_a_pool(v) and not flt(v.cuttings_per_plant_per_week):
 			assumed.append(_("cuttings per mother plant per week"))
 		if not cint(v.total_weeks_in_ground):
 			assumed.append(_("weeks in the ground"))
@@ -1309,12 +1457,31 @@ def plan_preview(market_demand, farm=None, season_start_year=None):
 				beds = 0
 			from upande_summer_flowers.summer_flowers import sourcing
 
-			# None means this crop is not raised from tissue culture at all -- seed,
-			req = sourcing.requirement(v, "TC", plants, plants)
+			# The route's own way in, not "TC". Asking for tissue culture on a
+			# crop raised from seed answered None, and the dialog then said
+			# nothing at all about the material it has to buy.
+			entry = _entry_stage_of(v)
+			req = sourcing.requirement(v, entry, plants, plants) if entry else None
+			if not entry:
+				# Nothing is bought: the crop comes off the farm's own standing
+				# stock. Saying nothing at all read as a figure that failed.
+				notes.append(_(
+					"Nothing is bought for this crop. {0} says it comes off the "
+					"farm's own stock, so there is no order and no lead time -- "
+					"only ground to find and a bench to cut from."
+				).format(version))
 			cuttings = cint(req.get("weekly_draw")) if req else 0
 			per_week = flt(v.cuttings_per_plant_per_week) or 1.0
 			mothers = cint(req.get("pool")) if req else 0
 			tc = req and {
+				# Which road this crop takes. A pool is cut from; everything else
+				# is bought and planted, and the two read nothing alike.
+				"pool": 1 if (req.get("kind") == "standing") else 0,
+				"stage": entry,
+				"units": cint(req.get("units")),
+				"plants_per_unit": flt(req.get("plants_per_unit")),
+				"weeks_to_plant": cint(req.get("weeks_to_ground")),
+				"lifts": _lift_profile(v, entry),
 				# Which week, not just how big. "The peak week" means nothing without
 				"peak_week": "%s-W%02d" % (cint(peak_row.year), cint(peak_row.week_no)),
 				"peak_week_stems": peak_stems,
@@ -1331,6 +1498,9 @@ def plan_preview(market_demand, farm=None, season_start_year=None):
 				"order_by": lead["order_by"] if lead else None,
 				"late": bool(lead and lead["late"]),
 			}
+			route = _route_of(v)
+			route["lifts"] = _lift_profile(v, entry)
+			losses = _losses_of(v)
 			# Ground: what has to be STANDING to deliver the demand, which is a rate
 			weeks_in_ground = cint(v.total_weeks_in_ground)
 			per_week = (flt(v.total_stems_per_plant_life) / weeks_in_ground
@@ -1356,12 +1526,13 @@ def plan_preview(market_demand, farm=None, season_start_year=None):
 							weeks=off - offsets[0][0])
 						covered[iso_year_week(hd)] += int(round(spp * b * ppb))
 				total_beds = max(smooth_beds, proposed_beds)
-				need_ha = total_beds * bed_sqm(v) / 10_000
+				need_ha = planting_area_ha(v, total_plants, total_beds)
 				have = frappe.db.sql("""
 					select ifnull(sum(custom_net_area_ha), 0) ha,
 					       ifnull(sum(custom_total_beds), 0) beds
 					from tabBlock where farm = %s and custom_is_summer_flower_block = 1
 				""", farm, as_dict=True)[0] if farm else {"ha": 0, "beds": 0}
+				bench = _bench_at(farm, total_plants)
 				space = {
 					"basis": "plants standing to deliver the busiest week (%s stems) "
 					         "at %.3f stems per plant per week" % (peak_stems, per_week),
@@ -1390,14 +1561,35 @@ def plan_preview(market_demand, farm=None, season_start_year=None):
 			when = (_(" The order was due {0}.").format(tc["order_by"]) if tc["late"]
 			        else (_(" Order by {0}.").format(tc["order_by"])
 			              if tc["order_by"] else ""))
-			notes.append(_(
-				"About {0} plantlets to buy. They multiply into {1} mother plants, "
-				"which is what it takes to cut {2} cuttings in {3} -- the busiest "
-				"sticking week, and the one the pool has to be sized for because "
-				"cuttings cannot be banked.{4}"
-			).format("{:,}".format(tc["plantlets"]),
-			         "{:,}".format(tc["mother_plants"]),
-			         "{:,}".format(tc["cuttings"]), tc["peak_week"], when))
+			if tc["pool"]:
+				notes.append(_(
+					"About {0} plantlets to buy. They multiply into {1} mother plants, "
+					"which is what it takes to cut {2} cuttings in {3} -- the busiest "
+					"sticking week, and the one the pool has to be sized for because "
+					"cuttings cannot be banked.{4}"
+				).format("{:,}".format(tc["plantlets"]),
+				         "{:,}".format(tc["mother_plants"]),
+				         "{:,}".format(tc["cuttings"]), tc["peak_week"], when))
+			else:
+				# The same paragraph used to be written over a crop with no
+				# motherstock, which read "they multiply into 0 mother plants,
+				# enough to cut 0 cuttings".
+				lifts = tc.get("lifts") or []
+				how = (_(" It is handed over in {0} lifts: {1}.").format(
+					len(lifts), ", ".join("%s%% at %sw" % (L["share_pct"],
+					                                       L["weeks_after"])
+					                      for L in lifts))
+					if len(lifts) > 1 else "")
+				notes.append(_(
+					"About {0} {1} to buy. There is no motherstock: it is planted as "
+					"it is raised, {2} weeks from arrival to a plant the field can "
+					"take, and {3} plants have to go in the ground in {4} -- the "
+					"busiest planting week.{5}{6}"
+				).format("{:,}".format(cint(tc["units"]) or cint(tc["plantlets"])),
+				         (tc["stage"] or "TC").lower(),
+				         cint(tc["weeks_to_plant"]),
+				         "{:,}".format(cint(tc["plants_in_peak_week"])),
+				         tc["peak_week"], how, when))
 
 	return {
 		"variety": d.variety, "farm": farm, "season": "%s-%s" % (year, str(year + 1)[-2:]),
@@ -1410,6 +1602,7 @@ def plan_preview(market_demand, farm=None, season_start_year=None):
 		"existing_plan": existing.name if existing else None,
 		"propagation_plan": prop.name if prop else None,
 		"lead": lead, "notes": notes, "blocking": blocking,
+		"ground": ground, "bench": bench, "route": route, "losses": losses,
 		"can_create": not blocking,
 	}
 
@@ -1604,7 +1797,7 @@ def _populate(plan):
 					f"new {p_year}-W{p_week:02d} ({beds} beds)"
 					+ ("" if block else " — no block yet"))
 
-		net_ha = (beds * (protocol.sqm_net_per_bed or 0)) / 10_000
+		net_ha = planting_area_ha(protocol, plants, beds)
 		footprints.append((planting_date, uproot, net_ha))
 
 		note = (_("Needs {0} beds, more than any single block here holds ({1}); "
@@ -1622,9 +1815,12 @@ def _populate(plan):
 			"planting_year": p_year,
 			"planting_week": p_week,
 			"planting_date": planting_date,
-			"pinch_date": planting_date + datetime.timedelta(
-				weeks=protocol.weeks_to_pinch or 0
-			),
+			# Only where the crop is pinched. Zero weeks is not "pinch on the day
+			# it is planted", it is a crop nobody pinches, and the plan printed
+			# the planting date in a Pinch column for every one of them.
+			"pinch_date": (planting_date + datetime.timedelta(
+				weeks=cint(protocol.weeks_to_pinch))
+				if cint(protocol.weeks_to_pinch) else None),
 			"first_harvest_year": fh_year,
 			"first_harvest_week": fh_week,
 			"harvest_week_family": week_family_label(family),

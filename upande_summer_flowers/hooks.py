@@ -94,7 +94,12 @@ doctype_js = {
 }
 
 # Block belongs to upande_propagation, so its list view is customised from here.
-doctype_list_js = {"Block": "public/js/block_list.js"}
+doctype_list_js = {
+	"Block": "public/js/block_list.js",
+	# Crop Protocol belongs to upande_agriculture, so the paste button that
+	# takes a protocol copied off another site is hung on its list from here.
+	"Crop Protocol": "public/js/crop_protocol_list.js",
+}
 
 # Checked before the migrate that would trip over it, so a malformed customization
 before_migrate = "upande_summer_flowers.summer_flowers.customization_check.before_migrate"

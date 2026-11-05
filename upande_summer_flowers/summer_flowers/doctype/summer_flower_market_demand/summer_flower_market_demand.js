@@ -148,85 +148,167 @@ function create_plan(frm) {
 }
 
 function confirm_plan(frm, values, s) {
-	const num = (n) => frappe.format(n || 0, { fieldtype: "Int" });
-	// These rows are built as HTML, so anything from the server is escaped. esc was
-	// used below without ever being defined here -- the dashboard has one, this file
-	// did not -- and the ReferenceError meant the dialog never opened and clicking
-	// Create did nothing at all.
+	// Plain text, not frappe.format: the Int formatter returns markup that the
+	// dialog laid out on its own line, so "0.06 ha standing (40 beds, 4,800
+	// plants)" came apart into four.
+	const num = (v) => (Number(v) || 0).toLocaleString("en-US");
+	const ha = (v) => (Number(v) || 0).toFixed(2);
 	const esc = (v) => frappe.utils.escape_html(String(v == null ? "" : v));
-	const rows = [
-		[__("Variety"), s.variety],
-		[__("Farm"), s.farm],
-		[__("Season"), `${s.season} (${s.season_start} to ${s.season_end})`],
-		[__("Demand in that season"), `${num(s.demand_stems)} stems over ${
-			s.weeks} weeks, peak week ${num(s.peak_week_stems)}`],
-		[__("Firm of that"), `${num(s.firm_stems)} stems`],
-		[__("Protocol in force"), s.protocol || `<span style="color:#c0392b">${
-			__("none")}</span>`],
-		[__("Summer flower blocks at the farm"), num(s.blocks)],
-	];
-	if (s.lead) {
-		rows.push([__("TC order deadline"),
-			`${s.lead.order_by} (${s.lead.weeks_back} weeks before ${
-				s.lead.first_demand_week})${s.lead.late
-				? ` — <span style="color:#c0392b">${__("already passed")}</span>` : ""}`]);
-	}
-	// What saying yes costs: the plantlets to buy and the ground to find. Both are
-	// knowable from the demand and the protocol, and both are why a plan gets
-	// abandoned after it has been built.
-	if (s.tc) {
-		// Every figure named, in the order it is derived. "12,245 mother plants cutting
-		// 12,245 in the peak week" repeated one number without saying the second was
-		// cuttings — and at one cutting per plant per week they are always equal.
-		const rate = s.tc.cuttings_per_plant_per_week || 1;
-		rows.push([__("Tissue culture to buy"),
-			`<b>${num(s.tc.plantlets)}</b> ${__("plantlets")}`]);
-		rows.push([__("Which multiply into"),
-			`${num(s.tc.mother_plants)} ${__("mother plants")}` +
-			` <span class="text-muted">(${__("at")} ${rate} ${
-				__("cutting(s) per plant per week")})</span>`]);
-		rows.push([__("Enough to cut"),
-			`${num(s.tc.cuttings)} ${__("cuttings")} ${__("in")} <b>${
-				esc(s.tc.peak_week)}</b> — ${__("the busiest sticking week")}`]);
-		rows.push([__("That week plants"),
-			`${num(s.tc.plants_in_peak_week)} ${__("plants, to meet")} ${
-				num(s.tc.peak_week_stems)} ${__("stems of demand")}`]);
-	}
-	if (s.space) {
-		const over = s.space.pct_of_farm && s.space.pct_of_farm > 100;
-		const extra = (s.space.beds_with_minimum || 0) - (s.space.beds_if_divisible || 0);
-		rows.push([__("Ground it needs"),
-			`<b>${s.space.ha_needed} ha</b> ${__("standing")} (${
-				num(s.space.beds_needed)} ${__("beds")}, ${
-				num(s.space.plants_needed)} ${__("plants")})`]);
-		// The minimum planting size is a real cost in ground and it used to be
-		// invisible: the figure above assumed the land could be divided as finely as
-		// the demand, so changing the minimum moved nothing.
-		if (extra > 0) {
-			rows.push([__("Of which the minimum costs"),
-				`${num(extra)} ${__("extra beds")} — ${__("the smallest planting is")} ${
-					s.space.min_planting_beds} ${__("beds")} (${
-					s.space.min_planting_area_sqm} m²), ${
-					__("so a week needing less is still planted at that")}`]);
-		}
-		rows.push([__("Ground at this farm"),
-			`${s.space.ha_at_farm} ha, ${num(s.space.beds_at_farm)} ${__("beds")}` +
-			(s.space.pct_of_farm
-				? ` — <span style="color:${over ? "#c0392b" : "#27ae60"}">${
-					s.space.pct_of_farm}% ${__("of it")}</span>` : "")]);
-	}
-	if (s.existing_plan) rows.push([__("Existing plan"), s.existing_plan]);
-	if (s.propagation_plan) rows.push([__("Propagation plan"), s.propagation_plan]);
+	const g = s.ground || {}, b = s.bench, r = s.route, L = s.losses;
+	const sp = s.space || {};
 
-	let html = `<table class="table table-bordered table-sm" style="font-size:12px">${
-		rows.map(([k, v]) => `<tr><td style="width:42%">${k}</td><td>${v}</td></tr>`).join("")
-	}</table>`;
-	(s.blocking || []).forEach((n) => {
-		html += `<p style="color:#c0392b;margin:6px 0"><b>${__("Blocking")}:</b> ${n}</p>`;
-	});
-	(s.notes || []).forEach((n) => {
-		html += `<p style="color:#8a6d3b;margin:6px 0">${n}</p>`;
-	});
+	// Four numbers decide whether this plan can happen: what is wanted, what has
+	// to be bought, whether there is ground, and whether there is bench. The
+	// rest is detail and sits under them.
+	const tileRow = [
+		{ k: __("Demand"), v: num(s.demand_stems),
+		  m: `${__("stems")} · ${__("peak")} ${num(s.peak_week_stems)}` },
+		s.tc && { k: __("{0} to buy", [esc(s.tc.stage || "TC")]),
+		  v: num(s.tc.units || s.tc.plantlets),
+		  m: s.tc.pool
+			? `${num(s.tc.mother_plants)} ${__("mother plants")}`
+			: `${__("for")} ${num(sp.plants_needed || s.tc.plants_in_peak_week)} ${__("plants")}` },
+		sp.ha_needed != null && { k: __("Ground"), v: `${ha(sp.ha_needed)} ha`,
+		  m: `${num(sp.beds_needed)} ${__("beds")} · ${
+			g.beds_free != null ? `${num(g.beds_free)} ${__("free")}` : ""}`,
+		  bad: g.beds_free != null && sp.beds_needed > g.beds_free },
+		b && { k: __("Raising"), v: num(b.needed),
+		  m: b.short ? `${__("short")} ${num(b.short)} ${__("of bench")}`
+			: `${num(b.free)} ${__("free of")} ${num(b.capacity)}`,
+		  bad: !!b.short },
+	].filter(Boolean);
+
+	const tiles = `<div class="pv-tiles">` + tileRow.map((t) =>
+		`<div class="pv-tile${t.bad ? " pv-tile-bad" : ""}">` +
+		`<div class="pv-tk">${t.k}</div><div class="pv-tv">${t.v}</div>` +
+		`<div class="pv-tm">${t.m}</div></div>`).join("") + `</div>`;
+
+	// One line each, because each is one idea. The route IS the plan: what is
+	// bought, what it passes through, what it loses on the way.
+	const facts = [];
+	if (r) {
+		const road = (r.stages || []).map((x) =>
+			`<b>${esc(x.stage)}</b>${x.weeks ? ` ${x.weeks}w` : ""}${
+				x.loss_pct ? ` <span class="pv-bad">−${x.loss_pct}%</span>` : ""}`)
+			.join(" <span class='pv-dim'>→</span> ");
+		const lifts = (r.lifts || []).length > 1
+			? ` · ${__("handed over in")} ${r.lifts.length} ${__("lifts")}: ` +
+			  r.lifts.map((x) => `${x.share_pct}% ${__("at")} ${x.weeks_after}w`).join(" · ")
+			: "";
+		facts.push([__("The route"), road + lifts]);
+	}
+	if (L) {
+		facts.push([__("Losses"),
+			`${__("Rooting")} ${L.rooting_pct}% × ${__("establishment")} ${
+				L.establishment_pct}% = <b>${L.survival_pct}%</b> ${
+				__("of what is bought stands up")}` +
+			(L.per_plant ? ` <span class="pv-dim">(${L.per_plant} ${
+				__("bought a standing plant")})</span>` : "") +
+			(L.grading_pct ? ` · ${L.grading_pct}% ${__("of cut stems fail grading")}` : "")]);
+	}
+	if (sp.ha_needed != null) {
+		const tight = g.beds_free != null && sp.beds_needed > g.beds_free;
+		facts.push([__("Ground"),
+			`${__("Needs")} <b>${num(sp.beds_needed)} ${__("beds")}</b> (${
+				ha(sp.ha_needed)} ha) ${__("for")} ${num(sp.plants_needed)} ${
+				__("plants standing")}` +
+			(g.beds != null
+				? ` · <span class="${tight ? "pv-bad" : "pv-good"}">${
+					num(g.beds_free)} ${__("of")} ${num(g.beds)} ${__("beds free")}</span>` +
+				  ` <span class="pv-dim">(${ha(g.ha_free)} ${__("of")} ${ha(g.ha)} ha, ${
+					num(g.blocks)} ${__("blocks")}, ${num(g.blocks_in_use)} ${
+					__("already in use")})</span>` : "") +
+			((sp.beds_with_minimum || 0) - (sp.beds_if_divisible || 0) > 0
+				? `<br><span class="pv-dim">${
+					num(sp.beds_with_minimum - sp.beds_if_divisible)} ${
+					__("of those beds are the cost of the minimum planting")} (${
+					sp.min_planting_beds} ${__("beds")}, ${sp.min_planting_area_sqm} m²)</span>`
+				: "")]);
+	}
+	if (b) {
+		facts.push([__("Raising it"),
+			(b.short
+				? `<span class="pv-bad">${__("Short")} ${num(b.short)} ${
+					__("plants of bench")}</span>`
+				: `<span class="pv-good">${__("Room for it")}</span>`) +
+			` · ${b.units.slice(0, 3).map((u) =>
+				`${esc(u.unit)} <span class="pv-dim">${num(u.free)}/${
+					num(u.capacity)}</span>`).join(" · ")}` +
+			(b.units.length > 3 ? ` <span class="pv-dim">+${b.units.length - 3}</span>` : "")]);
+	}
+	if (s.lead) {
+		facts.push([__("Order by"),
+			`<b>${esc(s.lead.order_by)}</b> <span class="pv-dim">(${
+				s.lead.weeks_back} ${__("weeks before")} ${esc(s.lead.first_demand_week)})</span>` +
+			(s.lead.late ? ` — <span class="pv-bad">${__("already passed")}</span>` : "")]);
+	}
+
+	// The identity of the thing, kept small and last: nobody opens this dialog
+	// to find out which variety they clicked on.
+	const idRows = [
+		[__("Variety"), esc(s.variety)],
+		[__("Farm"), esc(s.farm)],
+		[__("Season"), `${esc(s.season)} <span class="pv-dim">(${
+			esc(s.season_start)} to ${esc(s.season_end)})</span>`],
+		[__("Protocol"), s.protocol ? esc(s.protocol)
+			: `<span class="pv-bad">${__("none in force")}</span>`],
+		[__("Firm demand"), `${num(s.firm_stems)} ${__("of")} ${num(s.demand_stems)} ${__("stems")}`],
+	];
+	if (s.existing_plan) idRows.push([__("Existing plan"), esc(s.existing_plan)]);
+	if (s.propagation_plan) idRows.push([__("Propagation plan"), esc(s.propagation_plan)]);
+
+	const block = (s.blocking || []), note = (s.notes || []);
+	const verdict = block.length
+		? `<div class="pv-strip pv-strip-bad"><b>${__("Cannot be created yet")}</b> — ` +
+		  `${block.length} ${block.length === 1 ? __("thing stands in the way")
+			: __("things stand in the way")}</div>`
+		: `<div class="pv-strip pv-strip-good"><b>${__("Ready to create")}</b>` +
+		  (note.length ? ` — ${note.length} ${note.length === 1
+			? __("thing to read first") : __("things to read first")}` : "") + `</div>`;
+
+	let html = `<style>
+	 .pv{font-size:12.5px;line-height:1.55}
+	 .pv-strip{padding:9px 12px;border-radius:6px;margin:0 0 12px;font-size:13px}
+	 .pv-strip-bad{background:#fdecea;color:#8c1d16;border-left:4px solid #d9534f}
+	 .pv-strip-good{background:#eaf7ef;color:#1b5e34;border-left:4px solid #28a745}
+	 .pv-tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(135px,1fr));
+	   gap:8px;margin-bottom:14px}
+	 .pv-tile{background:#f7f8fa;border:1px solid #eceef1;border-radius:6px;padding:8px 10px}
+	 .pv-tile-bad{background:#fdecea;border-color:#f5c6c2}
+	 .pv-tk{font-size:10px;text-transform:uppercase;letter-spacing:.06em;color:#6b7280}
+	 .pv-tv{font-size:17px;font-weight:600;line-height:1.25;margin:1px 0}
+	 .pv-tm{font-size:11px;color:#6b7280}
+	 .pv-f{display:grid;grid-template-columns:118px 1fr;gap:4px 12px;
+	   padding:7px 0;border-top:1px solid #f0f1f3}
+	 .pv-fk{color:#6b7280;font-size:11px;text-transform:uppercase;letter-spacing:.05em;
+	   padding-top:2px}
+	 .pv-sec{text-transform:uppercase;letter-spacing:.06em;font-size:10.5px;
+	   color:#6b7280;margin:16px 0 4px;font-weight:600}
+	 .pv-t{width:100%;border-collapse:collapse}
+	 .pv-t th{width:38%;text-align:left;font-weight:400;color:#6b7280;
+	   padding:4px 8px;border:1px solid #f0f1f3}
+	 .pv-t td{padding:4px 8px;border:1px solid #f0f1f3}
+	 .pv-dim{color:#8a8f98}
+	 .pv-bad{color:#c0392b;font-weight:600}
+	 .pv-good{color:#1e7e34;font-weight:600}
+	 .pv-card{padding:8px 11px;border-radius:6px;margin:7px 0}
+	 .pv-card-bad{background:#fdecea;border-left:3px solid #d9534f;color:#7f1d1d}
+	 .pv-card-note{background:#fff8e6;border-left:3px solid #e0a800;color:#6b4f08}
+	</style><div class="pv">` + verdict + tiles +
+		facts.map(([k, v]) =>
+			`<div class="pv-f"><div class="pv-fk">${k}</div><div>${v}</div></div>`).join("") +
+		`<div class="pv-sec">${__("The plan itself")}</div>` +
+		`<table class="pv-t">` + idRows.map(([k, v]) =>
+			`<tr><th>${k}</th><td>${v}</td></tr>`).join("") + `</table>`;
+	if (block.length) {
+		html += `<div class="pv-sec">${__("Blocking")}</div>` + block.map((n) =>
+			`<div class="pv-card pv-card-bad">${n}</div>`).join("");
+	}
+	if (note.length) {
+		html += `<div class="pv-sec">${__("Worth reading")}</div>` + note.map((n) =>
+			`<div class="pv-card pv-card-note">${n}</div>`).join("");
+	}
+	html += `</div>`;
 
 	const c = new frappe.ui.Dialog({
 		title: __("Before creating this plan"),

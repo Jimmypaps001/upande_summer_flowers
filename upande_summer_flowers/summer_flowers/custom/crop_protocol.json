@@ -231,7 +231,7 @@
    "fieldname": "custom_sf_approval_section",
    "fieldtype": "Section Break",
    "insert_after": "custom_farms_with_versions",
-   "label": "Summer Flower — approval and history",
+   "label": "Summer Flower \u2014 approval and history",
    "module": "Summer Flowers",
    "name": "Crop Protocol-custom_sf_approval_section"
   },
@@ -246,7 +246,8 @@
    "module": "Summer Flowers",
    "name": "Crop Protocol-custom_sf_approved_by",
    "options": "User",
-   "read_only": 1
+   "read_only": 1,
+   "no_copy": 1
   },
   {
    "depends_on": "eval:(doc.crop_type==\"Summer Flowers\") && !doc.__islocal",
@@ -258,7 +259,8 @@
    "label": "Approved On",
    "module": "Summer Flowers",
    "name": "Crop Protocol-custom_sf_approved_on",
-   "read_only": 1
+   "read_only": 1,
+   "no_copy": 1
   },
   {
    "depends_on": "eval:doc.crop_type==\"Summer Flowers\"",
@@ -536,7 +538,8 @@
    "module": "Summer Flowers",
    "name": "Crop Protocol-custom_sf_current_version",
    "options": "Crop Protocol Version",
-   "read_only": 1
+   "read_only": 1,
+   "no_copy": 1
   },
   {
    "depends_on": "eval:doc.crop_type==\"Summer Flowers\"",
@@ -1192,7 +1195,7 @@
    "insert_after": "custom_sf_tab_prop",
    "is_system_generated": 0,
    "is_virtual": 0,
-   "label": "Lifts — how a consignment is handed over",
+   "label": "Lifts \u2014 how a consignment is handed over",
    "length": 0,
    "link_filters": null,
    "mandatory_depends_on": null,
@@ -1744,7 +1747,7 @@
    "insert_after": "custom_sf_tab_prop",
    "is_system_generated": 1,
    "is_virtual": 0,
-   "label": "Method 1 — how the material is got",
+   "label": "Method 1 \u2014 how the material is got",
    "length": 0,
    "link_filters": null,
    "mandatory_depends_on": null,
@@ -1948,7 +1951,7 @@
    "insert_after": "custom_sf_m1_route",
    "is_system_generated": 1,
    "is_virtual": 0,
-   "label": "…and then",
+   "label": "\u2026and then",
    "length": 0,
    "link_filters": null,
    "mandatory_depends_on": null,
@@ -2424,7 +2427,7 @@
    "insert_after": "custom_sf_m1_steps",
    "is_system_generated": 1,
    "is_virtual": 0,
-   "label": "Method 2 — a second way in (optional)",
+   "label": "Method 2 \u2014 a second way in (optional)",
    "length": 0,
    "link_filters": null,
    "mandatory_depends_on": null,
@@ -2628,7 +2631,7 @@
    "insert_after": "custom_sf_m2_route",
    "is_system_generated": 1,
    "is_virtual": 0,
-   "label": "…and then",
+   "label": "\u2026and then",
    "length": 0,
    "link_filters": null,
    "mandatory_depends_on": null,
@@ -2966,7 +2969,8 @@
    "label": "Unapproved changes",
    "module": "Summer Flowers",
    "name": "Crop Protocol-custom_sf_pending_changes",
-   "read_only": 1
+   "read_only": 1,
+   "no_copy": 1
   },
   {
    "depends_on": "eval:(doc.crop_type==\"Summer Flowers\") && !doc.__islocal",
@@ -3079,7 +3083,7 @@
    "fieldname": "custom_sf_plants_per_sqm_bench",
    "fieldtype": "Float",
    "insert_after": "custom_sf_pots_per_sqm",
-   "label": "Plants per m² of bench",
+   "label": "Plants per m\u00b2 of bench",
    "module": "Summer Flowers",
    "name": "Crop Protocol-custom_sf_plants_per_sqm_bench",
    "precision": "1",
@@ -3092,7 +3096,7 @@
    "fieldname": "custom_sf_pots_per_sqm",
    "fieldtype": "Int",
    "insert_after": "custom_sf_plants_per_pot",
-   "label": "Pots per m²",
+   "label": "Pots per m\u00b2",
    "module": "Summer Flowers",
    "name": "Crop Protocol-custom_sf_pots_per_sqm"
   },
@@ -3124,7 +3128,8 @@
    "module": "Summer Flowers",
    "name": "Crop Protocol-custom_sf_protocol_status",
    "options": "Draft\nPending Approval\nApproved",
-   "read_only": 1
+   "read_only": 1,
+   "no_copy": 1
   },
   {
    "depends_on": "eval:doc.crop_type==\"Summer Flowers\"",
@@ -3437,7 +3442,7 @@
    "fieldtype": "Float",
    "hidden": 1,
    "insert_after": "custom_sf_derived_geo_section",
-   "label": "m² net per bed",
+   "label": "m\u00b2 net per bed",
    "module": "Summer Flowers",
    "name": "Crop Protocol-custom_sf_sqm_net_per_bed",
    "precision": "2",
@@ -3780,7 +3785,7 @@
    "fieldtype": "Int",
    "hidden": 1,
    "insert_after": "custom_sf_flushes_per_year",
-   "label": "Turnaround weeks (clear → replant)",
+   "label": "Turnaround weeks (clear \u2192 replant)",
    "modified": "2026-10-28 12:00:00",
    "module": "Summer Flowers",
    "name": "Crop Protocol-custom_sf_turnaround_weeks",
@@ -4016,7 +4021,7 @@
    "fieldname": "custom_sf_weeks_planting_to_first_cut",
    "fieldtype": "Int",
    "insert_after": "custom_sf_turnaround_weeks",
-   "label": "Weeks planting → first cut",
+   "label": "Weeks planting \u2192 first cut",
    "module": "Summer Flowers",
    "name": "Crop Protocol-custom_sf_weeks_planting_to_first_cut",
    "non_negative": 1
@@ -4244,7 +4249,7 @@
    "modified_by": "Administrator",
    "module": "Summer Flowers",
    "name": "Crop Protocol-custom_version_count",
-   "no_copy": 0,
+   "no_copy": 1,
    "non_negative": 0,
    "options": null,
    "owner": "Administrator",

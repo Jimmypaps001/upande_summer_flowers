@@ -214,11 +214,67 @@ function render_sheet(frm) {
 	});
 }
 
+function demand_verdict(d) {
+	// The sheet's whole point. Read off the same weekly rows the grid shows, so
+	// the headline and the DIFFERENCE row can never disagree.
+	const weeks = d.grid.filter((g, i) => (d.weekly_demand[i] || 0) > 0);
+	if (!weeks.length) {
+		return `<div class="text-muted" style="margin-bottom:8px">${
+			__("No demand in these weeks, so there is nothing to meet.")}</div>`;
+	}
+	const gaps = d.gaps || [];
+	const dem = d.weekly_demand.reduce((a, v) => a + (v || 0), 0);
+	const missed = gaps.reduce((a, g) => a + g.short, 0);
+	const pct = dem ? Math.round(((dem - missed) / dem) * 100) : 0;
+	const ok = !gaps.length;
+	let h = `<div style="margin-bottom:10px;padding:10px 12px;border-radius:6px;border:1px solid ${
+		ok ? "#b7e4c7" : "#f5c6cb"};background:${ok ? "#f1faf4" : "#fdf3f4"}">
+		<b>${ok
+			? __("This plan meets the demand in every week.")
+			: __("Short in {0} of {1} weeks with demand — {2} stems.",
+				[gaps.length, weeks.length, fmt(missed)])}</b>
+		<span class="text-muted"> ${__("Week-by-week cover {0}%", [pct])}</span>`;
+
+	// What closing a week would have taken. The planting week is the cutting week
+	// less the protocol's planting-to-first-harvest; the order week walks the
+	// route back from there. A week already past can only be bought, not planted.
+	if (gaps.length) {
+		const worst = gaps.slice().sort((a, b) => b.short - a.short).slice(0, 5);
+		h += `<table class="table table-sm" style="font-size:11px;margin:8px 0 0;
+			background:transparent"><thead><tr>
+			<th>${__("Short week")}</th><th class="text-right">${__("Stems short")}</th>
+			<th class="text-right">${__("Plants it needed")}</th>
+			<th>${__("Planted in")}</th><th>${__("Ordered by")}</th></tr></thead><tbody>`;
+		worst.forEach((g) => {
+			h += `<tr><td>${g.week}</td>
+				<td class="text-right">${fmt(g.short)} <span class="text-muted">(${
+					g.short_pct}%)</span></td>
+				<td class="text-right">${g.plants === null ? "" : fmt(g.plants)}</td>
+				<td${g.passed ? ' class="text-muted"' : ""}>${g.plant_in}${
+					g.passed ? ` ${__("(passed)")}` : ""}</td>
+				<td class="text-muted">${g.order_by}</td></tr>`;
+		});
+		h += `</tbody></table>`;
+		if (gaps.length > worst.length) {
+			h += `<div class="text-muted" style="font-size:11px">${
+				__("The {0} worst weeks; the DIFFERENCE row below has them all.",
+					[worst.length])}</div>`;
+		}
+	}
+	return h + `</div>`;
+}
+
 function sheet_html(d) {
-	const head = ["BLOCK", "Planting wk", "Planting Date", "Pinching Date",
-		"NET AREA (m2)", "Uprooting Date", "NET AREA (Ha)", "NO OF BEDS", "NO.PLANTS"];
+	// Only a pinched crop gets a pinching column; the rest would read as a date
+	// the protocol never asked for. "First cut" is the week this row starts
+	// supplying, which is what the weeks to its right are counted from.
+	const head = ["BLOCK", "Planting wk", "Planting Date"]
+		.concat(d.pinched ? ["Pinching Date"] : [])
+		.concat(["First cut", "NET AREA (m2)", "Uprooting Date", "NET AREA (Ha)",
+			"NO OF BEDS", "NO.PLANTS"]);
 	const cols = d.grid.length;
-	let h = `<div style="overflow-x:auto"><table class="table table-bordered table-sm"
+	let h = demand_verdict(d);
+	h += `<div style="overflow-x:auto"><table class="table table-bordered table-sm"
 		style="font-size:11px;white-space:nowrap">`;
 
 	h += `<thead><tr><th colspan="${head.length}"></th>`;
@@ -234,7 +290,8 @@ function sheet_html(d) {
 		const style = p.not_placed ? ' style="background:#fff5f5"' :
 			(p.is_new ? "" : ' style="background:#f7f7f7"');
 		h += `<tr${style}><td>${p.block}</td><td>${p.planting_week || ""}</td>
-			<td>${p.planting_date}</td><td>${p.pinch_date}</td>
+			<td>${p.planting_date}</td>${d.pinched ? `<td>${p.pinch_date}</td>` : ""}
+			<td class="text-muted">${p.first_cut || ""}</td>
 			<td class="text-right">${fmt(p.net_area_sqm)}</td><td>${p.uproot_date}</td>
 			<td class="text-right">${((p.net_area_sqm || 0) / 10000).toFixed(4)}</td>
 			<td class="text-right">${fmt(p.beds)}</td>
@@ -246,7 +303,8 @@ function sheet_html(d) {
 	});
 
 	const t = d.totals;
-	h += `<tr style="font-weight:bold"><td>TOTAL</td><td></td><td></td><td></td>
+	h += `<tr style="font-weight:bold"><td>TOTAL</td><td></td><td></td>
+		${d.pinched ? "<td></td>" : ""}<td></td>
 		<td class="text-right">${fmt(t.net_area_sqm)}</td><td></td>
 		<td class="text-right">${((t.net_area_sqm || 0) / 10000).toFixed(4)}</td>
 		<td class="text-right">${fmt(t.beds)}</td>
@@ -284,6 +342,31 @@ function sheet_html(d) {
 	h += band(__("Area (ha standing)"), d.area.map((v) => Math.round(v * 10000) / 10000));
 	h += `</tbody></table></div>`;
 
+	const r = d.route || {};
+	if ((r.journey || []).length) {
+		h += `<div style="margin-top:12px"><b>${
+			__("How this crop reaches the ground")
+		}</b> <span class="text-muted">${
+			r.ways && r.ways.length ? r.ways.join(" / ") : r.title || ""
+		}</span>
+		<table class="table table-bordered table-sm" style="font-size:11px;max-width:760px">
+		<thead><tr><th>${__("Week")}</th><th>${__("Step")}</th>
+			<th>${__("Note")}</th></tr></thead><tbody>`;
+		r.journey.forEach((j) => {
+			h += `<tr><td class="text-right">${j.week}</td><td>${j.label}</td>
+				<td class="text-muted">${j.note || ""}</td></tr>`;
+		});
+		h += `</tbody></table>`;
+		if ((r.lifts || []).length) {
+			h += `<div class="text-muted" style="font-size:11px;margin-bottom:12px">${
+				__("Handed over in {0} lifts: ", [r.lifts.length])
+			}${r.lifts
+				.map((l) => `${l.share_pct}% @ +${l.weeks_after_arrival}w`)
+				.join(", ")}</div>`;
+		}
+		h += `</div>`;
+	}
+
 	const a = d.assumptions || {};
 	if (a.flush_schedule) {
 		h += `<div style="margin-top:12px"><b>${
@@ -298,7 +381,9 @@ function sheet_html(d) {
 			a.plants_per_sqm_net} / ${fmt(a.plants_per_bed)}</td>
 			<td class="text-muted">${fmt(a.plants_per_net_ha)} ${__("per hectare")}</td></tr>
 		<tr><td>${__("Pinch at week / total weeks in ground")}</td>
-			<td class="text-right">${a.pinch_at_week} / ${a.total_weeks_in_ground}</td>
+			<td class="text-right">${
+				a.pinched ? a.pinch_at_week : __("not pinched")} / ${
+				a.total_weeks_in_ground}</td>
 			<td class="text-muted">${(a.flushes_per_year || 0).toFixed(2)} ${
 			__("flushes per year")}</td></tr>
 		</table>

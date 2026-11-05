@@ -395,11 +395,15 @@ class CropProtocolVersion(Document):
 				indicator="orange", title=_("Check grade split"),
 			)
 
-		# A stage nobody has measured still loses plants. Thirty-three of the
-		if not flt(self.rooting_success_pct) or flt(self.rooting_success_pct) == 100:
+		# A stage nobody has measured still loses plants, so a blank takes the
+		# house allowance. A figure somebody typed is an answer and is kept --
+		# 100 included. Treating 100 as "nobody filled this in" meant a farm
+		# that said a stage loses nothing had 95% written back over it on every
+		# save, through the derivation that copies the version's read-only
+		# fields onto the protocol.
+		if not flt(self.rooting_success_pct):
 			self.rooting_success_pct = 100.0 - DEFAULT_STAGE_LOSS_PCT
-		if (not flt(self.field_establishment_pct)
-				or flt(self.field_establishment_pct) == 100):
+		if not flt(self.field_establishment_pct):
 			self.field_establishment_pct = 100.0 - DEFAULT_STAGE_LOSS_PCT
 		if not flt(self.cutting_reject_pct):
 			self.cutting_reject_pct = DEFAULT_STAGE_LOSS_PCT

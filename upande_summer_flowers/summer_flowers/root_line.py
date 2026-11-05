@@ -320,8 +320,15 @@ def arrival_plan(plan, tc_share=None, returns_per_plant=None,
 		if not cint(b.is_new_planting) or not b.get("planting_date"):
 			continue
 		land = _monday(b.planting_date)
-		w = weeks.setdefault(land, {"plants": 0})
+		w = weeks.setdefault(land, {"plants": 0, "first_cut": None})
 		w["plants"] += cint(b.plants)
+		# What this planting is FOR. A row of a material table is a planting,
+		# and a planting is only ever made for the weeks it will cut in.
+		if cint(b.get("first_harvest_year")) and cint(b.get("first_harvest_week")):
+			cut = "%d-W%02d" % (cint(b.first_harvest_year),
+			                    cint(b.first_harvest_week))
+			if not w["first_cut"] or cut < w["first_cut"]:
+				w["first_cut"] = cut
 
 	# Where a quantity has been asked for, the weeks must add up to exactly what
 	share_by_week = _apportion(
@@ -339,6 +346,13 @@ def arrival_plan(plan, tc_share=None, returns_per_plant=None,
 
 	# What one bought unit of the first way becomes, and what survives the first
 	per_unit_one = _plants_per_unit_from(rows, primary)
+	# How this way in is handed over. A protocol that states lifts says the
+	# consignment does not all become plants on the same day: 90% at seven
+	# weeks, the rest at eight. Where it states none, handover_waves answers
+	# with one wave at the route's own weeks, which is what the card did
+	# before -- so a protocol without lifts is unchanged.
+	waves = _handover(v, primary, tc_weeks)
+	hand_weeks = cint(waves[0][0]) if waves else cint(tc_weeks)
 	account = _loss_account(v, rows, primary)
 	# Germination is the first of the two percentages the protocol states, and
 	_spp = flt((account.get("stated") or {}).get("stems_per_plant_life"))
@@ -368,10 +382,14 @@ def arrival_plan(plan, tc_share=None, returns_per_plant=None,
 		units_one = (int(math.ceil(to_plant / per_unit_at_plant - 1e-9))
 		             if (to_plant and per_unit_at_plant > 0) else 0)
 		# The week as a ladder down from what is bought to what is left
+		# Over the planting's LIFE, not that week's demand: a planting stuck in
+		# March cuts nothing in March. The columns carried these figures under
+		# headings that read as the week's own stems.
 		_cut = int(round(cint(w["plants"]) * _spp))
 		_sale = int(round(_cut * (1.0 - _reject)))
 		w.update({"stems_cut": _cut, "stems_saleable": _sale,
-		          "stems_lost_grading": max(0, _cut - _sale)})
+		          "stems_lost_grading": max(0, _cut - _sale),
+		          "first_cut_iso": w.get("first_cut")})
 		w.update({"by_tc": by_tc, "by_roots": by_root, "roots_needed": roots,
 		          "units_tc": units_one,
 		          # kept under the old name: what reaches planting out
@@ -381,10 +399,13 @@ def arrival_plan(plan, tc_share=None, returns_per_plant=None,
 		                                  if to_plant else 0),
 		          "lost_establishing_tc": (max(0, to_plant - by_tc)
 		                                   if to_plant else 0)})
-		# Each way counted back from the SAME landing week.
-		w["sow_week"] = str(add_days(land, -7 * tc_weeks))
+		# Each way counted back from the SAME landing week, and from the FIRST
+		# lift rather than the whole stage: what the field wants in its planting
+		# week is what the first lift hands over.
+		w["sow_week"] = str(add_days(land, -7 * hand_weeks))
 		w["sow_iso"] = iso(w["sow_week"])
-		w["tc_order_week"] = str(add_days(land, -7 * (tc_lead + tc_weeks)))
+		w["tc_order_week"] = str(add_days(land, -7 * (tc_lead + hand_weeks)))
+		w["lifts"] = _lifts_of(units_one, to_plant, w["sow_week"], waves)
 		w["root_out_week"] = (str(add_days(land, -7 * root_weeks))
 		                      if roots else None)
 		w["week_iso"] = iso(land)
@@ -442,6 +463,12 @@ def arrival_plan(plan, tc_share=None, returns_per_plant=None,
 		"tc_share_pct": round(share * 100, 1),
 		"returns_per_plant": per_root,
 		"tc_weeks_to_ground": tc_weeks, "tc_lead_weeks": tc_lead,
+		# How the way in is handed over, as the protocol states it.
+		"lift_profile": [{"lift_no": i + 1, "weeks_after": cint(wk),
+		                  "share_pct": round(sh * 100, 1)}
+		                 for i, (wk, sh) in enumerate(waves)],
+		"lifts_per_consignment": len(waves),
+		"first_lift_weeks": hand_weeks,
 		"root_weeks_to_ground": root_weeks, "root_lead_weeks": root_lead,
 		"root_head_start_weeks": (root_lead + root_weeks) - (tc_lead + tc_weeks),
 		"plants_total": sum(weeks[k]["plants"] for k in ordered),
@@ -649,6 +676,37 @@ def _apportion(weeks, share, exact=None):
 	for _frac, k in sorted(rema, reverse=True)[:max(0, left)]:
 		out[k] += 1
 	return out
+
+
+def _handover(v, stage, default_weeks):
+	"""The lift profile for this way in: the protocol's, else one flat wave."""
+	from upande_summer_flowers.summer_flowers import tc_supply as ts
+	from upande_summer_flowers.summer_flowers.route_ways import LIFT_FORM
+
+	form = LIFT_FORM.get(stage)
+	if not form:
+		return [(cint(default_weeks), 1.0)]
+	try:
+		out = ts.handover_waves(form, None, cint(default_weeks), v)
+	except Exception:
+		frappe.clear_last_message()
+		return [(cint(default_weeks), 1.0)]
+	return out or [(cint(default_weeks), 1.0)]
+
+
+def _lifts_of(units, to_plant, arrives, waves):
+	"""What each lift of one week's consignment hands over, and when."""
+	if not (units and to_plant and waves) or len(waves) < 2:
+		return []
+	from upande_summer_flowers.summer_flowers import tc_supply as ts
+
+	keep = (flt(to_plant) / flt(units)) if units else 1.0
+	try:
+		return ts._lift_batch({"tc": cint(units), "arrives": arrives},
+		                      waves, keep)
+	except Exception:
+		frappe.clear_last_message()
+		return []
 
 
 def _survival(form="Tissue Culture", version=None):

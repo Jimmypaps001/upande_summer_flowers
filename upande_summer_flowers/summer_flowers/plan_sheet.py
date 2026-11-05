@@ -1,7 +1,9 @@
 # Copyright (c) 2026, James Kiruga and contributors
 """The production plan in the shape it is actually read in."""
 
+import datetime
 import json
+import math
 
 import frappe
 from frappe import _
@@ -17,6 +19,10 @@ def build(plan):
 		plan = frappe.get_doc("Summer Flower Production Plan", plan)
 	protocol = frappe.get_cached_doc("Crop Protocol Version", plan.protocol) \
 		if plan.protocol else None
+
+	# A crop that is never pinched has no pinching date, and a column of planting
+	# dates relabelled "pinching" is how a sheet starts lying about the protocol.
+	pinched = bool(cint(protocol.weeks_to_pinch)) if protocol else False
 
 	data = json.loads(plan.matrix_json) if plan.matrix_json else {"grid": [], "rows": []}
 	grid = [(cint(y), cint(w), m) for y, w, m in data.get("grid", [])]
@@ -34,7 +40,15 @@ def build(plan):
 			"block": row.block or _("(no block)"),
 			"planting_week": row.planting_week,
 			"planting_date": str(row.planting_date or ""),
-			"pinch_date": str(row.pinch_date or ""),
+			"pinch_date": str(row.pinch_date or "") if pinched else "",
+			# The route's own milestones, so a row reads the way the protocol runs:
+			# material in, into the ground, first cut.
+			"sticking_week": (
+				"%s-W%02d" % (cint(row.sticking_year), cint(row.sticking_week))
+				if cint(row.sticking_year) and cint(row.sticking_week) else ""),
+			"first_cut": (
+				"%s-W%02d" % (cint(row.first_harvest_year), cint(row.first_harvest_week))
+				if cint(row.first_harvest_year) and cint(row.first_harvest_week) else ""),
 			# Rounded: net_area_ha carries the division by 10,000 that made it, and
 			"net_area_sqm": round(flt(row.net_area_ha) * 10_000, 2),
 			"uproot_date": extra.get("uproot", ""),
@@ -85,8 +99,12 @@ def build(plan):
 			"price_per_stem": price,
 		})
 
+	route = route_of(protocol)
 	return {
 		"plan": plan.name,
+		# Planting to meet demand is the whole exercise, so the sheet says plainly
+		# which weeks it misses and what planting them would have taken.
+		"gaps": shortfalls(grid, weekly_prod, weekly_dem, plantings, protocol, route),
 		"variety": plan.variety,
 		"farm": plan.farm,
 		"season": plan.season,
@@ -110,10 +128,89 @@ def build(plan):
 		"monthly_demand": monthly_dem,
 		"difference": [p - d for p, d in zip(weekly_prod, weekly_dem)],
 		"area": [area.get((y, w), 0) for (y, w, _m) in grid],
+		"pinched": pinched,
+		"route": route,
 		"grades": grades,
 		"grade_total_pct": total_pct,
 		"assumptions": assumptions(protocol),
 	}
+
+
+def shortfalls(grid, prod, dem, plantings, protocol, route):
+	"""Each week the plan misses, and the planting that would have covered it."""
+	if not protocol:
+		return []
+	# The best weekly cut per plant this plan actually achieves. Anything less
+	# optimistic would understate the plants, and the number is meant to be the
+	# floor: "no fewer than this many".
+	rate = 0.0
+	for p in plantings:
+		if p["plants"] and p["weekly"]:
+			rate = max(rate, max(p["weekly"]) / float(p["plants"]))
+	plant_to_cut = cint(protocol.first_harvest_offset_weeks)
+	# Order to in-the-ground, read off the same journey the sheet draws.
+	order_to_plant = max(
+		[cint(j["week"]) for j in (route or {}).get("journey") or []
+		 if str(j.get("label", "")).startswith(_("Planted"))] or [0])
+
+	out = []
+	for i, (y, w, monday) in enumerate(grid):
+		short = cint(dem[i]) - cint(prod[i])
+		if not cint(dem[i]) or short <= 0:
+			continue
+		plant_on = getdate(monday) - datetime.timedelta(weeks=plant_to_cut)
+		out.append({
+			"week": "%s-W%02d" % (y, w),
+			"short": int(short),
+			"short_pct": round(short * 100.0 / cint(dem[i]), 1),
+			"plants": int(math.ceil(short / rate)) if rate else None,
+			"plant_in": _iso_week(plant_on),
+			"order_by": _iso_week(plant_on - datetime.timedelta(weeks=order_to_plant)),
+			"passed": plant_on < getdate(),
+		})
+	return out
+
+
+def _iso_week(d):
+	y, w, _dow = d.isocalendar()
+	return "%s-W%02d" % (y, w)
+
+
+def route_of(v):
+	"""The way this crop reaches the ground, as the protocol lays it out."""
+	if not v:
+		return None
+	from upande_summer_flowers.summer_flowers import planning_api, route_ways
+
+	ways = [w.route for w in (v.get(route_ways.WAYS) or []) if w.get("route")]
+	try:
+		journey, title = planning_api._route_journey(
+			v, cint(v.first_harvest_offset_weeks))
+	except Exception:
+		frappe.clear_last_message()
+		journey, title = [], None
+	return {"ways": ways, "journey": journey, "title": title,
+	        "lifts": [{"lift": i + 1, "weeks_after_arrival": cint(a),
+	                   "share_pct": round(share * 100, 1)}
+	                  for i, (a, share) in enumerate(_entry_waves(v))]}
+
+
+def _entry_waves(v):
+	"""How a consignment is handed over, where the protocol states a profile."""
+	from upande_summer_flowers.summer_flowers import route_ways
+
+	for w in (v.get(route_ways.WAYS) or []):
+		stages = route_ways.ROUTES.get(w.route) or []
+		waves = planning_lifts(v, stages[0] if stages else None)
+		if len(waves) > 1:
+			return waves
+	return []
+
+
+def planning_lifts(v, stage):
+	from upande_summer_flowers.summer_flowers import planning_api
+
+	return planning_api._entry_lifts(v, stage) if stage else []
 
 
 def assumptions(v):
@@ -136,7 +233,9 @@ def assumptions(v):
 		],
 		"total_stems_per_plant_life": flt(v.total_stems_per_plant_life),
 		"stems_per_net_ha_life": flt(v.stems_per_ha_life),
+		"pinched": bool(cint(v.weeks_to_pinch)),
 		"pinch_at_week": cint(v.weeks_to_pinch),
+		"weeks_planting_to_first_harvest": cint(v.first_harvest_offset_weeks),
 		"total_weeks_in_ground": cint(v.total_weeks_in_ground),
 		"stems_per_net_ha_year": flt(v.stems_per_ha_year),
 		"best_year_stems_per_plant": flt(v.best_year_stems_per_plant),
@@ -155,8 +254,10 @@ def sheet_csv(plan):
 	"""The same sheet as CSV, so it opens in Excel next to the original."""
 	frappe.has_permission("Summer Flower Production Plan", "read", plan, throw=True)
 	d = build(plan)
-	head = ["BLOCK", "Planting wk", "Planting Date", "Pinching Date", "NET AREA (m2)",
-	        "Uprooting Date", "NET AREA (Ha)", "NO OF BEDS", "NO.PLANTS"]
+	head = (["BLOCK", "Planting wk", "Planting Date"]
+	        + (["Pinching Date"] if d["pinched"] else [])
+	        + ["First Cut", "NET AREA (m2)", "Uprooting Date", "NET AREA (Ha)",
+	           "NO OF BEDS", "NO.PLANTS"])
 	weeks = [str(g["week"]) for g in d["grid"]]
 	out = [["Year"] + [""] * (len(head) - 1) + [str(g["year"]) for g in d["grid"]],
 	       ["Week starting"] + [""] * (len(head) - 1) + [g["monday"] for g in d["grid"]],
@@ -164,8 +265,9 @@ def sheet_csv(plan):
 
 	for p in d["plantings"]:
 		out.append([
-			p["block"], p["planting_week"], p["planting_date"], p["pinch_date"],
-			p["net_area_sqm"], p["uproot_date"],
+			p["block"], p["planting_week"], p["planting_date"]]
+			+ ([p["pinch_date"]] if d["pinched"] else [])
+			+ [p["first_cut"], p["net_area_sqm"], p["uproot_date"],
 			round(flt(p["net_area_sqm"]) / 10_000, 4), p["beds"], p["plants"],
 		] + p["weekly"] + [p["season_total"],
 		                   round(p["season_stems_per_ha"]),
@@ -173,7 +275,7 @@ def sheet_csv(plan):
 
 	t = d["totals"]
 	pad = lambda label: [label] + [""] * (len(head) - 1)
-	out.append(["TOTAL", "", "", "", t["net_area_sqm"], "",
+	out.append(["TOTAL", "", ""] + ([""] if d["pinched"] else []) + ["", t["net_area_sqm"], "",
 	            round(flt(t["net_area_sqm"]) / 10_000, 4), t["beds"], t["plants"]]
 	           + [""] * len(weeks)
 	           + [t["season"], round(t["season_stems_per_ha"]), t["lifetime"]])
@@ -205,7 +307,15 @@ def sheet_csv(plan):
 			            round(f["stems_per_ha_year"])])
 		out.append(["", "Total Stems Per plant life", a["total_stems_per_plant_life"]])
 		out.append(["", "Stems/ha/life", round(a["stems_per_net_ha_life"])])
-		out.append(["", "Pinch at week", a["pinch_at_week"]])
+		out.append(["", "Pinch at week",
+		            a["pinch_at_week"] if a["pinched"] else "not pinched"])
+		out.append(["", "Planting to first harvest (weeks)",
+		            a["weeks_planting_to_first_harvest"]])
+		r = d.get("route") or {}
+		if r.get("ways"):
+			out.append(["", "Route", " / ".join(r["ways"])])
+		for j in (r.get("journey") or []):
+			out.append(["", "  wk %s" % j["week"], j["label"], j.get("note") or ""])
 		out.append(["", "Total Weeks in Ground", a["total_weeks_in_ground"]])
 		out.append(["", "Stems/ha/Yr", round(a["stems_per_net_ha_year"])])
 		out.append(["", "Best Year: stems per plant", a["best_year_stems_per_plant"]])

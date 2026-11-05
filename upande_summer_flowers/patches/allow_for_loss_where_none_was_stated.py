@@ -7,9 +7,12 @@ ALLOWANCE = 5.0
 
 
 def _needs(value):
-	"""True when the field says nothing: blank, zero, or a bare 100%."""
-	v = flt(value)
-	return (not v) or v == 100.0
+	"""True when the field says nothing at all: blank or zero.
+
+	Not 100. The field has no default, so an untouched protocol is blank;
+	a 100 is somebody saying this stage loses nothing, and the allowance
+	does not argue with an answer."""
+	return not flt(value)
 
 
 def execute():

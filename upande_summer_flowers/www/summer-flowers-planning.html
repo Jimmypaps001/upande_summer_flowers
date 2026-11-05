@@ -5300,9 +5300,17 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
       // the ground and the buyer wants what is ordered.
       renderLadder(m) +
       `<div class="text-muted small" style="text-transform:uppercase;` +
-      `letter-spacing:.05em;margin:10px 0 4px">What to sell, what to buy, ` +
-      `what to plant, what stands — ` + (wayTwo(m) ? "both ways in, " : "") +
-      `week by week</div>` +
+      `letter-spacing:.05em;margin:10px 0 4px">Every planting: what to buy, ` +
+      `what to plant, what stands` + (wayTwo(m) ? ", both ways in" : "") +
+      `</div>` +
+      // One row is one PLANTING, not one harvest week. The stems columns are
+      // what that planting cuts over its whole life -- it cuts nothing in the
+      // week it goes in the ground. The week-by-week match against demand is
+      // the production plan's own table, and saying so here stops this one
+      // being read as it.
+      `<p class="pl-note" style="margin:0 0 6px">A row is a planting. The stems ` +
+      `are what it cuts over its life, first cut shown; how the season's weeks ` +
+      `add up against demand is on the Production Plan tab.</p>` +
       // The week read left to right as the crop meets it: what has to be
       // bought, what is left after each loss, and what finally goes in the
       // ground. The column under the name of the thing bought used to hold the
@@ -5317,10 +5325,11 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
       // The harvest end of the chain comes first, because it is the answer to
       // "why plant more than we need": a stem that fails grading was still
       // grown, and the plants had to be standing to grow it.
-      `<th class="n">Stems wanted</th>` +
+      `<th>First cut</th>` +
+      `<th class="n">Saleable over its life</th>` +
       (m.grading_reject_pct
         ? `<th class="n">Lost grading ${m.grading_reject_pct}%</th>` +
-          `<th class="n">Stems to cut</th>` : "") +
+          `<th class="n">Cut over its life</th>` : "") +
       // Not "Plants needed": that is Plants standing, further along the same
       // row, and a column cannot be two things.
       // Bought once or in batches; SOWN week by week. What a week carries is
@@ -5344,6 +5353,7 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
         const v = got - cintish(w.plants);
         return `<tr><td>${esc(w.sow_iso || "")}</td>` +
           `<td class="text-muted">${esc(w.week_iso || "")}</td>` +
+          `<td class="text-muted">${esc(w.first_cut_iso || "")}</td>` +
           `<td class="n">${w.stems_saleable ? num(w.stems_saleable) : ""}</td>` +
           (m.grading_reject_pct
             ? `<td class="n" style="color:var(--critical)">` +
@@ -5368,7 +5378,7 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
           `<td class="n"${v < 0 ? ' style="color:var(--critical)"' : ""}>` +
           `${v > 0 ? "+" : ""}${v ? num(v) : "—"}</td></tr>`;
       }).join("") +
-      `<tfoot><tr><th colspan="2">Season</th>` +
+      `<tfoot><tr><th colspan="3">Season</th>` +
       `<th class="n">${num(m.stems_saleable_total)}</th>` +
       (m.grading_reject_pct
         ? `<th class="n" style="color:var(--critical)">` +
@@ -5563,32 +5573,94 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
       || rows.reduce((a, w) => a + cintish(w.units_tc), 0);
     const totPlants = cintish(m.tc_total)
       || rows.reduce((a, w) => a + cintish(w.by_tc), 0);
+    const totToPlant = cintish(m.tc_to_plant_total)
+      || rows.reduce((a, w) => a + cintish(w.to_plant_tc), 0) || totPlants;
+    // How the protocol says a consignment is handed over. One wave is the
+    // ordinary case and reads as it always did; two or more is a lift
+    // profile, and then every consignment is shown lift by lift, because
+    // "90% at seven weeks, the rest at eight" is a different plan from
+    // "all of it at eight".
+    const prof = m.lift_profile || [];
+    const lifted = prof.length > 1;
+    const profText = prof.map((x) =>
+      `${x.share_pct}% at ${x.weeks_after}w`).join(" · ");
     box.innerHTML =
       `<div class="text-muted small" style="text-transform:uppercase;` +
       `letter-spacing:.05em;margin:14px 0 4px">${esc(r.head)}</div>` +
       `<p class="pl-note"><b>${num(totUnits)} ${esc(one.toLowerCase())} ` +
       `over ${rows.length} consignment${rows.length === 1 ? "" : "s"}.</b> ` +
       `Each ordered ${lead} week${lead === 1 ? "" : "s"} before it lands and ` +
-      `${grow} week${grow === 1 ? "" : "s"} before the field wants the plants, ` +
-      `so an order week is ${lead + grow} weeks ahead of its planting.</p>` +
+      `${cintish(m.first_lift_weeks) || grow} week${
+        (cintish(m.first_lift_weeks) || grow) === 1 ? "" : "s"} before the field ` +
+      `wants the plants, so an order week is ${
+        lead + (cintish(m.first_lift_weeks) || grow)} weeks ahead of its planting.` +
+      (lifted
+        ? ` Handed over in ${prof.length} lifts — ${esc(profText)} — so the ` +
+          `planting week is the first lift and the rest follows it.`
+        : "") + `</p>` +
       `<table class="pl-t"><thead><tr>` +
       `<th class="n">#</th><th>Ordered</th>` +
       `<th>${esc(r.arrive)}</th><th class="n">${esc(one)}</th>` +
-      `<th class="n">${esc(r.mid)}</th>` +
-      `<th>Planted</th><th class="n">Plants</th>` +
+      (lifted
+        ? `<th class="n">Lift</th><th class="n">Share</th><th>Hands over</th>` +
+          `<th class="n">To plant</th>`
+        : `<th class="n">${esc(r.mid)}</th><th>Planted</th>` +
+          // What goes in the ground, then what is left of it once established.
+          // The column used to carry the standing figure alone, so the table
+          // footed to 704,520 under a tile reading "741,600".
+          `<th class="n">To plant</th><th class="n">Standing</th>`) +
       `</tr></thead><tbody>` +
-      rows.map((w, i) =>
+      (lifted ? liftRows(rows) : rows.map((w, i) =>
         `<tr><td class="n text-muted">${i + 1}</td>` +
         `<td>${esc(w.tc_order_iso || "")}</td>` +
         `<td>${esc(w.sow_iso || "")}</td>` +
         `<td class="n">${num(w.units_tc)}</td>` +
         `<td class="n text-muted">${grow} wk</td>` +
         `<td>${esc(w.week_iso || "")}</td>` +
-        `<td class="n">${num(w.by_tc)}</td></tr>`).join("") +
+        `<td class="n">${num(w.to_plant_tc || w.by_tc)}</td>` +
+        `<td class="n text-muted">${num(w.by_tc)}</td></tr>`).join("")) +
       `<tfoot><tr><th colspan="3">Season</th>` +
-      `<th class="n">${num(totUnits)}</th><th></th><th></th>` +
-      `<th class="n">${num(totPlants)}</th></tr></tfoot>` +
+      `<th class="n">${num(totUnits)}</th>` +
+      (lifted ? `<th colspan="3"></th>` : `<th></th><th></th>`) +
+      `<th class="n">${num(totToPlant)}</th>` +
+      (lifted ? "" : `<th class="n text-muted">${num(totPlants)}</th>`) +
+      `</tr></tfoot>` +
       `</tbody></table>`;
+  }
+
+  // One row per lift, with the consignment's own cells spanning them. The
+  // week a lift hands over is the week those plants can actually be planted,
+  // which is the whole point of stating a lift profile.
+  function liftRows(rows) {
+    return rows.map((w, i) => {
+      const ls = (w.lifts || []);
+      if (!ls.length) {
+        return `<tr><td class="n text-muted">${i + 1}</td>` +
+          `<td>${esc(w.tc_order_iso || "")}</td>` +
+          `<td>${esc(w.sow_iso || "")}</td>` +
+          `<td class="n">${num(w.units_tc)}</td>` +
+          `<td colspan="3" class="text-muted">no lift stated</td>` +
+          `<td class="n">${num(w.to_plant_tc || w.by_tc)}</td></tr>`;
+      }
+      return ls.map((L, j) =>
+        `<tr${j ? "" : ' style="border-top:2px solid var(--border)"'}>` +
+        (j ? "" :
+          `<td class="n text-muted" rowspan="${ls.length}" ` +
+          `style="vertical-align:top">${i + 1}</td>` +
+          `<td rowspan="${ls.length}" style="vertical-align:top">` +
+          `${esc(w.tc_order_iso || "")}</td>` +
+          `<td rowspan="${ls.length}" style="vertical-align:top">` +
+          `${esc(w.sow_iso || "")}</td>` +
+          `<td class="n" rowspan="${ls.length}" style="vertical-align:top">` +
+          `${num(w.units_tc)}</td>`) +
+        `<td class="n text-muted">${L.lift}</td>` +
+        `<td class="n text-muted">${L.share_pct}%</td>` +
+        `<td>${esc(L.ready_iso || "")}` +
+        (L.ready_iso && w.week_iso && L.ready_iso !== w.week_iso
+          ? ` <span style="color:var(--warning)">after the planting week</span>`
+          : "") + `</td>` +
+        `<td class="n">${num(L.plants)}</td></tr>`).join("");
+    }).join("");
   }
 
   function renderRoots(m) {

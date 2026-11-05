@@ -133,7 +133,14 @@ class PlantingCalendar(Document):
 			         "{:,}".format(derived)),
 				indicator="orange", title=_("Plants per bed disagree"))
 		self.net_area_sqm = (self.beds or 0) * (v.sqm_net_per_bed or 0)
-		self.net_area_ha = ((self.beds or 0) * (v.sqm_net_per_bed or 0)) / 10_000
+		from upande_summer_flowers.summer_flowers.doctype \
+			.summer_flower_production_plan.summer_flower_production_plan import (
+				planting_area_ha,
+			)
+
+		# Off the density where the protocol states one, so a crop with no bed
+		# size recorded still reports the ground it stands on.
+		self.net_area_ha = planting_area_ha(v, cint(self.plants), cint(self.beds))
 
 	def effective_planting_date(self):
 		"""The date everything downstream is counted from."""
@@ -150,7 +157,10 @@ class PlantingCalendar(Document):
 			(getdate(self.actual_planting_date) - getdate(self.planting_date)).days
 			if (self.actual_planting_date and self.planting_date) else 0)
 		self.sticking_date = add_days(planted, -7 * (v.sticking_to_planting_weeks or 0))
-		self.pinch_date = add_days(planted, 7 * (v.weeks_to_pinch or 0))
+		# A crop with no pinch has no pinch date. Zero weeks used to print the
+		# planting date in the Pinch column of every unpinched variety.
+		self.pinch_date = (add_days(planted, 7 * cint(v.weeks_to_pinch))
+		                   if cint(v.weeks_to_pinch) else None)
 		self.planned_uproot_date = add_days(planted, 7 * (v.total_weeks_in_ground or 0))
 		# Planted is a fact about the ground, not a step someone remembers to take.
 		if self.actual_planting_date and self.calendar_status == "Approved":

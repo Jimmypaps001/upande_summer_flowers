@@ -117,8 +117,140 @@ SUMMER_FLOWER = "Summer Flowers"
 ROSES = "Roses"
 
 
+# What belongs to the site that approved a protocol, not to the protocol. A
+# copy pasted from another site arrived carrying its version, its approver and
+# its approval date, and refused to save because none of them exist here.
+APPROVAL_TRAIL = ("custom_sf_current_version", "custom_sf_approved_by",
+                  "custom_sf_approved_on", "custom_version_count",
+                  "custom_sf_pending_changes")
+
+
+# Everything that belongs to the document rather than to the protocol. A paste
+# carries all of it, and every one of them is a link into the site it came from.
+PASTE_DROPS = ("name", "owner", "creation", "modified", "modified_by", "docstatus",
+               "idx", "doctype", "parent", "parentfield", "parenttype",
+               "custom_sf_title", "__last_sync_on", "__islocal", "__unsaved")
+
+
+def _clean_row(row):
+	"""A child row as it would be typed here, not as it was stored there."""
+	return {k: v for k, v in (row or {}).items()
+	        if k not in PASTE_DROPS and not k.startswith("_")}
+
+
+@frappe.whitelist()
+def paste_protocol(payload, farm=None, variety=None, dry_run=0):
+	"""Take a Crop Protocol copied off another site and make it a draft here.
+
+	Copy to Clipboard gives you the whole document: the version it was approved
+	as, who approved it, when, and links into that site's masters. None of that
+	can exist here, so pasting it raw fails on four link errors at once. This
+	takes the agronomy and leaves the paperwork behind."""
+	if isinstance(payload, str):
+		payload = frappe.parse_json(payload)
+	if not isinstance(payload, dict):
+		frappe.throw(_("That is not a document. Paste what Copy to Clipboard gave "
+		               "you on the other site."))
+	if (payload.get("doctype") or "Crop Protocol") != "Crop Protocol":
+		frappe.throw(_("That is a {0}, not a Crop Protocol.")
+		             .format(payload.get("doctype")))
+
+	dropped, made, missing = [], [], []
+	doc = frappe.new_doc("Crop Protocol")
+	tables = {f.fieldname for f in doc.meta.fields if f.fieldtype == "Table"}
+
+	for key in PASTE_DROPS + APPROVAL_TRAIL:
+		if payload.get(key) not in (None, "", 0):
+			dropped.append(key)
+	# The status goes with the approval: a protocol pasted here is a draft here.
+	if payload.get("custom_sf_protocol_status"):
+		dropped.append("custom_sf_protocol_status")
+
+	farm = farm or payload.get("farm")
+	if not farm or not frappe.db.exists("Farm", farm):
+		frappe.throw(_("{0} is not a Farm on this site. Pass the farm to paste it "
+		               "against.").format(farm or _("No farm")))
+	variety = variety or payload.get("variety") or payload.get("variety_item")
+	if not variety or not frappe.db.exists("Item", variety):
+		missing.append(_("Item {0} -- the variety. Create it, or pass the item it "
+		                 "is called here.").format(variety))
+
+	for key, value in payload.items():
+		if key in PASTE_DROPS or key in APPROVAL_TRAIL or key.startswith("_"):
+			continue
+		if key in ("custom_sf_protocol_status", "custom_sf_company"):
+			continue
+		if key in tables:
+			continue
+		if doc.meta.has_field(key):
+			doc.set(key, value)
+	doc.farm = farm
+	doc.variety = variety
+	doc.variety_item = variety
+
+	# The routes it names. A route is a master here, and it is cheap to make one
+	# that matches rather than refuse the whole paste over it.
+	wanted = {}
+	for row in (payload.get("custom_sf_ways") or []):
+		if row.get("route"):
+			wanted.setdefault(row["route"], int(bool(row.get("bought"))))
+	stages_of = {}
+	for row in (payload.get("custom_sf_way_stages") or []):
+		if row.get("route") and row.get("stage"):
+			stages_of.setdefault(row["route"], []).append(row["stage"])
+	for route, bought in wanted.items():
+		if frappe.db.exists("Material Route", route):
+			continue
+		stages = [st for st in stages_of.get(route, []) if frappe.db.exists(
+			"Material Stage", st)]
+		if not stages:
+			missing.append(_("Material Route {0}, and the paste does not say which "
+			                 "stages it runs through.").format(route))
+			continue
+		if cint(dry_run):
+			made.append(_("Material Route {0} ({1})").format(route, " -> ".join(stages)))
+			continue
+		r = frappe.new_doc("Material Route")
+		r.route_name = route
+		r.summary = " -> ".join(stages)
+		r.bought = bought
+		for st in stages:
+			r.append("stages", {"stage": st})
+		r.flags.ignore_permissions = True
+		r.insert()
+		made.append(_("Material Route {0}").format(r.name))
+
+	for table in tables:
+		for row in (payload.get(table) or []):
+			doc.append(table, _clean_row(row))
+
+	if missing:
+		frappe.throw(_("This paste needs these on this site first:<br><br>{0}")
+		             .format("<br>".join(missing)), title=_("Not here yet"))
+	if cint(dry_run):
+		return {"name": None, "dropped": sorted(set(dropped)), "created": made,
+		        "dry_run": 1}
+
+	doc.flags.ignore_permissions = True
+	doc.insert()
+	frappe.db.commit()
+	return {"name": doc.name, "dropped": sorted(set(dropped)), "created": made,
+	        "status": doc.custom_sf_protocol_status}
+
+
 def before_validate(doc, method=None):
 	"""Derive the discriminators from crop_type, for every crop."""
+	# A protocol that has never been saved here has not been approved here.
+	# Approving is what writes a version, so a pasted one starts as a draft.
+	# Not is_new(): the name is set before validation runs, and a paste brings
+	# the other site's creation date with it, so the only honest test is
+	# whether this record exists on this site.
+	if not doc.get("name") or not frappe.db.exists(doc.doctype, doc.get("name")):
+		for f in APPROVAL_TRAIL:
+			if doc.meta.has_field(f):
+				doc.set(f, None)
+		if doc.meta.has_field("custom_sf_protocol_status"):
+			doc.custom_sf_protocol_status = "Draft"
 	ct = doc.get("crop_type")
 	if ct in (SUMMER_FLOWER, ROSES):
 		doc.custom_is_summer_flower = 1 if ct == SUMMER_FLOWER else 0

@@ -1919,6 +1919,21 @@ def _pool_journey(v, lead, estab, cycles, build, to_cut, stick_to_plant,
 	return journey, _("Full TC journey — order to first farm harvest")
 
 
+def _entry_lifts(v, stage):
+	"""The lift profile stated for the way in, or nothing."""
+	from upande_summer_flowers.summer_flowers import crop_protocol as cp
+	from upande_summer_flowers.summer_flowers.route_ways import LIFT_FORM
+
+	form = LIFT_FORM.get(stage)
+	if not form:
+		return []
+	try:
+		return cp.protocol_lifts(v, form) or []
+	except Exception:
+		frappe.clear_last_message()
+		return []
+
+
 def _route_journey(v, plant_to_harvest):
 	"""Order to first harvest, read off the route the crop actually takes."""
 	rows = [r for r in (v.get("material_route") or [])
@@ -1946,10 +1961,24 @@ def _route_journey(v, plant_to_harvest):
 			"label": (_("{0} arrive") if name.endswith("s") else _("{0} arrives"))
 			.format(name),
 			"note": _("{0}w supplier lead").format(lead)})
+	# How the consignment is handed over, where the protocol says. A profile
+	# of "90% at seven weeks, the rest at eight" is two plantings, not one,
+	# and the journey said neither -- it said the stage's flat weeks.
+	waves = _entry_lifts(v, name)
 	for r in chain[1:]:
 		weeks = cint(r.weeks)
-		week += weeks
 		end = r.stage == _end_stage()
+		if end and len(waves) > 1:
+			for i, (after, share) in enumerate(waves):
+				journey.append({
+					"week": lead + cint(after),
+					"label": _("Planted — lift {0}").format(i + 1),
+					"note": _("{0}% of the consignment, {1}w after it arrives"
+					          ).format(round(share * 100, 1), cint(after)),
+				})
+			week = lead + cint(waves[0][0])
+			continue
+		week += weeks
 		journey.append({
 			"week": week,
 			"label": _("Planted") if end else r.stage,
@@ -1959,6 +1988,9 @@ def _route_journey(v, plant_to_harvest):
 		})
 	journey.append({"week": week + plant_to_harvest, "label": _("First harvest"),
 	                "note": _("{0}w planting to first harvest").format(plant_to_harvest)})
+	# In the order it happens. A first lift at seven weeks and a propagation
+	# stage at eight put "Propagation" after the planting it precedes.
+	journey.sort(key=lambda j: cint(j["week"]))
 	return journey, _("Full {0} journey — order to first farm harvest").format(name)
 
 
