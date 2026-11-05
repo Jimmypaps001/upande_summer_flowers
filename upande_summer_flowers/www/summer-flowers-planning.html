@@ -5316,12 +5316,10 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
       `stems are the rate it cuts at inside this plan's weeks — a week's ` +
       `stems and its best week, not a lifetime figure. ` +
       ((m.lift_only_weeks || []).length
-        ? `Shaded rows are later lifts: ${num((m.lift_only_weeks || []).reduce(
-            (a, r) => a + (Number(r.plants) || 0), 0))} plants reach the field ` +
-          `after their consignment's planting week, in ${
-            (m.lift_only_weeks || []).length} weeks that start no planting of ` +
-          `their own. The plan dates them at the first lift, so their stems ` +
-          `are counted from that week. `
+        ? `Shaded rows are later lifts — ${num((m.lift_only_weeks || []).reduce(
+            (a, r) => a + (Number(r.plants) || 0), 0))} plants in ${
+            (m.lift_only_weeks || []).length} weeks, counted from the first ` +
+          `lift. `
         : "") +
       `How the season's weeks add up against demand is on the Production ` +
       `Plan tab.</p>` +
@@ -5373,10 +5371,8 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
              (m.tc_first_loss_pct && m.tc_first_loss_pct < 100 ? 1 : 0) +
              (m.tc_second_loss_pct && m.tc_second_loss_pct < 100 ? 1 : 0) +
              (wayTwo(m) ? 1 : 0)}" class="text-muted">` +
-          `lift ${r.from.map((x) => x.lift).join("/")} of the ${
-            esc(w.week_iso)} consignment — ${r.from.map(
-              (x) => `${x.share_pct}%`).join(" + ")} lands here, no new ` +
-          `planting starts this week</td>` +
+          `lift ${r.from.map((x) => x.lift).join("/")} of ${esc(w.week_iso)} · ${
+            r.from.map((x) => `${x.share_pct}%`).join(" + ")}</td>` +
           `<td class="n">${num(r.plants)}</td>` +
           `<td class="n">${num(r.plants)}</td><td class="n">—</td></tr>`).join("");
         // Plants the split sends down a way that cannot be sized are plants
