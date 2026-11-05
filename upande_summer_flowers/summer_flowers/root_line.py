@@ -444,6 +444,29 @@ def arrival_plan(plan, tc_share=None, returns_per_plant=None,
 			root_pulls[w["root_out_week"]] = root_pulls.get(
 				w["root_out_week"], 0) + roots
 
+	# Where a protocol lifts in waves, part of every consignment reaches the
+	# field AFTER the planting week the row is named for. Those plants are
+	# planted in a week that has no row of its own, so the table showed nothing
+	# for them and the plan dates all of them at the first lift.
+	plant_weeks = {iso(k) for k in weeks}
+	landings = {}
+	for land, w in weeks.items():
+		for L in (w.get("lifts") or []):
+			key = L.get("ready_iso") or iso(land)
+			rec = landings.setdefault(key, {
+				"week_iso": key, "plants": 0, "from": [],
+				"is_planting_week": 1 if key in plant_weeks else 0})
+			rec["plants"] += cint(L.get("plants"))
+			rec["from"].append({"consignment": iso(land), "lift": cint(L.get("lift")),
+			                    "share_pct": L.get("share_pct"),
+			                    "plants": cint(L.get("plants"))})
+	# Only the ones the week table cannot show: a later lift landing in a week
+	# where nothing else is planted.
+	lift_only = [r for r in landings.values()
+	             if not r["is_planting_week"] and r["plants"]]
+	for r in lift_only:
+		r["after"] = min(x["consignment"] for x in r["from"])
+
 	ordered = sorted(weeks)
 	# What the card says to BUY, worked out once so the boxes, the tiles and the
 	_units_total = (sum(cint(weeks[k].get("units_tc")) for k in ordered)
@@ -534,6 +557,13 @@ def arrival_plan(plan, tc_share=None, returns_per_plant=None,
 		                             for k in ordered),
 		"stems_saleable_in_season_total": sum(
 			cint(weeks[k].get("stems_saleable_in_season")) for k in ordered),
+		# Every week plants actually go in the ground, and the ones the planting
+		# rows cannot speak for.
+		"landings": sorted(landings.values(), key=lambda r: r["week_iso"]),
+		"lift_only_weeks": sorted(lift_only, key=lambda r: r["week_iso"]),
+		"plants_landing_after_their_week": sum(
+			cint(x["plants"]) for r in landings.values() for x in r["from"]
+			if x["consignment"] != r["week_iso"]),
 		"grading_reject_pct": round(_reject * 100, 2),
 		"stems_per_plant_life": _spp,
 		# The same figures as one chain, because the tiles above answer "how

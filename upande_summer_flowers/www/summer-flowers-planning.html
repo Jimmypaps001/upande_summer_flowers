@@ -5312,9 +5312,19 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
       // week it goes in the ground. The week-by-week match against demand is
       // the production plan's own table, and saying so here stops this one
       // being read as it.
-      `<p class="pl-note" style="margin:0 0 6px">A row is a planting. The stems ` +
-      `are what it cuts over its life, first cut shown; how the season's weeks ` +
-      `add up against demand is on the Production Plan tab.</p>` +
+      `<p class="pl-note" style="margin:0 0 6px">A row is a planting, and its ` +
+      `stems are the rate it cuts at inside this plan's weeks — a week's ` +
+      `stems and its best week, not a lifetime figure. ` +
+      ((m.lift_only_weeks || []).length
+        ? `Shaded rows are later lifts: ${num((m.lift_only_weeks || []).reduce(
+            (a, r) => a + (Number(r.plants) || 0), 0))} plants reach the field ` +
+          `after their consignment's planting week, in ${
+            (m.lift_only_weeks || []).length} weeks that start no planting of ` +
+          `their own. The plan dates them at the first lift, so their stems ` +
+          `are counted from that week. `
+        : "") +
+      `How the season's weeks add up against demand is on the Production ` +
+      `Plan tab.</p>` +
       // The week read left to right as the crop meets it: what has to be
       // bought, what is left after each loss, and what finally goes in the
       // ground. The column under the name of the thing bought used to hold the
@@ -5334,7 +5344,6 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
       // Production Plan sheet adds up against the week's demand.
       `<th class="n">Stems a week</th>` +
       `<th>Peak week</th>` +
-      `<th class="n">Stems in the season</th>` +
       // Not "Plants needed": that is Plants standing, further along the same
       // row, and a column cannot be two things.
       // Bought once or in batches; SOWN week by week. What a week carries is
@@ -5351,7 +5360,25 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
       (wayTwo(m) ? `<th class="n">From ${esc(wayTwo(m).toLowerCase())}</th>` : "") +
       `<th class="n">Total</th><th class="n">Variance</th>` +
       `</tr></thead><tbody>` +
+      // A later lift lands in a week that starts no planting of its own, so it
+      // gets no row here. Shown under the consignment it comes from, because
+      // those plants are still going in the ground and still cutting.
       (m.weeks || []).map((w) => {
+        const trailing = (m.lift_only_weeks || []).filter((r) => r.after === w.week_iso);
+        const extra = trailing.map((r) =>
+          `<tr style="background:var(--surface-2,#fafafa)">` +
+          `<td class="text-muted">—</td>` +
+          `<td class="text-muted">${esc(r.week_iso)}</td>` +
+          `<td colspan="${3 + (m.tc_first_loss_pct ? 1 : 0) +
+             (m.tc_first_loss_pct && m.tc_first_loss_pct < 100 ? 1 : 0) +
+             (m.tc_second_loss_pct && m.tc_second_loss_pct < 100 ? 1 : 0) +
+             (wayTwo(m) ? 1 : 0)}" class="text-muted">` +
+          `lift ${r.from.map((x) => x.lift).join("/")} of the ${
+            esc(w.week_iso)} consignment — ${r.from.map(
+              (x) => `${x.share_pct}%`).join(" + ")} lands here, no new ` +
+          `planting starts this week</td>` +
+          `<td class="n">${num(r.plants)}</td>` +
+          `<td class="n">${num(r.plants)}</td><td class="n">—</td></tr>`).join("");
         // Plants the split sends down a way that cannot be sized are plants
         // nobody can order, so they do not count as covered.
         const got = cintish(w.by_tc) + (rootsOk(m) ? cintish(w.by_roots) : 0);
@@ -5363,8 +5390,7 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
           (w.stems_peak_week && w.stems_peak_week !== w.stems_avg_week
             ? ` <span class="pl-dim">peak ${num(w.stems_peak_week)}</span>` : "") +
           `</td>` +
-          `<td class="text-muted">${esc(w.peak_week_iso || "")}</td>` +
-          `<td class="n">${w.stems_in_season ? num(w.stems_in_season) : ""}` +
+          `<td class="text-muted">${esc(w.peak_week_iso || "")}` +
           (w.cut_weeks ? ` <span class="pl-dim">${w.cut_weeks} wks</span>` : "") +
           `</td>` +
           `<td class="n">${w.units_tc ? num(w.units_tc) : ""}</td>` +
@@ -5384,11 +5410,10 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
               `${w.by_roots ? num(w.by_roots) : ""}</td>` : "") +
           `<td class="n">${num(got)}</td>` +
           `<td class="n"${v < 0 ? ' style="color:var(--critical)"' : ""}>` +
-          `${v > 0 ? "+" : ""}${v ? num(v) : "—"}</td></tr>`;
+          `${v > 0 ? "+" : ""}${v ? num(v) : "—"}</td></tr>` + extra;
       }).join("") +
       `<tfoot><tr><th colspan="3">Season</th>` +
       `<th></th><th></th>` +
-      `<th class="n">${num(m.stems_in_season_total)}</th>` +
       `<th class="n">${num(m.tc_units_total)}</th>` +
       (m.tc_first_loss_pct && m.tc_first_loss_pct < 100
         ? `<th class="n" style="color:var(--critical)">` +
