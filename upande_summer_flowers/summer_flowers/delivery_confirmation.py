@@ -314,7 +314,12 @@ def confirm_and_raise(procurement_plan):
 			                  "not be built: {0}").format(str(e).split("\n")[0][:160]),
 			                indicator="orange", title=_("Propagation plan"))
 	frappe.db.commit()
-	return schedule_for(doc.name)
+	# Where the production plan went, so the screen that asked for this can
+	# follow it instead of looking at a plan that is no longer the live one.
+	out = schedule_for(doc.name)
+	out["production_plan"] = doc.production_plan
+	out["revised_to"] = revised.get("revised")
+	return out
 
 
 # Everything that points at a production plan by name. A revision is a new

@@ -2582,6 +2582,38 @@ def propagation_detail(plan=None, propagation_plan=None, variety=None, farm=None
 
 
 @frappe.whitelist()
+def plan_family(name):
+	"""A production plan and every revision of it, in both directions."""
+	if not name:
+		return []
+	seen, cur = {name}, name
+	while True:
+		up = frappe.db.get_value("Summer Flower Production Plan", cur, "amended_from")
+		if not up or up in seen:
+			break
+		seen.add(up)
+		cur = up
+	frontier = list(seen)
+	while frontier:
+		kids = [k for k in frappe.get_all(
+			"Summer Flower Production Plan",
+			filters={"amended_from": ["in", frontier]}, pluck="name") if k not in seen]
+		seen.update(kids)
+		frontier = kids
+	return sorted(seen)
+
+
+def superseded_by(plan):
+	"""The live revision standing in for a cancelled plan, where there is one."""
+	family = [n for n in plan_family(plan) if n != plan]
+	live = frappe.get_all("Summer Flower Production Plan",
+	                      filters={"name": ["in", family], "docstatus": ["<", 2]},
+	                      fields=["name", "status", "docstatus"],
+	                      order_by="creation desc", limit=1) if family else []
+	return live[0] if live else None
+
+
+@frappe.whitelist()
 def procurement_detail(plan=None, variety=None, farm=None):
 	"""What was bought for a production plan, and who was allocated to raise it."""
 	_guard()
@@ -2589,17 +2621,74 @@ def procurement_detail(plan=None, variety=None, farm=None):
 	if not plan:
 		return {"plan": None, "plans": [], "allocations": {"rows": []},
 		        "reason": "no production plan in scope"}
+	plan_state = frappe.db.get_value("Summer Flower Production Plan", plan,
+	                                 ["docstatus", "status"], as_dict=True) or {}
+	revision = superseded_by(plan) if cint(plan_state.get("docstatus")) == 2 else None
 
+	# A revision is the same plan under a new name: approving a schedule cancels
+	# the production plan and repoints its procurement plan at the revision, and
+	# a screen still showing the old name should say so rather than go blank.
+	family = plan_family(plan)
 	plans = frappe.get_all(
 		"Summer Flower Procurement Plan",
-		filters={"production_plan": plan, "docstatus": ["<", 2]},
+		filters={"production_plan": ["in", family], "docstatus": ["<", 2]},
 		fields=["name", "status", "docstatus", "method", "entry_stage", "supplier",
 		        "total_units_to_order", "total_plants_at_field", "plants_per_unit",
 		        "first_order_by", "last_order_by", "orders_late", "propagates_here",
 		        "beds_required", "beds_available", "capped_by_space", "space_note",
 		        "lead_weeks", "weeks_to_ground", "sizing_basis", "route_summary",
-		        "pool_plants", "weekly_draw", "cycles_suggested"],
+		        "pool_plants", "weekly_draw", "cycles_suggested",
+		        "production_plan"],
 		order_by="creation desc")
+	# Nothing live in the family: a cancelled plan is still what was bought, and
+	# hiding it tells the buyer their work was lost.
+	cancelled = []
+	if not plans:
+		cancelled = frappe.get_all(
+			"Summer Flower Procurement Plan",
+			filters={"production_plan": ["in", family], "docstatus": 2},
+			fields=["name", "status", "docstatus", "method", "entry_stage", "supplier",
+			        "total_units_to_order", "total_plants_at_field", "plants_per_unit",
+			        "first_order_by", "last_order_by", "orders_late", "propagates_here",
+			        "beds_required", "beds_available", "capped_by_space", "space_note",
+			        "lead_weeks", "weeks_to_ground", "sizing_basis", "route_summary",
+			        "pool_plants", "weekly_draw", "cycles_suggested",
+			        "production_plan"],
+			order_by="creation desc")
+		plans = cancelled
+	# Still nothing: the buying may sit on another plan for the same variety,
+	# farm and season -- a second plan built beside this one. It is the same
+	# material being bought, so it is shown, named for the plan it belongs to.
+	elsewhere = []
+	if not plans:
+		scope = frappe.db.get_value("Summer Flower Production Plan", plan,
+		                            ["variety", "farm", "season"], as_dict=True) or {}
+		if scope.get("variety") and scope.get("farm"):
+			elsewhere = frappe.get_all(
+				"Summer Flower Procurement Plan",
+				filters={"variety": scope["variety"], "farm": scope["farm"],
+				         "season": scope.get("season"), "docstatus": ["<", 2]},
+				fields=["name", "status", "docstatus", "method", "entry_stage", "supplier",
+			        "total_units_to_order", "total_plants_at_field", "plants_per_unit",
+			        "first_order_by", "last_order_by", "orders_late", "propagates_here",
+			        "beds_required", "beds_available", "capped_by_space", "space_note",
+			        "lead_weeks", "weeks_to_ground", "sizing_basis", "route_summary",
+			        "pool_plants", "weekly_draw", "cycles_suggested",
+			        "production_plan"],
+				order_by="creation desc")
+		seen_stage = set()
+		for pr in elsewhere:
+			key = pr.get("entry_stage") or ""
+			if key in seen_stage:
+				continue
+			seen_stage.add(key)
+			pr["foreign"] = 1
+			plans.append(pr)
+
+	for pr in plans:
+		pr["production_plan"] = pr.get("production_plan") or plan
+		pr["for_another_revision"] = 0 if pr["production_plan"] == plan else 1
+		pr["cancelled"] = 1 if cint(pr.get("docstatus")) == 2 else 0
 
 	rows = []
 	for pr in plans:
@@ -2617,7 +2706,8 @@ def procurement_detail(plan=None, variety=None, farm=None):
 				order_by="idx"):
 			r["procurement_plan"] = pr["name"]
 			r["entry_stage"] = pr["entry_stage"]
-			r["editable"] = 1 if pr["docstatus"] == 0 else 0
+			r["editable"] = (1 if pr["docstatus"] == 0 and not pr.get("foreign")
+			                 else 0)
 			rows.append(r)
 
 	# Who SELLS it, beside who raises it. The dashboard could allocate the
@@ -2632,7 +2722,8 @@ def procurement_detail(plan=None, variety=None, farm=None):
 				        "material_request", "purchase_order", "note"],
 				order_by="idx"):
 			r["procurement_plan"] = pr["name"]
-			r["editable"] = 1 if pr["docstatus"] == 0 else 0
+			r["editable"] = (1 if pr["docstatus"] == 0 and not pr.get("foreign")
+			                 else 0)
 			buying.append(r)
 
 	season = 0
@@ -2644,6 +2735,13 @@ def procurement_detail(plan=None, variety=None, farm=None):
 		                                  plan, "total_plants"))
 	allocated = sum(cint(r.get("plants")) for r in rows)
 	return {
+		"plan_docstatus": cint(plan_state.get("docstatus")),
+		"plan_status": plan_state.get("status"),
+		# Where the plan went when a confirmed schedule revised it. The screen
+		# keeps the name the user picked and offers the revision rather than
+		# saying there is nothing here.
+		"revised_to": (revision or {}).get("name"),
+		"family": [n for n in family if n != plan],
 		"plan": plan,
 		"plans": plans,
 		"buying": buying,

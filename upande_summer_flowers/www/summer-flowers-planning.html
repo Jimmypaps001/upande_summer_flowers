@@ -8573,7 +8573,22 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
             .then(() => req
               ? callDc("confirm_and_raise", { procurement_plan: b.dataset.o })
               : callDc("confirm", { purchase_order: b.dataset.o }))
-            .then((r) => { S.dc = r; renderDeliveries(); loadProcurement(); })
+            .then((r) => {
+              S.dc = r;
+              renderDeliveries();
+              // Confirming can revise the production plan into a new document.
+              // The screen follows it, because everything below -- the orders,
+              // the plantings, the budget -- now hangs off the revision.
+              if (r && r.revised_to && r.revised_to !== S.plan) {
+                const u = new URL(location.href);
+                u.searchParams.set("plan", r.revised_to);
+                u.hash = location.hash || "#procurement";
+                location.href = u.toString();
+                location.reload();
+                return;
+              }
+              loadProcurement();
+            })
             .catch((e) => { b.disabled = false; frappe.msgprint(esc(e.message)); });
         });
     }));
@@ -8585,15 +8600,43 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
     if (!r || r.error || !(r.plans || []).length) {
       $("pc-sub").textContent = "";
       $("pc-tiles").innerHTML = "";
-      body.innerHTML = `<p class="pl-empty">${esc(
-        (r && r.error) || "No procurement plan for this production plan yet.")}</p>`;
+      // A plan that was revised is not a plan that never existed. Say where it
+      // went and offer the revision, rather than reporting nothing was bought.
+      const gone = r && r.revised_to
+        ? `This plan was revised. What was bought sits on `
+          + `<a href="#" data-goplan="${esc(r.revised_to)}">${esc(r.revised_to)}</a>.`
+        : null;
+      body.innerHTML = gone
+        ? `<p class="pl-empty">${gone}</p>`
+        : `<p class="pl-empty">${esc(
+            (r && r.error) || "No procurement plan for this production plan yet.")}</p>`;
       $("pc-alloc").innerHTML = "";
       if ($("pc-buying")) $("pc-buying").innerHTML = "";
+      // The commitment card belongs to a schedule that is no longer on screen.
+      if ($("pc-impact")) $("pc-impact").innerHTML = "";
+      if ($("pc-deliveries")) $("pc-deliveries").innerHTML = "";
+      const go = body.querySelector("[data-goplan]");
+      if (go) {
+        go.addEventListener("click", (e) => {
+          // The plan picker is built on boot, so the revision is opened the way
+          // a link to it would be: through the URL the page reads its scope from.
+          e.preventDefault();
+          const u = new URL(location.href);
+          u.searchParams.set("plan", go.dataset.goplan);
+          u.hash = location.hash || "#procurement";
+          location.href = u.toString();
+          location.reload();
+        });
+      }
       return;
     }
     const plans = r.plans;
+    const strays = plans.filter((p) => p.for_another_revision);
     $("pc-sub").textContent = `${plans.length} plan${plans.length === 1 ? "" : "s"}`
-      + ` for ${r.plan}`;
+      + ` for ${r.plan}`
+      + (strays.length
+          ? ` — bought on ${[...new Set(strays.map((p) => p.production_plan))].join(", ")}`
+          : "");
     // TC and roots are bought on separate plans for the same season, so the
     // tiles sum across them rather than describing whichever happens to be first.
     const units = plans.reduce((x, p) => x + (p.total_units_to_order || 0), 0);
@@ -8610,13 +8653,26 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
                      : "in time",
              c: late ? "--critical" : "--good" }),
     ].join("");
-    body.innerHTML = `<table class="pl-t"><thead><tr>
+    // Where the buying really sits, said once above the table rather than only
+    // in a pill: a plan revised into a new document, or a sibling plan for the
+    // same variety and season, is still this variety's material being bought.
+    const strayNote = strays.length
+      ? `<p class="pl-note">Bought on ${
+          [...new Set(strays.map((p) => esc(p.production_plan)))].join(", ")}${
+          strays.some((p) => p.foreign)
+            ? " — another plan for this variety, farm and season, so it is shown here but edited there."
+            : ", the revision of this plan."}</p>`
+      : "";
+    body.innerHTML = strayNote + `<table class="pl-t"><thead><tr>
       <th>Plan</th><th>Bought as</th><th>Method</th><th>Supplier</th>
       <th class="r">Units</th><th class="r">Plants to stand</th>
       <th class="r">Beds</th><th>Order by</th><th>Status</th>
     </tr></thead><tbody>${plans.map((p) =>
       `<tr${p.orders_late ? ' class="pl-chosen"' : ""}>` +
-      `<td><a href="/app/summer-flower-procurement-plan/${encodeURIComponent(p.name)}">${esc(p.name)}</a></td>` +
+      `<td><a href="/app/summer-flower-procurement-plan/${encodeURIComponent(p.name)}">${esc(p.name)}</a>${
+        p.for_another_revision
+          ? ` <span class="pill">on ${esc(p.production_plan)}</span>` : ""}${
+        p.cancelled ? ` <span class="pill">cancelled</span>` : ""}</td>` +
       `<td>${esc(p.entry_stage || "\u2014")}</td>` +
       `<td>${esc(p.method || "\u2014")}</td>` +
       `<td>${esc(p.supplier || "\u2014")}</td>` +
