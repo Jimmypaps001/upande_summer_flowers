@@ -237,10 +237,13 @@ class SummerFlowerProcurementPlan(Document):
 					r.rate_per_plant = flt(sup.custom_sf_rate_per_plant)
 				if not r.deliver_to:
 					r.deliver_to = receiving
-				r.ready_basis = _(
+				r.ready_basis = (_(
 					"{0} needs {1} weeks' notice, so plants ordered on the start "
 					"date land on the planting date."
 				).format(r.supplier or _("The propagator"), cint(r.lead_weeks))
+					if cint(r.lead_weeks) else _(
+					"{0} needs no notice, so the plants land in the week they "
+					"are asked for.").format(r.supplier or _("The propagator")))
 			else:
 				r.supplier = None
 				r.rate_per_plant = 0
@@ -335,20 +338,33 @@ class SummerFlowerProcurementPlan(Document):
 			             .format(self.main_entry_stage() or _("material")),
 			             title=_("Nobody is raising these plants"))
 
+		no_lead = []
 		for r in rows:
 			if r.alloc_type == "Outside Propagator":
 				if not r.supplier:
 					frappe.throw(_("Row {0} is raised outside, so it needs the "
 					               "propagator's name.").format(r.idx))
 				if not cint(r.lead_weeks):
-					frappe.throw(_("{0} has no propagation lead time, so this plan "
-					               "cannot say when the plants arrive. Set Weeks To "
-					               "Raise A Plant on the supplier, or type the weeks "
-					               "on row {1}.").format(r.supplier, r.idx),
-					             title=_("No lead time"))
+					# Zero is an answer: a propagator down the road delivers in
+					# the week it is asked for. Refusing to save it stopped a
+					# legitimate plan over a number that was already correct.
+					no_lead.append(r)
 			elif not r.propagation_unit:
 				frappe.throw(_("Row {0} is raised here, so it needs the unit that "
 				               "raises it.").format(r.idx))
+
+		# Said once, and never in the way of a save: plants that arrive the week
+		# they are ordered are a schedule, not a fault.
+		if no_lead and not self.flags.get("rebuilding"):
+			frappe.msgprint(
+				_("{0} has no propagation lead time, so the plants are taken to "
+				  "arrive in the week they are asked for. Set Weeks To Raise A "
+				  "Plant on the supplier, or type the weeks on row {1}, if it "
+				  "needs notice.").format(
+					", ".join(sorted({r.supplier for r in no_lead if r.supplier}))
+					or _("The propagator"),
+					", ".join(str(r.idx) for r in no_lead)),
+				indicator="orange", alert=True, title=_("No lead time"))
 
 		# Per way in. A crop bought as tissue culture and as roots has both to
 		plants = self.plants_by_stage()
