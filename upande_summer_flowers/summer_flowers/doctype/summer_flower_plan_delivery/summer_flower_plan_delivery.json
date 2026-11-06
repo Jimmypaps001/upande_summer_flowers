@@ -1,0 +1,29 @@
+{
+ "actions": [],
+ "allow_rename": 1,
+ "creation": "2026-11-06 10:00:00.000000",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": ["week_iso", "week_start", "supplier", "cb_delivery", "units", "plants", "note"],
+ "fields": [
+  {"fieldname": "week_iso", "fieldtype": "Data", "in_list_view": 1, "label": "Week", "reqd": 1},
+  {"fieldname": "week_start", "fieldtype": "Date", "label": "Week Starts", "read_only": 1},
+  {"fieldname": "supplier", "fieldtype": "Link", "in_list_view": 1, "label": "Supplier", "options": "Supplier"},
+  {"fieldname": "cb_delivery", "fieldtype": "Column Break"},
+  {"fieldname": "units", "fieldtype": "Int", "in_list_view": 1, "label": "Units", "reqd": 1},
+  {"fieldname": "plants", "fieldtype": "Int", "label": "Plants", "read_only": 1},
+  {"fieldname": "note", "fieldtype": "Small Text", "label": "Note"}
+ ],
+ "istable": 1,
+ "links": [],
+ "modified": "2026-11-06 10:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Summer Flowers",
+ "name": "Summer Flower Plan Delivery",
+ "owner": "Administrator",
+ "permissions": [],
+ "sort_field": "idx",
+ "sort_order": "ASC",
+ "states": []
+}

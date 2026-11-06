@@ -13,6 +13,8 @@ which planting weeks are still short. Nothing here is saved; it is for trying
 suppliers against each other before anything is committed to.
 """
 
+import datetime
+
 import frappe
 from frappe import _
 from frappe.utils import add_days, cint, flt, getdate, nowdate
@@ -95,6 +97,19 @@ def suppliers_for(form=DEFAULT_FORM):
 	                                 pluck="name", order_by="name", limit=400)}
 
 
+def _week_monday(week_iso):
+	"""'2026-W12' -> the Monday of that week."""
+	import re
+
+	m = re.match(r"^(\d{4})-W(\d{1,2})$", str(week_iso or "").strip())
+	if not m:
+		return None
+	try:
+		return datetime.date.fromisocalendar(int(m.group(1)), int(m.group(2)), 1)
+	except ValueError:
+		return None
+
+
 def _wanted_by_week(plan):
 	"""{Monday of the planting week: plants that have to go in the ground}."""
 	out = {}
@@ -136,13 +151,16 @@ def _normalised(picks, form):
 			            "share_pct": round(flt(c["share_pct"]) * 100.0 / total, 4)}
 			           for i, c in enumerate(cycles)],
 		})
-	# The season is split evenly between whoever is on the list. Nobody types a
-	# percentage: the quantities come from the demand the plan was built on, and
-	# the share is only how that demand is divided between the houses chosen.
-	if out:
-		even = 100.0 / len(out)
+	# The share is ours to give: how much of the season each house is promised.
+	# Typed shares are kept and only scaled to add to a hundred; where none are
+	# typed the season is split evenly, which is a starting point, not a rule.
+	share = sum(flt(x["share_pct"]) for x in out)
+	if out and share <= 0:
 		for x in out:
-			x["share_pct"] = round(even, 4)
+			x["share_pct"] = round(100.0 / len(out), 4)
+	elif out and abs(share - 100.0) > 0.01:
+		for x in out:
+			x["share_pct"] = round(flt(x["share_pct"]) * 100.0 / share, 4)
 	return out
 
 
@@ -182,7 +200,16 @@ def plan_supply(plan, picks=None, form=None):
 	# Walk the planting weeks forward. What an earlier consignment's later
 	# cycle lands is this week's stock, so it is spent before anything else is
 	# ordered -- which is the whole point of knowing a supplier's cycles.
+	# Deliveries somebody typed in against a week: an extra drop, or one a
+	# house promised outside its cycles. They land like any other consignment,
+	# and the week buys only what they leave uncovered.
 	landing = {}
+	for d in (doc.get("plan_deliveries") or []):
+		at = _monday(d.week_start or _week_monday(d.week_iso))
+		if not at:
+			continue
+		landing[at] = cint(landing.get(at, 0)) + int(round(cint(d.units) * per_unit))
+	by_hand = dict(landing)
 	rows, orders = [], []
 	carry = []          # [(week it landed, plants still in hand)]
 	short_total = bought_total = 0
@@ -248,6 +275,7 @@ def plan_supply(plan, picks=None, form=None):
 		rows.append({
 			"week_iso": _iso(when), "week_start": str(when),
 			"wanted": want,
+			"by_hand": cint(by_hand.get(when, 0)),
 			"carried_in": came,
 			"used_from_carry": take,
 			"held_weeks": waited,
@@ -292,9 +320,27 @@ def plan_supply(plan, picks=None, form=None):
 		# week wants them. A profile that carries two weeks into a crop planted
 		# ten weeks apart is not a carry, it is a write-off.
 		"longest_held_weeks": held_max,
+		"deliveries": [{"name": d.name, "week_iso": d.week_iso,
+		                "supplier": d.supplier, "units": cint(d.units),
+		                "plants": cint(d.plants), "note": d.note}
+		               for d in (doc.get("plan_deliveries") or [])],
 		"confirmed": cint(doc.get("supply_confirmed")),
 		"docstatus": doc.docstatus,
 	}
+	# What each cycle brings over the season, so a share on screen is a number
+	# of plants rather than a percentage of something unstated.
+	bought_by = {}
+	for r in rows:
+		for b in r.get("buys") or []:
+			bought_by[b["supplier"]] = bought_by.get(b["supplier"], 0) + cint(b["units"])
+	for sup in out["suppliers"]:
+		total = cint(bought_by.get(sup["supplier"], 0))
+		sup["units"] = total
+		sup["plants"] = int(round(total * per_unit))
+		for c in sup["cycles"]:
+			c["units"] = int(round(total * c["share"]))
+			c["plants"] = int(round(total * c["share"] * per_unit))
+
 	# What it does to the plantings already on the plan, which is the question
 	# behind choosing a supplier at all.
 	out["calendar"] = _calendar_effect(doc, out)
@@ -442,8 +488,73 @@ def saved_supply(plan):
 		                    "weeks_after": cint(r.weeks_after),
 		                    "share_pct": flt(r.cycle_share_pct)})
 	return {"plan": doc.name, "picks": list(picks.values()),
+	        "deliveries": [{"name": d.name, "week_iso": d.week_iso,
+	                        "supplier": d.supplier, "units": cint(d.units),
+	                        "plants": cint(d.plants), "note": d.note}
+	                       for d in (doc.get("plan_deliveries") or [])],
 	        "confirmed": cint(doc.supply_confirmed),
 	        "confirmed_on": str(doc.supply_confirmed_on or "") or None,
 	        "confirmed_by": doc.supply_confirmed_by,
 	        "note": doc.supply_note,
 	        "docstatus": doc.docstatus}
+
+
+@frappe.whitelist()
+def save_delivery(plan, week_iso, units, supplier=None, note=None, row=None):
+	"""Add a delivery against a week, or change one already typed in."""
+	from upande_summer_flowers.summer_flowers.planning_api import _guard
+
+	_guard()
+	doc = frappe.get_doc("Summer Flower Production Plan", plan)
+	frappe.has_permission("Summer Flower Production Plan", "write", doc, throw=True)
+	if doc.docstatus != 0:
+		frappe.throw(_("{0} is submitted.").format(doc.name))
+	monday = _week_monday(week_iso)
+	if not monday:
+		frappe.throw(_("{0} is not a week. Weeks look like 2026-W12.").format(week_iso))
+	if cint(units) <= 0:
+		frappe.throw(_("A delivery of nothing is not a delivery."))
+
+	v = frappe.get_cached_doc("Crop Protocol Version", doc.protocol)
+	per_unit = 1.0 / (flt(v.cuttings_per_plant_required) or 1.0)
+	existing = next((d for d in (doc.get("plan_deliveries") or [])
+	                 if d.name == row), None) if row else None
+	target = existing or doc.append("plan_deliveries", {})
+	target.week_iso = _iso(monday)
+	target.week_start = monday
+	target.supplier = supplier or None
+	target.units = cint(units)
+	target.plants = int(round(cint(units) * per_unit))
+	target.note = note
+	# Typing a delivery changes what was agreed, so the agreement is re-asked.
+	doc.supply_confirmed = 0
+	doc.supply_confirmed_on = None
+	doc.supply_confirmed_by = None
+	doc.save()
+	return saved_supply(doc.name)
+
+
+@frappe.whitelist()
+def delete_delivery(plan, row):
+	"""Take a typed-in delivery back off the plan."""
+	from upande_summer_flowers.summer_flowers.planning_api import _guard
+
+	_guard()
+	doc = frappe.get_doc("Summer Flower Production Plan", plan)
+	frappe.has_permission("Summer Flower Production Plan", "write", doc, throw=True)
+	if doc.docstatus != 0:
+		frappe.throw(_("{0} is submitted.").format(doc.name))
+	keep = [d for d in (doc.get("plan_deliveries") or []) if d.name != row]
+	if len(keep) == len(doc.get("plan_deliveries") or []):
+		frappe.throw(_("That delivery is not on this plan."))
+	doc.set("plan_deliveries", [])
+	for d in keep:
+		doc.append("plan_deliveries", {
+			"week_iso": d.week_iso, "week_start": d.week_start,
+			"supplier": d.supplier, "units": d.units, "plants": d.plants,
+			"note": d.note})
+	doc.supply_confirmed = 0
+	doc.supply_confirmed_on = None
+	doc.supply_confirmed_by = None
+	doc.save()
+	return saved_supply(doc.name)

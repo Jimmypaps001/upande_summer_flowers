@@ -359,7 +359,7 @@ def arrival_plan(plan, tc_share=None, returns_per_plant=None,
 	# weeks, the rest at eight. Where it states none, handover_waves answers
 	# with one wave at the route's own weeks, which is what the card did
 	# before -- so a protocol without lifts is unchanged.
-	waves = _handover(v, primary, tc_weeks)
+	waves = _handover(v, primary, tc_weeks, plan=plan)
 	hand_weeks = cint(waves[0][0]) if waves else cint(tc_weeks)
 	account = _loss_account(v, rows, primary)
 	# Germination is the first of the two percentages the protocol states, and
@@ -759,11 +759,35 @@ def _weekly_cut(plan):
 	return out
 
 
-def _handover(v, stage, default_weeks):
-	"""The lift profile for this way in: the protocol's, else one flat wave."""
+def _agreed_waves(plan):
+	"""The cycles the plan has agreed with its suppliers, blended by share.
+
+	Two houses on different rhythms hand one season over between them, so the
+	profile this page draws is theirs weighted by what each was promised --
+	not the protocol's, which says how the crop behaves, not how it ships."""
+	rows = (plan.get("plan_supply") or []) if plan else []
+	if not rows:
+		return None
+	by_week = {}
+	for r in rows:
+		weight = flt(r.share_pct) * flt(r.cycle_share_pct) / 10000.0
+		if weight <= 0:
+			continue
+		by_week[cint(r.weeks_after)] = by_week.get(cint(r.weeks_after), 0.0) + weight
+	if not by_week:
+		return None
+	total = sum(by_week.values()) or 1.0
+	return [(w, by_week[w] / total) for w in sorted(by_week)]
+
+
+def _handover(v, stage, default_weeks, plan=None):
+	"""The lift profile for this way in: what was agreed, else the protocol's."""
 	from upande_summer_flowers.summer_flowers import tc_supply as ts
 	from upande_summer_flowers.summer_flowers.route_ways import LIFT_FORM
 
+	agreed = _agreed_waves(plan)
+	if agreed:
+		return agreed
 	form = LIFT_FORM.get(stage)
 	if not form:
 		return [(cint(default_weeks), 1.0)]

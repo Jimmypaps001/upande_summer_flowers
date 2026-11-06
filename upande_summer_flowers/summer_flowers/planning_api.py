@@ -3993,3 +3993,24 @@ def saved_supply(plan=None, variety=None, farm=None):
 
 	name = resolve_plan(variety, farm, plan)
 	return supply_cycles.saved_supply(name) if name else {"picks": [], "confirmed": 0}
+
+
+@frappe.whitelist()
+def save_delivery(plan=None, week_iso=None, units=None, supplier=None, note=None,
+                  row=None, variety=None, farm=None):
+	"""Add or change a delivery typed in against a week."""
+	_guard()
+	from upande_summer_flowers.summer_flowers import supply_cycles
+
+	name = resolve_plan(variety, farm, plan)
+	return supply_cycles.save_delivery(name, week_iso, units, supplier=supplier,
+	                                   note=note, row=row)
+
+
+@frappe.whitelist()
+def delete_delivery(plan=None, row=None, variety=None, farm=None):
+	"""Take a typed-in delivery off the plan."""
+	_guard()
+	from upande_summer_flowers.summer_flowers import supply_cycles
+
+	return supply_cycles.delete_delivery(resolve_plan(variety, farm, plan), row)

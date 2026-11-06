@@ -109,6 +109,8 @@
   "supply_note",
   "supply_rows_section",
   "plan_supply",
+  "plan_deliveries_section",
+  "plan_deliveries",
   "blocks_tab",
   "blocks_section",
   "plan_blocks"
@@ -775,6 +777,18 @@
    "fieldtype": "Table",
    "label": "Suppliers And Cycles",
    "options": "Summer Flower Plan Supply"
+  },
+  {
+   "description": "A delivery typed in against a week: an extra drop, or one the supplier has promised outside their cycles. The plan counts it before it buys anything for that week.",
+   "fieldname": "plan_deliveries_section",
+   "fieldtype": "Section Break",
+   "label": "Deliveries Added By Hand"
+  },
+  {
+   "fieldname": "plan_deliveries",
+   "fieldtype": "Table",
+   "label": "Deliveries",
+   "options": "Summer Flower Plan Delivery"
   },
   {
    "fieldname": "blocks_tab",

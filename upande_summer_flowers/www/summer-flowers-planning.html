@@ -8443,9 +8443,12 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
       `<option value=""${p.supplier ? "" : " selected"}>— pick a supplier —</option>` +
       all.map((x) => `<option${x === p.supplier ? " selected" : ""}>${esc(x)}</option>`
         ).join("") + `</select>` +
-      `<span class="pill" title="The season split evenly between the houses ` +
-      `chosen. The quantities come from the demand, not from a number typed ` +
-      `here.">${(Number(p.share_pct) || 0).toFixed(1)}% of the season</span>` +
+      `<label class="pl-inline" title="The share of the season promised to ` +
+      `this house. Leave them all at zero to split it evenly.">Share %` +
+      `<input class="sup-share" type="number" min="0" max="100" step="0.5" ` +
+      `style="width:5.5em" value="${Number(p.share_pct) || 0}"></label>` +
+      `<span class="pl-dim">${p.units ? num(p.units) + " " +
+        esc(((S.supOut || {}).form || "units").toLowerCase()) : ""}</span>` +
       `<label class="pl-inline">Lead wks<input class="sup-lead" type="number" min="0" ` +
       `step="1" style="width:5em" value="${Number(p.lead_weeks) || 0}"></label>` +
       `<button type="button" class="pl-btn sup-cycle-add">+ cycle</button>` +
@@ -8453,7 +8456,9 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
       `</div>` +
       `<table class="pl-t" style="margin-top:6px;max-width:460px"><thead><tr>` +
       `<th>Cycle</th><th class="r">Weeks after it arrives</th>` +
-      `<th class="r">Share of the order %</th><th></th></tr></thead><tbody>` +
+      `<th class="r">Share of the order %</th>` +
+      `<th class="r">${esc((S.supOut && S.supOut.form) || "Units")}</th>` +
+      `<th class="r">Plants</th><th></th></tr></thead><tbody>` +
       (p.cycles || []).map((c, j) =>
         `<tr data-j="${j}"><td>${j + 1}</td>` +
         `<td class="r"><input class="sup-after" type="number" min="0" step="1" ` +
@@ -8461,6 +8466,8 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
         `<td class="r"><input class="sup-cshare" type="number" min="0" max="100" ` +
         `step="0.1" style="width:6em;text-align:right" value="${
           Number(c.share_pct) || 0}"></td>` +
+        `<td class="r">${c.units ? num(c.units) : "—"}</td>` +
+        `<td class="r">${c.plants ? num(c.plants) : "—"}</td>` +
         `<td><a class="sup-cdel" style="cursor:pointer" title="Remove">✕</a></td></tr>`
       ).join("") + `</tbody></table></div>`).join("") ||
       `<p class="pl-empty">No supplier chosen yet.</p>`;
@@ -8469,7 +8476,7 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
   function readSupPick() {
     S.sup = [...document.querySelectorAll(".pl-sup-row")].map((row) => ({
       supplier: (row.querySelector(".sup-name") || {}).value || "",
-      share_pct: 0,
+      share_pct: Number((row.querySelector(".sup-share") || {}).value) || 0,
       lead_weeks: Number((row.querySelector(".sup-lead") || {}).value) || 0,
       cycles: [...row.querySelectorAll("tbody tr")].map((tr, j) => ({
         lift_no: j + 1,
@@ -8490,7 +8497,20 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
       return Promise.resolve();
     }
     return call("plan_supply", { plan: S.plan, picks: JSON.stringify(picks) })
-      .then((r) => { S.supOut = r; renderSupply(); })
+      .then((r) => {
+        S.supOut = r;
+        // The answer carries each cycle's quantity, so the chooser is redrawn
+        // from it: a share is only meaningful beside the plants it brings.
+        if ((r.suppliers || []).length) {
+          S.sup = r.suppliers.map((x) => ({
+            supplier: x.supplier, share_pct: x.share_pct,
+            lead_weeks: x.lead_weeks, units: x.units, plants: x.plants,
+            cycles: x.cycles.map((c) => ({ ...c })),
+          }));
+          renderSupPick();
+        }
+        renderSupply();
+      })
       .catch((e) => {
         $("sup-body").innerHTML = `<p class="pl-empty">${esc(e.message)}</p>`;
       });
@@ -8525,6 +8545,7 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
       `<th class="r">Waited</th><th class="r">${esc(r.form)} to buy</th>` +
       `<th>Ordered</th><th class="r">Lands this week</th>` +
       `<th class="r">Short</th><th class="r">Left on the bench</th>` +
+      `<th>Added by hand</th>` +
       `</tr></thead><tbody>` +
       r.weeks.map((w) => {
         const orders = (w.buys || []).map((b) =>
@@ -8541,14 +8562,25 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
           `<td class="r">${num(w.lands_now)}</td>` +
           `<td class="r"${w.short ? ' style="color:var(--critical)"' : ""}>${
             w.short ? num(w.short) : "—"}</td>` +
-          `<td class="r">${w.carry_out ? num(w.carry_out) : "—"}</td></tr>`;
+          `<td class="r">${w.carry_out ? num(w.carry_out) : "—"}</td>` +
+          `<td class="bf-meta">${
+            (r.deliveries || []).filter((d) => d.week_iso === w.week_iso)
+              .map((d) => `${num(d.units)}${d.supplier
+                ? " " + esc(d.supplier) : ""} ` +
+                `<a class="sup-dedit" data-row="${esc(d.name)}" ` +
+                `data-week="${esc(d.week_iso)}" data-units="${d.units}" ` +
+                `style="cursor:pointer" title="Change">✎</a> ` +
+                `<a class="sup-ddel" data-row="${esc(d.name)}" ` +
+                `style="cursor:pointer" title="Remove">✕</a>`).join("<br>") ||
+            `<a class="sup-dadd" data-week="${esc(w.week_iso)}" ` +
+            `style="cursor:pointer">+ a delivery</a>`}</td></tr>`;
       }).join("") +
       `</tbody><tfoot><tr><th>Season</th>` +
       `<th class="r">${num(r.plants_wanted)}</th><th></th><th></th>` +
       `<th class="r">${num(r.units_bought)}</th><th></th><th></th>` +
       `<th class="r">${r.plants_short ? num(r.plants_short) : "—"}</th>` +
       `<th class="r">${r.plants_stranded ? num(r.plants_stranded) : "—"}</th>` +
-      `</tr></tfoot></table>` +
+      `<th></th></tr></tfoot></table>` +
       `<p class="pl-note">Each week buys only what the plants already in hand ` +
       `do not cover: a later cycle from an earlier order is this week's stock.</p>` +
       calendarHtml(r) +
@@ -9696,6 +9728,36 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
                             weeks_after: (Number(last && last.weeks_after) || 0) + 1,
                             share_pct: 0 });
             renderSupPick();
+            return;
+          }
+          const dAdd = e.target.closest(".sup-dadd");
+          const dEdit = e.target.closest(".sup-dedit");
+          const dDel = e.target.closest(".sup-ddel");
+          if (dAdd || dEdit) {
+            const wk = (dAdd || dEdit).dataset.week;
+            const row = dEdit ? dEdit.dataset.row : null;
+            frappe.prompt([
+              { fieldname: "week_iso", label: "Week", fieldtype: "Data",
+                default: wk, reqd: 1,
+                description: "The week it lands, as 2026-W12." },
+              { fieldname: "units", label: "Units", fieldtype: "Int", reqd: 1,
+                default: dEdit ? Number(dEdit.dataset.units) : null },
+              { fieldname: "supplier", label: "From", fieldtype: "Link",
+                options: "Supplier" },
+              { fieldname: "note", label: "Note", fieldtype: "Small Text" },
+            ], (vals) => {
+              call("save_delivery", { plan: S.plan, row: row, ...vals })
+                .then(() => { runSupply(); toast("Delivery saved."); })
+                .catch((err) => toast(esc(err.message), true));
+            }, dEdit ? "Change this delivery" : "Add a delivery",
+               dEdit ? "Save" : "Add");
+            return;
+          }
+          if (dDel) {
+            frappe.confirm(__("Remove this delivery?"), () =>
+              call("delete_delivery", { plan: S.plan, row: dDel.dataset.row })
+                .then(() => { runSupply(); toast("Delivery removed."); })
+                .catch((err) => toast(esc(err.message), true)));
             return;
           }
           if (e.target.classList.contains("sup-cdel")) {
