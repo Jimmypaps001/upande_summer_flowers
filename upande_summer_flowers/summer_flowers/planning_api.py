@@ -4014,3 +4014,47 @@ def delete_delivery(plan=None, row=None, variety=None, farm=None):
 	from upande_summer_flowers.summer_flowers import supply_cycles
 
 	return supply_cycles.delete_delivery(resolve_plan(variety, farm, plan), row)
+
+
+@frappe.whitelist()
+def pull_procurement(plan=None, variety=None, farm=None):
+	"""Bring what the sellers and raisers agreed to onto the plan."""
+	_guard()
+	from upande_summer_flowers.summer_flowers import supply_cycles
+
+	name = resolve_plan(variety, farm, plan)
+	return supply_cycles.pull_procurement(name) if name else {"plan": None}
+
+
+@frappe.whitelist()
+def agreed_record(plan=None, variety=None, farm=None):
+	"""What the plan has on file: the schedule confirmed and who raises it."""
+	_guard()
+	name = resolve_plan(variety, farm, plan)
+	if not name:
+		return {"plan": None, "orders": [], "raisers": []}
+	d = frappe.get_doc("Summer Flower Production Plan", name)
+	return {
+		"plan": d.name, "docstatus": d.docstatus, "status": d.status,
+		"procurement_plan": d.get("procurement_plan"),
+		"procurement_status": d.get("procurement_status"),
+		"units_asked": cint(d.get("procurement_units_asked")),
+		"units_confirmed": cint(d.get("procurement_units_confirmed")),
+		"short": cint(d.get("procurement_short_units")),
+		"plants": cint(d.get("propagation_plants")),
+		"outside_cost": flt(d.get("propagation_cost")),
+		"supply_confirmed": cint(d.get("supply_confirmed")),
+		"supply_note": d.get("supply_note"),
+		"orders": [{"week_iso": o.week_iso, "supplier": o.supplier,
+		            "stage": o.stage, "asked": cint(o.asked_units),
+		            "confirmed": cint(o.confirmed_units),
+		            "delivers": o.delivery_week, "state": o.state}
+		           for o in (d.get("plan_orders") or [])],
+		"raisers": [{"type": r.alloc_type, "party": r.party, "raises": r.raises,
+		             "share_pct": flt(r.share_pct), "plants": cint(r.plants),
+		             "rate": flt(r.rate_per_plant), "amount": flt(r.amount),
+		             "start_by": str(r.start_by or "") or None,
+		             "propagation_plan": r.propagation_plan,
+		             "purchase_order": r.purchase_order}
+		            for r in (d.get("plan_raisers") or [])],
+	}

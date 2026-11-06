@@ -345,15 +345,18 @@
         <div class="pl-tiles pl-tiles-sm" id="pc-tiles"></div>
         <div id="pc-body" class="pl-scroll"></div>
       </div>
+
+      <!-- The record, not the decision. Who sells it and who raises it is
+           settled on the planning board; this is what came back from it. -->
       <div class="pl-card">
         <div class="pl-card-head">
-          <div><h2>{{ _("Procurement allocation") }}</h2>
-               <p class="pl-note">{{ _("Who sells each way in and what share of it, what they have confirmed they will send, and what that commits us to plant. Our own propagation units raise it free; an outside propagator delivers plants and charges per plant, and gets a purchase order when the procurement plan is approved.") }}</p></div>
+          <div><h2>{{ _("What was agreed") }}</h2>
+               <p class="pl-note">{{ _("Kept on the plan itself: the schedule the sellers confirmed and who raises what arrives. Choosing them is done on the planning board, before the plan is approved.") }}</p></div>
+          <span class="pl-actions">
+            <button type="button" class="pl-btn" data-pc="pull">{{ _("Refresh from procurement") }}</button>
+          </span>
         </div>
-        <div id="pc-buying" class="pl-scroll"></div>
-        <div id="pc-impact" class="pl-scroll"></div>
-        <div id="pc-deliveries" class="pl-scroll"></div>
-        <div id="pc-alloc" class="pl-scroll"></div>
+        <div id="pc-record" class="pl-scroll"></div>
       </div>
     </section>
 
@@ -648,6 +651,22 @@
         <div id="sup-pick"></div>
         <div class="pl-tiles pl-tiles-sm" id="sup-tiles"></div>
         <div id="sup-body" class="pl-scroll"></div>
+      </div>
+
+      <!-- Procurement allocation, on the planning side: who sells each way in,
+           what they have confirmed, and who raises what arrives. It was on the
+           procurement tab, a screen people reached after the deciding was
+           done; the deciding happens here, so it belongs here. What the
+           procurement tab shows now is the record of it. -->
+      <div class="pl-card">
+        <div class="pl-card-head">
+          <div><h2>{{ _("Procurement allocation") }}</h2>
+               <p class="pl-note">{{ _("Who sells each way in and what share of it, what they have confirmed they will send, and what that commits us to plant. Our own propagation units raise it free; an outside propagator delivers plants and charges per plant, and gets a purchase order when the procurement plan is approved.") }}</p></div>
+        </div>
+        <div id="pc-buying" class="pl-scroll"></div>
+        <div id="pc-impact" class="pl-scroll"></div>
+        <div id="pc-deliveries" class="pl-scroll"></div>
+        <div id="pc-alloc" class="pl-scroll"></div>
       </div>
 
       <!-- Last, because it is the answer to everything above it: what each
@@ -8693,6 +8712,69 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
       <td><a class="pl-alloc-del" style="cursor:pointer" title="Remove">✕</a></td></tr>`;
   }
 
+  // What the plan has on file about its own buying and raising. Read only:
+  // the deciding is on the planning board, and a second place to do it is how
+  // two screens come to disagree.
+  function loadAgreed() {
+    const box = $("pc-record");
+    if (!box || !S.plan) return Promise.resolve();
+    return call("agreed_record", { plan: S.plan }).then((r) => {
+      S.agreed = r;
+      if (!r || (!r.orders.length && !r.raisers.length)) {
+        box.innerHTML = `<p class="pl-empty">Nothing agreed yet. Choose the ` +
+          `suppliers and who raises the plants on the planning board, then ` +
+          `refresh.</p>`;
+        return;
+      }
+      const short = r.short;
+      box.innerHTML =
+        `<p class="pl-note">${r.procurement_plan
+          ? `<a href="/app/summer-flower-procurement-plan/${
+              encodeURIComponent(r.procurement_plan)}">${esc(r.procurement_plan)}</a> · `
+          : ""}${esc(r.procurement_status || "")}${
+          r.supply_confirmed ? " · supply agreed" : " · supply not agreed"}. ` +
+        `<b>${num(r.units_confirmed)}</b> of ${num(r.units_asked)} confirmed` +
+        (short ? ` — <span style="color:var(--critical)">${num(short)} short` +
+                 `</span>.` : `, the whole of it.`) + `</p>` +
+        (r.orders.length
+          ? `<table class="pl-t"><thead><tr><th>Wanted</th><th>From</th>` +
+            `<th class="r">We asked</th><th class="r">They confirmed</th>` +
+            `<th>Delivers</th><th>State</th></tr></thead><tbody>` +
+            r.orders.map((o) =>
+              `<tr><td>${esc(o.week_iso || "")}</td>` +
+              `<td>${esc(o.supplier || "—")}</td>` +
+              `<td class="r">${num(o.asked)}</td>` +
+              `<td class="r">${num(o.confirmed)}</td>` +
+              `<td>${esc(o.delivers || "")}</td>` +
+              `<td${/short/.test(o.state || "")
+                ? ' style="color:var(--critical)"' : ""}>${
+                esc(o.state || "")}</td></tr>`).join("") +
+            `</tbody></table>` : "") +
+        (r.raisers.length
+          ? `<div class="text-muted small" style="text-transform:uppercase;` +
+            `letter-spacing:.05em;margin:14px 0 4px">Who raises it</div>` +
+            `<table class="pl-t"><thead><tr><th>Type</th><th>Who</th>` +
+            `<th class="r">Share %</th><th class="r">Plants</th>` +
+            `<th class="r">Charge</th><th>Raised from</th>` +
+            `</tr></thead><tbody>` +
+            r.raisers.map((x) =>
+              `<tr><td>${esc(x.type || "")}</td><td>${esc(x.party || "")}</td>` +
+              `<td class="r">${num(x.share_pct)}</td>` +
+              `<td class="r">${num(x.plants)}</td>` +
+              `<td class="r">${x.amount ? num(Math.round(x.amount)) : "free"}</td>` +
+              `<td class="bf-meta">${esc(x.start_by || "")}` +
+              (x.propagation_plan
+                ? ` <a href="/app/summer-flower-propagation-plan/${
+                    encodeURIComponent(x.propagation_plan)}">${
+                    esc(x.propagation_plan)}</a>` : "") +
+              (x.purchase_order
+                ? ` <a href="/app/purchase-order/${
+                    encodeURIComponent(x.purchase_order)}">${
+                    esc(x.purchase_order)}</a>` : "") +
+              `</td></tr>`).join("") + `</tbody></table>` : "");
+    }).catch((e) => { box.innerHTML = `<p class="pl-empty">${esc(e.message)}</p>`; });
+  }
+
   function loadProcurement() {
     const a = { variety: S.variety, farm: S.farm, plan: S.plan || null };
     return call("procurement_detail", a)
@@ -9273,11 +9355,17 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
       // what has to be bought. It is rebuilt on a scope change like the rest.
       if (S.scopeChanged) { S.sup = null; S.supOut = null; }
       loadSupPick().catch(bad);
+      // The allocation cards live here now, so the tab that shows them loads
+      // them. The procurement tab keeps its own copy of the same call.
+      loadProcurement().catch(bad);
     }
     if (name === "plan") {
       Promise.all([loadChain(), loadTc(), loadWhatIf()]).then(renderPlanTab).catch(bad);
     }
-    if (name === "procurement") loadProcurement().catch(bad);
+    if (name === "procurement") {
+      loadProcurement().catch(bad);
+      loadAgreed().catch(bad);
+    }
     if (name === "propagation") loadPropagation().catch(bad);
     if (name === "harvest") loadCycles().catch(bad);
     if (name === "review") {
@@ -9692,6 +9780,24 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
         S.week = e.target.value; renderAllPanes();
       });
       $("bf-block").addEventListener("change", (e) => { S.bfBlock = e.target.value; renderBlocks(); });
+      const rec = $("pc-record");
+      if (rec && rec.closest(".pl-card")) {
+        rec.closest(".pl-card").addEventListener("click", (e) => {
+          const b = e.target.closest('[data-pc="pull"]');
+          if (!b) return;
+          b.disabled = true;
+          call("pull_procurement", { plan: S.plan })
+            .then((r) => {
+              toast(`Brought back ${r.orders} order line${
+                r.orders === 1 ? "" : "s"} and ${r.raisers} raiser${
+                r.raisers === 1 ? "" : "s"}.`);
+              return loadAgreed();
+            })
+            .catch((err) => toast(esc(err.message), true))
+            .then(() => { b.disabled = false; });
+        });
+      }
+
       $("po-flow").addEventListener("click", (e) => {
         const st = e.target.closest("[data-po]");
         if (st) setTab(st.dataset.po);

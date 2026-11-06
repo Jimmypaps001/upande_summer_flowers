@@ -87,6 +87,25 @@
   "amended_from",
   "sf_pending_selling",
   "sf_pending_raising",
+  "procurement_tab",
+  "procurement_head_section",
+  "procurement_plan",
+  "procurement_status",
+  "cb_procurement",
+  "procurement_units_asked",
+  "procurement_units_confirmed",
+  "procurement_short_units",
+  "procurement_rows_section",
+  "plan_orders",
+  "propagation_tab",
+  "propagation_head_section",
+  "propagation_plants",
+  "propagation_cost",
+  "cb_propagation",
+  "propagation_units",
+  "propagation_outside",
+  "propagation_rows_section",
+  "plan_raisers",
   "weeks_tab",
   "sheet_section",
   "matrix_json",
@@ -649,6 +668,111 @@
    "hidden": 1,
    "label": "Raisers Chosen Before Saving",
    "read_only": 1
+  },
+  {
+   "fieldname": "procurement_tab",
+   "fieldtype": "Tab Break",
+   "label": "Procurement"
+  },
+  {
+   "description": "Filled from the procurement plan this one raised. It is a record of what the sellers agreed to, not a place to decide it: that is done on the planning board before the plan is approved.",
+   "fieldname": "procurement_head_section",
+   "fieldtype": "Section Break",
+   "label": "What was ordered, and what came back"
+  },
+  {
+   "fieldname": "procurement_plan",
+   "fieldtype": "Link",
+   "label": "Procurement Plan",
+   "options": "Summer Flower Procurement Plan",
+   "read_only": 1
+  },
+  {
+   "fieldname": "procurement_status",
+   "fieldtype": "Data",
+   "label": "Status",
+   "read_only": 1
+  },
+  {
+   "fieldname": "cb_procurement",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "procurement_units_asked",
+   "fieldtype": "Int",
+   "label": "Units Asked For",
+   "read_only": 1
+  },
+  {
+   "fieldname": "procurement_units_confirmed",
+   "fieldtype": "Int",
+   "label": "Units Confirmed",
+   "read_only": 1
+  },
+  {
+   "fieldname": "procurement_short_units",
+   "fieldtype": "Int",
+   "label": "Short",
+   "read_only": 1
+  },
+  {
+   "fieldname": "procurement_rows_section",
+   "fieldtype": "Section Break"
+  },
+  {
+   "fieldname": "plan_orders",
+   "fieldtype": "Table",
+   "label": "Confirmed Schedule",
+   "options": "Summer Flower Plan Order"
+  },
+  {
+   "fieldname": "propagation_tab",
+   "fieldtype": "Tab Break",
+   "label": "Propagation"
+  },
+  {
+   "description": "Our own propagation units raise what the plan buys; an outside propagator delivers plants and charges per plant. Agreed on the planning board and kept here.",
+   "fieldname": "propagation_head_section",
+   "fieldtype": "Section Break",
+   "label": "Who raises the plants"
+  },
+  {
+   "fieldname": "propagation_plants",
+   "fieldtype": "Int",
+   "label": "Plants Allocated",
+   "read_only": 1
+  },
+  {
+   "fieldname": "propagation_cost",
+   "fieldtype": "Currency",
+   "label": "Outside Propagation Cost",
+   "read_only": 1
+  },
+  {
+   "fieldname": "cb_propagation",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "propagation_units",
+   "fieldtype": "Int",
+   "label": "Units Raising It",
+   "read_only": 1
+  },
+  {
+   "fieldname": "propagation_outside",
+   "fieldtype": "Int",
+   "label": "Outside Propagators",
+   "read_only": 1
+  },
+  {
+   "fieldname": "propagation_rows_section",
+   "fieldtype": "Section Break"
+  },
+  {
+   "fieldname": "plan_raisers",
+   "fieldtype": "Table",
+   "label": "Raisers",
+   "options": "Summer Flower Plan Raiser"
   },
   {
    "fieldname": "weeks_tab",

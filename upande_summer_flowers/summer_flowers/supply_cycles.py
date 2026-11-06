@@ -578,3 +578,107 @@ def delete_delivery(plan, row):
 	doc.supply_confirmed_by = None
 	doc.save()
 	return saved_supply(doc.name)
+
+
+@frappe.whitelist()
+def pull_procurement(plan):
+	"""Copy what the sellers and raisers agreed to onto the plan itself.
+
+	The plan is the document people keep. Leaving the agreement only on the
+	procurement plan meant reading two records to know what a season was
+	actually built on, and the second one outlives nobody's memory of it."""
+	from upande_summer_flowers.summer_flowers.planning_api import _guard
+
+	_guard()
+	doc = frappe.get_doc("Summer Flower Production Plan", plan)
+	frappe.has_permission("Summer Flower Production Plan", "read", doc, throw=True)
+
+	proc = frappe.get_all(
+		"Summer Flower Procurement Plan",
+		filters={"production_plan": doc.name, "docstatus": ["<", 2]},
+		fields=["name", "status", "docstatus", "entry_stage"],
+		order_by="creation desc", limit=1)
+	proc = proc[0] if proc else None
+
+	orders, raisers = [], []
+	asked = confirmed = 0
+	plants = outside_cost = 0
+	units = outsiders = 0
+	if proc:
+		p = frappe.get_doc("Summer Flower Procurement Plan", proc.name)
+		for r in p.requirements:
+			want = cint(r.qty_to_order)
+			got = (cint(r.confirmed_qty) if cint(r.get("delivery_confirmed"))
+			       else want)
+			asked += want
+			confirmed += got
+			orders.append({
+				"week_iso": _iso(r.required_at_site_date),
+				"supplier": r.supplier or p.supplier,
+				"stage": r.entry_stage or p.entry_stage,
+				"asked_units": want, "confirmed_units": got,
+				"delivery_week": (r.confirmed_delivery_week
+				                  or _iso(r.expected_delivery_date)),
+				"state": (_("short {0}").format("{:,}".format(want - got))
+				          if got < want else _("as asked")),
+			})
+		for a in (p.get("propagation_allocation") or []):
+			out = a.alloc_type == "Outside Propagator"
+			plants += cint(a.plants)
+			units += 0 if out else 1
+			outsiders += 1 if out else 0
+			outside_cost += flt(a.amount) if out else 0
+			raisers.append({
+				"alloc_type": a.alloc_type, "party": a.party or a.supplier
+				or a.propagation_unit, "raises": a.raises,
+				"share_pct": flt(a.share_pct), "plants": cint(a.plants),
+				"rate_per_plant": flt(a.rate_per_plant), "amount": flt(a.amount),
+				"start_by": a.start_by, "plants_from": a.plants_from,
+				"plants_to": a.plants_to,
+				"propagation_plan": a.propagation_plan,
+				"purchase_order": a.purchase_order,
+			})
+
+	if doc.docstatus == 2:
+		frappe.throw(_("{0} is cancelled. Its revision carries the agreement."
+		               ).format(doc.name))
+
+	scalars = {
+		"procurement_plan": proc.name if proc else None,
+		"procurement_status": (proc.status if proc else _("nothing raised yet")),
+		"procurement_units_asked": asked,
+		"procurement_units_confirmed": confirmed,
+		"procurement_short_units": max(0, asked - confirmed),
+		"propagation_plants": plants,
+		"propagation_cost": outside_cost,
+		"propagation_units": units,
+		"propagation_outside": outsiders,
+	}
+	tables = {"plan_orders": ("Summer Flower Plan Order", orders),
+	          "plan_raisers": ("Summer Flower Plan Raiser", raisers)}
+	if doc.docstatus == 0:
+		for field, (_dt, rows) in tables.items():
+			doc.set(field, [])
+			for r in rows:
+				doc.append(field, r)
+		for k, v in scalars.items():
+			setattr(doc, k, v)
+		doc.flags.ignore_validate_update_after_submit = True
+		doc.save(ignore_permissions=True)
+	else:
+		# A submitted plan still has to be able to say what came back: these
+		# are a record of what happened, not an edit to what was approved.
+		for field, (child_dt, rows) in tables.items():
+			frappe.db.delete(child_dt, {"parent": doc.name, "parentfield": field})
+			for i, r in enumerate(rows):
+				child = frappe.get_doc(dict(
+					r, doctype=child_dt, parent=doc.name, parenttype=doc.doctype,
+					parentfield=field, idx=i + 1))
+				child.db_insert()
+		for k, v in scalars.items():
+			doc.db_set(k, v, update_modified=False)
+	return {"plan": doc.name, "procurement_plan": doc.procurement_plan,
+	        "orders": len(orders), "raisers": len(raisers),
+	        "units_asked": asked, "units_confirmed": confirmed,
+	        "short": doc.procurement_short_units,
+	        "plants": plants, "outside_cost": outside_cost}
