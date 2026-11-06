@@ -1,24 +1,113 @@
 {
- "actions": [], "allow_rename": 1, "creation": "2026-11-06 12:00:00.000000",
- "doctype": "DocType", "editable_grid": 1, "engine": "InnoDB",
- "field_order": ["alloc_type", "party", "raises", "share_pct", "cb_raiser", "plants", "rate_per_plant", "amount", "start_by", "plants_from", "plants_to", "propagation_plan", "purchase_order"],
- "fields": [
-  {"fieldname": "alloc_type", "fieldtype": "Data", "in_list_view": 1, "label": "Type"},
-  {"fieldname": "party", "fieldtype": "Data", "in_list_view": 1, "label": "Unit Or Propagator"},
-  {"fieldname": "raises", "fieldtype": "Data", "label": "Raises"},
-  {"fieldname": "share_pct", "fieldtype": "Percent", "in_list_view": 1, "label": "Share %"},
-  {"fieldname": "cb_raiser", "fieldtype": "Column Break"},
-  {"fieldname": "plants", "fieldtype": "Int", "in_list_view": 1, "label": "Plants"},
-  {"fieldname": "rate_per_plant", "fieldtype": "Currency", "label": "Charge Per Plant"},
-  {"fieldname": "amount", "fieldtype": "Currency", "label": "Amount"},
-  {"fieldname": "start_by", "fieldtype": "Date", "label": "Start By"},
-  {"fieldname": "plants_from", "fieldtype": "Date", "label": "Plants From"},
-  {"fieldname": "plants_to", "fieldtype": "Date", "label": "Plants To"},
-  {"fieldname": "propagation_plan", "fieldtype": "Link", "label": "Propagation Plan", "options": "Summer Flower Propagation Plan"},
-  {"fieldname": "purchase_order", "fieldtype": "Link", "label": "Purchase Order", "options": "Purchase Order"}
+ "actions": [],
+ "allow_rename": 1,
+ "creation": "2026-11-06 12:00:00.000000",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "alloc_type",
+  "party",
+  "raises",
+  "share_pct",
+  "cb_raiser",
+  "plants",
+  "rate_per_plant",
+  "amount",
+  "start_by",
+  "plants_from",
+  "plants_to",
+  "propagation_plan",
+  "purchase_order",
+  "lead_weeks"
  ],
- "istable": 1, "links": [], "modified": "2026-11-06 12:00:00.000000",
- "modified_by": "Administrator", "module": "Summer Flowers",
- "name": "Summer Flower Plan Raiser", "owner": "Administrator",
- "permissions": [], "sort_field": "idx", "sort_order": "ASC", "states": []
+ "fields": [
+  {
+   "fieldname": "alloc_type",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Type"
+  },
+  {
+   "fieldname": "party",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Unit Or Propagator"
+  },
+  {
+   "fieldname": "raises",
+   "fieldtype": "Data",
+   "label": "Raises"
+  },
+  {
+   "fieldname": "share_pct",
+   "fieldtype": "Percent",
+   "in_list_view": 1,
+   "label": "Share %"
+  },
+  {
+   "fieldname": "cb_raiser",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "plants",
+   "fieldtype": "Int",
+   "in_list_view": 1,
+   "label": "Plants"
+  },
+  {
+   "fieldname": "rate_per_plant",
+   "fieldtype": "Currency",
+   "label": "Charge Per Plant"
+  },
+  {
+   "fieldname": "amount",
+   "fieldtype": "Currency",
+   "label": "Amount"
+  },
+  {
+   "fieldname": "start_by",
+   "fieldtype": "Date",
+   "label": "Start By"
+  },
+  {
+   "fieldname": "plants_from",
+   "fieldtype": "Date",
+   "label": "Plants From"
+  },
+  {
+   "fieldname": "plants_to",
+   "fieldtype": "Date",
+   "label": "Plants To"
+  },
+  {
+   "fieldname": "propagation_plan",
+   "fieldtype": "Link",
+   "label": "Propagation Plan",
+   "options": "Summer Flower Propagation Plan"
+  },
+  {
+   "fieldname": "purchase_order",
+   "fieldtype": "Link",
+   "label": "Purchase Order",
+   "options": "Purchase Order"
+  },
+  {
+   "description": "Weeks of notice this raiser needs before the field wants the plants.",
+   "fieldname": "lead_weeks",
+   "fieldtype": "Int",
+   "label": "Lead Weeks"
+  }
+ ],
+ "istable": 1,
+ "links": [],
+ "modified": "2026-11-06 12:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Summer Flowers",
+ "name": "Summer Flower Plan Raiser",
+ "owner": "Administrator",
+ "permissions": [],
+ "sort_field": "idx",
+ "sort_order": "ASC",
+ "states": []
 }

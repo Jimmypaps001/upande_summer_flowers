@@ -4034,22 +4034,42 @@ def agreed_record(plan=None, variety=None, farm=None):
 	if not name:
 		return {"plan": None, "orders": [], "raisers": []}
 	d = frappe.get_doc("Summer Flower Production Plan", name)
+	# Read from the procurement plan itself. The plan used to keep a copy of
+	# the schedule, which was a second place for the same facts to go stale.
+	proc = frappe.get_all("Summer Flower Procurement Plan",
+	                      filters={"production_plan": d.name, "docstatus": ["<", 2]},
+	                      fields=["name", "status"], order_by="creation desc", limit=1)
+	proc = proc[0] if proc else None
+	orders, asked, confirmed = [], 0, 0
+	if proc:
+		p = frappe.get_doc("Summer Flower Procurement Plan", proc.name)
+		for r in p.requirements:
+			want = cint(r.qty_to_order)
+			got = (cint(r.confirmed_qty) if cint(r.get("delivery_confirmed"))
+			       else want)
+			asked += want
+			confirmed += got
+			orders.append({
+				"week_iso": _week_label(r.required_at_site_date),
+				"supplier": r.supplier or p.supplier,
+				"stage": r.entry_stage or p.entry_stage,
+				"asked": want, "confirmed": got,
+				"delivers": (r.confirmed_delivery_week
+				             or _week_label(r.expected_delivery_date)),
+				"state": (_("short {0}").format("{:,}".format(want - got))
+				          if got < want else _("as asked")),
+			})
 	return {
 		"plan": d.name, "docstatus": d.docstatus, "status": d.status,
-		"procurement_plan": d.get("procurement_plan"),
-		"procurement_status": d.get("procurement_status"),
-		"units_asked": cint(d.get("procurement_units_asked")),
-		"units_confirmed": cint(d.get("procurement_units_confirmed")),
-		"short": cint(d.get("procurement_short_units")),
+		"procurement_plan": proc.name if proc else None,
+		"procurement_status": proc.status if proc else _("nothing raised yet"),
+		"units_asked": asked, "units_confirmed": confirmed,
+		"short": max(0, asked - confirmed),
 		"plants": cint(d.get("propagation_plants")),
 		"outside_cost": flt(d.get("propagation_cost")),
 		"supply_confirmed": cint(d.get("supply_confirmed")),
 		"supply_note": d.get("supply_note"),
-		"orders": [{"week_iso": o.week_iso, "supplier": o.supplier,
-		            "stage": o.stage, "asked": cint(o.asked_units),
-		            "confirmed": cint(o.confirmed_units),
-		            "delivers": o.delivery_week, "state": o.state}
-		           for o in (d.get("plan_orders") or [])],
+		"orders": orders,
 		"raisers": [{"type": r.alloc_type, "party": r.party, "raises": r.raises,
 		             "share_pct": flt(r.share_pct), "plants": cint(r.plants),
 		             "rate": flt(r.rate_per_plant), "amount": flt(r.amount),
@@ -4057,14 +4077,16 @@ def agreed_record(plan=None, variety=None, farm=None):
 		             "propagation_plan": r.propagation_plan,
 		             "purchase_order": r.purchase_order}
 		            for r in (d.get("plan_raisers") or [])],
+		"arrivals": [{"week_iso": a.week_iso, "party": a.party,
+		              "type": a.alloc_type, "handed": cint(a.plants_handed),
+		              "standing": cint(a.plants_standing),
+		              "starts": a.start_week}
+		             for a in (d.get("plan_arrivals") or [])],
 	}
 
 
-@frappe.whitelist()
-def save_raisers(plan=None, rows=None, variety=None, farm=None):
-	"""Keep who raises the plants on the plan, draft or not."""
-	_guard()
-	from upande_summer_flowers.summer_flowers import supply_cycles
-
-	name = resolve_plan(variety, farm, plan)
-	return supply_cycles.save_raisers(name, rows)
+def _week_label(d):
+	if not d:
+		return None
+	y, w, _dow = getdate(d).isocalendar()
+	return "%s-W%02d" % (y, w)

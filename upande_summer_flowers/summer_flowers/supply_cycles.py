@@ -658,28 +658,13 @@ def pull_procurement(plan):
 		order_by="creation desc", limit=1)
 	proc = proc[0] if proc else None
 
-	orders, raisers = [], []
-	asked = confirmed = 0
+	# What was ordered is the Supply tab's business; what comes back here is
+	# who raises the plants and when they hand them over.
+	raisers = []
 	plants = outside_cost = 0
 	units = outsiders = 0
 	if proc:
 		p = frappe.get_doc("Summer Flower Procurement Plan", proc.name)
-		for r in p.requirements:
-			want = cint(r.qty_to_order)
-			got = (cint(r.confirmed_qty) if cint(r.get("delivery_confirmed"))
-			       else want)
-			asked += want
-			confirmed += got
-			orders.append({
-				"week_iso": _iso(r.required_at_site_date),
-				"supplier": r.supplier or p.supplier,
-				"stage": r.entry_stage or p.entry_stage,
-				"asked_units": want, "confirmed_units": got,
-				"delivery_week": (r.confirmed_delivery_week
-				                  or _iso(r.expected_delivery_date)),
-				"state": (_("short {0}").format("{:,}".format(want - got))
-				          if got < want else _("as asked")),
-			})
 		for a in (p.get("propagation_allocation") or []):
 			out = a.alloc_type == "Outside Propagator"
 			plants += cint(a.plants)
@@ -689,6 +674,7 @@ def pull_procurement(plan):
 			raisers.append({
 				"alloc_type": a.alloc_type, "party": a.party or a.supplier
 				or a.propagation_unit, "raises": a.raises,
+			"lead_weeks": cint(a.lead_weeks),
 				"share_pct": flt(a.share_pct), "plants": cint(a.plants),
 				"rate_per_plant": flt(a.rate_per_plant), "amount": flt(a.amount),
 				"start_by": a.start_by, "plants_from": a.plants_from,
@@ -701,13 +687,7 @@ def pull_procurement(plan):
 		frappe.throw(_("{0} is cancelled. Its revision carries the agreement."
 		               ).format(doc.name))
 
-	scalars = {
-		"procurement_plan": proc.name if proc else None,
-		"procurement_status": (proc.status if proc else _("nothing raised yet")),
-		"procurement_units_asked": asked,
-		"procurement_units_confirmed": confirmed,
-		"procurement_short_units": max(0, asked - confirmed),
-	}
+	scalars = {}
 	if raisers:
 		scalars.update({
 			"propagation_plants": plants,
@@ -715,14 +695,11 @@ def pull_procurement(plan):
 			"propagation_units": units,
 			"propagation_outside": outsiders,
 		})
-	tables = {"plan_orders": ("Summer Flower Plan Order", orders)}
 	# Only where a procurement plan actually says who raises it. A plan that
 	# has raised nothing yet still has the choice made on the planning board,
 	# and overwriting it with an empty list loses the only copy.
-	if raisers:
-		tables["plan_raisers"] = ("Summer Flower Plan Raiser", raisers)
-	else:
-		pass
+	tables = ({"plan_raisers": ("Summer Flower Plan Raiser", raisers)}
+	          if raisers else {})
 	if doc.docstatus == 0:
 		for field, (_dt, rows) in tables.items():
 			doc.set(field, [])
@@ -744,11 +721,28 @@ def pull_procurement(plan):
 				child.db_insert()
 		for k, v in scalars.items():
 			doc.db_set(k, v, update_modified=False)
-	return {"plan": doc.name, "procurement_plan": doc.procurement_plan,
-	        "orders": len(orders), "raisers": len(raisers),
-	        "units_asked": asked, "units_confirmed": confirmed,
-	        "short": doc.procurement_short_units,
+	doc.reload()
+	arrivals = _write_arrivals(doc)
+	if doc.docstatus == 0 and arrivals:
+		doc.flags.ignore_validate_update_after_submit = True
+		doc.save(ignore_permissions=True)
+	return {"plan": doc.name, "procurement_plan": proc.name if proc else None,
+	        "raisers": len(raisers), "arrivals": len(arrivals),
 	        "plants": plants, "outside_cost": outside_cost}
+
+
+def _lead_for_party(unit, supplier, plan_doc):
+	"""Weeks of notice: the supplier's own, else the protocol's own bench."""
+	if supplier:
+		return cint(frappe.db.get_value("Supplier", supplier,
+		                                "custom_sf_propagation_weeks"))
+	try:
+		v = frappe.get_cached_doc("Crop Protocol Version", plan_doc.protocol)
+		return cint(v.get("weeks_tc_to_first_cut_derived")) or cint(
+			v.get("sticking_to_planting_weeks"))
+	except Exception:
+		frappe.clear_last_message()
+		return 0
 
 
 @frappe.whitelist()
@@ -789,12 +783,17 @@ def save_raisers(plan, rows):
 			"rate_per_plant": rate, "amount": rate * mine if outside else 0,
 			"start_by": r.get("start_by"), "plants_from": r.get("plants_from"),
 			"plants_to": r.get("plants_to"),
+			# Kept so the arrivals can say when this raiser has to start, not
+			# only when the field wants what they bring.
+			"lead_weeks": cint(r.get("lead_weeks")) or _lead_for_party(
+				r.get("propagation_unit"), r.get("supplier"), doc),
 		})
 
 	if doc.docstatus == 0:
 		doc.set("plan_raisers", [])
 		for r in kept:
 			doc.append("plan_raisers", r)
+		_write_arrivals(doc)
 		doc.propagation_plants = plants
 		doc.propagation_cost = cost
 		doc.propagation_units = units
@@ -808,11 +807,86 @@ def save_raisers(plan, rows):
 			frappe.get_doc(dict(r, doctype="Summer Flower Plan Raiser",
 			                    parent=doc.name, parenttype=doc.doctype,
 			                    parentfield="plan_raisers", idx=i + 1)).db_insert()
+		doc.reload()
+		_write_arrivals(doc)
 		for k, v in (("propagation_plants", plants), ("propagation_cost", cost),
 		             ("propagation_units", units), ("propagation_outside", outsiders)):
 			doc.db_set(k, v, update_modified=False)
 	return {"plan": doc.name, "raisers": len(kept), "plants": plants,
 	        "cost": cost, "units": units, "outside": outsiders}
+
+
+def _arrival_rows(plan_doc):
+	"""Week by week, what each raiser hands to the field."""
+	from upande_summer_flowers.summer_flowers import planning_api as pa
+
+	name = frappe.db.get_value(
+		"Summer Flower Procurement Plan",
+		{"production_plan": plan_doc.name, "docstatus": ["<", 2]}, "name")
+	out = []
+	if name:
+		# The procurement plan knows the lead time each raiser works to, so
+		# its own schedule is used rather than a second one worked out here.
+		for r in (pa.allocation_plan(name) or {}).get("raisers") or []:
+			for w in r.get("weeks") or []:
+				out.append({
+					"week_iso": w["wanted_iso"], "week_start": w["wanted_date"],
+					"party": r["party"],
+					"alloc_type": (_("Outside Propagator") if r["outside"]
+					               else _("Own Unit")),
+					"plants_handed": cint(w["plants_handed"]),
+					"plants_standing": cint(w["plants_standing"]),
+					"units": cint(w["units"]), "start_week": w["start_iso"],
+				})
+	if out:
+		return sorted(out, key=lambda x: (x["week_start"], x["party"]))
+
+	# Nothing raised yet: split what the plantings want by the shares chosen
+	# on the plan, so a draft still says who brings what and when.
+	rows = [r for r in (plan_doc.get("plan_raisers") or []) if flt(r.share_pct)]
+	if not rows:
+		return []
+	for b in plan_doc.plan_blocks:
+		if not cint(b.is_new_planting) or not b.get("planting_date"):
+			continue
+		at = _monday(b.planting_date)
+		hand = cint(b.get("plants_to_plant")) or cint(b.plants)
+		for r in rows:
+			share = flt(r.share_pct) / 100.0
+			out.append({
+				"week_iso": _iso(at), "week_start": str(at), "party": r.party,
+				"alloc_type": r.alloc_type,
+				"plants_handed": int(round(hand * share)),
+				"plants_standing": int(round(cint(b.plants) * share)),
+				"units": 0,
+				"start_week": _iso(add_days(at, -7 * cint(r.get("lead_weeks")))),
+			})
+	merged = {}
+	for x in out:
+		k = (x["week_start"], x["party"])
+		if k in merged:
+			merged[k]["plants_handed"] += x["plants_handed"]
+			merged[k]["plants_standing"] += x["plants_standing"]
+		else:
+			merged[k] = x
+	return [merged[k] for k in sorted(merged)]
+
+
+def _write_arrivals(plan_doc):
+	"""Keep the weekly arrivals on the plan, draft or submitted."""
+	rows = _arrival_rows(plan_doc)
+	if plan_doc.docstatus == 0:
+		plan_doc.set("plan_arrivals", [])
+		for r in rows:
+			plan_doc.append("plan_arrivals", r)
+		return rows
+	frappe.db.delete("Summer Flower Plan Arrival",
+	                 {"parent": plan_doc.name, "parentfield": "plan_arrivals"})
+	for i, r in enumerate(rows):
+		frappe.get_doc(dict(r, doctype="Summer Flower Plan Arrival",
+		                    parent=plan_doc.name, parenttype=plan_doc.doctype,
+		                    parentfield="plan_arrivals", idx=i + 1)).db_insert()
+	return rows
 
 
 @frappe.whitelist()

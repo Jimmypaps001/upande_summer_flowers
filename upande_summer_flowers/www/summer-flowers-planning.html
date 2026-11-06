@@ -8836,7 +8836,24 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
                 ? ` <a href="/app/purchase-order/${
                     encodeURIComponent(x.purchase_order)}">${
                     esc(x.purchase_order)}</a>` : "") +
-              `</td></tr>`).join("") + `</tbody></table>` : "");
+              `</td></tr>`).join("") + `</tbody></table>` : "") +
+        ((r.arrivals || []).length
+          ? `<div class="text-muted small" style="text-transform:uppercase;` +
+            `letter-spacing:.05em;margin:14px 0 4px">When they bring the plants</div>` +
+            `<table class="pl-t"><thead><tr><th>Week</th><th>Who brings it</th>` +
+            `<th class="r">Plants handed over</th><th class="r">Still standing</th>` +
+            `<th>Starts</th></tr></thead><tbody>` +
+            r.arrivals.map((a) =>
+              `<tr><td>${esc(a.week_iso || "")}</td>` +
+              `<td>${esc(a.party || "")} <span class="pl-dim">${
+                esc(a.type || "")}</span></td>` +
+              `<td class="r">${num(a.handed)}</td>` +
+              `<td class="r">${num(a.standing)}</td>` +
+              `<td class="bf-meta">${esc(a.starts || "")}</td></tr>`).join("") +
+            `</tbody><tfoot><tr><th colspan="2">Season</th>` +
+            `<th class="r">${num(r.arrivals.reduce((x, a) => x + a.handed, 0))}</th>` +
+            `<th class="r">${num(r.arrivals.reduce((x, a) => x + a.standing, 0))}</th>` +
+            `<th></th></tr></tfoot></table>` : "");
     }).catch((e) => { box.innerHTML = `<p class="pl-empty">${esc(e.message)}</p>`; });
   }
 

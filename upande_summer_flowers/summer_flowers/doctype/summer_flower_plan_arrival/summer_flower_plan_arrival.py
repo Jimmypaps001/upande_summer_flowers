@@ -1,8 +1,8 @@
 # Copyright (c) 2026, James Kiruga and contributors
-"""A line the plan keeps of what was agreed downstream."""
+"""One week a raiser hands plants to the field."""
 
 from frappe.model.document import Document
 
 
-class SummerFlowerPlanOrder(Document):
+class SummerFlowerPlanArrival(Document):
 	pass
