@@ -5409,13 +5409,18 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
           `<tr style="background:var(--surface-2,#fafafa)">` +
           `<td class="text-muted">—</td>` +
           `<td class="text-muted">${esc(r.week_iso)}</td>` +
-          `<td colspan="${3 + (m.tc_first_loss_pct ? 1 : 0) +
-             (m.tc_first_loss_pct && m.tc_first_loss_pct < 100 ? 1 : 0) +
-             (m.tc_second_loss_pct && m.tc_second_loss_pct < 100 ? 1 : 0) +
-             (wayTwo(m) ? 1 : 0)}" class="text-muted">` +
+          // First cut, stems a week, peak week, the units column and every loss
+          // column between them: the label stands in for all of it. Counted
+          // rather than guessed, because a column was added and taken away
+          // since and the row fell out of line with its own header.
+          `<td colspan="${4 + (m.tc_first_loss_pct && m.tc_first_loss_pct < 100 ? 1 : 0) +
+             (m.tc_first_loss_pct ? 1 : 0) +
+             (m.tc_second_loss_pct && m.tc_second_loss_pct < 100 ? 1 : 0)
+           }" class="text-muted">` +
           `lift ${r.from.map((x) => x.lift).join("/")} of ${esc(w.week_iso)} · ${
             r.from.map((x) => `${x.share_pct}%`).join(" + ")}</td>` +
           `<td class="n">${num(r.plants)}</td>` +
+          (wayTwo(m) ? `<td class="n">—</td>` : "") +
           `<td class="n">${num(r.plants)}</td><td class="n">—</td></tr>`).join("");
         // Plants the split sends down a way that cannot be sized are plants
         // nobody can order, so they do not count as covered.
@@ -8444,32 +8449,48 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
       all.map((x) => `<option${x === p.supplier ? " selected" : ""}>${esc(x)}</option>`
         ).join("") + `</select>` +
       `<label class="pl-inline" title="The share of the season promised to ` +
-      `this house. Leave them all at zero to split it evenly.">Share %` +
-      `<input class="sup-share" type="number" min="0" max="100" step="0.5" ` +
-      `style="width:5.5em" value="${Number(p.share_pct) || 0}"></label>` +
-      `<span class="pl-dim">${p.units ? num(p.units) + " " +
-        esc(((S.supOut || {}).form || "units").toLowerCase()) : ""}</span>` +
-      `<label class="pl-inline">Lead wks<input class="sup-lead" type="number" min="0" ` +
-      `step="1" style="width:5em" value="${Number(p.lead_weeks) || 0}"></label>` +
-      `<button type="button" class="pl-btn sup-cycle-add">+ cycle</button>` +
+      `this house.">Share %<input class="sup-share" type="number" min="0" ` +
+      `max="100" step="0.5" style="width:5.5em" value="${
+        Number(p.share_pct) || 0}"></label>` +
+      `<label class="pl-inline" title="How many times a year this house ` +
+      `delivers. Each consignment carries the plantings between it and the ` +
+      `next one.">Deliveries a year<input class="sup-count" type="number" ` +
+      `min="1" max="52" step="1" style="width:5em" value="${
+        Number(p.cycle_count) || 4}"></label>` +
+      `<label class="pl-inline" title="Weeks of notice this house needs." ` +
+      `>Lead wks<input class="sup-lead" type="number" min="0" step="1" ` +
+      `style="width:5em" value="${Number(p.lead_weeks) || 0}"></label>` +
+      `<span class="pl-dim">${p.units
+        ? num(p.units) + " " + esc(((S.supOut || {}).form || "units").toLowerCase())
+          + (p.drops_in_plan ? ` in ${p.drops_in_plan} consignments` : "")
+        : ""}</span>` +
       `<button type="button" class="pl-btn sup-del" title="Remove">✕</button>` +
       `</div>` +
-      `<table class="pl-t" style="margin-top:6px;max-width:460px"><thead><tr>` +
-      `<th>Cycle</th><th class="r">Weeks after it arrives</th>` +
-      `<th class="r">Share of the order %</th>` +
-      `<th class="r">${esc((S.supOut && S.supOut.form) || "Units")}</th>` +
-      `<th class="r">Plants</th><th></th></tr></thead><tbody>` +
-      (p.cycles || []).map((c, j) =>
-        `<tr data-j="${j}"><td>${j + 1}</td>` +
-        `<td class="r"><input class="sup-after" type="number" min="0" step="1" ` +
-        `style="width:6em;text-align:right" value="${Number(c.weeks_after) || 0}"></td>` +
-        `<td class="r"><input class="sup-cshare" type="number" min="0" max="100" ` +
-        `step="0.1" style="width:6em;text-align:right" value="${
-          Number(c.share_pct) || 0}"></td>` +
-        `<td class="r">${c.units ? num(c.units) : "—"}</td>` +
-        `<td class="r">${c.plants ? num(c.plants) : "—"}</td>` +
-        `<td><a class="sup-cdel" style="cursor:pointer" title="Remove">✕</a></td></tr>`
-      ).join("") + `</tbody></table></div>`).join("") ||
+      ((p.cycles || []).length
+        ? `<table class="pl-t" style="margin-top:6px"><thead><tr>` +
+          `<th>Delivery</th><th>Lands</th><th>Covers plantings to</th>` +
+          `<th class="r">Share of the order %</th>` +
+          `<th class="r">${esc((S.supOut && S.supOut.form) || "Units")}</th>` +
+          `<th class="r">Plants</th><th>Order by</th></tr></thead><tbody>` +
+          p.cycles.map((c, j) =>
+            `<tr data-j="${j}"${c.units ? "" : ' class="text-muted"'}>` +
+            `<td>${j + 1}</td><td>${esc(c.lands_iso || "")}</td>` +
+            `<td class="bf-meta">${esc(c.covers_to || "")}${
+              c.planting_weeks ? ` <span class="pl-dim">${c.planting_weeks} wk</span>`
+                               : ` <span class="pl-dim">nothing</span>`}</td>` +
+            `<td class="r"><input class="sup-cshare" type="number" min="0" ` +
+            `max="100" step="0.1" style="width:6em;text-align:right" value="${
+              Number(c.share_pct) || 0}" title="Suggested ${
+              Number(c.suggested_pct) || 0}% from the plantings it covers"></td>` +
+            `<td class="r">${c.units ? num(c.units) : "—"}</td>` +
+            `<td class="r">${c.plants ? num(c.plants) : "—"}</td>` +
+            `<td class="bf-meta">${esc(c.order_iso || "")}${
+              c.order_passed ? ' <span style="color:var(--critical)">passed</span>'
+                             : ""}</td></tr>`).join("") +
+          `</tbody></table>`
+        : `<p class="pl-note" style="margin:6px 0 0">Recalculate to see what ` +
+          `each delivery carries.</p>`) +
+      `</div>`).join("") ||
       `<p class="pl-empty">No supplier chosen yet.</p>`;
   }
 
@@ -8478,9 +8499,11 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
       supplier: (row.querySelector(".sup-name") || {}).value || "",
       share_pct: Number((row.querySelector(".sup-share") || {}).value) || 0,
       lead_weeks: Number((row.querySelector(".sup-lead") || {}).value) || 0,
+      cycle_count: Number((row.querySelector(".sup-count") || {}).value) || 4,
+      // Only the shares are typed; when each delivery lands and what it
+      // covers is worked out from how often the house comes.
       cycles: [...row.querySelectorAll("tbody tr")].map((tr, j) => ({
         lift_no: j + 1,
-        weeks_after: Number((tr.querySelector(".sup-after") || {}).value) || 0,
         share_pct: Number((tr.querySelector(".sup-cshare") || {}).value) || 0,
       })),
     }));
@@ -8505,7 +8528,8 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
           S.sup = r.suppliers.map((x) => ({
             supplier: x.supplier, share_pct: x.share_pct,
             lead_weeks: x.lead_weeks, units: x.units, plants: x.plants,
-            cycles: x.cycles.map((c) => ({ ...c })),
+            cycle_count: x.cycle_count, drops_in_plan: x.drops_in_plan,
+            cycles: (x.cycles || []).map((c) => ({ ...c })),
           }));
           renderSupPick();
         }
@@ -8541,28 +8565,28 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
 
     $("sup-body").innerHTML =
       `<table class="pl-t"><thead><tr><th>Planting week</th>` +
-      `<th class="r">Plants wanted</th><th class="r">Already in hand</th>` +
-      `<th class="r">Waited</th><th class="r">${esc(r.form)} to buy</th>` +
-      `<th>Ordered</th><th class="r">Lands this week</th>` +
+      `<th class="r">Plants wanted</th><th class="r">Landed this week</th>` +
+      `<th>Who brought it</th><th class="r">Planted</th>` +
+      `<th class="r">Waited</th>` +
       `<th class="r">Short</th><th class="r">Left on the bench</th>` +
       `<th>Added by hand</th>` +
       `</tr></thead><tbody>` +
       r.weeks.map((w) => {
-        const orders = (w.buys || []).map((b) =>
-          `${esc(b.supplier)} ${num(b.units)}${
-            b.order_passed ? ' <span style="color:var(--critical)">passed</span>' : ""}` +
-          ` <span class="pl-dim">${esc(b.order_iso)}</span>`).join("<br>");
+        const orders = (w.drops || []).map((b) =>
+          `${esc(b.supplier)}${b.cycle ? " #" + b.cycle : ""} ${num(b.units)}` +
+          (b.order_iso ? ` <span class="pl-dim">ordered ${esc(b.order_iso)}</span>` : "") +
+          (b.order_passed ? ' <span style="color:var(--critical)">passed</span>' : "")
+          ).join("<br>");
         return `<tr><td>${esc(w.week_iso)}</td>` +
           `<td class="r">${num(w.wanted)}</td>` +
-          `<td class="r">${w.used_from_carry ? num(w.used_from_carry) : "—"}</td>` +
+          `<td class="r">${w.landed ? num(w.landed) : "—"}</td>` +
+          `<td class="bf-meta">${orders || "—"}</td>` +
+          `<td class="r">${num(w.planted)}</td>` +
           `<td class="r"${w.held_weeks > 3 ? ' style="color:var(--warning)"' : ""}>${
             w.held_weeks ? w.held_weeks + " wk" : "—"}</td>` +
-          `<td class="r">${w.bought ? num(w.bought) : "—"}</td>` +
-          `<td class="bf-meta">${orders || "—"}</td>` +
-          `<td class="r">${num(w.lands_now)}</td>` +
           `<td class="r"${w.short ? ' style="color:var(--critical)"' : ""}>${
             w.short ? num(w.short) : "—"}</td>` +
-          `<td class="r">${w.carry_out ? num(w.carry_out) : "—"}</td>` +
+          `<td class="r">${w.stock_left ? num(w.stock_left) : "—"}</td>` +
           `<td class="bf-meta">${
             (r.deliveries || []).filter((d) => d.week_iso === w.week_iso)
               .map((d) => `${num(d.units)}${d.supplier
@@ -8576,13 +8600,15 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
             `style="cursor:pointer">+ a delivery</a>`}</td></tr>`;
       }).join("") +
       `</tbody><tfoot><tr><th>Season</th>` +
-      `<th class="r">${num(r.plants_wanted)}</th><th></th><th></th>` +
-      `<th class="r">${num(r.units_bought)}</th><th></th><th></th>` +
+      `<th class="r">${num(r.plants_wanted)}</th>` +
+      `<th class="r">${num(r.units_bought)} ${esc((r.form || "").toLowerCase())}</th>` +
+      `<th></th><th></th><th></th>` +
       `<th class="r">${r.plants_short ? num(r.plants_short) : "—"}</th>` +
       `<th class="r">${r.plants_stranded ? num(r.plants_stranded) : "—"}</th>` +
       `<th></th></tr></tfoot></table>` +
-      `<p class="pl-note">Each week buys only what the plants already in hand ` +
-      `do not cover: a later cycle from an earlier order is this week's stock.</p>` +
+      `<p class="pl-note">A consignment carries the plantings between it and ` +
+      `the next one, so plants wait on the bench — which is the cost of being ` +
+      `delivered a few times a year rather than weekly.</p>` +
       calendarHtml(r) +
       (r.confirmed
         ? `<div class="pl-callout is-good" style="margin-top:8px">This supply ` +
@@ -9679,8 +9705,7 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
             if (b.dataset.sup === "add") {
               readSupPick();
               S.sup.push({ supplier: "", share_pct: 0, lead_weeks: 10,
-                           cycles: ((SUP_CHOICES || {}).default_cycles || [])
-                             .map((c) => ({ ...c })) });
+                           cycle_count: 4, cycles: [] });
               renderSupPick();
               return;
             }
@@ -9699,8 +9724,12 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
                 S.supSaved = { confirmed: r.confirmed, confirmed_on: null,
                                confirmed_by: null };
                 renderSupply();
+                // The material card above is drawn from what was agreed, so it
+                // is redrawn: saving a supply that changed nothing on screen is
+                // how somebody comes to doubt whether it saved at all.
+                loadTc().catch(() => {});
                 toast(agree ? "Supply agreed. The plan can be sent for approval."
-                            : "Supply saved.");
+                            : "Supply saved — the plan above now follows it.");
               }).catch((e) => toast(esc(e.message), true));
               if (!agree) { go(); return; }
               // Confirming is the gate on approval, so it is asked for.

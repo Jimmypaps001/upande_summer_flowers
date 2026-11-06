@@ -121,35 +121,28 @@ def _wanted_by_week(plan):
 	return dict(sorted(out.items()))
 
 
-def _normalised(picks, form):
-	"""The chosen suppliers, their share of the season and their cycles."""
+def _normalised(picks, form, wanted=None):
+	"""The chosen houses: their share of the season, and how often they bring it.
+
+	A cycle is a delivery: "four times a year" is four consignments, each
+	carrying the plants wanted between it and the next one. The share of each
+	is suggested from the demand in its window and can be overruled, which is
+	how a house that insists on equal drops is planned for."""
+	weeks = sorted(wanted or {})
 	out = []
 	for p in picks or []:
 		name = (p.get("supplier") or "").strip()
 		if not name:
 			continue
-		cycles = [c for c in (p.get("cycles") or [])
-		          if flt(c.get("share_pct")) > 0]
-		if not cycles:
-			cycles = stated_cycles(name, form) or [
-				{"lift_no": 1, "weeks_after": 0, "share_pct": 100.0}]
-		if not cycles:
-			cycles = default_cycles()
-		cycles = sorted(cycles, key=lambda c: cint(c.get("weeks_after")))
-		total = sum(flt(c["share_pct"]) for c in cycles) or 100.0
-		first = cint(cycles[0].get("weeks_after"))
+		typed = [c for c in (p.get("cycles") or []) if c]
+		count = cint(p.get("cycle_count")) or len(typed) or DEFAULT_CYCLE_COUNT
+		count = max(1, min(52, count))
 		out.append({
 			"supplier": name,
 			"share_pct": flt(p.get("share_pct")),
 			"lead_weeks": cint(p.get("lead_weeks")),
-			# Offsets from the FIRST cycle: the order is timed so that cycle one
-			# lands in the week the field wants the plants, and the rest follow.
-			"cycles": [{"lift_no": cint(c.get("lift_no")) or i + 1,
-			            "weeks_after": cint(c.get("weeks_after")),
-			            "offset": cint(c.get("weeks_after")) - first,
-			            "share": flt(c["share_pct"]) / total,
-			            "share_pct": round(flt(c["share_pct"]) * 100.0 / total, 4)}
-			           for i, c in enumerate(cycles)],
+			"cycle_count": count,
+			"typed": [flt(c.get("share_pct")) for c in typed][:count],
 		})
 	# The share is ours to give: how much of the season each house is promised.
 	# Typed shares are kept and only scaled to add to a hundred; where none are
@@ -161,6 +154,54 @@ def _normalised(picks, form):
 	elif out and abs(share - 100.0) > 0.01:
 		for x in out:
 			x["share_pct"] = round(flt(x["share_pct"]) * 100.0 / share, 4)
+
+	# When each delivery lands, and what the season wants between it and the
+	# next. A year has 52 weeks whatever the plan covers, so "four a year" is a
+	# delivery every thirteen weeks, counted from the first planting.
+	if not weeks:
+		return out
+	first, last = weeks[0], weeks[-1]
+	span_weeks = max(1, (getdate(last) - getdate(first)).days // 7 + 1)
+	for x in out:
+		# So many a YEAR, over however long the plan runs: a season of two
+		# years at four a year is eight consignments, not four.
+		step = max(1, int(round(52.0 / x["cycle_count"])))
+		drops, k = [], 0
+		while len(drops) < 52:
+			at = add_days(first, 7 * step * k)
+			if k and getdate(at) > getdate(last):
+				break
+			drops.append(at)
+			k += 1
+		x["drops_in_plan"] = len(drops)
+		x["weeks_between"] = step
+		cycles = []
+		for i, at in enumerate(drops):
+			nxt = drops[i + 1] if i + 1 < len(drops) else None
+			covers = [w for w in weeks
+			          if getdate(w) >= getdate(at)
+			          and (nxt is None or getdate(w) < getdate(nxt))]
+			plants = sum(cint(wanted[w]) for w in covers)
+			cycles.append({"lift_no": i + 1, "lands": at, "lands_iso": _iso(at),
+			               "covers_from": _iso(at),
+			               "covers_to": _iso(covers[-1]) if covers else _iso(at),
+			               "planting_weeks": len(covers),
+			               "suggested_plants": plants})
+		total_plants = sum(c["suggested_plants"] for c in cycles) or 1
+		for i, c in enumerate(cycles):
+			typed = x["typed"][i] if i < len(x["typed"]) else None
+			c["suggested_pct"] = round(c["suggested_plants"] * 100.0 / total_plants, 2)
+			c["share_pct"] = flt(typed) if typed not in (None, "") else c["suggested_pct"]
+		given = sum(flt(c["share_pct"]) for c in cycles)
+		if given <= 0:
+			for c in cycles:
+				c["share_pct"] = round(100.0 / len(cycles), 4)
+		elif abs(given - 100.0) > 0.01:
+			for c in cycles:
+				c["share_pct"] = round(flt(c["share_pct"]) * 100.0 / given, 4)
+		for c in cycles:
+			c["share"] = flt(c["share_pct"]) / 100.0
+		x["cycles"] = cycles
 	return out
 
 
@@ -182,13 +223,12 @@ def plan_supply(plan, picks=None, form=None):
 	entry = decided.get("entry_stage")
 	form = form or route_ways.LIFT_FORM.get(entry) or DEFAULT_FORM
 
-	chosen = _normalised(picks, form)
+	wanted = _wanted_by_week(doc)
+	chosen = _normalised(picks, form, wanted)
 	if not chosen:
 		return {"plan": plan, "form": form, "entry_stage": entry,
 		        "suppliers": [], "weeks": [],
 		        "reason": _("Choose at least one supplier to try.")}
-
-	wanted = _wanted_by_week(doc)
 	if not wanted:
 		return {"plan": plan, "form": form, "entry_stage": entry,
 		        "suppliers": chosen, "weeks": [],
@@ -196,110 +236,103 @@ def plan_supply(plan, picks=None, form=None):
 
 	# One unit bought becomes this many plants in the ground, losses and all.
 	per_unit = 1.0 / (flt(v.cuttings_per_plant_required) or 1.0)
+	need_total = sum(wanted.values())
 
-	# Walk the planting weeks forward. What an earlier consignment's later
-	# cycle lands is this week's stock, so it is spent before anything else is
-	# ordered -- which is the whole point of knowing a supplier's cycles.
-	# Deliveries somebody typed in against a week: an extra drop, or one a
-	# house promised outside its cycles. They land like any other consignment,
-	# and the week buys only what they leave uncovered.
-	landing = {}
+	# Every consignment this agreement puts on the ground: who brings it, when
+	# it lands, what it carries and when it has to be ordered.
+	landing, drops, orders = {}, [], []
+	by_hand = {}
 	for d in (doc.get("plan_deliveries") or []):
 		at = _monday(d.week_start or _week_monday(d.week_iso))
 		if not at:
 			continue
-		landing[at] = cint(landing.get(at, 0)) + int(round(cint(d.units) * per_unit))
-	by_hand = dict(landing)
-	rows, orders = [], []
-	carry = []          # [(week it landed, plants still in hand)]
-	short_total = bought_total = 0
+		got = int(round(cint(d.units) * per_unit))
+		by_hand[at] = cint(by_hand.get(at, 0)) + got
+		landing[at] = cint(landing.get(at, 0)) + got
+		drops.append({"supplier": d.supplier or _("by hand"), "by_hand": 1,
+		              "cycle": None, "lands_iso": _iso(at), "lands": str(at),
+		              "order_iso": None, "order_passed": 0,
+		              "units": cint(d.units), "plants": got,
+		              "covers_to": None, "planting_weeks": 0})
+
+	bought_total = 0
+	for s_ in chosen:
+		s_plants = need_total * flt(s_["share_pct"]) / 100.0
+		for c in s_.get("cycles") or []:
+			plants = int(round(s_plants * flt(c["share"])))
+			units = int(round(plants / (per_unit or 1.0))) if plants > 0 else 0
+			c["units"], c["plants"] = units, plants
+			at = _monday(c["lands"])
+			order_week = add_days(at, -7 * cint(s_["lead_weeks"]))
+			c["order_iso"] = _iso(order_week)
+			c["order_passed"] = 1 if getdate(order_week) < getdate(nowdate()) else 0
+			if plants <= 0:
+				continue
+			landing[at] = cint(landing.get(at, 0)) + plants
+			bought_total += units
+			c["order_iso"] = _iso(order_week)
+			c["order_passed"] = 1 if getdate(order_week) < getdate(nowdate()) else 0
+			drops.append({
+				"supplier": s_["supplier"], "by_hand": 0, "cycle": c["lift_no"],
+				"lands_iso": c["lands_iso"], "lands": str(at),
+				"order_iso": c["order_iso"], "order_passed": c["order_passed"],
+				"units": units, "plants": plants,
+				"covers_to": c.get("covers_to"),
+				"planting_weeks": cint(c.get("planting_weeks")),
+			})
+			orders.append({"supplier": s_["supplier"], "order_iso": c["order_iso"],
+			               "units": units})
+		s_["units"] = sum(cint(c.get("units")) for c in (s_.get("cycles") or []))
+		s_["plants"] = sum(cint(c.get("plants")) for c in (s_.get("cycles") or []))
+	drops.sort(key=lambda d: d["lands"])
+
+	# Walk the planting weeks forward, spending what has landed. A consignment
+	# carries the weeks between it and the next one, so plants wait on the
+	# bench -- which is the cost of being delivered four times a year.
+	rows = []
+	stock = []
+	short_total = 0
 	held_max = 0
 	for when, want in wanted.items():
-		# Everything that has landed by now is in hand, whether or not it landed
-		# in a week anybody was planting. Plants from an earlier consignment's
-		# later cycle wait on the bench until the next planting week wants them.
 		came = 0
 		for at in sorted([k for k in landing if getdate(k) <= getdate(when)]):
 			got = cint(landing.pop(at))
 			came += got
-			carry.append((at, got))
-		in_hand = sum(q for _at, q in carry)
+			stock.append((at, got))
+		in_hand = sum(q for _at, q in stock)
 		take = min(in_hand, want)
-		# Oldest first: material does not improve with keeping.
 		left, waited = take, 0
-		while left > 0 and carry:
-			at, q = carry[0]
+		while left > 0 and stock:
+			at, q = stock[0]
 			use = min(q, left)
 			waited = max(waited, (getdate(when) - getdate(at)).days // 7)
 			left -= use
 			if use >= q:
-				carry.pop(0)
+				stock.pop(0)
 			else:
-				carry[0] = (at, q - use)
+				stock[0] = (at, q - use)
 		held_max = max(held_max, waited)
-		need = max(0, want - take)
-		buy_here = []
-		for s_ in chosen:
-			part = int(round(need * flt(s_["share_pct"]) / 100.0))
-			if not part:
-				continue
-			first = s_["cycles"][0]["share"] or 1.0
-			# Enough that the FIRST cycle covers this week's share of the need.
-			units = int(round(part / first / (per_unit or 1.0)))
-			plants = units * per_unit
-			order_week = add_days(when, -7 * cint(s_["lead_weeks"]))
-			lands = []
-			for c in s_["cycles"]:
-				got = int(round(plants * c["share"]))
-				at = add_days(when, 7 * c["offset"])
-				lands.append({"lift": c["lift_no"], "share_pct": c["share_pct"],
-				              "week_iso": _iso(at), "plants": got,
-				              "after_the_week": 1 if c["offset"] else 0})
-				if c["offset"]:
-					landing[at] = cint(landing.get(at, 0)) + got
-			buy_here.append({
-				"supplier": s_["supplier"], "units": units,
-				"plants": int(round(plants)),
-				"order_iso": _iso(order_week), "order_date": str(order_week),
-				"order_passed": 1 if getdate(order_week) < getdate(nowdate()) else 0,
-				"lands": lands,
-			})
-			bought_total += units
-			orders.append({"supplier": s_["supplier"], "for_iso": _iso(when),
-			               "order_iso": _iso(order_week), "units": units})
-		got_now = take + sum(
-			l["plants"] for b in buy_here for l in b["lands"]
-			if not l["after_the_week"])
-		short = max(0, want - got_now)
+		short = max(0, want - take)
 		short_total += short
 		rows.append({
 			"week_iso": _iso(when), "week_start": str(when),
 			"wanted": want,
 			"by_hand": cint(by_hand.get(when, 0)),
-			"carried_in": came,
-			"used_from_carry": take,
+			"landed": came,
+			"planted": take,
 			"held_weeks": waited,
-			"bought": sum(b["units"] for b in buy_here),
-			"lands_now": got_now,
-			"planted": min(want, got_now),
 			"short": short,
-			# What is still on the bench after this week, and what is still to
-			# land from consignments already ordered.
-			"carry_out": sum(q for _at, q in carry),
-			"to_land": sum(cint(x) for x in landing.values()),
-			"buys": buy_here,
+			"stock_left": sum(q for _at, q in stock),
+			"drops": [d for d in drops if d["lands"] == str(when)],
 		})
 
 	# Anything that lands after the last planting week is bought and not used.
-	stranded = sum(cint(x) for x in landing.values()) + sum(q for _at, q in carry)
+	stranded = sum(cint(x) for x in landing.values()) + sum(q for _at, q in stock)
 	by_supplier = {}
 	for o in orders:
-		b = by_supplier.setdefault(o["supplier"], {"supplier": o["supplier"],
-		                                           "units": 0, "orders": 0,
-		                                           "first_order": None})
-		b["units"] += cint(o["units"])
+		b = by_supplier.setdefault(o["supplier"], {"orders": 0, "first_order": None})
 		b["orders"] += 1
-		if not b["first_order"] or o["order_iso"] < b["first_order"]:
+		if not b["first_order"] or (o["order_iso"] or "") < (b["first_order"] or "~"):
 			b["first_order"] = o["order_iso"]
 
 	wanted_total = sum(wanted.values())
@@ -307,6 +340,7 @@ def plan_supply(plan, picks=None, form=None):
 		"plan": plan, "form": form, "entry_stage": entry,
 		"suppliers": [dict(s, **by_supplier.get(s["supplier"], {})) for s in chosen],
 		"weeks": rows,
+		"drops": drops,
 		"plants_wanted": wanted_total,
 		"plants_short": short_total,
 		"units_bought": bought_total,
@@ -327,20 +361,6 @@ def plan_supply(plan, picks=None, form=None):
 		"confirmed": cint(doc.get("supply_confirmed")),
 		"docstatus": doc.docstatus,
 	}
-	# What each cycle brings over the season, so a share on screen is a number
-	# of plants rather than a percentage of something unstated.
-	bought_by = {}
-	for r in rows:
-		for b in r.get("buys") or []:
-			bought_by[b["supplier"]] = bought_by.get(b["supplier"], 0) + cint(b["units"])
-	for sup in out["suppliers"]:
-		total = cint(bought_by.get(sup["supplier"], 0))
-		sup["units"] = total
-		sup["plants"] = int(round(total * per_unit))
-		for c in sup["cycles"]:
-			c["units"] = int(round(total * c["share"]))
-			c["plants"] = int(round(total * c["share"] * per_unit))
-
 	# What it does to the plantings already on the plan, which is the question
 	# behind choosing a supplier at all.
 	out["calendar"] = _calendar_effect(doc, out)
@@ -374,11 +394,11 @@ def _calendar_effect(doc, result):
 			                                cint(b.first_harvest_week))
 			                  if cint(b.first_harvest_year) and cint(b.first_harvest_week)
 			                  else None),
-			"from_carry": cint(w.get("used_from_carry")),
+			"from_stock": cint(w.get("planted")) - cint(w.get("landed")),
 			"waited_weeks": cint(w.get("held_weeks")),
 			"ordered": [{"supplier": x["supplier"], "units": x["units"],
 			             "order_iso": x["order_iso"], "passed": x["order_passed"]}
-			            for x in (w.get("buys") or [])],
+			            for x in (w.get("drops") or [])],
 		})
 	return out
 
@@ -403,12 +423,8 @@ def save_supply(plan, picks, confirm=0):
 	if not out.get("weeks"):
 		frappe.throw(out.get("reason") or _("There is nothing to supply."))
 
-	units_by = {s["supplier"]: 0 for s in out["suppliers"]}
-	plants_by = dict(units_by)
-	for w in out["weeks"]:
-		for b in w.get("buys") or []:
-			units_by[b["supplier"]] = units_by.get(b["supplier"], 0) + cint(b["units"])
-			plants_by[b["supplier"]] = plants_by.get(b["supplier"], 0) + cint(b["plants"])
+	units_by = {s["supplier"]: cint(s.get("units")) for s in out["suppliers"]}
+	plants_by = {s["supplier"]: cint(s.get("plants")) for s in out["suppliers"]}
 
 	doc.set("plan_supply", [])
 	for s in out["suppliers"]:
@@ -418,7 +434,7 @@ def save_supply(plan, picks, confirm=0):
 				"share_pct": flt(s["share_pct"]),
 				"lead_weeks": cint(s["lead_weeks"]),
 				"cycle_no": cint(c["lift_no"]) or i + 1,
-				"weeks_after": cint(c["weeks_after"]),
+				"weeks_after": cint(c.get("weeks_after")),
 				"cycle_share_pct": flt(c["share_pct"]),
 				# Stated on the first cycle only: it is the supplier's figure,
 				# not the cycle's, and repeating it reads as four orders.
@@ -430,12 +446,16 @@ def save_supply(plan, picks, confirm=0):
 	doc.supply_stranded_plants = cint(out["plants_stranded"])
 	short = cint(out["plants_short"])
 	doc.supply_note = _(
-		"{0} supplying {1} plants, each over {2} cycles. {3} to buy; {4} of "
-		"{5} planting weeks covered{6}."
+		"{0} supplying {1} plants in {2}. {3} to buy; {4} of {5} planting "
+		"weeks covered{6}."
 	).format(
-		" and ".join(s["supplier"] for s in out["suppliers"]),
+		" and ".join(
+			"{} ({}% over {} deliveries a year)".format(
+				s["supplier"], round(flt(s["share_pct"])), cint(s["cycle_count"]))
+			for s in out["suppliers"]),
 		"{:,}".format(cint(out["plants_wanted"])),
-		max(len(s["cycles"]) for s in out["suppliers"]),
+		_("{0} consignments").format(
+			sum(cint(s.get("drops_in_plan")) for s in out["suppliers"])),
 		"{:,} {}".format(cint(out["units_bought"]), out["form"]),
 		out["weeks_total"] - out["weeks_short"], out["weeks_total"],
 		(_(", {0} plant short") if short == 1 else _(", {0} plants short")
