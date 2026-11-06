@@ -5878,7 +5878,13 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
         if (x.ok && x.result && x.result.name) toast(`${x.step}: ${x.result.name}`);
         if (!x.ok) toast(`${x.step}: ${x.error}`, true);
       });
-      return loadTc(null);
+      // The supply, the deliveries and the planting table are all sized from
+      // the quantity just agreed, so they are redrawn rather than left saying
+      // what the last one came to.
+      return loadTc(null)
+        .then(() => runSupply())
+        .then(() => loadProcurement())
+        .catch(() => {});
     }).catch((e) => toast(esc(e.message || String(e)), true));
   }
 
@@ -8595,6 +8601,14 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
       return;
     }
     const unit = (r.form || "units").toLowerCase();
+    const sized = r.units_agreed
+      ? `<p class="pl-note">Sized to the <b>${num(r.units_agreed)} ${esc(unit)}</b> ` +
+        `agreed on the material card above — it stands up ` +
+        `<b>${num(r.plants_from_agreed)}</b> plants against ${
+          num(r.plants_needed)} the plantings want${
+          r.plants_from_agreed < r.plants_needed
+            ? `, so the weeks below run out.` : `.`}</p>`
+      : "";
     $("sup-tiles").innerHTML = [
       { k: "Planting weeks met", v: `${r.weeks_total - r.weeks_short} / ${r.weeks_total}`,
         m: r.plants_short ? `${num(r.plants_short)} plants short` : "every week covered",
@@ -8609,7 +8623,7 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
         c: r.longest_held_weeks > 3 ? "--warning" : "" },
     ].map(tile).join("");
 
-    $("sup-body").innerHTML =
+    $("sup-body").innerHTML = sized +
       `<table class="pl-t"><thead><tr><th>Planting week</th>` +
       `<th class="r">Plants wanted</th><th class="r">Landed this week</th>` +
       `<th>Who brought it</th><th class="r">Planted</th>` +

@@ -237,6 +237,12 @@ def plan_supply(plan, picks=None, form=None):
 	# One unit bought becomes this many plants in the ground, losses and all.
 	per_unit = 1.0 / (flt(v.cuttings_per_plant_required) or 1.0)
 	need_total = sum(wanted.values())
+	# A quantity typed on the material card is the quantity: the houses split
+	# what was agreed to be bought, not what the demand asked for in a perfect
+	# world. Where the two differ the weeks below say where it runs out.
+	agreed_units = (cint(doc.get("tc_plants_committed"))
+	                if cint(doc.get("tc_choice_committed")) else 0)
+	buy_plants = (agreed_units * per_unit) if agreed_units else need_total
 
 	# Every consignment this agreement puts on the ground: who brings it, when
 	# it lands, what it carries and when it has to be ordered.
@@ -257,7 +263,7 @@ def plan_supply(plan, picks=None, form=None):
 
 	bought_total = 0
 	for s_ in chosen:
-		s_plants = need_total * flt(s_["share_pct"]) / 100.0
+		s_plants = buy_plants * flt(s_["share_pct"]) / 100.0
 		for c in s_.get("cycles") or []:
 			plants = int(round(s_plants * flt(c["share"])))
 			units = int(round(plants / (per_unit or 1.0))) if plants > 0 else 0
@@ -350,6 +356,11 @@ def plan_supply(plan, picks=None, form=None):
 		"cover_pct": (round((wanted_total - short_total) * 100.0 / wanted_total, 2)
 		              if wanted_total else 0),
 		"plants_per_unit": round(per_unit, 6),
+		# What the material card agreed to buy, where it has agreed anything,
+		# and what that stands up against what the plantings want.
+		"units_agreed": agreed_units,
+		"plants_from_agreed": int(round(buy_plants)) if agreed_units else None,
+		"plants_needed": need_total,
 		# The longest a later cycle's plants wait on the bench before a planting
 		# week wants them. A profile that carries two weeks into a crop planted
 		# ten weeks apart is not a carry, it is a write-off.
