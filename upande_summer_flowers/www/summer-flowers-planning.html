@@ -649,6 +649,13 @@
         <div class="pl-tiles pl-tiles-sm" id="sup-tiles"></div>
         <div id="sup-body" class="pl-scroll"></div>
       </div>
+
+      <!-- Last, because it is the answer to everything above it: what each
+           planting buys, plants and stands up once the suppliers and their
+           cycles are settled. -->
+      <div class="pl-card">
+        <div id="tc-planting" class="pl-scroll"></div>
+      </div>
       <!-- The TC lifecycle card stood here: build-up cycles, a standing
            "% diverted to propagation", a Prop-MS column and weeks counted
            from the order rather than from the first cut. It described the
@@ -5338,13 +5345,17 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
     renderBought(m);
     renderRoots(m);
 
-    wk.innerHTML =
-      // Why that many, before how many a week. The tiles say what to buy and
-      // the table says when; neither says how an order got bigger than the
-      // planting, and that is the first thing anyone checking it asks. The two
-      // rungs that answer it are marked, because the grower wants what goes in
-      // the ground and the buyer wants what is ordered.
-      renderLadder(m) +
+    // Why that many, before how many a week. The tiles say what to buy and
+    // the table says when; neither says how an order got bigger than the
+    // planting, and that is the first thing anyone checking it asks. The two
+    // rungs that answer it are marked, because the grower wants what goes in
+    // the ground and the buyer wants what is ordered.
+    wk.innerHTML = renderLadder(m);
+
+    // The planting table is the last word on the page: it reads the suppliers
+    // and cycles agreed below it, so it belongs after them rather than above.
+    const pw = $("tc-planting") || wk;
+    pw.innerHTML =
       `<div class="text-muted small" style="text-transform:uppercase;` +
       `letter-spacing:.05em;margin:10px 0 4px">Every planting: what to buy, ` +
       `what to plant, what stands` + (wayTwo(m) ? ", both ways in" : "") +
