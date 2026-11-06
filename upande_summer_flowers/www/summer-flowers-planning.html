@@ -624,6 +624,27 @@
         <div id="tc-gens"></div>
         <div id="tc-weeks" class="pl-scroll"></div>
       </div>
+
+      <!-- Who supplies it, and in how many cycles. A tissue culture house does
+           not drop a week's plants in that week: it hands an order over in
+           lifts, so part of every consignment lands after the week it was
+           ordered for and is next week's plants, already bought. Choosing
+           suppliers here and trying their cycles against the plan is how that
+           is decided before anything is ordered. Nothing on this card saves. -->
+      <div class="pl-card">
+        <div class="pl-card-head">
+          <div><h2>{{ _("Suppliers and their cycles") }}</h2>
+               <p class="pl-note">{{ _("A supplier hands an order over in cycles, not in one drop. What a later cycle lands is the next planting week's plants, already bought — so the week after a big order buys less. Add suppliers, set their cycles and shares, and see what the plan then has to buy. Nothing here is saved.") }}</p></div>
+          <span class="pl-actions">
+            <button type="button" class="pl-btn" data-sup="add">{{ _("Add a supplier") }}</button>
+            <button type="button" class="pl-btn primary" data-sup="run">{{ _("Recalculate") }}</button>
+            <button type="button" class="pl-btn" data-sup="reset">{{ _("Start again") }}</button>
+          </span>
+        </div>
+        <div id="sup-pick"></div>
+        <div class="pl-tiles pl-tiles-sm" id="sup-tiles"></div>
+        <div id="sup-body" class="pl-scroll"></div>
+      </div>
       <!-- The TC lifecycle card stood here: build-up cycles, a standing
            "% diverted to propagation", a Prop-MS column and weeks counted
            from the order rather than from the first cut. It described the
@@ -8368,6 +8389,158 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
     }).join("");
   }
 
+  // ── Suppliers and their cycles ───────────────────────────────────────────
+  // The farm buys from two or three houses, each handing an order over on its
+  // own rhythm. S.sup is what is being tried; nothing is written until the
+  // plan itself is rebuilt on it.
+  let SUP_CHOICES = null;
+
+  async function loadSupPick() {
+    if (!SUP_CHOICES) {
+      try { SUP_CHOICES = await call("suppliers_for", {}); }
+      catch (e) { SUP_CHOICES = { suppliers: [], others: [], default_cycles: [] }; }
+    }
+    if (!S.sup) {
+      // Start from whoever has a profile on file; failing that, one row on the
+      // default cycles, because an empty card answers nothing.
+      const known = (SUP_CHOICES.suppliers || []).slice(0, 2);
+      S.sup = (known.length ? known : [{ supplier: "", cycles: SUP_CHOICES.default_cycles }])
+        .map((x, i, a) => ({
+          supplier: x.supplier || "",
+          share_pct: Math.round(100 / (a.length || 1)),
+          lead_weeks: 10,
+          cycles: (x.cycles && x.cycles.length ? x.cycles
+                   : SUP_CHOICES.default_cycles).map((c) => ({ ...c })),
+        }));
+    }
+    renderSupPick();
+    return runSupply();
+  }
+
+  function renderSupPick() {
+    const box = $("sup-pick");
+    if (!box) return;
+    const all = [...new Set([...(SUP_CHOICES.suppliers || []).map((x) => x.supplier),
+                             ...(SUP_CHOICES.others || [])])];
+    box.innerHTML = (S.sup || []).map((p, i) =>
+      `<div class="pl-sup-row" data-i="${i}" style="border:1px solid var(--border);` +
+      `border-radius:6px;padding:8px 10px;margin-bottom:6px">` +
+      `<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">` +
+      `<select class="sup-name" style="min-width:230px">` +
+      `<option value=""${p.supplier ? "" : " selected"}>— pick a supplier —</option>` +
+      all.map((x) => `<option${x === p.supplier ? " selected" : ""}>${esc(x)}</option>`
+        ).join("") + `</select>` +
+      `<label class="pl-inline">Share %<input class="sup-share" type="number" min="0" ` +
+      `max="100" step="1" style="width:5.5em" value="${Number(p.share_pct) || 0}"></label>` +
+      `<label class="pl-inline">Lead wks<input class="sup-lead" type="number" min="0" ` +
+      `step="1" style="width:5em" value="${Number(p.lead_weeks) || 0}"></label>` +
+      `<button type="button" class="pl-btn sup-cycle-add">+ cycle</button>` +
+      `<button type="button" class="pl-btn sup-del" title="Remove">✕</button>` +
+      `</div>` +
+      `<table class="pl-t" style="margin-top:6px;max-width:460px"><thead><tr>` +
+      `<th>Cycle</th><th class="r">Weeks after it arrives</th>` +
+      `<th class="r">Share of the order %</th><th></th></tr></thead><tbody>` +
+      (p.cycles || []).map((c, j) =>
+        `<tr data-j="${j}"><td>${j + 1}</td>` +
+        `<td class="r"><input class="sup-after" type="number" min="0" step="1" ` +
+        `style="width:6em;text-align:right" value="${Number(c.weeks_after) || 0}"></td>` +
+        `<td class="r"><input class="sup-cshare" type="number" min="0" max="100" ` +
+        `step="0.1" style="width:6em;text-align:right" value="${
+          Number(c.share_pct) || 0}"></td>` +
+        `<td><a class="sup-cdel" style="cursor:pointer" title="Remove">✕</a></td></tr>`
+      ).join("") + `</tbody></table></div>`).join("") ||
+      `<p class="pl-empty">No supplier chosen yet.</p>`;
+  }
+
+  function readSupPick() {
+    S.sup = [...document.querySelectorAll(".pl-sup-row")].map((row) => ({
+      supplier: (row.querySelector(".sup-name") || {}).value || "",
+      share_pct: Number((row.querySelector(".sup-share") || {}).value) || 0,
+      lead_weeks: Number((row.querySelector(".sup-lead") || {}).value) || 0,
+      cycles: [...row.querySelectorAll("tbody tr")].map((tr, j) => ({
+        lift_no: j + 1,
+        weeks_after: Number((tr.querySelector(".sup-after") || {}).value) || 0,
+        share_pct: Number((tr.querySelector(".sup-cshare") || {}).value) || 0,
+      })),
+    }));
+    return S.sup;
+  }
+
+  function runSupply() {
+    if (!S.plan) return Promise.resolve();
+    const picks = (S.sup || []).filter((p) => p.supplier);
+    if (!picks.length) {
+      $("sup-tiles").innerHTML = "";
+      $("sup-body").innerHTML = `<p class="pl-empty">Pick a supplier to see what ` +
+        `the plan would have to buy.</p>`;
+      return Promise.resolve();
+    }
+    return call("plan_supply", { plan: S.plan, picks: JSON.stringify(picks) })
+      .then((r) => { S.supOut = r; renderSupply(); })
+      .catch((e) => {
+        $("sup-body").innerHTML = `<p class="pl-empty">${esc(e.message)}</p>`;
+      });
+  }
+
+  function renderSupply() {
+    const r = S.supOut;
+    if (!r || !(r.weeks || []).length) {
+      $("sup-tiles").innerHTML = "";
+      $("sup-body").innerHTML = `<p class="pl-empty">${esc(
+        (r && r.reason) || "Nothing to supply.")}</p>`;
+      return;
+    }
+    const unit = (r.form || "units").toLowerCase();
+    $("sup-tiles").innerHTML = [
+      { k: "Planting weeks met", v: `${r.weeks_total - r.weeks_short} / ${r.weeks_total}`,
+        m: r.plants_short ? `${num(r.plants_short)} plants short` : "every week covered",
+        c: r.weeks_short ? "--critical" : "--good" },
+      { k: `${r.form} to buy`, v: num(r.units_bought),
+        m: `for ${num(r.plants_wanted)} plants` },
+      { k: "Bought and not planted", v: num(r.plants_stranded),
+        m: r.plants_stranded ? "lands after the last planting" : "none",
+        c: r.plants_stranded ? "--warning" : "--good" },
+      { k: "Longest wait on the bench", v: `${r.longest_held_weeks} wk`,
+        m: "a later cycle waiting for the next planting week",
+        c: r.longest_held_weeks > 3 ? "--warning" : "" },
+    ].map(tile).join("");
+
+    $("sup-body").innerHTML =
+      `<table class="pl-t"><thead><tr><th>Planting week</th>` +
+      `<th class="r">Plants wanted</th><th class="r">Already in hand</th>` +
+      `<th class="r">Waited</th><th class="r">${esc(r.form)} to buy</th>` +
+      `<th>Ordered</th><th class="r">Lands this week</th>` +
+      `<th class="r">Short</th><th class="r">Left on the bench</th>` +
+      `</tr></thead><tbody>` +
+      r.weeks.map((w) => {
+        const orders = (w.buys || []).map((b) =>
+          `${esc(b.supplier)} ${num(b.units)}${
+            b.order_passed ? ' <span style="color:var(--critical)">passed</span>' : ""}` +
+          ` <span class="pl-dim">${esc(b.order_iso)}</span>`).join("<br>");
+        return `<tr><td>${esc(w.week_iso)}</td>` +
+          `<td class="r">${num(w.wanted)}</td>` +
+          `<td class="r">${w.used_from_carry ? num(w.used_from_carry) : "—"}</td>` +
+          `<td class="r"${w.held_weeks > 3 ? ' style="color:var(--warning)"' : ""}>${
+            w.held_weeks ? w.held_weeks + " wk" : "—"}</td>` +
+          `<td class="r">${w.bought ? num(w.bought) : "—"}</td>` +
+          `<td class="bf-meta">${orders || "—"}</td>` +
+          `<td class="r">${num(w.lands_now)}</td>` +
+          `<td class="r"${w.short ? ' style="color:var(--critical)"' : ""}>${
+            w.short ? num(w.short) : "—"}</td>` +
+          `<td class="r">${w.carry_out ? num(w.carry_out) : "—"}</td></tr>`;
+      }).join("") +
+      `</tbody><tfoot><tr><th>Season</th>` +
+      `<th class="r">${num(r.plants_wanted)}</th><th></th><th></th>` +
+      `<th class="r">${num(r.units_bought)}</th><th></th><th></th>` +
+      `<th class="r">${r.plants_short ? num(r.plants_short) : "—"}</th>` +
+      `<th class="r">${r.plants_stranded ? num(r.plants_stranded) : "—"}</th>` +
+      `</tr></tfoot></table>` +
+      `<p class="pl-note">Each week buys only what the plants already in hand ` +
+      `do not cover: a later cycle from an earlier order is this week's stock. ` +
+      `Nothing here is saved — rebuild the plan on these suppliers to make it ` +
+      `the plan.</p>`;
+  }
+
   function allocRow(x, plan) {
     const out = !!x.supplier && !x.propagation_unit;
     // What this row is raising, and when the farm gets plants from it. Both
@@ -8965,6 +9138,10 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
       // Not the box's value on a scope change: that figure belongs to the crop
       // being left behind, and passing it sizes the new one's order to it.
       loadTc(S.scopeChanged ? null : (q && q.value) || null).catch(bad);
+      // The supply card belongs to the same question as the material card:
+      // what has to be bought. It is rebuilt on a scope change like the rest.
+      if (S.scopeChanged) { S.sup = null; S.supOut = null; }
+      loadSupPick().catch(bad);
     }
     if (name === "plan") {
       Promise.all([loadChain(), loadTc(), loadWhatIf()]).then(renderPlanTab).catch(bad);
@@ -9400,6 +9577,57 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
         S.wiProp = parseInt($("wi-prop").value, 10) || 0;
         loadWhatIf();
       });
+      const supCard = $("sup-pick") && $("sup-pick").closest(".pl-card");
+      if (supCard) {
+        supCard.addEventListener("click", (e) => {
+          const b = e.target.closest("[data-sup]");
+          if (b) {
+            if (b.dataset.sup === "add") {
+              readSupPick();
+              S.sup.push({ supplier: "", share_pct: 0, lead_weeks: 10,
+                           cycles: ((SUP_CHOICES || {}).default_cycles || [])
+                             .map((c) => ({ ...c })) });
+              renderSupPick();
+              return;
+            }
+            if (b.dataset.sup === "reset") {
+              S.sup = null; S.supOut = null; loadSupPick();
+              return;
+            }
+            readSupPick(); runSupply();
+            return;
+          }
+          if (e.target.classList.contains("sup-del")) {
+            readSupPick();
+            S.sup.splice(+e.target.closest(".pl-sup-row").dataset.i, 1);
+            renderSupPick();
+            return;
+          }
+          if (e.target.classList.contains("sup-cycle-add")) {
+            readSupPick();
+            const p = S.sup[+e.target.closest(".pl-sup-row").dataset.i];
+            const last = p.cycles[p.cycles.length - 1];
+            p.cycles.push({ lift_no: p.cycles.length + 1,
+                            weeks_after: (Number(last && last.weeks_after) || 0) + 1,
+                            share_pct: 0 });
+            renderSupPick();
+            return;
+          }
+          if (e.target.classList.contains("sup-cdel")) {
+            readSupPick();
+            const row = e.target.closest(".pl-sup-row");
+            S.sup[+row.dataset.i].cycles.splice(
+              +e.target.closest("tr").dataset.j, 1);
+            renderSupPick();
+          }
+        });
+        // Typing is the point of the card, so a change recalculates without
+        // anybody having to find the button.
+        supCard.addEventListener("change", (e) => {
+          if (e.target.closest(".pl-sup-row")) { readSupPick(); runSupply(); }
+        });
+      }
+
       $("tc-tiles").parentElement.addEventListener("click", (e) => {
         const b = e.target.closest("[data-tc]");
         if (!b) return;

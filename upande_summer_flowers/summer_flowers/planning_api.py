@@ -3941,3 +3941,24 @@ def _iso_week(d):
 		return None
 	y, w, _dow = getdate(d).isocalendar()
 	return "%s-W%02d" % (y, w)
+
+
+@frappe.whitelist()
+def suppliers_for(form=None):
+	"""Suppliers and the cycles they hand a consignment over in."""
+	_guard()
+	from upande_summer_flowers.summer_flowers import supply_cycles
+
+	return supply_cycles.suppliers_for(form or supply_cycles.DEFAULT_FORM)
+
+
+@frappe.whitelist()
+def plan_supply(plan=None, picks=None, variety=None, farm=None, form=None):
+	"""What a chosen set of suppliers, on their own cycles, has to be ordered."""
+	_guard()
+	from upande_summer_flowers.summer_flowers import supply_cycles
+
+	name = resolve_plan(variety, farm, plan)
+	if not name:
+		return {"plan": None, "weeks": [], "reason": "No plan in scope."}
+	return supply_cycles.plan_supply(name, picks=picks, form=form)
