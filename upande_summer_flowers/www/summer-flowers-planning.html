@@ -646,6 +646,9 @@
                     title="{{ _('Agrees the suppliers and their cycles. The plan cannot be sent for approval until this is done, because what they hand over is what it will be grown from.') }}"
             >{{ _("Confirm the supply") }}</button>
             <button type="button" class="pl-btn" data-sup="reset">{{ _("Start again") }}</button>
+            <button type="button" class="pl-btn" data-sup="csv"
+                    title="{{ _('The consignments as a CSV, to send to a supplier or keep beside the order.') }}"
+            >{{ _("Download deliveries") }}</button>
           </span>
         </div>
         <div id="sup-pick"></div>
@@ -8356,7 +8359,16 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
           rate_per_plant: tr.dataset.sup ? (+tr.querySelector(".pl-rate").value || 0) : 0,
         }));
         msg.textContent = "Saving…";
-        done(call("save_propagators", { procurement_plan: plan, rows: JSON.stringify(out) }));
+        // The plan keeps the choice whether or not a procurement plan exists
+        // yet: a draft had nowhere to record who raises it, so its Propagation
+        // tab read zero on a plan whose units had been picked weeks before.
+        done(Promise.all([
+          call("save_propagators", { procurement_plan: plan,
+                                     rows: JSON.stringify(out) }),
+          S.plan ? call("save_raisers", { plan: S.plan,
+                                          rows: JSON.stringify(out) })
+                 : Promise.resolve(),
+        ]));
       });
     });
   }
@@ -8639,6 +8651,7 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
       `<p class="pl-note">A consignment carries the plantings between it and ` +
       `the next one, so plants wait on the bench — which is the cost of being ` +
       `delivered a few times a year rather than weekly.</p>` +
+      dropsHtml(r) +
       calendarHtml(r) +
       (r.confirmed
         ? `<div class="pl-callout is-good" style="margin-top:8px">This supply ` +
@@ -8652,6 +8665,40 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
           `saved yet. <b>Confirm the supply</b> when these are the houses and ` +
           `the cycles — the plan cannot be sent for approval until then, ` +
           `because this is what it will be grown from.</div>`);
+  }
+
+  // Every consignment on its own line. The week table says what each planting
+  // week gets; this says what each delivery is, which is what a buyer sends to
+  // a supplier and what a storeman expects at the gate.
+  function dropsHtml(r) {
+    const d = r.drops || [];
+    if (!d.length) return "";
+    return `<div class="text-muted small" style="text-transform:uppercase;` +
+      `letter-spacing:.05em;margin:14px 0 4px">The deliveries</div>` +
+      `<p class="pl-note">${d.length} consignment${d.length === 1 ? "" : "s"} ` +
+      `over the plan. Saving keeps them on the plan, where they can be ` +
+      `downloaded again at any time.</p>` +
+      `<table class="pl-t"><thead><tr><th>Supplier</th><th class="r">Delivery</th>` +
+      `<th>Lands</th><th class="r">${esc(r.form || "Units")}</th>` +
+      `<th class="r">Plants</th><th>Order by</th><th>Covers plantings to</th>` +
+      `</tr></thead><tbody>` +
+      d.map((x) =>
+        `<tr${x.by_hand ? ' style="background:var(--surface-2,#fafafa)"' : ""}>` +
+        `<td>${esc(x.supplier)}${x.by_hand
+          ? ' <span class="pill">by hand</span>' : ""}</td>` +
+        `<td class="r">${x.cycle || "—"}</td>` +
+        `<td>${esc(x.lands_iso || "")}</td>` +
+        `<td class="r">${num(x.units)}</td>` +
+        `<td class="r">${num(x.plants)}</td>` +
+        `<td class="bf-meta">${esc(x.order_iso || "—")}${x.order_passed
+          ? ' <span style="color:var(--critical)">passed</span>' : ""}</td>` +
+        `<td class="bf-meta">${esc(x.covers_to || "")}${x.planting_weeks
+          ? ` <span class="pl-dim">${x.planting_weeks} wk</span>` : ""}</td>` +
+        `</tr>`).join("") +
+      `</tbody><tfoot><tr><th colspan="3">All deliveries</th>` +
+      `<th class="r">${num(d.reduce((a, x) => a + (x.units || 0), 0))}</th>` +
+      `<th class="r">${num(d.reduce((a, x) => a + (x.plants || 0), 0))}</th>` +
+      `<th colspan="2"></th></tr></tfoot></table>`;
   }
 
   // What the chosen suppliers do to the plantings already on the plan. The
@@ -9830,6 +9877,13 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
             }
             if (b.dataset.sup === "reset") {
               S.sup = null; S.supOut = null; loadSupPick();
+              return;
+            }
+            if (b.dataset.sup === "csv") {
+              if (!S.plan) { toast("No plan in scope.", true); return; }
+              window.open("/api/method/upande_summer_flowers.summer_flowers."
+                + "supply_cycles.consignments_csv?plan="
+                + encodeURIComponent(S.plan), "_blank");
               return;
             }
             if (b.dataset.sup === "save" || b.dataset.sup === "confirm") {

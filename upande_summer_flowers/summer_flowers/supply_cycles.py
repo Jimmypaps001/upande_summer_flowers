@@ -441,6 +441,19 @@ def save_supply(plan, picks, confirm=0):
 				"units": cint(units_by.get(s["supplier"], 0)) if not i else 0,
 				"plants": cint(plants_by.get(s["supplier"], 0)) if not i else 0,
 			})
+	# Every consignment, not only the shape of the agreement: a buyer wants the
+	# list of drops, and a list that only exists on a dashboard is one nobody
+	# can hand to anybody.
+	doc.set("plan_consignments", [])
+	for d in out.get("drops") or []:
+		doc.append("plan_consignments", {
+			"supplier": d["supplier"], "cycle_no": cint(d.get("cycle")),
+			"lands_week": d.get("lands_iso"), "lands_date": d.get("lands"),
+			"units": cint(d.get("units")), "plants": cint(d.get("plants")),
+			"order_week": d.get("order_iso"), "covers_to": d.get("covers_to"),
+			"planting_weeks": cint(d.get("planting_weeks")),
+			"by_hand": cint(d.get("by_hand")),
+		})
 	doc.supply_units = cint(out["units_bought"])
 	doc.supply_short_plants = cint(out["plants_short"])
 	doc.supply_stranded_plants = cint(out["plants_stranded"])
@@ -649,13 +662,22 @@ def pull_procurement(plan):
 		"procurement_units_asked": asked,
 		"procurement_units_confirmed": confirmed,
 		"procurement_short_units": max(0, asked - confirmed),
-		"propagation_plants": plants,
-		"propagation_cost": outside_cost,
-		"propagation_units": units,
-		"propagation_outside": outsiders,
 	}
-	tables = {"plan_orders": ("Summer Flower Plan Order", orders),
-	          "plan_raisers": ("Summer Flower Plan Raiser", raisers)}
+	if raisers:
+		scalars.update({
+			"propagation_plants": plants,
+			"propagation_cost": outside_cost,
+			"propagation_units": units,
+			"propagation_outside": outsiders,
+		})
+	tables = {"plan_orders": ("Summer Flower Plan Order", orders)}
+	# Only where a procurement plan actually says who raises it. A plan that
+	# has raised nothing yet still has the choice made on the planning board,
+	# and overwriting it with an empty list loses the only copy.
+	if raisers:
+		tables["plan_raisers"] = ("Summer Flower Plan Raiser", raisers)
+	else:
+		pass
 	if doc.docstatus == 0:
 		for field, (_dt, rows) in tables.items():
 			doc.set(field, [])
@@ -682,3 +704,94 @@ def pull_procurement(plan):
 	        "units_asked": asked, "units_confirmed": confirmed,
 	        "short": doc.procurement_short_units,
 	        "plants": plants, "outside_cost": outside_cost}
+
+
+@frappe.whitelist()
+def save_raisers(plan, rows):
+	"""Who raises the plants, kept on the plan itself.
+
+	Until now this lived only on the procurement plan, which does not exist
+	until the plan has been approved -- so a draft had nowhere to record the
+	choice and the Propagation tab read zero on a plan whose units had been
+	picked weeks before."""
+	from upande_summer_flowers.summer_flowers.planning_api import _guard
+
+	_guard()
+	rows = frappe.parse_json(rows) if isinstance(rows, str) else (rows or [])
+	doc = frappe.get_doc("Summer Flower Production Plan", plan)
+	frappe.has_permission("Summer Flower Production Plan", "write", doc, throw=True)
+	if doc.docstatus == 2:
+		frappe.throw(_("{0} is cancelled.").format(doc.name))
+
+	plants_total = cint(doc.get("new_plants_required"))
+	kept, plants, cost, units, outsiders = [], 0, 0.0, 0, 0
+	for r in rows:
+		party = (r.get("party") or r.get("propagation_unit") or r.get("supplier") or "")
+		if not party:
+			continue
+		outside = bool(r.get("supplier")) and not r.get("propagation_unit")
+		share = flt(r.get("share_pct"))
+		mine = cint(r.get("plants")) or int(round(plants_total * share / 100.0))
+		rate = flt(r.get("rate_per_plant"))
+		plants += mine
+		cost += rate * mine if outside else 0
+		units += 0 if outside else 1
+		outsiders += 1 if outside else 0
+		kept.append({
+			"alloc_type": _("Outside Propagator") if outside else _("Own Unit"),
+			"party": party, "raises": r.get("raises") or doc.get("entry_stage"),
+			"share_pct": share, "plants": mine,
+			"rate_per_plant": rate, "amount": rate * mine if outside else 0,
+			"start_by": r.get("start_by"), "plants_from": r.get("plants_from"),
+			"plants_to": r.get("plants_to"),
+		})
+
+	if doc.docstatus == 0:
+		doc.set("plan_raisers", [])
+		for r in kept:
+			doc.append("plan_raisers", r)
+		doc.propagation_plants = plants
+		doc.propagation_cost = cost
+		doc.propagation_units = units
+		doc.propagation_outside = outsiders
+		doc.flags.ignore_validate_update_after_submit = True
+		doc.save(ignore_permissions=True)
+	else:
+		frappe.db.delete("Summer Flower Plan Raiser",
+		                 {"parent": doc.name, "parentfield": "plan_raisers"})
+		for i, r in enumerate(kept):
+			frappe.get_doc(dict(r, doctype="Summer Flower Plan Raiser",
+			                    parent=doc.name, parenttype=doc.doctype,
+			                    parentfield="plan_raisers", idx=i + 1)).db_insert()
+		for k, v in (("propagation_plants", plants), ("propagation_cost", cost),
+		             ("propagation_units", units), ("propagation_outside", outsiders)):
+			doc.db_set(k, v, update_modified=False)
+	return {"plan": doc.name, "raisers": len(kept), "plants": plants,
+	        "cost": cost, "units": units, "outside": outsiders}
+
+
+@frappe.whitelist()
+def consignments_csv(plan):
+	"""The deliveries, as a file somebody can send to a supplier."""
+	from upande_summer_flowers.summer_flowers.planning_api import _guard
+
+	_guard()
+	doc = frappe.get_doc("Summer Flower Production Plan", plan)
+	frappe.has_permission("Summer Flower Production Plan", "read", doc, throw=True)
+	rows = [["Supplier", "Delivery", "Lands (week)", "Lands (date)", "Units",
+	         "Plants", "Order by", "Covers plantings to", "Planting weeks",
+	         "Added by hand"]]
+	for c in (doc.get("plan_consignments") or []):
+		rows.append([c.supplier, cint(c.cycle_no), c.lands_week,
+		             str(c.lands_date or ""), cint(c.units), cint(c.plants),
+		             c.order_week, c.covers_to, cint(c.planting_weeks),
+		             "yes" if cint(c.by_hand) else ""])
+	import csv
+	import io
+
+	buf = io.StringIO()
+	csv.writer(buf).writerows(rows)
+	frappe.response["filename"] = "%s-deliveries.csv" % doc.name
+	frappe.response["filecontent"] = buf.getvalue()
+	frappe.response["type"] = "download"
+	frappe.response["doctype"] = None

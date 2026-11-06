@@ -4058,3 +4058,13 @@ def agreed_record(plan=None, variety=None, farm=None):
 		             "purchase_order": r.purchase_order}
 		            for r in (d.get("plan_raisers") or [])],
 	}
+
+
+@frappe.whitelist()
+def save_raisers(plan=None, rows=None, variety=None, farm=None):
+	"""Keep who raises the plants on the plan, draft or not."""
+	_guard()
+	from upande_summer_flowers.summer_flowers import supply_cycles
+
+	name = resolve_plan(variety, farm, plan)
+	return supply_cycles.save_raisers(name, rows)

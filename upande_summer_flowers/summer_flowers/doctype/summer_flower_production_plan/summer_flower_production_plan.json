@@ -128,6 +128,8 @@
   "supply_note",
   "supply_rows_section",
   "plan_supply",
+  "plan_consignments_section",
+  "plan_consignments",
   "plan_deliveries_section",
   "plan_deliveries",
   "blocks_tab",
@@ -901,6 +903,18 @@
    "fieldtype": "Table",
    "label": "Suppliers And Cycles",
    "options": "Summer Flower Plan Supply"
+  },
+  {
+   "description": "Every consignment the agreed supply puts on the ground: who brings it, the week it lands, what it carries and the week it has to be ordered.",
+   "fieldname": "plan_consignments_section",
+   "fieldtype": "Section Break",
+   "label": "Deliveries"
+  },
+  {
+   "fieldname": "plan_consignments",
+   "fieldtype": "Table",
+   "label": "Consignments",
+   "options": "Summer Flower Plan Consignment"
   },
   {
    "description": "A delivery typed in against a week: an extra drop, or one the supplier has promised outside their cycles. The plan counts it before it buys anything for that week.",
