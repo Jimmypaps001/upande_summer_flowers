@@ -8457,7 +8457,11 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
       try {
         const saved = await call("saved_supply", { plan: S.plan });
         S.supSaved = saved;
-        if ((saved.picks || []).length) S.sup = saved.picks;
+        if ((saved.picks || []).length) {
+          // Opens on what was agreed, including how often each house comes.
+          S.sup = saved.picks.map((p) => ({
+            ...p, cycle_count: p.cycle_count || (p.cycles || []).length || 4 }));
+        }
       } catch (e) { S.supSaved = null; }
     }
     if (!S.sup) {
@@ -9354,9 +9358,18 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
 
     if (plans.some((p) => p.docstatus === 0)) renderAllocEditor(r);
     else renderAllocation(r.allocations, null, null, "pc-alloc", null);
-    renderSellerEditor(r).then((edited) => {
-      if (!edited) renderBuying(r.buying || []);
-    });
+    // Who sells it is chosen once, on the supply card above: cycles for one
+    // house and an order to another was two answers to one question.
+    renderBuying(r.buying || []);
+    // Said after the table is drawn, because the table writes the same box.
+    const buying = $("pc-buying");
+    if (buying) {
+      buying.insertAdjacentHTML("afterbegin",
+        `<p class="pl-note">The sellers and their shares are chosen once, on ` +
+        `<b>Suppliers and their cycles</b> above: change them there and save, ` +
+        `and this follows. Cycles for one house and an order to another was ` +
+        `two answers to one question.</p>`);
+    }
   }
 
   function setTab(name, fromHash) {

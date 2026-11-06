@@ -9,6 +9,7 @@
   "supplier",
   "share_pct",
   "lead_weeks",
+  "cycle_count",
   "cb_supply",
   "cycle_no",
   "weeks_after",
@@ -17,15 +18,66 @@
   "plants"
  ],
  "fields": [
-  {"fieldname": "supplier", "fieldtype": "Link", "in_list_view": 1, "label": "Supplier", "options": "Supplier", "reqd": 1},
-  {"fieldname": "share_pct", "fieldtype": "Percent", "in_list_view": 1, "label": "Share Of The Season", "read_only": 1},
-  {"fieldname": "lead_weeks", "fieldtype": "Int", "label": "Lead Weeks"},
-  {"fieldname": "cb_supply", "fieldtype": "Column Break"},
-  {"fieldname": "cycle_no", "fieldtype": "Int", "in_list_view": 1, "label": "Cycle"},
-  {"fieldname": "weeks_after", "fieldtype": "Int", "in_list_view": 1, "label": "Weeks After It Arrives"},
-  {"fieldname": "cycle_share_pct", "fieldtype": "Percent", "in_list_view": 1, "label": "Share Of The Order"},
-  {"fieldname": "units", "fieldtype": "Int", "label": "Units", "read_only": 1},
-  {"fieldname": "plants", "fieldtype": "Int", "label": "Plants", "read_only": 1}
+  {
+   "fieldname": "supplier",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "label": "Supplier",
+   "options": "Supplier",
+   "reqd": 1
+  },
+  {
+   "fieldname": "share_pct",
+   "fieldtype": "Percent",
+   "in_list_view": 1,
+   "label": "Share Of The Season",
+   "read_only": 1
+  },
+  {
+   "fieldname": "lead_weeks",
+   "fieldtype": "Int",
+   "label": "Lead Weeks"
+  },
+  {
+   "description": "How often this house delivers. The consignments below are what that comes to over this plan.",
+   "fieldname": "cycle_count",
+   "fieldtype": "Int",
+   "label": "Deliveries A Year"
+  },
+  {
+   "fieldname": "cb_supply",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "cycle_no",
+   "fieldtype": "Int",
+   "in_list_view": 1,
+   "label": "Cycle"
+  },
+  {
+   "fieldname": "weeks_after",
+   "fieldtype": "Int",
+   "in_list_view": 1,
+   "label": "Weeks After It Arrives"
+  },
+  {
+   "fieldname": "cycle_share_pct",
+   "fieldtype": "Percent",
+   "in_list_view": 1,
+   "label": "Share Of The Order"
+  },
+  {
+   "fieldname": "units",
+   "fieldtype": "Int",
+   "label": "Units",
+   "read_only": 1
+  },
+  {
+   "fieldname": "plants",
+   "fieldtype": "Int",
+   "label": "Plants",
+   "read_only": 1
+  }
  ],
  "istable": 1,
  "links": [],

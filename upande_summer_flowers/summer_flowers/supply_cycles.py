@@ -433,6 +433,11 @@ def save_supply(plan, picks, confirm=0):
 				"supplier": s["supplier"],
 				"share_pct": flt(s["share_pct"]),
 				"lead_weeks": cint(s["lead_weeks"]),
+				# How often they come, kept as the number that was chosen. The
+				# rows below are what it came to over THIS plan, which is
+				# fewer, and reading the count off them told a buyer their
+				# four a year had become two.
+				"cycle_count": cint(s.get("cycle_count")),
 				"cycle_no": cint(c["lift_no"]) or i + 1,
 				"weeks_after": cint(c.get("weeks_after")),
 				"cycle_share_pct": flt(c["share_pct"]),
@@ -473,6 +478,11 @@ def save_supply(plan, picks, confirm=0):
 		out["weeks_total"] - out["weeks_short"], out["weeks_total"],
 		(_(", {0} plant short") if short == 1 else _(", {0} plants short")
 		 ).format("{:,}".format(short)) if short else "")
+	# One place names the sellers. Choosing cycles for one house on this card
+	# and buying from another on the procurement card is two decisions where
+	# the farm only ever makes one, so what is agreed here is written through.
+	_write_sellers(doc, out)
+
 	if cint(confirm):
 		doc.supply_confirmed = 1
 		doc.supply_confirmed_on = frappe.utils.now()
@@ -484,6 +494,29 @@ def save_supply(plan, picks, confirm=0):
 	out["calendar"] = _calendar_effect(doc, out)
 	out["note"] = doc.supply_note
 	return out
+
+
+def _write_sellers(plan_doc, out):
+	"""Put the agreed houses on the draft procurement plan as its sellers."""
+	name = frappe.db.get_value(
+		"Summer Flower Procurement Plan",
+		{"production_plan": plan_doc.name, "docstatus": 0}, "name")
+	if not name:
+		return None
+	proc = frappe.get_doc("Summer Flower Procurement Plan", name)
+	stage = proc.entry_stage or out.get("entry_stage")
+	proc.set("purchase_allocation", [])
+	for s in out.get("suppliers") or []:
+		proc.append("purchase_allocation", {
+			"entry_stage": stage,
+			"supplier": s["supplier"],
+			"share_pct": flt(s["share_pct"]),
+			"lead_weeks": cint(s.get("lead_weeks")),
+		})
+	proc.flags.choosing_sellers = True
+	proc.flags.ignore_permissions = True
+	proc.save()
+	return proc.name
 
 
 @frappe.whitelist()
@@ -516,6 +549,7 @@ def saved_supply(plan):
 		p = picks.setdefault(r.supplier, {"supplier": r.supplier,
 		                                  "share_pct": flt(r.share_pct),
 		                                  "lead_weeks": cint(r.lead_weeks),
+		                                  "cycle_count": cint(r.get("cycle_count")),
 		                                  "cycles": []})
 		p["cycles"].append({"lift_no": cint(r.cycle_no),
 		                    "weeks_after": cint(r.weeks_after),
