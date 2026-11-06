@@ -97,6 +97,18 @@
   "months_tab",
   "months_section",
   "plan_months",
+  "supply_tab",
+  "supply_section",
+  "supply_confirmed",
+  "supply_confirmed_on",
+  "supply_confirmed_by",
+  "cb_supply",
+  "supply_units",
+  "supply_short_plants",
+  "supply_stranded_plants",
+  "supply_note",
+  "supply_rows_section",
+  "plan_supply",
   "blocks_tab",
   "blocks_section",
   "plan_blocks"
@@ -693,6 +705,76 @@
    "fieldtype": "Table",
    "label": "Plan Months",
    "options": "Summer Flower Plan Month"
+  },
+  {
+   "fieldname": "supply_tab",
+   "fieldtype": "Tab Break",
+   "label": "Supply"
+  },
+  {
+   "fieldname": "supply_section",
+   "fieldtype": "Section Break",
+   "label": "Who supplies it, and in how many cycles"
+  },
+  {
+   "description": "The plan cannot be submitted until the suppliers and their cycles are agreed: this is what it will actually be grown from.",
+   "fieldname": "supply_confirmed",
+   "fieldtype": "Check",
+   "label": "Supply Agreed",
+   "read_only": 1
+  },
+  {
+   "depends_on": "supply_confirmed",
+   "fieldname": "supply_confirmed_on",
+   "fieldtype": "Datetime",
+   "label": "Agreed On",
+   "read_only": 1
+  },
+  {
+   "depends_on": "supply_confirmed",
+   "fieldname": "supply_confirmed_by",
+   "fieldtype": "Link",
+   "label": "Agreed By",
+   "options": "User",
+   "read_only": 1
+  },
+  {
+   "fieldname": "cb_supply",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "supply_units",
+   "fieldtype": "Int",
+   "label": "Units To Buy",
+   "read_only": 1
+  },
+  {
+   "fieldname": "supply_short_plants",
+   "fieldtype": "Int",
+   "label": "Plants Short",
+   "read_only": 1
+  },
+  {
+   "fieldname": "supply_stranded_plants",
+   "fieldtype": "Int",
+   "label": "Bought And Not Planted",
+   "read_only": 1
+  },
+  {
+   "fieldname": "supply_note",
+   "fieldtype": "Small Text",
+   "label": "What Was Agreed",
+   "read_only": 1
+  },
+  {
+   "fieldname": "supply_rows_section",
+   "fieldtype": "Section Break"
+  },
+  {
+   "fieldname": "plan_supply",
+   "fieldtype": "Table",
+   "label": "Suppliers And Cycles",
+   "options": "Summer Flower Plan Supply"
   },
   {
    "fieldname": "blocks_tab",

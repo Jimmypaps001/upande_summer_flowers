@@ -68,9 +68,20 @@ class SummerFlowerProductionPlan(Document):
 
 	def before_submit(self):
 		"""Materials are agreed before approval, not after."""
-		if cint(self.tc_choice_committed):
-			return
 		if not any(cint(b.is_new_planting) for b in self.plan_blocks):
+			return
+		# Who supplies it and on what cycles is part of the agreement, not a
+		# detail settled afterwards: a house that hands an order over in four
+		# lifts plants a different season from one that drops it in a week.
+		if not cint(self.supply_confirmed):
+			frappe.throw(
+				_("Agree the supply for {0} before sending it for approval. "
+				  "Open Materials Planning, choose the suppliers and their "
+				  "cycles, and confirm them -- what they will hand over, and "
+				  "when, is what this plan will be grown from."
+				  ).format(self.name),
+				title=_("The supply has not been agreed"))
+		if cint(self.tc_choice_committed):
 			return
 		frappe.throw(
 			_("Agree the materials for {0} before sending it for approval. It "

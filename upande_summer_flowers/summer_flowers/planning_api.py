@@ -3962,3 +3962,34 @@ def plan_supply(plan=None, picks=None, variety=None, farm=None, form=None):
 	if not name:
 		return {"plan": None, "weeks": [], "reason": "No plan in scope."}
 	return supply_cycles.plan_supply(name, picks=picks, form=form)
+
+
+@frappe.whitelist()
+def save_supply(plan=None, picks=None, confirm=0, variety=None, farm=None):
+	"""Agree the suppliers and cycles the plan will be grown from."""
+	_guard()
+	from upande_summer_flowers.summer_flowers import supply_cycles
+
+	name = resolve_plan(variety, farm, plan)
+	if not name:
+		frappe.throw(_("No plan in scope."))
+	return supply_cycles.save_supply(name, picks, confirm=confirm)
+
+
+@frappe.whitelist()
+def clear_supply(plan=None, variety=None, farm=None):
+	"""Un-agree the supply so it can be chosen again."""
+	_guard()
+	from upande_summer_flowers.summer_flowers import supply_cycles
+
+	return supply_cycles.clear_supply(resolve_plan(variety, farm, plan))
+
+
+@frappe.whitelist()
+def saved_supply(plan=None, variety=None, farm=None):
+	"""The supply this plan has already agreed to."""
+	_guard()
+	from upande_summer_flowers.summer_flowers import supply_cycles
+
+	name = resolve_plan(variety, farm, plan)
+	return supply_cycles.saved_supply(name) if name else {"picks": [], "confirmed": 0}

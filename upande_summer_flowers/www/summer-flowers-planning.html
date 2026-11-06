@@ -637,7 +637,11 @@
                <p class="pl-note">{{ _("A supplier hands an order over in cycles, not in one drop. What a later cycle lands is the next planting week's plants, already bought — so the week after a big order buys less. Add suppliers, set their cycles and shares, and see what the plan then has to buy. Nothing here is saved.") }}</p></div>
           <span class="pl-actions">
             <button type="button" class="pl-btn" data-sup="add">{{ _("Add a supplier") }}</button>
-            <button type="button" class="pl-btn primary" data-sup="run">{{ _("Recalculate") }}</button>
+            <button type="button" class="pl-btn" data-sup="run">{{ _("Recalculate") }}</button>
+            <button type="button" class="pl-btn" data-sup="save">{{ _("Save this supply") }}</button>
+            <button type="button" class="pl-btn pl-btn-primary" data-sup="confirm"
+                    title="{{ _('Agrees the suppliers and their cycles. The plan cannot be sent for approval until this is done, because what they hand over is what it will be grown from.') }}"
+            >{{ _("Confirm the supply") }}</button>
             <button type="button" class="pl-btn" data-sup="reset">{{ _("Start again") }}</button>
           </span>
         </div>
@@ -8400,6 +8404,15 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
       try { SUP_CHOICES = await call("suppliers_for", {}); }
       catch (e) { SUP_CHOICES = { suppliers: [], others: [], default_cycles: [] }; }
     }
+    if (!S.sup && S.plan) {
+      // What this plan has already agreed to, where it has agreed to anything:
+      // the card opens on the plan, not on a fresh guess.
+      try {
+        const saved = await call("saved_supply", { plan: S.plan });
+        S.supSaved = saved;
+        if ((saved.picks || []).length) S.sup = saved.picks;
+      } catch (e) { S.supSaved = null; }
+    }
     if (!S.sup) {
       // Start from whoever has a profile on file; failing that, one row on the
       // default cycles, because an empty card answers nothing.
@@ -8430,8 +8443,9 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
       `<option value=""${p.supplier ? "" : " selected"}>— pick a supplier —</option>` +
       all.map((x) => `<option${x === p.supplier ? " selected" : ""}>${esc(x)}</option>`
         ).join("") + `</select>` +
-      `<label class="pl-inline">Share %<input class="sup-share" type="number" min="0" ` +
-      `max="100" step="1" style="width:5.5em" value="${Number(p.share_pct) || 0}"></label>` +
+      `<span class="pill" title="The season split evenly between the houses ` +
+      `chosen. The quantities come from the demand, not from a number typed ` +
+      `here.">${(Number(p.share_pct) || 0).toFixed(1)}% of the season</span>` +
       `<label class="pl-inline">Lead wks<input class="sup-lead" type="number" min="0" ` +
       `step="1" style="width:5em" value="${Number(p.lead_weeks) || 0}"></label>` +
       `<button type="button" class="pl-btn sup-cycle-add">+ cycle</button>` +
@@ -8455,7 +8469,7 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
   function readSupPick() {
     S.sup = [...document.querySelectorAll(".pl-sup-row")].map((row) => ({
       supplier: (row.querySelector(".sup-name") || {}).value || "",
-      share_pct: Number((row.querySelector(".sup-share") || {}).value) || 0,
+      share_pct: 0,
       lead_weeks: Number((row.querySelector(".sup-lead") || {}).value) || 0,
       cycles: [...row.querySelectorAll("tbody tr")].map((tr, j) => ({
         lift_no: j + 1,
@@ -8536,9 +8550,57 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
       `<th class="r">${r.plants_stranded ? num(r.plants_stranded) : "—"}</th>` +
       `</tr></tfoot></table>` +
       `<p class="pl-note">Each week buys only what the plants already in hand ` +
-      `do not cover: a later cycle from an earlier order is this week's stock. ` +
-      `Nothing here is saved — rebuild the plan on these suppliers to make it ` +
-      `the plan.</p>`;
+      `do not cover: a later cycle from an earlier order is this week's stock.</p>` +
+      calendarHtml(r) +
+      (r.confirmed
+        ? `<div class="pl-callout is-good" style="margin-top:8px">This supply ` +
+          `is agreed${S.supSaved && S.supSaved.confirmed_on
+            ? ` — ${fdate(S.supSaved.confirmed_on)}` : ""}${
+            S.supSaved && S.supSaved.confirmed_by
+              ? ` by ${esc(S.supSaved.confirmed_by)}` : ""}. ` +
+          `The plan can be sent for approval. Changing anything above and ` +
+          `confirming again replaces it.</div>`
+        : `<div class="pl-callout is-info" style="margin-top:8px">Nothing is ` +
+          `saved yet. <b>Confirm the supply</b> when these are the houses and ` +
+          `the cycles — the plan cannot be sent for approval until then, ` +
+          `because this is what it will be grown from.</div>`);
+  }
+
+  // What the chosen suppliers do to the plantings already on the plan. The
+  // week table above is the buying; this is the growing.
+  function calendarHtml(r) {
+    const rows = r.calendar || [];
+    if (!rows.length) return "";
+    const short = rows.filter((x) => x.short);
+    return `<div class="text-muted small" style="text-transform:uppercase;` +
+      `letter-spacing:.05em;margin:14px 0 4px">What it does to the planting ` +
+      `calendar</div>` +
+      `<p class="pl-note">${short.length
+        ? `<b style="color:var(--critical)">${short.length} of ${rows.length} ` +
+          `plantings are cut short</b> by what these houses hand over.`
+        : `<b>Every planting is supplied in full.</b>`} A week that is short is ` +
+      `shared out across the plantings in it.</p>` +
+      `<table class="pl-t"><thead><tr><th>Planting</th><th>Block</th>` +
+      `<th class="r">Plants planned</th><th class="r">Supplied</th>` +
+      `<th class="r">Short</th><th>First cut</th><th>Ordered from</th>` +
+      `</tr></thead><tbody>` +
+      rows.map((x) =>
+        `<tr${x.short ? ' style="background:#fdf3f4"' : ""}>` +
+        `<td>${esc(x.planting_iso)}</td>` +
+        `<td class="bf-meta">${esc(x.block || "—")}</td>` +
+        `<td class="r">${num(x.plants_planned)}</td>` +
+        `<td class="r">${num(x.plants_supplied)}</td>` +
+        `<td class="r"${x.short ? ' style="color:var(--critical)"' : ""}>${
+          x.short ? num(x.short) : "—"}</td>` +
+        `<td class="text-muted">${esc(x.first_cut_iso || "")}</td>` +
+        `<td class="bf-meta">${(x.ordered || []).map((o) =>
+          `${esc(o.supplier)} ${num(o.units)} <span class="pl-dim">${
+            esc(o.order_iso)}</span>${o.passed
+              ? ' <span style="color:var(--critical)">passed</span>' : ""}`
+          ).join("<br>") || (x.from_carry
+            ? `<span class="pl-dim">from stock in hand</span>` : "—")}</td>` +
+        `</tr>`).join("") +
+      `</tbody></table>`;
   }
 
   function allocRow(x, plan) {
@@ -9592,6 +9654,29 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
             }
             if (b.dataset.sup === "reset") {
               S.sup = null; S.supOut = null; loadSupPick();
+              return;
+            }
+            if (b.dataset.sup === "save" || b.dataset.sup === "confirm") {
+              const picks = readSupPick().filter((p) => p.supplier);
+              if (!picks.length) { toast("Pick a supplier first.", true); return; }
+              const agree = b.dataset.sup === "confirm";
+              const go = () => call("save_supply", {
+                plan: S.plan, picks: JSON.stringify(picks), confirm: agree ? 1 : 0,
+              }).then((r) => {
+                S.supOut = r;
+                S.supSaved = { confirmed: r.confirmed, confirmed_on: null,
+                               confirmed_by: null };
+                renderSupply();
+                toast(agree ? "Supply agreed. The plan can be sent for approval."
+                            : "Supply saved.");
+              }).catch((e) => toast(esc(e.message), true));
+              if (!agree) { go(); return; }
+              // Confirming is the gate on approval, so it is asked for.
+              frappe.confirm(
+                __("Agree these suppliers and their cycles? The plan will be "
+                   + "grown from what they hand over, and it cannot be sent "
+                   + "for approval until this is agreed."),
+                go);
               return;
             }
             readSupPick(); runSupply();
