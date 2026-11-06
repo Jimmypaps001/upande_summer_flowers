@@ -9104,10 +9104,12 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
               `data-o="${esc(o.purchase_order || o.requirement_of)}">Save</button> ` +
               `<button class="btn btn-xs btn-primary dc-confirm" ` +
               `data-o="${esc(o.purchase_order || o.requirement_of)}">` +
-              `${o.requirement_of ? "Confirm and raise the order" : "Confirm this schedule"}` +
+              `${o.requirement_of ? "Confirm and save to the plan" : "Confirm this schedule"}` +
               `</button> <span class="pl-dim">` +
               `${o.requirement_of
-                 ? "Nothing is ordered until this is confirmed \u2014 what is raised is what the supplier agreed to."
+                 ? "The plan is re-cut to what they agreed to and the plantings "
+                   + "sized to it. Nothing is ordered here \u2014 the requests and "
+                   + "orders are raised when the procurement plan is approved."
                  : "Confirming submits the order."}</span></div>`);
     }).join("");
     bindDeliveries();

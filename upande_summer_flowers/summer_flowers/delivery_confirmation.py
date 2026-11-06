@@ -309,17 +309,23 @@ def save_requirements(procurement_plan, lines):
 
 
 @frappe.whitelist()
-def confirm_and_raise(procurement_plan):
-	"""Agree the schedule, then raise the request and the order for it."""
+def confirm_and_raise(procurement_plan, raise_orders=0):
+	"""Agree the schedule and write it onto the plan.
+
+	Confirming is not ordering. What the sellers have agreed to is written
+	back -- the plan re-cut to it, the plantings sized to it, the record kept
+	on the plan itself -- and the requests and orders are raised when the
+	procurement plan is approved, which is the step that commits money."""
 	doc = frappe.get_doc("Summer Flower Procurement Plan", procurement_plan)
 	frappe.has_permission("Summer Flower Procurement Plan", "write", doc, throw=True)
 	if not any(cint(r.get("delivery_confirmed")) for r in doc.requirements):
 		frappe.throw(_("Nothing has been confirmed yet. Key in what the supplier "
 		               "can send, week by week, and save it first."),
-		             title=_("Nothing to raise"))
+		             title=_("Nothing to save"))
 	doc.db_set("deliveries_confirmed", 1, update_modified=False)
 	doc.reload()
-	doc.raise_material_requests()
+	if cint(raise_orders):
+		doc.raise_material_requests()
 	# A short confirmation makes a smaller planting, and the plan has to be
 	from upande_summer_flowers.summer_flowers.doctype \
 		.summer_flower_procurement_plan.summer_flower_procurement_plan import (
@@ -335,7 +341,7 @@ def confirm_and_raise(procurement_plan):
 	                      revised.get("revised") or doc.production_plan)
 	write_plantings(plan, doc)
 	# And the bench is told what to raise, now that there is a confirmed figure
-	if doc.raises_here():
+	if cint(raise_orders) and doc.raises_here():
 		from upande_summer_flowers.summer_flowers.doctype \
 			.summer_flower_propagation_plan.summer_flower_propagation_plan import (
 				build_from_plan,
@@ -347,10 +353,20 @@ def confirm_and_raise(procurement_plan):
 			frappe.msgprint(_("The orders are raised; the propagation plan could "
 			                  "not be built: {0}").format(str(e).split("\n")[0][:160]),
 			                indicator="orange", title=_("Propagation plan"))
+	# The plan keeps the record of what was agreed, so it can be read without
+	# opening the procurement plan at all.
+	try:
+		from upande_summer_flowers.summer_flowers import supply_cycles
+
+		supply_cycles.pull_procurement(plan.name)
+	except Exception:
+		frappe.clear_last_message()
 	frappe.db.commit()
 	# Where the production plan went, so the screen that asked for this can
 	# follow it instead of looking at a plan that is no longer the live one.
 	out = schedule_for(doc.name)
+	out["saved_to_plan"] = plan.name
+	out["orders_raised"] = cint(raise_orders)
 	out["production_plan"] = doc.production_plan
 	out["revised_to"] = revised.get("revised")
 	return out
