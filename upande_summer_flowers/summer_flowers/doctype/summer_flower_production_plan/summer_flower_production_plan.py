@@ -453,6 +453,21 @@ class SummerFlowerProductionPlan(Document):
 		self.tc_order_by_date = None
 		self.tc_status = None
 
+		# The date the agreed cycles bind the farm to, settled before anything
+		# else because it holds whatever the crop is bought as. Daucus is
+		# bought as Seeds, so the TC arithmetic below returns early -- and the
+		# plan showed no order date at all while its own cycles named one.
+		agreed_first = None
+		if cint(self.supply_confirmed):
+			weeks = sorted(c.order_week
+			               for c in (self.get("plan_consignments") or [])
+			               if c.get("order_week"))
+			if weeks:
+				_y, _sep, _w = str(weeks[0]).partition("-W")
+				if cint(_y) and cint(_w):
+					agreed_first = iso_monday(cint(_y), cint(_w))
+					self.tc_order_by_date = agreed_first
+
 		v = getattr(self, "_version", None)
 		peak = cint(self.peak_weekly_sticking_planned)
 		if not v or not peak:
@@ -481,9 +496,13 @@ class SummerFlowerProductionPlan(Document):
 		                           or cint(self.new_plants_required), peak,
 		                           peak_date=peak_monday)
 		if not req:
-			self.tc_status = _("This crop's route does not start at TC, so there is no "
-			                   "TC order to size. What it does buy is on its Procurement "
-			                   "Plan.")
+			self.tc_status = _(
+				"This crop's route does not start at TC, so there is no TC order "
+				"to size. What it does buy is on its Procurement Plan.")
+			if agreed_first:
+				self.tc_status += "\n" + _(
+					"The agreed cycles put the first order in {0}."
+				).format(weeks[0])
 			return
 		if req.get("blocked"):
 			self.tc_status = req["blocked"]
@@ -515,19 +534,13 @@ class SummerFlowerProductionPlan(Document):
 		# consignment's order week at the lead time that house works to. The
 		# protocol's own figure is what the draft had to go on before anybody
 		# had been asked, and it outlived its usefulness the moment they were.
-		agreed = sorted(c.order_week for c in (self.get("plan_consignments") or [])
-		                if c.get("order_week"))
-		if cint(self.supply_confirmed) and agreed:
-			_y, _sep, _w = str(agreed[0]).partition("-W")
-			first_order = (iso_monday(cint(_y), cint(_w))
-			               if cint(_y) and cint(_w) else None)
-			if first_order:
-				self.tc_order_by_date = first_order
-				agreed_note = (_(
-					"Dated from the agreed supply: the first consignment is "
-					"ordered in {0}, at the lead time its house works to. The "
-					"protocol's own figure no longer applies."
-				).format(agreed[0]))
+		if agreed_first:
+			self.tc_order_by_date = agreed_first
+			agreed_note = (_(
+				"Dated from the agreed supply: the first consignment is "
+				"ordered in {0}, at the lead time its house works to. The "
+				"protocol's own figure no longer applies."
+			).format(weeks[0]))
 
 		notes = [agreed_note] if agreed_note else []
 		if self.tc_order_by_date and self.tc_order_by_date < getdate(nowdate()):
