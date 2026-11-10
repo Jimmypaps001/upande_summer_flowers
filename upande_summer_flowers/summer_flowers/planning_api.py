@@ -3982,6 +3982,19 @@ def plan_supply(plan=None, picks=None, variety=None, farm=None, form=None):
 
 
 @frappe.whitelist()
+def suggest_supply(plan=None, houses=1, max_wait_weeks=0, variety=None, farm=None):
+	"""What has to arrive and when, before anybody has been named."""
+	_guard()
+	from upande_summer_flowers.summer_flowers import supply_cycles
+
+	name = resolve_plan(variety, farm, plan)
+	if not name:
+		return {"plan": None, "picks": [], "reason": _("No plan in scope.")}
+	return supply_cycles.suggest_supply(name, houses=houses,
+	                                    max_wait_weeks=max_wait_weeks)
+
+
+@frappe.whitelist()
 def save_supply(plan=None, picks=None, confirm=0, variety=None, farm=None):
 	"""Agree the suppliers and cycles the plan will be grown from."""
 	_guard()
