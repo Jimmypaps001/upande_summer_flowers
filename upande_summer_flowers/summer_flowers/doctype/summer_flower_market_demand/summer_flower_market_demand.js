@@ -172,10 +172,13 @@ function confirm_plan(frm, values, s) {
 		  m: `${num(sp.beds_needed)} ${__("beds")} · ${
 			g.beds_free != null ? `${num(g.beds_free)} ${__("free")}` : ""}`,
 		  bad: g.beds_free != null && sp.beds_needed > g.beds_free },
-		b && { k: __("Raising"), v: num(b.needed),
-		  m: b.short ? `${__("short")} ${num(b.short)} ${__("of bench")}`
-			: `${num(b.free)} ${__("free of")} ${num(b.capacity)}`,
-		  bad: !!b.short },
+		b && { k: __("Raising"), v: num(b.decided ? b.allocated : b.needed),
+		  m: b.decided
+			? (b.short ? `${__("short")} ${num(b.short)} ${__("of bench")}`
+				: `${num(b.free)} ${__("free of")} ${num(b.capacity)}`)
+			: `${__("nobody chosen yet")} · ${num(b.free)} ${__("free of")} ${
+				num(b.capacity)}`,
+		  bad: !!(b.decided && b.short) },
 	].filter(Boolean);
 
 	const tiles = `<div class="pv-tiles">` + tileRow.map((t) =>
@@ -226,15 +229,29 @@ function confirm_plan(frm, values, s) {
 				: "")]);
 	}
 	if (b) {
-		facts.push([__("Raising it"),
-			(b.short
+		// Nobody has said yet who raises this. It may all go to an outside
+		// propagator, in which case none of it touches our bench and a
+		// shortfall against ours is not a fact about anything. Until the choice
+		// is made this reads as the condition it is.
+		const verdict = !b.decided
+			? `<span class="pv-dim">${__("Nobody has been chosen to raise this yet")}</span>` +
+			  (b.short_if_all_here
+				? ` · <span class="pv-dim">${__("were it all raised on our own benches it would be")} ${
+					num(b.short_if_all_here)} ${__("plants over")}</span>`
+				: ` · <span class="pv-good">${__("our own benches could take all of it")}</span>`)
+			: (b.short
 				? `<span class="pv-bad">${__("Short")} ${num(b.short)} ${
 					__("plants of bench")}</span>`
-				: `<span class="pv-good">${__("Room for it")}</span>`) +
-			` · ${b.units.slice(0, 3).map((u) =>
-				`${esc(u.unit)} <span class="pv-dim">${num(u.free)}/${
-					num(u.capacity)}</span>`).join(" · ")}` +
-			(b.units.length > 3 ? ` <span class="pv-dim">+${b.units.length - 3}</span>` : "")]);
+				: `<span class="pv-good">${__("Room for it")}</span>`);
+		const unit = (u) =>
+			`${esc(u.unit)} <span class="pv-dim">${num(u.free)}/${num(u.capacity)}` +
+			`${u.here ? "" : ` · ${__("at")} ${esc(u.farm || __("another farm"))}`}</span>`;
+		facts.push([__("Raising it"), verdict +
+			` · ${b.units.slice(0, 3).map(unit).join(" · ")}` +
+			(b.units.length > 3 ? ` <span class="pv-dim">+${b.units.length - 3}</span>` : "") +
+			(b.units_here === 0
+				? `<br><span class="pv-dim">${
+					__("None of these benches is at this farm.")}</span>` : "")]);
 	}
 	if (s.lead) {
 		facts.push([__("Order by"),

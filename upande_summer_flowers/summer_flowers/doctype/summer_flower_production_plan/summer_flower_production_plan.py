@@ -7,7 +7,7 @@ from collections import defaultdict
 import frappe
 from frappe import _
 from frappe.model.document import Document
-from frappe.utils import (cint, flt, get_datetime, getdate, now_datetime,
+from frappe.utils import (add_days, cint, flt, get_datetime, getdate, now_datetime,
                           nowdate)
 
 from upande_summer_flowers.summer_flowers.doctype.crop_protocol_version.crop_protocol_version import (
@@ -1303,8 +1303,65 @@ def _ground_at(farm, start, end):
 	}
 
 
-def _bench_at(farm, plants_needed):
-	"""Our own propagation units, what they hold and what is already on them."""
+def bench_load(units=None, exclude_plan=None):
+	"""{unit: plants standing on it at its busiest week}.
+
+	A bench is a throughput, not a store. Plants are stuck, they root for a few
+	weeks and they leave; the bench carries what is on it AT ONE TIME, and the
+	next batch uses the same space. Adding up every allocation ever made -- all
+	varieties, every season, drafts included -- and calling the total
+	"committed" said Bondet was carrying 2,487,414 plants on a 192,500-plant
+	bench, so every bench on the farm read as full and every plan read as short
+	of one. This is the same mistake the land report made against the ground,
+	and it is answered the same way: the peak at any one moment."""
+	by_week = defaultdict(lambda: defaultdict(int))
+	rows = frappe.db.sql("""
+		select a.propagation_unit unit, a.plants, a.lead_weeks,
+		       a.plants_from, a.plants_to
+		from `tabSummer Flower Propagation Allocation` a
+		join `tabSummer Flower Procurement Plan` p on p.name = a.parent
+		where ifnull(a.propagation_unit, '') <> ''
+		  and a.alloc_type != 'Outside Propagator'
+		  and p.docstatus < 2
+		  and ifnull(p.production_plan, '') != %s
+	""", exclude_plan or "", as_dict=True)
+	for r in rows:
+		if units and r.unit not in units:
+			continue
+		plants = cint(r.plants)
+		if plants <= 0:
+			continue
+		start = getdate(r.plants_from) if r.plants_from else None
+		end = getdate(r.plants_to) if r.plants_to else None
+		# No window stated: nothing says when it is on the bench, so it is
+		# counted as standing the whole time rather than quietly dropped.
+		if not start or not end or end < start:
+			by_week[r.unit]["always"] += plants
+			continue
+		weeks = max(1, ((end - start).days // 7) + 1)
+		# Stuck at a steady rate across the window, each batch holding the
+		# bench for its rooting weeks.
+		per_week = plants / float(weeks)
+		holds = max(1, cint(r.lead_weeks))
+		for i in range(weeks):
+			when = add_days(start, 7 * i)
+			for j in range(holds):
+				by_week[r.unit][str(add_days(when, 7 * j))] += int(round(per_week))
+	out = {}
+	for unit, weeks in by_week.items():
+		always = cint(weeks.pop("always", 0))
+		out[unit] = always + (max(weeks.values()) if weeks else 0)
+	return out
+
+
+def _bench_at(farm, plants_needed, chosen=None, exclude_plan=None):
+	"""Our own propagation units, what they hold and what is already on them.
+
+	`chosen` is the plants this plan has actually allocated to our own benches.
+	Until somebody has chosen, nothing of this plan is on a bench at all -- it
+	may all go to an outside propagator -- so no shortfall is claimed. What the
+	benches could take if it were all raised here is still reported, because
+	that is what the reader is deciding about."""
 	if not frappe.db.has_column("Warehouse", "custom_sf_is_propagation_unit"):
 		return None
 	rows = frappe.get_all(
@@ -1313,22 +1370,30 @@ def _bench_at(farm, plants_needed):
 		        "custom_sf_capacity_plants as capacity"])
 	if not rows:
 		return None
-	out, cap, free = [], 0, 0
+	load = bench_load([w.name for w in rows], exclude_plan)
+	out, cap, free, here_cap, here_free = [], 0, 0, 0, 0
 	for w in rows:
-		taken = cint(frappe.db.sql("""
-			select ifnull(sum(a.plants), 0)
-			from `tabSummer Flower Propagation Allocation` a
-			join `tabSummer Flower Procurement Plan` p on p.name = a.parent
-			where a.propagation_unit = %s and p.docstatus < 2""", w.name)[0][0])
+		taken = cint(load.get(w.name, 0))
 		mine = max(0, cint(w.capacity) - taken)
 		cap += cint(w.capacity)
 		free += mine
-		out.append({"unit": w.name, "here": 1 if (farm and w.farm == farm) else 0,
+		is_here = 1 if (farm and w.farm == farm) else 0
+		if is_here:
+			here_cap += cint(w.capacity)
+			here_free += mine
+		out.append({"unit": w.name, "here": is_here, "farm": w.farm,
 		            "capacity": cint(w.capacity), "committed": taken, "free": mine})
 	out.sort(key=lambda u: (-u["here"], -u["free"]))
+	decided = chosen is not None
 	return {"units": out, "capacity": cap, "free": free,
+	        "here_capacity": here_cap, "here_free": here_free,
+	        "units_here": len([u for u in out if u["here"]]),
 	        "needed": cint(plants_needed),
-	        "short": max(0, cint(plants_needed) - free)}
+	        "allocated": cint(chosen or 0),
+	        "decided": 1 if decided else 0,
+	        # A shortfall is only a fact once somebody has said we raise it.
+	        "short": (max(0, cint(chosen or 0) - free) if decided else None),
+	        "short_if_all_here": max(0, cint(plants_needed) - free)}
 
 
 def _route_of(v):

@@ -1548,24 +1548,24 @@ def raising_choices(production_plan):
 	                        {"production_plan": plan.name, "docstatus": 0}, "name")
 	doc = frappe.get_doc("Summer Flower Procurement Plan", q) if q else None
 
-	units = []
-	for w in frappe.get_all(
-			"Warehouse", filters={"custom_sf_is_propagation_unit": 1},
-			order_by="name",
-			fields=["name", "custom_farm as farm",
-			        "custom_sf_capacity_plants as capacity",
-			        "custom_sf_weekly_intake_plants as weekly"]):
-		# What this bench is already carrying for everyone else. A capacity with
-		taken = frappe.db.sql("""
-			select ifnull(sum(a.plants), 0)
-			from `tabSummer Flower Propagation Allocation` a
-			join `tabSummer Flower Procurement Plan` p on p.name = a.parent
-			where a.propagation_unit = %s and p.docstatus < 2
-			  and p.name != %s""", (w.name, q or ""))[0][0]
-		w["committed"] = cint(taken)
-		w["free"] = max(0, cint(w.capacity) - cint(taken))
+	from upande_summer_flowers.summer_flowers.doctype \
+		.summer_flower_production_plan.summer_flower_production_plan import bench_load
+
+	units = frappe.get_all(
+		"Warehouse", filters={"custom_sf_is_propagation_unit": 1}, order_by="name",
+		fields=["name", "custom_farm as farm",
+		        "custom_sf_capacity_plants as capacity",
+		        "custom_sf_weekly_intake_plants as weekly"])
+	# What each bench is already carrying for everyone else, AT ITS BUSIEST
+	# WEEK. A bench is a throughput: plants root for a few weeks and leave, and
+	# the next batch takes the same space. Adding up every allocation ever made
+	# had Bondet carrying thirteen times its own capacity, so every bench read
+	# as full and every chooser offered nothing but full benches.
+	load = bench_load([w.name for w in units], plan.name)
+	for w in units:
+		w["committed"] = cint(load.get(w.name, 0))
+		w["free"] = max(0, cint(w.capacity) - w["committed"])
 		w["here"] = 1 if (plan.farm and w.farm == plan.farm) else 0
-		units.append(w)
 	units.sort(key=lambda u: (-u["here"], -u["free"], u["name"]))
 
 	propagators = frappe.get_all(
