@@ -169,11 +169,20 @@ def _normalised(picks, form, wanted=None):
 		typed = [c for c in (p.get("cycles") or []) if c]
 		count = cint(p.get("cycle_count")) or len(typed) or DEFAULT_CYCLE_COUNT
 		count = max(1, min(52, count))
+		# Weeks stated outright beat any drumbeat. This is how a delivery is
+		# added or taken away one at a time: the card hands back the weeks it
+		# is showing, with one more or one fewer in the list.
+		stated = []
+		for wk in (p.get("weeks") or []):
+			at = _monday(wk) if not str(wk).strip().count("-W") else _week_monday(wk)
+			if at:
+				stated.append(getdate(at))
 		out.append({
 			"supplier": name,
 			"share_pct": flt(p.get("share_pct")),
 			"lead_weeks": cint(p.get("lead_weeks")),
 			"cycle_count": count,
+			"weeks": sorted(set(stated)),
 			"typed": [flt(c.get("share_pct")) for c in typed][:count],
 		})
 	# The share is ours to give: how much of the season each house is promised.
@@ -198,15 +207,31 @@ def _normalised(picks, form, wanted=None):
 		# So many a YEAR, over however long the plan runs: a season of two
 		# years at four a year is eight consignments, not four.
 		step = max(1, int(round(52.0 / x["cycle_count"])))
-		drops, k = [], 0
-		while len(drops) < 52:
-			at = add_days(first, 7 * step * k)
-			if k and getdate(at) > getdate(last):
-				break
-			drops.append(at)
-			k += 1
+		# A consignment lands on a week the farm is planting in. Counting the
+		# drumbeat out from the first planting regardless of where the
+		# plantings are put cycles on weeks with nothing to deliver to: a plan
+		# planting in three tight pairs a year apart was given five cycles, two
+		# of which carried nothing, covered nothing and were then dropped
+		# again further down -- so the card asked for four, showed five and
+		# ended on three. A cycle is started on the first planting week that is
+		# at least a step on from the last one, so every cycle lands on a real
+		# planting week and none of them is empty.
+		if x.get("weeks"):
+			# Stated outright. Kept as given, in order, so a week the farm
+			# added by hand is not quietly moved onto the nearest planting.
+			drops = list(x["weeks"])
+		else:
+			drops = []
+			for w in weeks:
+				if not drops or (getdate(w) - getdate(drops[-1])).days >= 7 * step:
+					drops.append(w)
 		x["drops_in_plan"] = len(drops)
 		x["weeks_between"] = step
+		# What was asked for, beside what the plan's own shape allows. Four a
+		# year over a plan that only plants in three weeks is three cycles,
+		# and saying so is better than quietly delivering a different number.
+		x["cycles_a_year"] = x["cycle_count"]
+		x["cycles_in_plan"] = len(drops)
 		cycles = []
 		for i, at in enumerate(drops):
 			nxt = drops[i + 1] if i + 1 < len(drops) else None
@@ -341,10 +366,27 @@ def plan_supply(plan, picks=None, form=None):
 	# season and ACME the rest" is how a farm arranges cover, and a sizing
 	# that let whichever house landed first take the whole week would quietly
 	# throw that arrangement away.
-	for s_ in chosen:
+	# Each week's plants split between the houses so the parts add back to the
+	# whole. Rounding each house's share on its own leaves a plant or two of
+	# every week belonging to nobody, and a week one plant short is reported
+	# as a week short -- which is how a plan with two houses on fifty each
+	# could read "3 weeks short" against a week it covered exactly.
+	split = {}
+	for w, q in wanted.items():
+		parts, given = [], 0
+		for s_ in chosen:
+			take = int(cint(q) * flt(s_["share_pct"]) / 100.0)
+			parts.append([take, (cint(q) * flt(s_["share_pct"]) / 100.0) - take])
+			given += take
+		# The plants left over by flooring go to the largest remainders, which
+		# is the one split that is both exact and stable.
+		for i in sorted(range(len(parts)), key=lambda i: -parts[i][1])[:cint(q) - given]:
+			parts[i][0] += 1
+		split[w] = [p[0] for p in parts]
+
+	for idx, s_ in enumerate(chosen):
 		s_["waves"] = (ts.handover_for(form, s_["supplier"], 0, v) or [(0, 1.0)])
-		mine = {w: cint(round(cint(q) * flt(s_["share_pct"]) / 100.0))
-		        for w, q in wanted.items()}
+		mine = {w: split[w][idx] for w in wanted}
 		covered = {}
 		for c in sorted((s_.get("cycles") or []),
 		                key=lambda x: getdate(_monday(x["lands"]))):
@@ -1108,3 +1150,97 @@ def consignments_csv(plan):
 	frappe.response["filecontent"] = buf.getvalue()
 	frappe.response["type"] = "download"
 	frappe.response["doctype"] = None
+
+
+@frappe.whitelist()
+def suggest_supply(plan, houses=1, max_wait_weeks=0):
+	"""What the plan would have to be delivered, before anyone is named.
+
+	The farm's question is not "here are my houses, what do they bring" but
+	"what has to arrive, when, and how many houses do I need to bring it".
+	This answers that from the two things already known -- the weeks the plan
+	plants in, and how a consignment is handed over in lifts -- and leaves the
+	names blank, because who supplies a season is the farm's decision and not
+	an arithmetic result.
+
+	`max_wait_weeks` is how long plants may sit on the bench waiting for their
+	planting week. Nought is a delivery for every planting week: no waiting, no
+	surplus, the most deliveries. Raising it folds the later weeks into the
+	consignment before them, which is fewer deliveries and plants waiting.
+	"""
+	from upande_summer_flowers.summer_flowers.planning_api import _guard
+
+	_guard()
+	houses = max(1, min(12, cint(houses) or 1))
+	wait = max(0, cint(max_wait_weeks))
+	doc = frappe.get_doc("Summer Flower Production Plan", plan)
+	frappe.has_permission("Summer Flower Production Plan", "read", doc, throw=True)
+	v = frappe.get_cached_doc("Crop Protocol Version", doc.protocol)
+
+	from upande_summer_flowers.summer_flowers import route_ways, sourcing
+
+	decided = sourcing.route_plan(v)
+	entry = decided.get("entry_stage")
+	form = route_ways.LIFT_FORM.get(entry) or DEFAULT_FORM
+	# The route states the notice the entry stage needs; the lab turnaround is
+	# the fallback, and ten weeks the last resort.
+	lead = cint(decided.get("lead_weeks")) or cint(
+		frappe.db.get_single_value("Summer Flower Settings",
+		                           "lab_turnaround_weeks")) or 10
+
+	wanted = _wanted_by_week(doc)
+	weeks = sorted(wanted)
+	if not weeks:
+		return {"plan": plan, "form": form, "houses": [], "picks": [],
+		        "reason": _("This plan has no planting weeks to deliver to.")}
+
+	# A delivery opens, and carries the planting weeks behind it until one of
+	# them would have waited longer than the farm is willing to carry it.
+	drops = []
+	for w in weeks:
+		if not drops or (getdate(w) - getdate(drops[-1])).days > 7 * wait:
+			drops.append(w)
+
+	span_weeks = max(1, (getdate(weeks[-1]) - getdate(weeks[0])).days // 7 + 1)
+	years = max(span_weeks / 52.0, 1.0 / 52.0)
+	# Every house delivers against every one of those weeks, each bringing its
+	# own share of it. Dealing the weeks out one house at a time instead --
+	# this one takes week 28, that one week 29 -- reads neatly and plans
+	# wrongly: a house given a quarter of the season still has to cover the
+	# WHOLE of the weeks it was dealt, and sizing it on a quarter leaves every
+	# one of those weeks short. Sharing each delivery is also how the farm
+	# actually arranges cover, so that a week nobody can fill alone is filled
+	# between them.
+	share = round(100.0 / houses, 4)
+	picks = [{
+		"supplier": "",
+		"share_pct": share if i < houses - 1 else round(100.0 - share * (houses - 1), 4),
+		"lead_weeks": lead,
+		"cycle_count": max(1, int(round(len(drops) / years))),
+		"weeks": [_iso(d) for d in drops],
+	} for i in range(houses)]
+
+	# What those deliveries actually come to, worked out by the same function
+	# the card uses, so a suggestion and the plan it becomes cannot differ.
+	named = [dict(p, supplier=_("House {0}").format(i + 1))
+	         for i, p in enumerate(picks)]
+	run = plan_supply(plan, picks=named, form=form)
+	return {
+		"plan": plan, "form": form, "entry_stage": entry,
+		"lead_weeks": lead,
+		"houses_suggested": len(picks),
+		"deliveries": len(drops),
+		"planting_weeks": len(weeks),
+		"max_wait_weeks": wait,
+		"cycles_a_year": [p["cycle_count"] for p in picks],
+		# Ready to drop straight into the card: shares, cycles and the weeks
+		# themselves, with the names left for the farm to fill in.
+		"picks": picks,
+		"would_buy": cint(run.get("units_bought")),
+		"weeks_short": cint(run.get("weeks_short")),
+		"longest_wait_weeks": max(
+			[cint(w.get("held_weeks")) for w in (run.get("weeks") or [])] or [0]),
+		"stranded": cint(run.get("plants_stranded")),
+		"plants_needed": cint(run.get("plants_needed")),
+		"preview": run,
+	}

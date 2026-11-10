@@ -651,6 +651,26 @@
             >{{ _("Download cycles") }}</button>
           </span>
         </div>
+        <!-- The plan before anybody is named. What has to arrive and when is
+             arithmetic off the planting weeks and the lift profile; who brings
+             it is the farm's decision, so the suggestion leaves the names
+             blank and fills in everything else. -->
+        <div class="pl-callout" style="margin-bottom:10px">
+          <b>{{ _("Let the plan propose it") }}</b>
+          <span class="pl-dim">{{ _("— what has to arrive and when, from the planting weeks and the lifts. You pick who brings it.") }}</span>
+          <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-top:6px">
+            <label class="pl-inline"
+                   title="{{ _('How many houses to spread it across. Each brings its share of every delivery, so a week none of them could fill alone is filled between them.') }}"
+            >{{ _("Houses") }}<input id="sup-houses" type="number" min="1" max="12"
+                     step="1" value="1" style="width:5em"></label>
+            <label class="pl-inline"
+                   title="{{ _('How long plants may sit on the bench waiting for their planting week. Nought is a delivery for every planting week: no waiting and no surplus, but the most deliveries. Raising it folds later weeks into the consignment before them.') }}"
+            >{{ _("Plants may wait") }}<input id="sup-wait" type="number" min="0"
+                     max="26" step="1" value="0" style="width:5em"> {{ _("wks") }}</label>
+            <button type="button" class="pl-btn pl-btn-primary" data-sup="suggest"
+            >{{ _("Suggest a supply plan") }}</button>
+          </div>
+        </div>
         <div id="sup-pick"></div>
         <div class="pl-tiles pl-tiles-sm" id="sup-tiles"></div>
         <div id="sup-body" class="pl-scroll"></div>
@@ -8526,9 +8546,10 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
           `<th>Cycle</th><th>Lands</th><th>Covers plantings to</th>` +
           `<th class="r">Share of the order %</th>` +
           `<th class="r">${esc((S.supOut && S.supOut.form) || "Units")}</th>` +
-          `<th class="r">Plants</th><th>Order by</th></tr></thead><tbody>` +
+          `<th class="r">Plants</th><th>Order by</th><th></th></tr></thead><tbody>` +
           p.cycles.map((c, j) =>
-            `<tr data-j="${j}"${c.units ? "" : ' class="text-muted"'}>` +
+            `<tr data-j="${j}" data-week="${esc(c.lands_iso || "")}"` +
+            `${c.units ? "" : ' class="text-muted"'}>` +
             `<td>${j + 1}</td><td>${esc(c.lands_iso || "")}</td>` +
             `<td class="bf-meta">${esc(c.covers_to || "")}${
               c.planting_weeks ? ` <span class="pl-dim">${c.planting_weeks} wk</span>`
@@ -8541,8 +8562,13 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
             `<td class="r">${c.plants ? num(c.plants) : "—"}</td>` +
             `<td class="bf-meta">${esc(c.order_iso || "")}${
               c.order_passed ? ' <span style="color:var(--critical)">passed</span>'
-                             : ""}</td></tr>`).join("") +
-          `</tbody></table>`
+                             : ""}</td>` +
+            `<td><button type="button" class="pl-btn sup-cdel" ` +
+            `title="Drop this delivery. The weeks it covered fall to the ` +
+            `delivery before it.">✕</button></td></tr>`).join("") +
+          `</tbody></table>` +
+          `<button type="button" class="pl-btn sup-cycle-add" ` +
+          `style="margin-top:4px">+ a delivery week</button>`
         : `<p class="pl-note" style="margin:6px 0 0">Recalculate to see what ` +
           `each delivery carries.</p>`) +
       `</div>`).join("") ||
@@ -8555,8 +8581,14 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
       share_pct: Number((row.querySelector(".sup-share") || {}).value) || 0,
       lead_weeks: Number((row.querySelector(".sup-lead") || {}).value) || 0,
       cycle_count: Number((row.querySelector(".sup-count") || {}).value) || 4,
-      // Only the shares are typed; when each delivery lands and what it
-      // covers is worked out from how often the house comes.
+      // The weeks as they stand on screen. Handing them back is what makes a
+      // delivery removable or addable one at a time: without them the server
+      // only ever had a count to work from and redrew its own rhythm over
+      // whatever had just been edited.
+      weeks: [...row.querySelectorAll("tbody tr")]
+        .map((tr) => tr.dataset.week).filter(Boolean),
+      // Only the shares are typed; what each delivery covers is worked out
+      // from the week it lands in and the week the next one lands in.
       cycles: [...row.querySelectorAll("tbody tr")].map((tr, j) => ({
         lift_no: j + 1,
         share_pct: Number((tr.querySelector(".sup-cshare") || {}).value) || 0,
@@ -8584,6 +8616,8 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
             supplier: x.supplier, share_pct: x.share_pct,
             lead_weeks: x.lead_weeks, units: x.units, plants: x.plants,
             cycle_count: x.cycle_count, drops_in_plan: x.drops_in_plan,
+            cycles_a_year: x.cycles_a_year, cycles_in_plan: x.cycles_in_plan,
+            weeks: (x.cycles || []).map((c) => c.lands_iso).filter(Boolean),
             cycles: (x.cycles || []).map((c) => ({ ...c })),
           }));
           renderSupPick();
@@ -8694,11 +8728,25 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
   function dropsHtml(r) {
     const d = r.drops || [];
     if (!d.length) return "";
+    // Every column of this is already in the chooser above, one table per
+    // house. Repeating it under a second heading made the card read as four
+    // tables saying the same thing, and a reader who has to work out which of
+    // four is the real one trusts none of them. It earns its place only when
+    // it holds something the chooser cannot show: deliveries added by hand,
+    // which belong to no house, or more than one house to compare.
+    const byHand = d.filter((x) => x.by_hand).length;
+    const houses = new Set(d.map((x) => x.supplier)).size;
+    if (!byHand && houses < 2) {
+      return `<p class="pl-note" style="margin-top:12px">${d.length} cycle${
+        d.length === 1 ? "" : "s"} over the plan, as listed against the house ` +
+        `above. Saving keeps them on the plan; Download cycles has them as a ` +
+        `file.</p>`;
+    }
     return `<div class="text-muted small" style="text-transform:uppercase;` +
-      `letter-spacing:.05em;margin:14px 0 4px">The cycles</div>` +
+      `letter-spacing:.05em;margin:14px 0 4px">Every cycle, all houses</div>` +
       `<p class="pl-note">${d.length} cycle${d.length === 1 ? "" : "s"} ` +
-      `over the plan. Saving keeps them on the plan, where they can be ` +
-      `downloaded again at any time.</p>` +
+      `over the plan${byHand ? `, ${byHand} added by hand` : ""}. Saving keeps ` +
+      `them on the plan, where they can be downloaded again at any time.</p>` +
       `<table class="pl-t"><thead><tr><th>Supplier</th><th class="r">Cycle</th>` +
       `<th>Lands</th><th class="r">${esc(r.form || "Units")}</th>` +
       `<th class="r">Plants</th><th>Order by</th><th>Covers plantings to</th>` +
@@ -8728,6 +8776,20 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
     const rows = r.calendar || [];
     if (!rows.length) return "";
     const short = rows.filter((x) => x.short);
+    // One planting a week, none short, no block chosen yet: this is the week
+    // table above with a first-cut column, and saying it twice helps nobody.
+    // It is worth a table when a week carries several plantings, when one of
+    // them is cut short, or once blocks have been given out.
+    const weeks = new Set(rows.map((x) => x.planting_iso)).size;
+    if (!short.length && weeks === rows.length
+        && !rows.some((x) => x.block)) {
+      return `<p class="pl-note" style="margin-top:12px"><b>Every planting is ` +
+        `supplied in full</b> — ${rows.length} planting${
+          rows.length === 1 ? "" : "s"}, first cut ${
+          esc((rows[0] || {}).first_cut_iso || "")} to ${
+          esc((rows[rows.length - 1] || {}).first_cut_iso || "")}. The weeks ` +
+        `above are the same plantings, week by week.</p>`;
+    }
     return `<div class="text-muted small" style="text-transform:uppercase;` +
       `letter-spacing:.05em;margin:14px 0 4px">What it does to the planting ` +
       `calendar</div>` +
@@ -9936,6 +9998,30 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
               S.sup = null; S.supOut = null; loadSupPick();
               return;
             }
+            if (b.dataset.sup === "suggest") {
+              if (!S.plan) { toast("No plan in scope.", true); return; }
+              const houses = Math.max(1, Math.min(12,
+                Number(($("sup-houses") || {}).value) || 1));
+              const wait = Math.max(0,
+                Number(($("sup-wait") || {}).value) || 0);
+              call("suggest_supply", { plan: S.plan, houses: houses,
+                                       max_wait_weeks: wait })
+                .then((r) => {
+                  if (!((r.picks || []).length)) {
+                    toast(r.reason || "Nothing to suggest.", true); return;
+                  }
+                  // The names are left blank on purpose: what has to arrive
+                  // and when is arithmetic, who brings it is the farm's call.
+                  S.sup = r.picks.map((x) => ({ ...x, cycles: [] }));
+                  S.supSuggest = r;
+                  renderSupPick();
+                  runSupply();
+                  toast(`${r.deliveries} deliveries across ${houses} house`
+                    + `${houses === 1 ? "" : "s"} — pick who brings them.`);
+                })
+                .catch((e) => toast(esc(e.message), true));
+              return;
+            }
             if (b.dataset.sup === "csv") {
               if (!S.plan) { toast("No plan in scope.", true); return; }
               window.open("/api/method/upande_summer_flowers.summer_flowers."
@@ -9982,11 +10068,19 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
           if (e.target.classList.contains("sup-cycle-add")) {
             readSupPick();
             const p = S.sup[+e.target.closest(".pl-sup-row").dataset.i];
-            const last = p.cycles[p.cycles.length - 1];
-            p.cycles.push({ lift_no: p.cycles.length + 1,
-                            weeks_after: (Number(last && last.weeks_after) || 0) + 1,
-                            share_pct: 0 });
-            renderSupPick();
+            frappe.prompt([
+              { fieldname: "week_iso", label: "Lands in week", fieldtype: "Data",
+                reqd: 1,
+                description: "As 2028-W02. The weeks between this delivery and "
+                  + "the next one are the plantings it has to carry." },
+            ], (vals) => {
+              const wk = String(vals.week_iso || "").trim().toUpperCase();
+              if (!/^\d{4}-W\d{1,2}$/.test(wk)) {
+                toast("A week reads as 2028-W02.", true); return;
+              }
+              p.weeks = [...new Set([...(p.weeks || []), wk])].sort();
+              runSupply();
+            }, "Add a delivery week", "Add");
             return;
           }
           const dAdd = e.target.closest(".sup-dadd");
@@ -10022,9 +10116,17 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
           if (e.target.classList.contains("sup-cdel")) {
             readSupPick();
             const row = e.target.closest(".pl-sup-row");
-            S.sup[+row.dataset.i].cycles.splice(
-              +e.target.closest("tr").dataset.j, 1);
-            renderSupPick();
+            const p = S.sup[+row.dataset.i];
+            const j = +e.target.closest("tr").dataset.j;
+            if ((p.weeks || []).length <= 1) {
+              toast("A house needs at least one delivery.", true); return;
+            }
+            p.weeks = (p.weeks || []).filter((w, k) => k !== j);
+            p.cycles.splice(j, 1);
+            // Recalculated, not just redrawn: dropping a delivery moves the
+            // weeks it carried onto the one before it, and the quantities have
+            // to follow or the card shows a plan nobody could run.
+            runSupply();
           }
         });
         // Typing is the point of the card, so a change recalculates without
