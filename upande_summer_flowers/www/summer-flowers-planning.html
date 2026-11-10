@@ -8474,17 +8474,13 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
       } catch (e) { S.supSaved = null; }
     }
     if (!S.sup) {
-      // Start from whoever has a profile on file; failing that, one row on the
-      // default cycles, because an empty card answers nothing.
-      const known = (SUP_CHOICES.suppliers || []).slice(0, 2);
-      S.sup = (known.length ? known : [{ supplier: "", cycles: SUP_CHOICES.default_cycles }])
-        .map((x, i, a) => ({
-          supplier: x.supplier || "",
-          share_pct: Math.round(100 / (a.length || 1)),
-          lead_weeks: 10,
-          cycles: (x.cycles && x.cycles.length ? x.cycles
-                   : SUP_CHOICES.default_cycles).map((c) => ({ ...c })),
-        }));
+      // One empty row, and nobody in it. The card used to open on whoever had
+      // a lift profile on file, which put the same house on every plan at
+      // 100% of the season before anyone had chosen it -- a profile on file
+      // is a note about how a house hands over, not a decision that it
+      // supplies this crop.
+      S.sup = [{ supplier: "", share_pct: 100, lead_weeks: 0,
+                 cycle_count: SUP_CHOICES.default_cycle_count || 4, cycles: [] }];
     }
     renderSupPick();
     return runSupply();
@@ -8493,16 +8489,19 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
   function renderSupPick() {
     const box = $("sup-pick");
     if (!box) return;
-    const all = [...new Set([...(SUP_CHOICES.suppliers || []).map((x) => x.supplier),
-                             ...(SUP_CHOICES.others || [])])];
+    const profiled = new Set((SUP_CHOICES.suppliers || []).map((x) => x.supplier));
+    const all = [...new Set([...profiled, ...(SUP_CHOICES.others || [])])];
+    // Marked, not chosen: a house with a lift profile on file is one we know
+    // how to plan for, which is worth saying and is not the same as picking it.
+    const label = (x) => esc(x) + (profiled.has(x) ? " · lift profile on file" : "");
     box.innerHTML = (S.sup || []).map((p, i) =>
       `<div class="pl-sup-row" data-i="${i}" style="border:1px solid var(--border);` +
       `border-radius:6px;padding:8px 10px;margin-bottom:6px">` +
       `<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">` +
       `<select class="sup-name" style="min-width:230px">` +
       `<option value=""${p.supplier ? "" : " selected"}>— pick a supplier —</option>` +
-      all.map((x) => `<option${x === p.supplier ? " selected" : ""}>${esc(x)}</option>`
-        ).join("") + `</select>` +
+      all.map((x) => `<option value="${esc(x)}"${x === p.supplier ? " selected" : ""}>` +
+        `${label(x)}</option>`).join("") + `</select>` +
       `<label class="pl-inline" title="The share of the season promised to ` +
       `this house.">Share %<input class="sup-share" type="number" min="0" ` +
       `max="100" step="0.5" style="width:5.5em" value="${

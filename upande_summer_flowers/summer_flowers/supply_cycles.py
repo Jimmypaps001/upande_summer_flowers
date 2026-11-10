@@ -57,8 +57,14 @@ def _monday(d):
 	return add_days(d, -d.weekday())
 
 
-def stated_cycles(supplier=None, form=DEFAULT_FORM):
-	"""The cycles a supplier hands a consignment over in, as Settings states."""
+def stated_lifts(supplier=None, form=DEFAULT_FORM):
+	"""The LIFTS a supplier hands one consignment over in, as Settings states.
+
+	Not cycles. How often a house comes in a year is a commercial arrangement
+	and nothing on file states it; how one consignment is then handed over, in
+	lifts a week or two apart, is this. The two were read off the same table,
+	so Iribov's two lifts were offered as "Cycles 2" and the card proposed a
+	delivery rhythm the supplier had never agreed to."""
 	rows = frappe.get_all(
 		"Summer Flower Handover Wave",
 		filters={"parent": "Summer Flower Settings", "form": form},
@@ -71,7 +77,7 @@ def stated_cycles(supplier=None, form=DEFAULT_FORM):
 	if not mine and not supplier:
 		mine = [r for r in rows if not r.source]
 	if not mine:
-		return default_cycles()
+		return []
 	return [{"lift_no": cint(r.lift_no) or i + 1,
 	         "weeks_after": cint(r.weeks_after_arrival),
 	         "share_pct": flt(r.share_pct)}
@@ -87,13 +93,18 @@ def suppliers_for(form=DEFAULT_FORM):
 		fields=["source"]) if r.source}
 	out = []
 	for name in sorted(named):
-		out.append({"supplier": name, "cycles": stated_cycles(name, form),
-		            "stated": 1})
-	return {"form": form, "default_cycles": stated_cycles(None, form) or default_cycles(),
+		# The lift profile is what is on file for this house. It is offered for
+		# the reader to see, never as a delivery rhythm: nobody has said how
+		# many times a year this house comes, so nothing here says it either.
+		out.append({"supplier": name, "lifts": stated_lifts(name, form),
+		            "cycle_count": DEFAULT_CYCLE_COUNT, "stated": 1})
+	return {"form": form, "default_cycles": default_cycles(),
 	        "default_cycle_count": DEFAULT_CYCLE_COUNT,
 	        "suppliers": out,
-	        # Any supplier can be used; these are only the ones with a profile
-	        # on file. The rest start from the default and are edited on screen.
+	        # Any supplier can be used; these are only the ones with a lift
+	        # profile on file. Having a profile is not being chosen -- the card
+	        # opens on nobody, because who supplies a season is a decision the
+	        # farm makes and not one the settings table has already made.
 	        "others": frappe.get_all("Supplier", filters={"disabled": 0},
 	                                 pluck="name", order_by="name", limit=400)}
 
