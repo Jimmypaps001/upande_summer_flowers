@@ -61,8 +61,12 @@ class SummerFlowerProductionPlan(Document):
 					b.plants_to_plant = plants_to_plant(v, cint(b.plants))
 		except Exception:
 			pass
-		self.new_beds_required = sum((b.beds or 0) for b in new_rows)
-		self.new_plants_required = sum((b.plants or 0) for b in new_rows)
+		# Only where there IS a programme. Where there is not, set_totals has
+		# already put the demand's own requirement here, and zeroing it would
+		# take the one figure the farm needs in order to buy anything.
+		if new_rows or not cint(self.get("sized_from_demand")):
+			self.new_beds_required = sum((b.beds or 0) for b in new_rows)
+			self.new_plants_required = sum((b.plants or 0) for b in new_rows)
 		self.check_protocol_freshness()
 		self.sync_status()
 
@@ -409,6 +413,30 @@ class SummerFlowerProductionPlan(Document):
 				continue
 			if b.sticking_year and b.sticking_week:
 				planned_sticking[(b.sticking_year, b.sticking_week)] += b.plants or 0
+		# Nothing planted yet, so the order is sized off what the DEMAND asks
+		# for. The programme is drawn from the consignments, and the
+		# consignments cannot be chosen until the farm is told what to buy, so
+		# this figure has to exist before a single planting does.
+		self.sized_from_demand = 0
+		if not planned_sticking:
+			try:
+				v0 = getattr(self, "_version", None) or frappe.get_cached_doc(
+					"Crop Protocol Version", self.protocol)
+				back = cint(weeks_to_a_plant(v0))
+				need, from_demand = planting_requirement(self)
+				for at, standing, _to_plant in need:
+					if not cint(standing):
+						continue
+					y, w, _d = (getdate(at)
+					            - datetime.timedelta(weeks=back)).isocalendar()
+					planned_sticking[(cint(y), cint(w))] += cint(standing)
+				if planned_sticking and from_demand:
+					self.sized_from_demand = 1
+					self.plants_from_demand = sum(cint(q) for _a, q, _t in need)
+					self.new_plants_required = cint(self.plants_from_demand)
+			except Exception:
+				frappe.log_error(frappe.get_traceback(),
+				                 "Sizing from demand on %s" % self.name)
 		if planned_sticking:
 			key = max(planned_sticking, key=lambda k: planned_sticking[k])
 			self.peak_weekly_sticking_planned = planned_sticking[key]
@@ -428,7 +456,15 @@ class SummerFlowerProductionPlan(Document):
 		v = getattr(self, "_version", None)
 		peak = cint(self.peak_weekly_sticking_planned)
 		if not v or not peak:
-			self.tc_status = _("No plantings proposed, so nothing to order.")
+			self.tc_status = (
+				_("Nothing is planted yet. This plan says what the market wants "
+				  "and what is already standing; the planting programme is drawn "
+				  "from the consignments, so choose the suppliers and their "
+				  "cycles on Materials Planning and save. Every lift of every "
+				  "consignment becomes a planting in the week it lands, and the "
+				  "weeks, the space and the order all follow from that.")
+				if not supply_is_agreed(self)
+				else _("No plantings proposed, so nothing to order."))
 			return
 
 		# Through the one function that sizes a purchase, so this figure and the one
@@ -471,16 +507,44 @@ class SummerFlowerProductionPlan(Document):
 		if first:
 			self.tc_order_by_date = tc_order_by_date(
 				v, iso_monday(first[0], first[1]), cycles=cycles)
+		agreed_note = None
 		if self.tc_choice_committed and self.tc_order_date_committed:
 			self.tc_order_by_date = getdate(self.tc_order_date_committed)
 
-		notes = []
+		# Once the houses are agreed, the date that binds is theirs: the first
+		# consignment's order week at the lead time that house works to. The
+		# protocol's own figure is what the draft had to go on before anybody
+		# had been asked, and it outlived its usefulness the moment they were.
+		agreed = sorted(c.order_week for c in (self.get("plan_consignments") or [])
+		                if c.get("order_week"))
+		if cint(self.supply_confirmed) and agreed:
+			_y, _sep, _w = str(agreed[0]).partition("-W")
+			first_order = (iso_monday(cint(_y), cint(_w))
+			               if cint(_y) and cint(_w) else None)
+			if first_order:
+				self.tc_order_by_date = first_order
+				agreed_note = (_(
+					"Dated from the agreed supply: the first consignment is "
+					"ordered in {0}, at the lead time its house works to. The "
+					"protocol's own figure no longer applies."
+				).format(agreed[0]))
+
+		notes = [agreed_note] if agreed_note else []
 		if self.tc_order_by_date and self.tc_order_by_date < getdate(nowdate()):
 			notes.append(_(
 				"The order date has already passed ({0}), so the first sticking week "
 				"{1}-W{2:02d} cannot be met from a new TC order. Buy rooted cuttings "
 				"for the early weeks or move the demand later."
 			).format(self.tc_order_by_date, first[0], first[1]))
+		if cint(self.get("sized_from_demand")):
+			notes.append(_(
+				"Nothing is planted yet, so this is sized from the demand: "
+				"{0} plants to put in the ground over the season, peaking at "
+				"{1} in {2}. Agree the suppliers and their cycles and the "
+				"planting programme is drawn from what they will bring."
+			).format("{:,}".format(cint(self.plants_from_demand)),
+			         "{:,}".format(cint(self.peak_weekly_sticking_planned)),
+			         self.peak_sticking_week_planned))
 		if cint(self.plantings_not_placed):
 			notes.append(_(
 				"{0} of the proposed plantings are waiting on a block. This order is "
@@ -495,6 +559,15 @@ class SummerFlowerProductionPlan(Document):
 	# ------------------------------------------------- what the order supplies
 	def apply_tc_constraint(self):
 		"""Fill in what the confirmed TC order can actually supply, week by week."""
+		# Nothing has been agreed, so nothing is supplied. Seeding this from what
+		# the plan WANTS to grow made every draft read as fully supplied -- 125%
+		# coverage out of a plan with no supplier, no consignment and no order.
+		if not supply_is_agreed(self):
+			for w in self.plan_weeks:
+				w.supplied_production_stems = 0
+			self.supplied_production_stems = 0
+			self.supplied_coverage_pct = 0
+			return
 		for w in self.plan_weeks:
 			w.supplied_production_stems = cint(w.production_stems)
 		self.supplied_production_stems = cint(self.total_production_stems)
@@ -1647,8 +1720,187 @@ def build_from_demand(market_demand, farm=None, season_start_year=None,
 	return plan.name
 
 
-def _populate(plan):
-	"""Fill plan_weeks and plan_blocks."""
+def planting_requirement(plan):
+	"""[(Monday of the planting week, plants standing, plants to plant), ...].
+
+	Its own programme where it has one; what the demand asks for where it does
+	not. A plan with nothing planted yet still has to say what to buy -- that
+	is the whole question the materials card is opened to answer, and the
+	programme is drawn FROM the answer, not the other way round.
+
+	Both figures, because the two cards mean different things by "plants". A
+	buyer buys what goes IN the ground; the field counts what is left standing
+	once it has established. Handing one number to both is how the material
+	card came to say 445 tc and the supply card 228 for the same planting."""
+	rows = {}
+	for b in (plan.get("plan_blocks") or []):
+		if not cint(b.is_new_planting) or not b.get("planting_date"):
+			continue
+		at = getdate(b.planting_date)
+		at = at - datetime.timedelta(days=at.weekday())
+		standing, to_plant = rows.get(at, (0, 0))
+		rows[at] = (standing + cint(b.plants),
+		            to_plant + (cint(b.get("plants_to_plant")) or cint(b.plants)))
+	if rows:
+		return [(at, q[0], q[1]) for at, q in sorted(rows.items())], False
+
+	# Sized exactly the way _populate sizes a planting, because it is the same
+	# planting: grossed up for establishment, rounded to the smallest the
+	# protocol allows, and read back down to what that stands up.
+	try:
+		wanted = wanted_plants_by_week(plan) or {}
+		if not wanted:
+			return [], True
+		v = frappe.get_cached_doc("Crop Protocol Version", plan.protocol)
+		min_beds = cint(v.min_planting_beds_derived) or 1
+		out = []
+		for at, plants in sorted(wanted.items()):
+			if not cint(plants):
+				continue
+			_beds, planted, _a = size_planting(
+				v, plants_to_plant(v, cint(plants)), min_beds)
+			planted = cint(planted) or plants_to_plant(v, cint(plants))
+			out.append((at, plants_standing_from(v, planted, cint(plants)),
+			            cint(planted)))
+		return out, True
+	except Exception:
+		frappe.log_error(frappe.get_traceback(),
+		                 "Demand requirement on %s" % plan.get("name"))
+		return [], True
+
+
+def weeks_to_a_plant(v):
+	"""Arrival to a plant the field can take: the first lift, else the route."""
+	lifts = _lift_profile(v, _entry_stage_of(v))
+	return (cint(lifts[0]["weeks_after"]) if lifts
+	        else cint(v.sticking_to_planting_weeks))
+
+
+def wanted_plants_by_week(plan):
+	"""{Monday of the planting week: plants the demand asks to go in the ground}.
+
+	Worked from the demand curve and what is already standing, with no
+	reference to the plan's own plantings. That is the whole point: this is
+	what the consignments are sized against, and it has to be answerable
+	before a single planting exists."""
+	if not plan.get("protocol") or not plan.get("market_demand"):
+		return {}
+	protocol = frappe.get_cached_doc("Crop Protocol Version", plan.protocol)
+	offsets = protocol.flush_offsets()
+	if not offsets:
+		return {}
+	demand = frappe.get_doc("Summer Flower Market Demand", plan.market_demand)
+	grid = week_sequence(plan.from_year, plan.from_week, plan.weeks_covered)
+	if not grid:
+		return {}
+	index = {(y, w): i for i, (y, w, _d) in enumerate(grid)}
+	demand_map = {(r.year, r.week_no): cint(r.demand_stems)
+	              for r in demand.demand_weeks if (r.year, r.week_no) in index}
+	production = defaultdict(int)
+	for planting in standing_plantings(plan.farm, plan.variety):
+		for (y, w), stems in production_by_week(planting).items():
+			if (y, w) in index:
+				production[(y, w)] += stems
+
+	curve = sorted(offsets, key=lambda o: o[0])
+	anchor = cint(curve[0][0])
+	keep = saleable(protocol)
+	rates = [0.0] * (cint(curve[-1][0]) - anchor + 1)
+	for off, spp in curve:
+		rates[cint(off) - anchor] = flt(spp) * keep
+
+	tolerance = flt(frappe.db.get_single_value(
+		"Summer Flower Settings", "weekly_variance_tolerance_pct"))
+	band = (tolerance if tolerance > 0 else 10.0) / 100.0
+	min_beds = cint(protocol.min_planting_beds_derived) or 1
+	_b, step, _a = size_planting(protocol, 1, min_beds)
+	cohorts, _solved = plan_cohorts(
+		rates,
+		[demand_map.get((y, w), 0) for (y, w, _m) in grid],
+		[production[(y, w)] for (y, w, _m) in grid],
+		band=band, rounding_plants=max(1, cint(step)))
+
+	window_start = grid[0][2]
+	out = {}
+	for start, plants in sorted(cohorts.items()):
+		at = window_start + datetime.timedelta(weeks=cint(start) - anchor)
+		out[at] = cint(out.get(at, 0)) + cint(plants)
+	return dict(sorted(out.items()))
+
+
+def programme_from_supply(plan):
+	"""The planting programme the agreed consignments actually make possible.
+
+	A consignment is not a planting. It is handed over in lifts, and each lift
+	is its own planting in the week it becomes a plant the field can take. The
+	week a consignment is named for is its FIRST lift; the others follow it,
+	which is how one order comes to fill several planting weeks."""
+	from upande_summer_flowers.summer_flowers import tc_supply as ts
+	from upande_summer_flowers.summer_flowers.route_ways import LIFT_FORM
+
+	rows = plan.get("plan_consignments") or []
+	if not rows:
+		return []
+	v = frappe.get_cached_doc("Crop Protocol Version", plan.protocol)
+	form = LIFT_FORM.get(_entry_stage_of(v)) or "Tissue Culture"
+	# A lift too small to fill the protocol's smallest planting does not get a
+	# bed of its own: it joins the lift before it. Otherwise a 10% tail of a
+	# small consignment is rounded up to a whole bed and the plan plants four
+	# times what was bought.
+	min_beds = cint(v.min_planting_beds_derived) or 1
+	floor = cint(size_planting(v, 1, min_beds)[1])
+	by_house, out = {}, []
+	for c in rows:
+		at = getdate(c.lands_date) if c.get("lands_date") else None
+		plants = cint(c.get("plants"))
+		if not at or plants <= 0:
+			continue
+		house = (c.get("supplier") or "").strip()
+		if house not in by_house:
+			by_house[house] = (ts.handover_for(form, house or None, 0, v)
+			                   or [(0, 1.0)])
+		waves = by_house[house]
+		first = cint(waves[0][0])
+		running, base = 0, len(out)
+		for i, (wk, share) in enumerate(waves):
+			# The last lift takes the remainder, so the lifts add to the order.
+			got = (plants - running if i == len(waves) - 1
+			       else int(round(plants * flt(share))))
+			running += got
+			if got <= 0:
+				continue
+			when = at + datetime.timedelta(weeks=cint(wk) - first)
+			if len(out) > base and got < floor:
+				out[-1] = (out[-1][0], out[-1][1] + got)
+				continue
+			out.append((when, got))
+	return sorted(out)
+
+
+def rebuild_from_supply(plan):
+	"""Re-draw the plan from the supply that was agreed. Does not save."""
+	doc = (plan if hasattr(plan, "doctype")
+	       else frappe.get_doc("Summer Flower Production Plan", plan))
+	_populate(doc, programme=programme_from_supply(doc))
+	return doc
+
+
+def supply_is_agreed(plan):
+	"""Whether the houses that will supply this plan have been settled."""
+	return bool(cint(plan.get("supply_confirmed"))
+	            or (plan.get("plan_consignments") or []))
+
+
+def _populate(plan, programme=None):
+	"""Fill plan_weeks and plan_blocks.
+
+	`programme` is the planting programme as [(planting date, plants), ...].
+	Where one is given it IS the programme: it comes from the consignments the
+	farm agreed with its houses, and a consignment handed over in lifts plants
+	in several weeks, not one. Where none is given and no supply has been
+	agreed, nothing new is planted at all -- a plan drawn before anybody has
+	been asked what they can bring is a wish, and the weeks it filled in read
+	exactly like weeks that had been bought."""
 	demand = frappe.get_doc("Summer Flower Market Demand", plan.market_demand)
 	if not plan.protocol:
 		plan.resolve_protocol()
@@ -1739,7 +1991,14 @@ def _populate(plan):
 	for off, spp in curve:
 		rates[cint(off) - anchor] = flt(spp) * keep
 	life_weeks = protocol.total_weeks_in_ground or 0
-	stick_weeks = protocol.sticking_to_planting_weeks or 0
+	# Arrival to a plant the field can take. Where the protocol states lifts,
+	# that is the FIRST lift: a consignment handed over in waves is not a plant
+	# on the day it lands, and dating the order off the route's own weeks
+	# ordered every lifted crop late. This is the same figure the preview
+	# quotes, so what the plan commits to is what the preview promised.
+	_lifts = _lift_profile(protocol, _entry_stage_of(protocol))
+	stick_weeks = (cint(_lifts[0]["weeks_after"]) if _lifts
+	               else cint(protocol.sticking_to_planting_weeks) or 0)
 	turnaround = cint(protocol.turnaround_weeks)
 	today = getdate(nowdate())
 	# The protocol states the minimum as net area; it has already rounded that up
@@ -1756,11 +2015,28 @@ def _populate(plan):
 	week_standing = [production[(y, w)] for (y, w, _m) in grid]
 	# A cohort is not planted to the plant: it is rounded up to the protocol's
 	_b, step, _a = size_planting(protocol, 1, min_beds)
-	cohorts, _solved = plan_cohorts(rates, week_demand, week_standing, band=band,
-	                                rounding_plants=max(1, cint(step)))
 	plan.weekly_variance_band_pct = tolerance if tolerance > 0 else 10.0
 
 	window_start = grid[0][2]
+	if programme is not None:
+		# Dated by the lifts: each wave of each consignment is its own planting,
+		# in the week it actually becomes a plant the field can take.
+		cohorts = {}
+		for at, plants in programme:
+			if not cint(plants):
+				continue
+			first_cut = getdate(at) + datetime.timedelta(weeks=anchor)
+			off = (first_cut - window_start).days // 7
+			cohorts[off] = cint(cohorts.get(off, 0)) + cint(plants)
+	elif not supply_is_agreed(plan):
+		# Nothing is planted until the supply is agreed. The demand and what is
+		# already standing are still worked out, so the gap this plan has to
+		# close is on the page before a single supplier has been chosen.
+		cohorts = {}
+	else:
+		cohorts, _solved = plan_cohorts(rates, week_demand, week_standing,
+		                                band=band,
+		                                rounding_plants=max(1, cint(step)))
 	for idx, (start, wanted_plants) in enumerate(sorted(cohorts.items())):
 		if idx >= MAX_NEW_PLANTINGS:
 			break

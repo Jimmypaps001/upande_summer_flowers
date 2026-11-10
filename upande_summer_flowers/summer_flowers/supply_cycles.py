@@ -14,6 +14,7 @@ suppliers against each other before anything is committed to.
 """
 
 import datetime
+import math
 
 import frappe
 from frappe import _
@@ -111,14 +112,34 @@ def _week_monday(week_iso):
 
 
 def _wanted_by_week(plan):
-	"""{Monday of the planting week: plants that have to go in the ground}."""
+	"""{Monday of the planting week: plants that have to go in the ground}.
+
+	From the plan's own plantings where it has any. Where it has none -- which
+	is now the normal state of a draft, because nothing is planted until the
+	supply is agreed -- from the demand itself. The houses are sized against
+	what the market wants, not against a programme that does not exist yet."""
 	out = {}
 	for b in plan.plan_blocks:
 		if not cint(b.is_new_planting) or not b.get("planting_date"):
 			continue
 		key = _monday(b.planting_date)
 		out[key] = out.get(key, 0) + (cint(b.get("plants_to_plant")) or cint(b.plants))
-	return dict(sorted(out.items()))
+	if out:
+		return dict(sorted(out.items()))
+	try:
+		from upande_summer_flowers.summer_flowers.doctype.summer_flower_production_plan.summer_flower_production_plan import (
+			planting_requirement,
+		)
+
+		need, _from_demand = planting_requirement(plan)
+		# What goes IN the ground. A buyer buys plants to plant, not plants
+		# that will still be standing in six weeks.
+		return {_monday(at): cint(to_plant) for at, _st, to_plant in need
+		        if cint(to_plant)}
+	except Exception:
+		frappe.log_error(frappe.get_traceback(),
+		                 "Demand sizing on %s" % plan.name)
+		return {}
 
 
 def _normalised(picks, form, wanted=None):
@@ -225,6 +246,21 @@ def plan_supply(plan, picks=None, form=None):
 
 	wanted = _wanted_by_week(doc)
 	chosen = _normalised(picks, form, wanted)
+	# How often a house comes is one question; how each consignment is then
+	# handed over, in lifts weeks apart, is another. The agreement carried only
+	# the first, so every lifted crop was planned as though the whole order
+	# became plants the week it landed.
+	from upande_summer_flowers.summer_flowers import tc_supply as ts
+
+	for s_ in chosen:
+		s_["handover"] = [{"lift_no": i + 1, "weeks_after": cint(wk),
+		                   "share_pct": round(flt(sh) * 100, 2)}
+		                  for i, (wk, sh) in enumerate(
+			                  ts.handover_for(form, s_["supplier"], 0, v) or [])]
+		first = cint(s_["handover"][0]["weeks_after"]) if s_["handover"] else 0
+		s_["weeks_to_a_plant"] = first
+		for c in (s_.get("cycles") or []):
+			c["weeks_after"] = first
 	if not chosen:
 		return {"plan": plan, "form": form, "entry_stage": entry,
 		        "suppliers": [], "weeks": [],
@@ -235,7 +271,12 @@ def plan_supply(plan, picks=None, form=None):
 		        "reason": _("This plan has no new plantings to supply.")}
 
 	# One unit bought becomes this many plants in the ground, losses and all.
-	per_unit = 1.0 / (flt(v.cuttings_per_plant_required) or 1.0)
+	# Taken from the same function the material card uses, so the two cards
+	# cannot quote different orders for the same planting again.
+	from upande_summer_flowers.summer_flowers import root_line as rl
+
+	per_unit = flt(rl.plants_per_unit_at_plant(v)) or (
+		1.0 / (flt(v.cuttings_per_plant_required) or 1.0))
 	need_total = sum(wanted.values())
 	# A quantity typed on the material card is the quantity: the houses split
 	# what was agreed to be bought, not what the demand asked for in a perfect
@@ -266,7 +307,11 @@ def plan_supply(plan, picks=None, form=None):
 		s_plants = buy_plants * flt(s_["share_pct"]) / 100.0
 		for c in s_.get("cycles") or []:
 			plants = int(round(s_plants * flt(c["share"])))
-			units = int(round(plants / (per_unit or 1.0))) if plants > 0 else 0
+			# Up, never to the nearest: half a plantlet short of a bed is a
+			# bed that cannot be planted, and rounding down put the supply
+			# card one unit under the material card on every order.
+			units = (int(math.ceil(plants / (per_unit or 1.0) - 1e-9))
+			         if plants > 0 else 0)
 			c["units"], c["plants"] = units, plants
 			at = _monday(c["lands"])
 			order_week = add_days(at, -7 * cint(s_["lead_weeks"]))
@@ -479,11 +524,11 @@ def save_supply(plan, picks, confirm=0):
 		"weeks covered{6}."
 	).format(
 		" and ".join(
-			"{} ({}% over {} deliveries a year)".format(
+			"{} ({}%, {} cycles a year)".format(
 				s["supplier"], round(flt(s["share_pct"])), cint(s["cycle_count"]))
 			for s in out["suppliers"]),
 		"{:,}".format(cint(out["plants_wanted"])),
-		_("{0} consignments").format(
+		_("{0} cycles over the plan").format(
 			sum(cint(s.get("drops_in_plan")) for s in out["suppliers"])),
 		"{:,} {}".format(cint(out["units_bought"]), out["form"]),
 		out["weeks_total"] - out["weeks_short"], out["weeks_total"],
@@ -498,13 +543,76 @@ def save_supply(plan, picks, confirm=0):
 		doc.supply_confirmed = 1
 		doc.supply_confirmed_on = frappe.utils.now()
 		doc.supply_confirmed_by = frappe.session.user
+
+	# And now the plan itself. Until this moment it had no new plantings at
+	# all: a draft says what the market wants and what is already standing,
+	# and stops there. The programme is drawn from the consignments just
+	# written -- every lift of every one of them, each in the week it becomes
+	# a plant the field can take -- so the plantings, the weekly grid, the
+	# space and the material line are all answers to what was agreed.
+	from upande_summer_flowers.summer_flowers.doctype.summer_flower_production_plan.summer_flower_production_plan import (
+		rebuild_from_supply,
+	)
+
+	rebuild_from_supply(doc)
+	out["settled"] = _settle_from_agreement(doc, out)
 	doc.flags.ignore_validate_update_after_submit = True
 	doc.save()
+	out["plantings"] = len([b for b in doc.plan_blocks
+	                        if cint(b.is_new_planting)])
+	out["plants_planted"] = sum(cint(b.plants) for b in doc.plan_blocks
+	                            if cint(b.is_new_planting))
 	out["saved"] = 1
 	out["confirmed"] = cint(doc.supply_confirmed)
 	out["calendar"] = _calendar_effect(doc, out)
 	out["note"] = doc.supply_note
 	return out
+
+
+def _settle_from_agreement(doc, out):
+	"""Re-date the draft from what the houses actually agreed to.
+
+	A draft is dated off the protocol -- what the CROP does, which is the only
+	thing known before anybody has been asked. Once the houses and their cycles
+	are agreed, what THEY do is the plan: their lead times and their lifts.
+
+	Only the dates the agreement decides are moved. Which weeks are planted,
+	and how much goes in each, is the demand's answer and no supplier's
+	business -- a house that is slow moves the order earlier, it does not get
+	to move the harvest."""
+	from upande_summer_flowers.summer_flowers.doctype.summer_flower_production_plan.summer_flower_production_plan import (
+		_cut_from_a_pool,
+	)
+
+	v = frappe.get_cached_doc("Crop Protocol Version", doc.protocol)
+	# A crop cut from our own standing pool is stuck off that pool. What a
+	# house hands over feeds the pool; it does not date the sticking.
+	if _cut_from_a_pool(v):
+		return None
+	# Where two houses hand over on different rhythms the binding one is the
+	# slowest: the week is only supplied once the last of them has landed.
+	weeks = max([cint(s.get("weeks_to_a_plant"))
+	             for s in (out.get("suppliers") or [])] or [0])
+	if not weeks:
+		return None
+	moved, rows = 0, 0
+	for b in doc.plan_blocks:
+		if not cint(b.is_new_planting) or not b.get("planting_date"):
+			continue
+		rows += 1
+		y, w, _dow = add_days(getdate(b.planting_date), -7 * weeks).isocalendar()
+		if cint(b.sticking_year) != cint(y) or cint(b.sticking_week) != cint(w):
+			moved += 1
+		b.sticking_year, b.sticking_week = cint(y), cint(w)
+	orders = sorted(d.get("order_iso") for d in (out.get("drops") or [])
+	                if d.get("order_iso"))
+	return {"weeks_to_a_plant": weeks, "rows": rows, "rows_moved": moved,
+	        "order_week": orders[0] if orders else None,
+	        "by_supplier": [{"supplier": s["supplier"],
+	                         "lead_weeks": cint(s.get("lead_weeks")),
+	                         "weeks_to_a_plant": cint(s.get("weeks_to_a_plant")),
+	                         "lifts": len(s.get("handover") or [])}
+	                        for s in (out.get("suppliers") or [])]}
 
 
 def _write_sellers(plan_doc, out):
@@ -543,8 +651,19 @@ def clear_supply(plan):
 	doc.supply_confirmed = 0
 	doc.supply_confirmed_on = None
 	doc.supply_confirmed_by = None
+	# Un-agreeing takes the programme away with it: the plantings were the
+	# consignments' own, and without them there is nothing holding them up.
+	doc.set("plan_consignments", [])
+	doc.set("plan_supply", [])
+	from upande_summer_flowers.summer_flowers.doctype.summer_flower_production_plan.summer_flower_production_plan import (
+		_populate,
+	)
+
+	_populate(doc)
 	doc.save()
-	return {"plan": doc.name, "confirmed": 0}
+	return {"plan": doc.name, "confirmed": 0,
+	        "plantings": len([b for b in doc.plan_blocks
+	                          if cint(b.is_new_planting)])}
 
 
 @frappe.whitelist()

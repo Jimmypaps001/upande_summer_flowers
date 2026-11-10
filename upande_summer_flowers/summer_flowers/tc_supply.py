@@ -526,6 +526,28 @@ def handover_waves(form="Tissue Culture", supplier=None, default_weeks=0,
 	return [(cint(r.weeks_after_arrival), flt(r.share_pct) / scale) for r in mine]
 
 
+def handover_for(form="Tissue Culture", supplier=None, default_weeks=0,
+                 version=None):
+	"""How THIS house hands a consignment over, in lifts.
+
+	Its own profile where Settings states one, and the crop's own where it does
+	not -- a house that says nothing about its lifts is taken to hand the crop
+	over the way the crop behaves, not to drop the whole order in a week."""
+	if supplier:
+		rows = frappe.get_all(
+			"Summer Flower Handover Wave",
+			filters={"parent": "Summer Flower Settings", "form": form,
+			         "source": supplier},
+			fields=["lift_no", "weeks_after_arrival", "share_pct"],
+			order_by="lift_no asc")
+		if rows:
+			total = sum(flt(r.share_pct) for r in rows) or 1.0
+			scale = 100.0 if abs(total - 100.0) <= 0.5 else total
+			return [(cint(r.weeks_after_arrival), flt(r.share_pct) / scale)
+			        for r in rows]
+	return handover_waves(form, None, cint(default_weeks), version)
+
+
 def survival(form="Tissue Culture", version=None):
 	"""The share of a consignment of `form` expected to reach the field."""
 	from upande_summer_flowers.summer_flowers.route_ways import route_loss

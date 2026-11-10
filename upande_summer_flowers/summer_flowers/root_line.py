@@ -338,6 +338,27 @@ def arrival_plan(plan, tc_share=None, returns_per_plant=None,
 			if not w["first_cut"] or cut < w["first_cut"]:
 				w["first_cut"] = cut
 
+	# Nothing is planted yet, so what to buy is answered from the demand
+	# itself. A materials card that reads zero because the programme has not
+	# been drawn is the one thing it must never say -- the programme is drawn
+	# FROM what this card tells the farm to buy.
+	sized_from_demand = 0
+	if not weeks:
+		from upande_summer_flowers.summer_flowers.doctype.summer_flower_production_plan.summer_flower_production_plan import (
+			planting_requirement,
+		)
+
+		need, from_demand = planting_requirement(plan)
+		for land, standing, _to_plant in need:
+			if not cint(standing):
+				continue
+			sized_from_demand = 1 if from_demand else 0
+			# Standing, not to-plant: every figure below this is worked back
+			# UP from what has to be left standing, so handing it a planted
+			# count grossed the losses a second time.
+			weeks.setdefault(_monday(land), {"plants": 0, "first_cut": None,
+			                                 "cut_by_week": {}})["plants"] += cint(standing)
+
 	# Where a quantity has been asked for, the weeks must add up to exactly what
 	share_by_week = _apportion(
 		weeks, share, cint(asked["plants_from_tc"]) if asked else None)
@@ -512,6 +533,9 @@ def arrival_plan(plan, tc_share=None, returns_per_plant=None,
 		"variety": plan.variety, "farm": plan.farm,
 		"tc_share_pct": round(share * 100, 1),
 		"returns_per_plant": per_root,
+		# Said plainly, because a buyer reading these figures has to know
+		# whether they answer a programme or only the demand behind it.
+		"sized_from_demand": sized_from_demand,
 		"tc_weeks_to_ground": tc_weeks, "tc_lead_weeks": tc_lead,
 		# How the way in is handed over, as the protocol states it.
 		"lift_profile": [{"lift_no": i + 1, "weeks_after": cint(wk),
@@ -759,25 +783,46 @@ def _weekly_cut(plan):
 	return out
 
 
-def _agreed_waves(plan):
-	"""The cycles the plan has agreed with its suppliers, blended by share.
+def _agreed_waves(plan, v=None, form=None):
+	"""The lift profiles of the houses this plan agreed with, blended by share.
 
 	Two houses on different rhythms hand one season over between them, so the
-	profile this page draws is theirs weighted by what each was promised --
-	not the protocol's, which says how the crop behaves, not how it ships."""
+	profile this page draws is theirs weighted by what each was promised.
+
+	A cycle is NOT a lift. The cycles on the agreement say how many times in
+	the year a house comes -- a delivery calendar, already drawn as the
+	consignment rows. How each of those consignments is then handed over, in
+	lifts weeks apart, is a different question, and it is answered by the
+	house's own profile where it states one and by the crop's protocol where it
+	does not. Reading the calendar as the profile collapsed every agreed plan
+	to a single lift landing the week it was planted."""
 	rows = (plan.get("plan_supply") or []) if plan else []
 	if not rows:
 		return None
-	by_week = {}
+	from upande_summer_flowers.summer_flowers import tc_supply as ts
+
+	# A house's share of the season is stated on each of its cycle rows, so it
+	# is taken once, not summed over them.
+	share_of = {}
 	for r in rows:
-		weight = flt(r.share_pct) * flt(r.cycle_share_pct) / 10000.0
-		if weight <= 0:
+		name = (r.supplier or "").strip()
+		if not name:
 			continue
-		by_week[cint(r.weeks_after)] = by_week.get(cint(r.weeks_after), 0.0) + weight
-	if not by_week:
+		share_of[name] = max(flt(share_of.get(name, 0.0)), flt(r.share_pct))
+	total = sum(share_of.values())
+	if total <= 0:
 		return None
-	total = sum(by_week.values()) or 1.0
-	return [(w, by_week[w] / total) for w in sorted(by_week)]
+	by_week = {}
+	for name, share in share_of.items():
+		for wk, sh in (ts.handover_for(form, name, 0, v) or []):
+			by_week[cint(wk)] = (by_week.get(cint(wk), 0.0)
+			                     + (share / total) * flt(sh))
+	# Nothing was actually stated about the handover: fall back to the caller's
+	# own answer rather than claiming the plants land the week they are planted.
+	if not by_week or set(by_week) == {0}:
+		return None
+	t = sum(by_week.values()) or 1.0
+	return [(w, by_week[w] / t) for w in sorted(by_week)]
 
 
 def _handover(v, stage, default_weeks, plan=None):
@@ -785,10 +830,10 @@ def _handover(v, stage, default_weeks, plan=None):
 	from upande_summer_flowers.summer_flowers import tc_supply as ts
 	from upande_summer_flowers.summer_flowers.route_ways import LIFT_FORM
 
-	agreed = _agreed_waves(plan)
+	form = LIFT_FORM.get(stage)
+	agreed = _agreed_waves(plan, v, form)
 	if agreed:
 		return agreed
-	form = LIFT_FORM.get(stage)
 	if not form:
 		return [(cint(default_weeks), 1.0)]
 	try:
@@ -812,6 +857,34 @@ def _lifts_of(units, to_plant, arrives, waves):
 	except Exception:
 		frappe.clear_last_message()
 		return []
+
+
+def plants_per_unit_at_plant(version, stage=None):
+	"""Plants one bought unit puts IN the ground, after the losses before it.
+
+	The one figure the material card and the supply card have to share. The
+	supply card used to divide by the protocol's cuttings-per-plant instead,
+	which already carries the establishment loss -- so it bought for what
+	would stand rather than for what would be planted, and quoted roughly half
+	the order the material card did."""
+	from upande_summer_flowers.summer_flowers import crop_protocol as cp
+
+	v = (version if hasattr(version, "get")
+	     else frappe.get_cached_doc("Crop Protocol Version", version))
+	rows = cp.route_rows(v) or []
+	ways = _ways_in(v)
+	stage = stage or (ways[0] if ways else
+	                  next((r.stage for r in rows if r.get("stage")), "TC"))
+	per_unit = _plants_per_unit_from(rows, stage)
+	# Through the same loss account the week loop uses, because a protocol can
+	# state an establishment loss that its route does not apply -- and reading
+	# the percentage straight off the version applied it anyway, which is how
+	# the supply card came to quote 5% fewer units than the material card.
+	account = _loss_account(v, rows, stage)
+	pct = (flt((account.get("stated") or {}).get("field_establishment_pct"))
+	       if account.get("establishment_applies") else 0.0)
+	establish = (pct / 100.0) if pct else 1.0
+	return (per_unit / establish) if establish > 0 else per_unit
 
 
 def _survival(form="Tissue Culture", version=None):

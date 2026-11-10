@@ -648,7 +648,7 @@
             <button type="button" class="pl-btn" data-sup="reset">{{ _("Start again") }}</button>
             <button type="button" class="pl-btn" data-sup="csv"
                     title="{{ _('The consignments as a CSV, to send to a supplier or keep beside the order.') }}"
-            >{{ _("Download deliveries") }}</button>
+            >{{ _("Download cycles") }}</button>
           </span>
         </div>
         <div id="sup-pick"></div>
@@ -8292,7 +8292,10 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
       const mine = rows.filter((x) => x.procurement_plan === p.name);
       return `<div class="pl-alloc-edit" data-plan="${esc(p.name)}">
         <p class="pl-note"><a href="/app/summer-flower-procurement-plan/${encodeURIComponent(p.name)}">${esc(p.name)}</a>
-          · ${esc(p.entry_stage || "")} · draft — choose who raises it, then save.</p>
+          · ${esc(p.entry_stage || "")} · draft — ${p.for_another_revision
+            ? `this belongs to <b>${esc(p.production_plan)}</b>, not the plan on
+               screen. Its figures are that plan's; edit it there.`
+            : "choose who raises it, then save."}</p>
         <table class="pl-t"><thead><tr>
           <th>Type</th><th>Unit / propagator</th><th>Raises</th>
           <th class="r">Share %</th><th class="r">Charge / plant</th>
@@ -8504,9 +8507,9 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
       `this house.">Share %<input class="sup-share" type="number" min="0" ` +
       `max="100" step="0.5" style="width:5.5em" value="${
         Number(p.share_pct) || 0}"></label>` +
-      `<label class="pl-inline" title="How many times a year this house ` +
-      `delivers. Each consignment carries the plantings between it and the ` +
-      `next one.">Deliveries a year<input class="sup-count" type="number" ` +
+      `<label class="pl-inline" title="How many cycles this house comes in over ` +
+      `a year. Each cycle carries the plantings between it and the ` +
+      `next one.">Cycles<input class="sup-count" type="number" ` +
       `min="1" max="52" step="1" style="width:5em" value="${
         Number(p.cycle_count) || 4}"></label>` +
       `<label class="pl-inline" title="Weeks of notice this house needs." ` +
@@ -8514,13 +8517,14 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
       `style="width:5em" value="${Number(p.lead_weeks) || 0}"></label>` +
       `<span class="pl-dim">${p.units
         ? num(p.units) + " " + esc(((S.supOut || {}).form || "units").toLowerCase())
-          + (p.drops_in_plan ? ` in ${p.drops_in_plan} consignments` : "")
+          + (p.drops_in_plan ? ` over ${p.drops_in_plan} cycle`
+             + (p.drops_in_plan === 1 ? "" : "s") : "")
         : ""}</span>` +
       `<button type="button" class="pl-btn sup-del" title="Remove">✕</button>` +
       `</div>` +
       ((p.cycles || []).length
         ? `<table class="pl-t" style="margin-top:6px"><thead><tr>` +
-          `<th>Delivery</th><th>Lands</th><th>Covers plantings to</th>` +
+          `<th>Cycle</th><th>Lands</th><th>Covers plantings to</th>` +
           `<th class="r">Share of the order %</th>` +
           `<th class="r">${esc((S.supOut && S.supOut.form) || "Units")}</th>` +
           `<th class="r">Plants</th><th>Order by</th></tr></thead><tbody>` +
@@ -8692,11 +8696,11 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
     const d = r.drops || [];
     if (!d.length) return "";
     return `<div class="text-muted small" style="text-transform:uppercase;` +
-      `letter-spacing:.05em;margin:14px 0 4px">The deliveries</div>` +
-      `<p class="pl-note">${d.length} consignment${d.length === 1 ? "" : "s"} ` +
+      `letter-spacing:.05em;margin:14px 0 4px">The cycles</div>` +
+      `<p class="pl-note">${d.length} cycle${d.length === 1 ? "" : "s"} ` +
       `over the plan. Saving keeps them on the plan, where they can be ` +
       `downloaded again at any time.</p>` +
-      `<table class="pl-t"><thead><tr><th>Supplier</th><th class="r">Delivery</th>` +
+      `<table class="pl-t"><thead><tr><th>Supplier</th><th class="r">Cycle</th>` +
       `<th>Lands</th><th class="r">${esc(r.form || "Units")}</th>` +
       `<th class="r">Plants</th><th>Order by</th><th>Covers plantings to</th>` +
       `</tr></thead><tbody>` +
@@ -8713,7 +8717,7 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
         `<td class="bf-meta">${esc(x.covers_to || "")}${x.planting_weeks
           ? ` <span class="pl-dim">${x.planting_weeks} wk</span>` : ""}</td>` +
         `</tr>`).join("") +
-      `</tbody><tfoot><tr><th colspan="3">All deliveries</th>` +
+      `</tbody><tfoot><tr><th colspan="3">All cycles</th>` +
       `<th class="r">${num(d.reduce((a, x) => a + (x.units || 0), 0))}</th>` +
       `<th class="r">${num(d.reduce((a, x) => a + (x.plants || 0), 0))}</th>` +
       `<th colspan="2"></th></tr></tfoot></table>`;
@@ -9054,6 +9058,16 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
     box.innerHTML =
       `<div class="text-muted small" style="text-transform:uppercase;` +
       `letter-spacing:.05em;margin:14px 0 4px">What this commits</div>` +
+      // Whose commitment. A procurement plan belonging to a sibling plan for
+      // the same variety and season is shown here deliberately, but its
+      // quantities answer THAT plan -- and unlabelled they read as this one's.
+      ((S.dc || {}).production_plan && S.plan
+         && (S.dc || {}).production_plan !== S.plan
+        ? `<p class="pl-note" style="color:var(--critical)">These figures are ` +
+          `<b>${esc((S.dc || {}).production_plan)}</b>'s, not this plan's. It buys the ` +
+          `same material for the same variety and season, so it is shown ` +
+          `here; what THIS plan asks for is on Materials Planning.</p>`
+        : "") +
       `<p class="pl-note">` +
       (im.answered
         ? `<b>${num(im.units_given)} of ${num(im.units_asked)}</b> confirmed, ` +
