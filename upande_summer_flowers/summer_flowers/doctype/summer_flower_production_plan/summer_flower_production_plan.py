@@ -335,15 +335,18 @@ class SummerFlowerProductionPlan(Document):
 		if len(stems) != len(self.plan_blocks):
 			return
 		placeable = defaultdict(int)
-		unmet = 0
 		for row, mine in zip(self.plan_blocks, stems):
 			weekly = (mine or {}).get("weeks") or {}
 			if row.block or not row.is_new_planting:
 				for key, v in weekly.items():
 					placeable[key] += cint(v)
-			else:
-				unmet += sum(cint(v) for v in weekly.values())
-		self.unmet_stems = unmet
+		# What grows on plantings with no block yet is NOT unmet demand. It was
+		# written over unmet_stems here, so a plan read as missing more of its
+		# market the better it covered it: more consignments meant more
+		# plantings, more plantings waiting on a block, and a bigger "unmet"
+		# while the weeks in deficit fell to none. The figure is the difference
+		# between what the plan grows and what today's blocks could hold, and
+		# both of those are already on the document.
 		for w in self.plan_weeks:
 			w.placeable_production_stems = placeable.get(
 				"%s-%s" % (cint(w.year), cint(w.week_no)), 0)
