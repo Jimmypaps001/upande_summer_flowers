@@ -184,6 +184,13 @@ def _normalised(picks, form, wanted=None):
 			"cycle_count": count,
 			"weeks": sorted(set(stated)),
 			"typed": [flt(c.get("share_pct")) for c in typed][:count],
+			# A quantity typed against one delivery. The share was the only
+			# way to say "this one brings more": a percentage of a total that
+			# moves whenever any other row is touched, which is no way to
+			# agree a consignment with a house. A number typed here is the
+			# number ordered.
+			"typed_units": [cint(c.get("units")) if c.get("units") not in
+			                (None, "") else None for c in typed][:count],
 		})
 	# The share is ours to give: how much of the season each house is promised.
 	# Typed shares are kept and only scaled to add to a hundred; where none are
@@ -249,6 +256,9 @@ def _normalised(picks, form, wanted=None):
 			typed = x["typed"][i] if i < len(x["typed"]) else None
 			c["suggested_pct"] = round(c["suggested_plants"] * 100.0 / total_plants, 2)
 			c["share_pct"] = flt(typed) if typed not in (None, "") else c["suggested_pct"]
+			units = (x["typed_units"][i] if i < len(x.get("typed_units") or [])
+			         else None)
+			c["typed_units"] = cint(units) if units not in (None, "") else None
 		given = sum(flt(c["share_pct"]) for c in cycles)
 		if given <= 0:
 			for c in cycles:
@@ -408,6 +418,16 @@ def plan_supply(plan, picks=None, form=None):
 			if first_need and 0 < first_share < 1:
 				net = max(net, int(math.ceil(first_need / first_share - 1e-9)))
 			c["net_plants"] = max(0, net)
+			c["suggested_units"] = (int(math.ceil(c["net_plants"] / (per_unit or 1.0)
+			                                      - 1e-9))
+			                        if c["net_plants"] > 0 else 0)
+			# Typed against this delivery: that is what is ordered, and the
+			# weeks below are walked against what it really brings. A house
+			# that will only send 50,000 is planned on 50,000, and the weeks
+			# it leaves short say so instead of being quietly made up.
+			if c.get("typed_units") is not None:
+				c["net_plants"] = max(0, int(round(cint(c["typed_units"])
+				                                   * (per_unit or 1.0))))
 			for when, got in _spread(at, c["net_plants"], s_["waves"]).items():
 				covered[when] = cint(covered.get(when, 0)) + got
 
@@ -418,13 +438,20 @@ def plan_supply(plan, picks=None, form=None):
 			# Sized on what is still wanted where the demand is the guide. A
 			# quantity typed on the material card still splits by share: that
 			# is a decision, not an estimate.
-			plants = (cint(c.get("net_plants")) if not agreed_units
+			typed_units = c.get("typed_units")
+			plants = (cint(c.get("net_plants"))
+			          if (typed_units is not None or not agreed_units)
 			          else int(round(s_plants * flt(c["share"]))))
 			# Up, never to the nearest: half a plantlet short of a bed is a
 			# bed that cannot be planted, and rounding down put the supply
 			# card one unit under the material card on every order.
 			units = (int(math.ceil(plants / (per_unit or 1.0) - 1e-9))
 			         if plants > 0 else 0)
+			# Typed is typed. Working the units back out of the plants that
+			# quantity makes would hand the reader a number one off the one
+			# they had just entered.
+			if typed_units is not None:
+				units = cint(typed_units)
 			c["units"], c["plants"] = units, plants
 			at = _monday(c["lands"])
 			order_week = add_days(at, -7 * cint(s_["lead_weeks"]))
@@ -614,6 +641,12 @@ def save_supply(plan, picks, confirm=0):
 				"cycle_no": cint(c["lift_no"]) or i + 1,
 				"weeks_after": cint(c.get("weeks_after")),
 				"cycle_share_pct": flt(c["share_pct"]),
+				# The week it lands and the quantity agreed on it. Without
+				# these a saved supply reopened on a fresh rhythm at freshly
+				# sized quantities, so a delivery moved by hand, or a figure a
+				# house had actually agreed to, was lost on the next visit.
+				"lands_iso": c.get("lands_iso"),
+				"units_typed": cint(c.get("typed_units") or 0),
 				# Stated on the first cycle only: it is the supplier's figure,
 				# not the cycle's, and repeating it reads as four orders.
 				"units": cint(units_by.get(s["supplier"], 0)) if not i else 0,
@@ -798,9 +831,12 @@ def saved_supply(plan):
 		                                  "lead_weeks": cint(r.lead_weeks),
 		                                  "cycle_count": cint(r.get("cycle_count")),
 		                                  "cycles": []})
+		if r.get("lands_iso"):
+			p.setdefault("weeks", []).append(r.lands_iso)
 		p["cycles"].append({"lift_no": cint(r.cycle_no),
 		                    "weeks_after": cint(r.weeks_after),
-		                    "share_pct": flt(r.cycle_share_pct)})
+		                    "share_pct": flt(r.cycle_share_pct),
+		                    "units": cint(r.get("units_typed")) or None})
 	return {"plan": doc.name, "picks": list(picks.values()),
 	        "deliveries": [{"name": d.name, "week_iso": d.week_iso,
 	                        "supplier": d.supplier, "units": cint(d.units),

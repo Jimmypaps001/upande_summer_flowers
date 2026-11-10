@@ -8537,7 +8537,6 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
       ((p.cycles || []).length
         ? `<table class="pl-t" style="margin-top:6px"><thead><tr>` +
           `<th>Cycle</th><th>Lands</th><th>Covers plantings to</th>` +
-          `<th class="r">Share of the order %</th>` +
           `<th class="r">${esc((S.supOut && S.supOut.form) || "Units")}</th>` +
           `<th class="r">Plants</th><th>Order by</th><th></th></tr></thead><tbody>` +
           p.cycles.map((c, j) =>
@@ -8547,11 +8546,14 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
             `<td class="bf-meta">${esc(c.covers_to || "")}${
               c.planting_weeks ? ` <span class="pl-dim">${c.planting_weeks} wk</span>`
                                : ` <span class="pl-dim">nothing</span>`}</td>` +
-            `<td class="r"><input class="sup-cshare" type="number" min="0" ` +
-            `max="100" step="0.1" style="width:6em;text-align:right" value="${
-              Number(c.share_pct) || 0}" title="Suggested ${
-              Number(c.suggested_pct) || 0}% from the plantings it covers"></td>` +
-            `<td class="r">${c.units ? num(c.units) : "—"}</td>` +
+            `<td class="r"><input class="sup-cunits" type="number" min="0" ` +
+            `step="1" style="width:8em;text-align:right" value="${
+              c.typed_units == null ? "" : Number(c.typed_units)}" ` +
+            `placeholder="${Number(c.suggested_units || c.units || 0)}" ` +
+            `title="How many to order on this delivery. Leave it empty and ` +
+            `the plan sizes it from the plantings it has to carry — ${
+              num(c.suggested_units || c.units || 0)}. A number here is what ` +
+            `is ordered, and a week it cannot cover is reported short."></td>` +
             `<td class="r">${c.plants ? num(c.plants) : "—"}</td>` +
             `<td class="bf-meta">${esc(c.order_iso || "")}${
               c.order_passed ? ' <span style="color:var(--critical)">passed</span>'
@@ -8580,12 +8582,16 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
       // whatever had just been edited.
       weeks: [...row.querySelectorAll("tbody tr")]
         .map((tr) => tr.dataset.week).filter(Boolean),
-      // Only the shares are typed; what each delivery covers is worked out
-      // from the week it lands in and the week the next one lands in.
-      cycles: [...row.querySelectorAll("tbody tr")].map((tr, j) => ({
-        lift_no: j + 1,
-        share_pct: Number((tr.querySelector(".sup-cshare") || {}).value) || 0,
-      })),
+      // An empty quantity box means "size this one from the plantings it
+      // carries". Sending the suggestion back as though it had been typed
+      // would pin every delivery at today's figure, and the card would stop
+      // answering to the plan it is supposed to be sizing against.
+      cycles: [...row.querySelectorAll("tbody tr")].map((tr, j) => {
+        const box = tr.querySelector(".sup-cunits");
+        const raw = box ? String(box.value).trim() : "";
+        return { lift_no: j + 1,
+                 units: raw === "" ? null : Number(raw) || 0 };
+      }),
     }));
     return S.sup;
   }
@@ -8603,9 +8609,13 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
       .then((r) => {
         S.supOut = r;
         // The answer carries each cycle's quantity, so the chooser is redrawn
-        // from it: a share is only meaningful beside the plants it brings.
+        // from it. Only the named rows come back, though: an empty row is not
+        // sent and so is not answered for, and replacing the whole list with
+        // the answer deleted every row still waiting for a name -- ask for
+        // three houses, name the first, and the other two vanished off the
+        // card with no way to get them back.
         if ((r.suppliers || []).length) {
-          S.sup = r.suppliers.map((x) => ({
+          const answered = r.suppliers.map((x) => ({
             supplier: x.supplier, share_pct: x.share_pct,
             lead_weeks: x.lead_weeks, units: x.units, plants: x.plants,
             cycle_count: x.cycle_count, drops_in_plan: x.drops_in_plan,
@@ -8613,6 +8623,9 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
             weeks: (x.cycles || []).map((c) => c.lands_iso).filter(Boolean),
             cycles: (x.cycles || []).map((c) => ({ ...c })),
           }));
+          let k = 0;
+          S.sup = (S.sup || []).map((p) =>
+            p.supplier ? (answered[k++] || p) : p);
           renderSupPick();
         }
         renderSupply();
