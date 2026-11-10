@@ -474,15 +474,7 @@ class SummerFlowerProductionPlan(Document):
 		v = getattr(self, "_version", None)
 		peak = cint(self.peak_weekly_sticking_planned)
 		if not v or not peak:
-			self.tc_status = (
-				_("Nothing is planted yet. This plan says what the market wants "
-				  "and what is already standing; the planting programme is drawn "
-				  "from the consignments, so choose the suppliers and their "
-				  "cycles on Materials Planning and save. Every lift of every "
-				  "consignment becomes a planting in the week it lands, and the "
-				  "weeks, the space and the order all follow from that.")
-				if not supply_is_agreed(self)
-				else _("No plantings proposed, so nothing to order."))
+			self.tc_status = _("No plantings proposed, so nothing to order.")
 			return
 
 		# Through the one function that sizes a purchase, so this figure and the one
@@ -552,6 +544,13 @@ class SummerFlowerProductionPlan(Document):
 				"{1}-W{2:02d} cannot be met from a new TC order. Buy rooted cuttings "
 				"for the early weeks or move the demand later."
 			).format(self.tc_order_by_date, first[0], first[1]))
+		if not supply_is_agreed(self):
+			notes.append(_(
+				"Proposed, not agreed. These plantings are what the demand asks "
+				"for beside what is already standing; nothing is supplied until "
+				"the suppliers and their cycles are agreed on Materials "
+				"Planning. Agreeing them redraws the programme from what each "
+				"house will actually hand over, lift by lift."))
 		if cint(self.get("sized_from_demand")):
 			notes.append(_(
 				"Nothing is planted yet, so this is sized from the demand: "
@@ -2136,18 +2135,13 @@ def _populate(plan, programme=None):
 			first_cut = getdate(at) + datetime.timedelta(weeks=anchor)
 			off = (first_cut - window_start).days // 7
 			cohorts[off] = cint(cohorts.get(off, 0)) + cint(plants)
-	elif not supply_is_agreed(plan) and not _cut_from_a_pool(protocol):
-		# Nothing is planted until the supply is agreed. The demand and what is
-		# already standing are still worked out, so the gap this plan has to
-		# close is on the page before a single supplier has been chosen.
-		#
-		# Except where the crop is cut from a pool we already own. Asters are
-		# bought as TC ONCE, built up through multiplication and cut from our
-		# own mother stock from then on: there is no consignment to wait for,
-		# and what paces the planting is how much the pool can give in a week,
-		# not how often a house comes. Gating those on a supply agreement left
-		# them unplantable for ever.
-		cohorts = {}
+	# No agreed programme yet, so the plan proposes one: what is already
+	# standing, and what has to go in beside it to close the gap. Holding
+	# this back until a supplier had been chosen left the plan empty of
+	# everything except the demand -- no ground, nothing incoming, nothing
+	# to buy for. What the agreement changes is whether this programme is
+	# DECIDED, and that is said by supplied_production_stems, which stays at
+	# zero until somebody has actually agreed to supply it.
 	else:
 		cohorts, _solved = plan_cohorts(rates, week_demand, week_standing,
 		                                band=band,
