@@ -562,7 +562,18 @@ class SummerFlowerProductionPlan(Document):
 		# Nothing has been agreed, so nothing is supplied. Seeding this from what
 		# the plan WANTS to grow made every draft read as fully supplied -- 125%
 		# coverage out of a plan with no supplier, no consignment and no order.
-		if not supply_is_agreed(self):
+		#
+		# A crop cut from our own pool has no supplier to agree with: what
+		# supplies it is the mother stock, and the walk below is what says how
+		# much of it the one TC order can build. Zeroing that would tell a
+		# grower their standing Asters will cut nothing.
+		_v = getattr(self, "_version", None)
+		if _v is None and self.get("protocol"):
+			try:
+				_v = frappe.get_cached_doc("Crop Protocol Version", self.protocol)
+			except Exception:
+				_v = None
+		if not supply_is_agreed(self) and not (_v and _cut_from_a_pool(_v)):
 			for w in self.plan_weeks:
 				w.supplied_production_stems = 0
 			self.supplied_production_stems = 0
@@ -1881,7 +1892,17 @@ def rebuild_from_supply(plan):
 	"""Re-draw the plan from the supply that was agreed. Does not save."""
 	doc = (plan if hasattr(plan, "doctype")
 	       else frappe.get_doc("Summer Flower Production Plan", plan))
-	_populate(doc, programme=programme_from_supply(doc))
+	# Consignments draw the programme only where the field plants what was
+	# bought. Asters are bought as TC once, built up, and planted from
+	# cuttings off our own mother stock -- so a TC order for the pool must not
+	# re-date the field. What paces those plantings is what the pool can give
+	# in a week, and the solver already answers that.
+	v = (frappe.get_cached_doc("Crop Protocol Version", doc.protocol)
+	     if doc.get("protocol") else None)
+	programme = None if (v and _cut_from_a_pool(v)) else programme_from_supply(doc)
+	# An empty programme is not the same as no programme: passing one would
+	# plant nothing at all and wipe what is already there.
+	_populate(doc, programme=programme or None)
 	return doc
 
 
@@ -2028,10 +2049,17 @@ def _populate(plan, programme=None):
 			first_cut = getdate(at) + datetime.timedelta(weeks=anchor)
 			off = (first_cut - window_start).days // 7
 			cohorts[off] = cint(cohorts.get(off, 0)) + cint(plants)
-	elif not supply_is_agreed(plan):
+	elif not supply_is_agreed(plan) and not _cut_from_a_pool(protocol):
 		# Nothing is planted until the supply is agreed. The demand and what is
 		# already standing are still worked out, so the gap this plan has to
 		# close is on the page before a single supplier has been chosen.
+		#
+		# Except where the crop is cut from a pool we already own. Asters are
+		# bought as TC ONCE, built up through multiplication and cut from our
+		# own mother stock from then on: there is no consignment to wait for,
+		# and what paces the planting is how much the pool can give in a week,
+		# not how often a house comes. Gating those on a supply agreement left
+		# them unplantable for ever.
 		cohorts = {}
 	else:
 		cohorts, _solved = plan_cohorts(rates, week_demand, week_standing,
