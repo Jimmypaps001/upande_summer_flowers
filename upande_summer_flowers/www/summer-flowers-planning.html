@@ -5436,7 +5436,6 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
       // A week's stems, not a lifetime total: these are the figures the
       // Production Plan sheet adds up against the week's demand.
       `<th class="n">Stems a week</th>` +
-      `<th>Peak week</th>` +
       // Not "Plants needed": that is Plants standing, further along the same
       // row, and a column cannot be two things.
       // Bought once or in batches; SOWN week by week. What a week carries is
@@ -5462,11 +5461,11 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
           `<tr style="background:var(--surface-2,#fafafa)">` +
           `<td class="text-muted">—</td>` +
           `<td class="text-muted">${esc(r.week_iso)}</td>` +
-          // First cut, stems a week, peak week, the units column and every loss
-          // column between them: the label stands in for all of it. Counted
-          // rather than guessed, because a column was added and taken away
-          // since and the row fell out of line with its own header.
-          `<td colspan="${4 + (m.tc_first_loss_pct && m.tc_first_loss_pct < 100 ? 1 : 0) +
+          // First cut, stems a week, the units column and every loss column
+          // between them: the label stands in for all of it. Counted rather
+          // than guessed, because a column was added and taken away since and
+          // the row fell out of line with its own header.
+          `<td colspan="${3 + (m.tc_first_loss_pct && m.tc_first_loss_pct < 100 ? 1 : 0) +
              (m.tc_first_loss_pct ? 1 : 0) +
              (m.tc_second_loss_pct && m.tc_second_loss_pct < 100 ? 1 : 0)
            }" class="text-muted">` +
@@ -5482,13 +5481,7 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
         return `<tr><td>${esc(w.sow_iso || "")}</td>` +
           `<td class="text-muted">${esc(w.week_iso || "")}</td>` +
           `<td class="text-muted">${esc(w.first_cut_iso || "")}</td>` +
-          `<td class="n">${w.stems_avg_week ? num(w.stems_avg_week) : ""}` +
-          (w.stems_peak_week && w.stems_peak_week !== w.stems_avg_week
-            ? ` <span class="pl-dim">peak ${num(w.stems_peak_week)}</span>` : "") +
-          `</td>` +
-          `<td class="text-muted">${esc(w.peak_week_iso || "")}` +
-          (w.cut_weeks ? ` <span class="pl-dim">${w.cut_weeks} wks</span>` : "") +
-          `</td>` +
+          `<td class="n">${w.stems_avg_week ? num(w.stems_avg_week) : ""}</td>` +
           `<td class="n">${w.units_tc ? num(w.units_tc) : ""}</td>` +
           (m.tc_first_loss_pct && m.tc_first_loss_pct < 100
             ? `<td class="n" style="color:var(--critical)">` +
@@ -5509,7 +5502,7 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
           `${v > 0 ? "+" : ""}${v ? num(v) : "—"}</td></tr>` + extra;
       }).join("") +
       `<tfoot><tr><th colspan="3">Season</th>` +
-      `<th></th><th></th>` +
+      `<th></th>` +
       `<th class="n">${num(m.tc_units_total)}</th>` +
       (m.tc_first_loss_pct && m.tc_first_loss_pct < 100
         ? `<th class="n" style="color:var(--critical)">` +
