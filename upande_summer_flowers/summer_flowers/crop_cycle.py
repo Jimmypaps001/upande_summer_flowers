@@ -149,6 +149,7 @@ class SummerFlowerCropCycle(CropCycle):
 		if not self.get("custom_is_summer_flower_cycle"):
 			return
 
+		self.require_planning_inputs()
 		self._version = self._resolve_version()
 		if self._version is None:
 			# Recorded, not planned. The block, the beds and the dates are facts
@@ -168,6 +169,51 @@ class SummerFlowerCropCycle(CropCycle):
 		self.sync_cycle_status()
 		self.compute_royalty()
 		self.sync_biological_asset()
+
+	# What a cycle has to state before the planner can count it. Each of these
+	# is read when a plan is drawn: leave one out and the cycle is not refused,
+	# it is quietly skipped or counted as nothing.
+	PLANNING_INPUTS = (
+		("custom_crop_protocol_version", "Crop protocol version",
+		 "how long the crop stands, what it yields and when it comes out"),
+		("custom_planting_date", "Planting date",
+		 "which week it cuts in and when the block is free again"),
+		("custom_beds_planted", "Beds planted",
+		 "how much of that block is taken, and for how long"),
+		("custom_live_plant_count", "Live plant count",
+		 "the stems it contributes to the plan"),
+		("custom_area_planted_sqm", "Area planted (m2)",
+		 "the land this crop stands on"),
+	)
+
+	def require_planning_inputs(self):
+		"""A standing crop that states nothing is planned around as nothing.
+
+		A plan reads every cycle in the ground: what it yields, which weeks it
+		yields in, the beds it holds and the day it releases them. A cycle
+		missing any of those is not refused by the planner -- it is skipped, or
+		counted as zero, and the farm is told there is ground free that has a
+		crop standing on it."""
+		missing = [(label, why) for field, label, why in self.PLANNING_INPUTS
+		           if not self.get(field)]
+		# Only a block-scoped cycle holds a block; a greenhouse-scoped one has
+		# already been held to its greenhouse further up.
+		if self.is_block_scoped() and not self.get("custom_block"):
+			missing.insert(2, ("Block", _("the ground it holds")))
+		if not (self.get("variety") or self.get("custom_sf_variety")):
+			missing.append(("Variety", "which protocol and which market it answers"))
+		if not missing:
+			return
+		frappe.throw(
+			_("This cycle cannot be planned around until it states {0}:<br><br>{1}"
+			  "<br><br>A cycle short of any of these is not refused by the "
+			  "planner, it is counted as nothing -- and the farm is told there is "
+			  "ground free with a crop standing on it.").format(
+				_("one more thing") if len(missing) == 1
+				else _("{0} more things").format(len(missing)),
+				"<br>".join("&bull; <b>{0}</b> &mdash; {1}".format(_(a), _(b))
+				            for a, b in missing)),
+			title=_("Not enough to plan around"))
 
 	# ------------------------------------------------------------------ scope
 	def settle_scope(self):

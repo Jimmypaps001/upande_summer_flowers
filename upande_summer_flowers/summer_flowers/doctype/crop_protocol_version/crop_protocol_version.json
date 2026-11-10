@@ -374,14 +374,16 @@
    "description": "The smallest planting worth making, as an area. Beds are whole, so this rounds up to whole beds and then to plants.",
    "fieldname": "min_planting_area_sqm",
    "fieldtype": "Float",
-   "label": "Minimum planting area (m² net)"
+   "label": "Minimum planting area (m² net)",
+   "reqd": 1
   },
   {
    "description": "The net planted area of one bed. Karen's beds are 50 m² each. Plants per bed follows from this and the density.",
    "fieldname": "sqm_net_per_bed",
    "fieldtype": "Float",
    "label": "m² net per bed",
-   "precision": "2"
+   "precision": "2",
+   "reqd": 1
   },
   {
    "default": "0",
@@ -829,37 +831,37 @@
    "options": "Summer Flower Protocol Lift"
   },
   {
+   "description": "Whether this variety is cut from motherstock that stands, rather than bought in for each planting. It decides which card the planning page shows, so a snapshot that does not carry it describes a different crop from the one approved.",
    "fieldname": "raised_from_pool",
    "fieldtype": "Check",
-   "label": "Raised From A Standing Pool",
-   "description": "Whether this variety is cut from motherstock that stands, rather than bought in for each planting. It decides which card the planning page shows, so a snapshot that does not carry it describes a different crop from the one approved."
+   "label": "Raised From A Standing Pool"
   },
   {
+   "description": "Whether the cut comes in named flushes rather than continuously. Every yield figure on a plan follows from it.",
    "fieldname": "harvest_is_scheduled",
    "fieldtype": "Check",
-   "label": "Harvest Is Scheduled",
-   "description": "Whether the cut comes in named flushes rather than continuously. Every yield figure on a plan follows from it."
+   "label": "Harvest Is Scheduled"
   },
   {
+   "description": "The ways material arrives, with the share taken by each. Approved with the rest of the protocol, so a plan keeps the sourcing it was built on.",
    "fieldname": "ways",
    "fieldtype": "Table",
-   "options": "Crop Protocol Way",
    "label": "Ways In",
-   "description": "The ways material arrives, with the share taken by each. Approved with the rest of the protocol, so a plan keeps the sourcing it was built on."
+   "options": "Crop Protocol Way"
   },
   {
+   "description": "Arrival to planting, stage by stage, as approved.",
    "fieldname": "way_stages",
    "fieldtype": "Table",
-   "options": "Crop Protocol Way Stage",
    "label": "Propagation Stages",
-   "description": "Arrival to planting, stage by stage, as approved."
+   "options": "Crop Protocol Way Stage"
   },
   {
+   "description": "What the plant does in the field and when. A planting calendar is built from it, so it belongs in the snapshot.",
    "fieldname": "field_activities",
    "fieldtype": "Table",
-   "options": "Crop Field Activity",
    "label": "Field Activities",
-   "description": "What the plant does in the field and when. A planting calendar is built from it, so it belongs in the snapshot."
+   "options": "Crop Field Activity"
   },
   {
    "fieldname": "actual_stems_per_cut",
@@ -1049,125 +1051,125 @@
    "fieldtype": "Column Break"
   },
   {
+   "collapsible": 1,
    "fieldname": "custom_summer_flowers_section",
    "fieldtype": "Section Break",
-   "label": "Protocol status",
-   "collapsible": 1
+   "label": "Protocol status"
   },
   {
+   "depends_on": "eval:doc.crop_type==\"Summer Flowers\"",
    "fieldname": "approval_section",
    "fieldtype": "Section Break",
-   "label": "Summer Flower — approval and history",
-   "depends_on": "eval:doc.crop_type==\"Summer Flowers\""
+   "label": "Summer Flower — approval and history"
   },
   {
    "fieldname": "custom_cb_sf_1",
    "fieldtype": "Column Break"
   },
   {
+   "depends_on": "eval:doc.crop_type==\"Roses\"",
    "fieldname": "section_establishment",
    "fieldtype": "Section Break",
-   "label": "Establishment",
-   "depends_on": "eval:doc.crop_type==\"Roses\""
+   "label": "Establishment"
   },
   {
    "fieldname": "column_break_establishment",
    "fieldtype": "Column Break"
   },
   {
+   "depends_on": "eval:doc.crop_type==\"Roses\"",
    "fieldname": "section_cycle",
    "fieldtype": "Section Break",
-   "label": "Cut to Cut Cycle",
-   "depends_on": "eval:doc.crop_type==\"Roses\""
+   "label": "Cut to Cut Cycle"
   },
   {
+   "depends_on": "eval:doc.crop_type==\"Roses\"",
    "fieldname": "section_yield",
    "fieldtype": "Section Break",
-   "label": "Yield",
-   "depends_on": "eval:doc.crop_type==\"Roses\""
+   "label": "Yield"
   },
   {
+   "depends_on": "eval:doc.crop_type==\"Roses\"",
    "fieldname": "column_break_yield",
-   "fieldtype": "Column Break",
-   "depends_on": "eval:doc.crop_type==\"Roses\""
+   "fieldtype": "Column Break"
   },
   {
+   "depends_on": "eval:doc.crop_type==\"Roses\"",
    "fieldname": "section_flush",
    "fieldtype": "Section Break",
-   "label": "Flush Cycle",
-   "depends_on": "eval:doc.crop_type==\"Roses\""
+   "label": "Flush Cycle"
   },
   {
+   "depends_on": "eval:doc.crop_type==\"Summer Flowers\"",
    "fieldname": "column_break_flush",
-   "fieldtype": "Column Break",
-   "depends_on": "eval:doc.crop_type==\"Summer Flowers\""
+   "fieldtype": "Column Break"
   },
   {
+   "depends_on": "eval:doc.crop_type==\"Roses\"",
    "fieldname": "rose_flush_table_section",
    "fieldtype": "Section Break",
-   "label": "Flush Schedule",
-   "depends_on": "eval:doc.crop_type==\"Roses\""
+   "label": "Flush Schedule"
   },
   {
+   "depends_on": "eval:doc.crop_type==\"Roses\"",
    "fieldname": "section_grade_mix",
    "fieldtype": "Section Break",
-   "label": "Grade Mix",
-   "depends_on": "eval:doc.crop_type==\"Roses\""
+   "label": "Grade Mix"
   },
   {
+   "collapsible": 1,
+   "depends_on": "eval:doc.crop_type==\"Roses\"",
    "fieldname": "section_growth_stages",
    "fieldtype": "Section Break",
-   "label": "Growth Stages",
-   "collapsible": 1,
-   "depends_on": "eval:doc.crop_type==\"Roses\""
+   "label": "Growth Stages"
   },
   {
+   "depends_on": "eval:doc.crop_type==\"Summer Flowers\"",
    "fieldname": "tab_geometry",
    "fieldtype": "Tab Break",
-   "label": "Geometry",
-   "depends_on": "eval:doc.crop_type==\"Summer Flowers\""
+   "label": "Geometry"
   },
   {
+   "depends_on": "eval:doc.crop_type==\"Summer Flowers\"",
    "fieldname": "density_section",
    "fieldtype": "Section Break",
-   "label": "Bed and block, from this farm",
-   "depends_on": "eval:doc.crop_type==\"Summer Flowers\""
+   "label": "Bed and block, from this farm"
   },
   {
+   "collapsible": 1,
+   "depends_on": "eval:doc.crop_type==\"Summer Flowers\"",
    "fieldname": "derived_geo_section",
    "fieldtype": "Section Break",
-   "label": "Worked out from the geometry above",
-   "collapsible": 1,
-   "depends_on": "eval:doc.crop_type==\"Summer Flowers\""
+   "label": "Worked out from the geometry above"
   },
   {
+   "depends_on": "eval:doc.crop_type==\"Summer Flowers\"",
    "fieldname": "tab_cycle",
    "fieldtype": "Tab Break",
-   "label": "Growing Cycle",
-   "depends_on": "eval:doc.crop_type==\"Summer Flowers\""
+   "label": "Growing Cycle"
   },
   {
+   "depends_on": "eval:doc.crop_type==\"Summer Flowers\"",
    "fieldname": "flush_section",
    "fieldtype": "Section Break",
-   "label": "Harvest shape",
-   "depends_on": "eval:doc.crop_type==\"Summer Flowers\""
+   "label": "Harvest shape"
   },
   {
    "fieldname": "cb_flush_a",
    "fieldtype": "Column Break"
   },
   {
+   "depends_on": "eval:doc.crop_type==\"Summer Flowers\"",
    "fieldname": "flush_table_section",
    "fieldtype": "Section Break",
-   "label": "Flush Schedule",
-   "depends_on": "eval:doc.crop_type==\"Summer Flowers\""
+   "label": "Flush Schedule"
   },
   {
+   "collapsible": 1,
+   "depends_on": "eval:doc.crop_type==\"Summer Flowers\"",
    "fieldname": "flush_totals_section",
    "fieldtype": "Section Break",
-   "label": "Worked out from the flush schedule",
-   "collapsible": 1,
-   "depends_on": "eval:doc.crop_type==\"Summer Flowers\""
+   "label": "Worked out from the flush schedule"
   },
   {
    "fieldname": "route_section",
@@ -1175,15 +1177,15 @@
    "label": "Growing cycle"
   },
   {
+   "depends_on": "eval:doc.crop_type==\"Summer Flowers\"",
    "fieldname": "timeline_section",
    "fieldtype": "Section Break",
-   "label": "Timeline (planting to uproot)",
-   "depends_on": "eval:doc.crop_type==\"Summer Flowers\""
+   "label": "Timeline (planting to uproot)"
   },
   {
+   "depends_on": "eval:doc.crop_type==\"Summer Flowers\"",
    "fieldname": "timeline_rest_section",
-   "fieldtype": "Section Break",
-   "depends_on": "eval:doc.crop_type==\"Summer Flowers\""
+   "fieldtype": "Section Break"
   },
   {
    "fieldname": "cb_timeline_a",
@@ -1194,125 +1196,125 @@
    "fieldtype": "Column Break"
   },
   {
+   "collapsible": 1,
+   "depends_on": "eval:doc.crop_type==\"Summer Flowers\"",
    "fieldname": "growth_section",
    "fieldtype": "Section Break",
-   "label": "Worked out: yield per hectare",
-   "collapsible": 1,
-   "depends_on": "eval:doc.crop_type==\"Summer Flowers\""
+   "label": "Worked out: yield per hectare"
   },
   {
+   "depends_on": "eval:doc.crop_type==\"Summer Flowers\"",
    "fieldname": "tab_prop",
    "fieldtype": "Tab Break",
-   "label": "Plant and Materials Planning",
-   "depends_on": "eval:doc.crop_type==\"Summer Flowers\""
+   "label": "Plant and Materials Planning"
   },
   {
+   "depends_on": "eval:doc.crop_type==\"Summer Flowers\"",
    "fieldname": "ways_section",
    "fieldtype": "Section Break",
-   "label": "Routes",
-   "depends_on": "eval:doc.crop_type==\"Summer Flowers\""
+   "label": "Routes"
   },
   {
+   "depends_on": "eval:doc.crop_type==\"Summer Flowers\"",
    "fieldname": "route_table_section",
    "fieldtype": "Section Break",
-   "label": "Material Route",
-   "depends_on": "eval:doc.crop_type==\"Summer Flowers\""
+   "label": "Material Route"
   },
   {
+   "depends_on": "eval:doc.crop_type==\"Summer Flowers\"",
    "fieldname": "m1_section",
    "fieldtype": "Section Break",
-   "label": "Method 1 — how the material is got",
-   "depends_on": "eval:doc.crop_type==\"Summer Flowers\""
+   "label": "Method 1 — how the material is got"
   },
   {
    "fieldname": "m1_cb",
    "fieldtype": "Column Break"
   },
   {
+   "depends_on": "eval:doc.custom_sf_m1_entry",
    "fieldname": "m1_steps_section",
    "fieldtype": "Section Break",
-   "label": "…and then",
-   "depends_on": "eval:doc.custom_sf_m1_entry"
+   "label": "…and then"
   },
   {
+   "depends_on": "eval:doc.crop_type==\"Summer Flowers\"",
    "fieldname": "m2_section",
    "fieldtype": "Section Break",
-   "label": "Method 2 — a second way in (optional)",
-   "depends_on": "eval:doc.crop_type==\"Summer Flowers\""
+   "label": "Method 2 — a second way in (optional)"
   },
   {
    "fieldname": "m2_cb",
    "fieldtype": "Column Break"
   },
   {
+   "depends_on": "eval:doc.custom_sf_m2_entry",
    "fieldname": "m2_steps_section",
    "fieldtype": "Section Break",
-   "label": "…and then",
-   "depends_on": "eval:doc.custom_sf_m2_entry"
+   "label": "…and then"
   },
   {
+   "depends_on": "eval:doc.crop_type==\"Summer Flowers\"",
    "fieldname": "lift_section",
    "fieldtype": "Section Break",
-   "label": "Lifts — how a consignment is handed over",
-   "depends_on": "eval:doc.crop_type==\"Summer Flowers\""
+   "label": "Lifts — how a consignment is handed over"
   },
   {
+   "depends_on": "eval:doc.crop_type==\"Summer Flowers\"",
    "fieldname": "establishment_section",
    "fieldtype": "Section Break",
-   "label": "Motherstock",
-   "depends_on": "eval:doc.crop_type==\"Summer Flowers\""
+   "label": "Motherstock"
   },
   {
    "fieldname": "cb_est_a",
    "fieldtype": "Column Break"
   },
   {
+   "collapsible": 1,
+   "depends_on": "eval:doc.crop_type==\"Summer Flowers\"",
    "fieldname": "est_derived_section",
    "fieldtype": "Section Break",
-   "label": "Worked out from the establishment weeks above",
-   "collapsible": 1,
-   "depends_on": "eval:doc.crop_type==\"Summer Flowers\""
+   "label": "Worked out from the establishment weeks above"
   },
   {
+   "depends_on": "eval:doc.crop_type==\"Summer Flowers\" && doc.custom_sf_raised_from_pool",
    "fieldname": "bench_section",
    "fieldtype": "Section Break",
-   "label": "Bench & Cutting Yield",
-   "depends_on": "eval:doc.crop_type==\"Summer Flowers\" && doc.custom_sf_raised_from_pool"
+   "label": "Bench & Cutting Yield"
   },
   {
+   "depends_on": "eval:doc.crop_type==\"Summer Flowers\" && doc.custom_sf_raised_from_pool",
    "fieldname": "multiplication_section",
    "fieldtype": "Section Break",
-   "label": "Multiplication",
-   "depends_on": "eval:doc.crop_type==\"Summer Flowers\" && doc.custom_sf_raised_from_pool"
+   "label": "Multiplication"
   },
   {
    "fieldname": "cb_mult_a",
    "fieldtype": "Column Break"
   },
   {
+   "collapsible": 1,
+   "depends_on": "eval:doc.crop_type==\"Summer Flowers\"",
    "fieldname": "mult_derived_section",
    "fieldtype": "Section Break",
-   "label": "Worked out from the multiplication settings above",
-   "collapsible": 1,
-   "depends_on": "eval:doc.crop_type==\"Summer Flowers\""
+   "label": "Worked out from the multiplication settings above"
   },
   {
+   "depends_on": "eval:doc.crop_type==\"Summer Flowers\"",
    "fieldname": "tab_grades",
    "fieldtype": "Tab Break",
-   "label": "Grades & Losses",
-   "depends_on": "eval:doc.crop_type==\"Summer Flowers\""
+   "label": "Grades & Losses"
   },
   {
+   "depends_on": "eval:doc.crop_type==\"Summer Flowers\"",
    "fieldname": "grade_table_section",
    "fieldtype": "Section Break",
-   "label": "Grade Allocation",
-   "depends_on": "eval:doc.crop_type==\"Summer Flowers\""
+   "label": "Grade Allocation"
   },
   {
+   "depends_on": "eval:doc.crop_type==\"Summer Flowers\"",
    "fieldname": "loss_section",
    "fieldtype": "Section Break",
-   "label": "Losses",
-   "depends_on": "eval:doc.crop_type==\"Summer Flowers\""
+   "label": "Losses"
   },
   {
    "fieldname": "cb_loss_a",
@@ -1329,11 +1331,11 @@
    "label": "This snapshot"
   },
   {
+   "default": "1",
+   "description": "The step a propagation order is rounded to -- what a supplier will sell in. Not the planting area, which is ground.",
    "fieldname": "min_order_qty",
    "fieldtype": "Int",
-   "label": "Minimum Order Quantity",
-   "default": "1",
-   "description": "The step a propagation order is rounded to -- what a supplier will sell in. Not the planting area, which is ground."
+   "label": "Minimum Order Quantity"
   }
  ],
  "grid_page_length": 50,

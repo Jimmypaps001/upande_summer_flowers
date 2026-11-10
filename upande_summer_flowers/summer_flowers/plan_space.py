@@ -1,19 +1,19 @@
 # Copyright (c) 2026, James Kiruga and contributors
 """What a production plan asks of the land, against what the farm has."""
 
+import datetime
 from collections import defaultdict
 
 import frappe
 from frappe import _
-from frappe.utils import cint, flt
+from frappe.utils import cint, flt, getdate, nowdate
 
 
 def analyse(plan):
 	"""Returns the totals, the block-by-block rows and the verdict."""
-	from upande_summer_flowers.summer_flowers.doctype.planting_calendar \
-		.planting_calendar import standing_plantings
 	from upande_summer_flowers.summer_flowers.doctype.summer_flower_production_plan \
-		.summer_flower_production_plan import bed_sqm
+		.summer_flower_production_plan import BlockCalendar, bed_sqm
+	from upande_summer_flowers.summer_flowers.planning import iso_monday
 
 	if isinstance(plan, str):
 		plan = frappe.get_doc("Summer Flower Production Plan", plan)
@@ -56,15 +56,32 @@ def analyse(plan):
 	for row in plan.plan_blocks:
 		if row.get("block") and row.get("is_new_planting"):
 			mine[row.block] = max(mine[row.block], cint(row.beds))
-	others = defaultdict(int)
-	for pl in standing_plantings(plan.farm, plan.variety):
-		others[pl.block] += cint(pl.beds)
+
+	# Ground is held for a while, not for ever. A crop lifted in April frees its
+	# beds for the rest of the season, and this page used to charge the plan for
+	# them all the way to week 52 -- so it called land full that the planner had
+	# already placed a planting on. The same calendar the planner uses answers
+	# it: the PEAK held at any one moment inside the plan's own window.
+	window_start = (iso_monday(cint(plan.from_year), cint(plan.from_week))
+	                if plan.from_year and plan.from_week else getdate(nowdate()))
+	window_end = window_start + datetime.timedelta(
+		weeks=cint(plan.weeks_covered) or 52)
+	cal = BlockCalendar(plan.farm)
+	t["window_start"], t["window_end"] = str(window_start), str(window_end)
+	freed_mid_plan = []
 
 	for b in blocks:
 		stated_beds = cint(b.custom_total_beds)
 		needed = mine.get(b.name, 0)
-		held = others.get(b.name, 0)
+		held = cal.held(b.name, window_start, window_end)
+		at_start = cal.held_on(b.name, window_start)
+		at_end = cal.held_on(b.name, window_end - datetime.timedelta(days=1))
+		frees = cal.frees_on(b.name, window_start, window_end)
 		free = max(0, stated_beds - held)
+		# Held on the first week and out again before the last: ground this
+		# plan can have, but not from the start.
+		if at_start and frees:
+			freed_mid_plan.append((b.name, at_start, frees))
 		t["space_stated_ha"] += flt(b.custom_net_area_ha)
 		t["space_measured_ha"] += flt(b.custom_measured_net_area_ha)
 		t["beds_available_stated"] += stated_beds
@@ -77,14 +94,28 @@ def analyse(plan):
 			"area_measured_ha": flt(b.custom_measured_net_area_ha),
 			"beds_needed_by_plan": needed,
 			"beds_held_by_others": held,
+			"beds_held_at_start": at_start,
+			"beds_held_at_end": at_end,
+			"frees_on": str(frees) if frees else None,
 			"beds_free": free,
+			# `held` is the peak, so it is never less than what stands in week
+			# one; what the planner can also be told is how much more ground is
+			# back by the last week.
 			"verdict": (
 				_("{0} beds to this plan").format(needed) if needed else
+				_("over-committed by {0} beds").format(held - stated_beds)
+				if held > stated_beds else
 				_("full -- held by another planting") if held and not free else
+				_("{0} beds free throughout, {1} by the last week").format(
+					free, stated_beds - at_end)
+				if free and at_end < held else
 				_("{0} beds free").format(free) if free else
 				_("no beds stated")
 			),
 		})
+	t["beds_held_peak"] = sum(r["beds_held_by_others"] for r in out["blocks"])
+	t["beds_held_at_start"] = sum(r["beds_held_at_start"] for r in out["blocks"])
+	t["beds_held_at_end"] = sum(r["beds_held_at_end"] for r in out["blocks"])
 
 	t["space_utilisation_pct"] = (
 		t["space_required_ha"] / t["space_stated_ha"] * 100
@@ -143,6 +174,19 @@ def analyse(plan):
 		notes.append(_(
 			"{0} plantings are waiting on a block. Whether the farm has room for "
 			"them cannot be said until the bed size is set.").format(not_placed))
+	# Ground that comes free part-way through. Said plainly, because the table
+	# shows the peak and a reader who knows the farm is full today will not
+	# otherwise believe the free column.
+	if freed_mid_plan:
+		freed_mid_plan.sort(key=lambda x: x[2])
+		first = freed_mid_plan[0]
+		notes.append(_(
+			"Ground comes back during this plan: {0} of these blocks have a crop "
+			"that is standing in week 1 and out before the plan ends -- the first "
+			"is {1}, on {2}. The free column is the peak held at any one moment, "
+			"not what is standing today, so beds counted free here are beds a "
+			"planting can really have."
+		).format(len(freed_mid_plan), first[0], first[2]))
 	# Its own note, not part of the chain above. Land the plan cannot reach is
 	if blocks and t["beds_unblocked"]:
 		notes.append(_(

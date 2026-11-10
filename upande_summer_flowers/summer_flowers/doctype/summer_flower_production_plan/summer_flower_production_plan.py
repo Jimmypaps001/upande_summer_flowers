@@ -2316,6 +2316,7 @@ class BlockCalendar:
 		for r in rows:
 			self.blocks.append({"name": r.name, "beds": cint(r.custom_total_beds),
 			                    "busy": []})
+		self._lives = {}
 		self._seed_standing(variety)
 		self._seed_history()
 
@@ -2331,8 +2332,26 @@ class BlockCalendar:
 				        "actual_uproot_date", "calendar_status"],
 				order_by="planting_date desc"):
 			prior.setdefault(r.block, []).append(r)
+		# Cycles too, under the names a planting row uses, so "what was last on
+		# this block" is the truth and not just the part of it a calendar raised.
+		for r in frappe.get_all(
+				"Crop Cycle",
+				filters={"custom_block": ["in", names], "docstatus": ["<", 2]},
+				fields=["custom_block as block", "variety", "custom_sf_variety",
+				        "custom_planting_date as planting_date",
+				        "custom_planned_uproot_date as planned_uproot_date",
+				        "custom_actual_uproot_date as actual_uproot_date",
+				        "custom_sf_cycle_status as calendar_status",
+				        "custom_planting_calendar"],
+				order_by="custom_planting_date desc"):
+			if r.custom_planting_calendar:
+				continue
+			r.variety = r.variety or r.custom_sf_variety
+			prior.setdefault(r.block, []).append(r)
 		for b in self.blocks:
-			rows = prior.get(b["name"]) or []
+			rows = sorted(prior.get(b["name"]) or [],
+			              key=lambda x: getdate(x.planting_date or "1900-01-01"),
+			              reverse=True)
 			b["last"] = rows[0] if rows else None
 			b["history"] = [{"variety": x.variety, "planted": str(x.planting_date or ""),
 			                 "out": str(x.actual_uproot_date or x.planned_uproot_date
@@ -2342,12 +2361,14 @@ class BlockCalendar:
 
 	def _seed_standing(self, variety):
 		"""Whatever already claims a block holds it until it comes out."""
+		seen = set()
 		f = {"calendar_status": ["in", RESERVING_STATES]}
 		for r in frappe.get_all(
 				"Planting Calendar", filters=f,
 				fields=["name", "block", "beds", "variety", "planting_date",
 				        "planned_uproot_date", "actual_uproot_date",
 				        "calendar_status"]):
+			seen.add(r.name)
 			b = self._get(r.block)
 			if not b or not r.planting_date:
 				continue
@@ -2362,6 +2383,66 @@ class BlockCalendar:
 				# Whether the crop is in the ground decides what freeing the beds
 				"in_ground": r.calendar_status in ("Planted",),
 			})
+		self._seed_cycles(seen)
+
+	def _seed_cycles(self, from_calendars):
+		"""A crop in the ground holds its beds whether or not a calendar raised it.
+
+		Most cycles on this farm were loaded straight in, with no Planting
+		Calendar behind them. Reading only the calendars left that ground
+		looking empty, and the planner put new plantings on top of a standing
+		crop. A cycle holds its block from the day it was planted to the day it
+		comes out, exactly as a calendar does."""
+		names = [b["name"] for b in self.blocks]
+		if not names:
+			return
+		for r in frappe.get_all(
+				"Crop Cycle",
+				filters={"docstatus": ["<", 2], "custom_block": ["in", names]},
+				fields=["name", "custom_block", "custom_beds_planted",
+				        "variety", "custom_sf_variety", "custom_planting_date",
+				        "custom_planned_uproot_date", "custom_actual_uproot_date",
+				        "custom_sf_cycle_status", "custom_planting_calendar",
+				        "custom_crop_protocol_version"]):
+			# Filtered here and not in the query: a status nobody set is NULL,
+			# and SQL drops NULL from `!= 'Ended'`, which would have hidden
+			# every cycle that has never been through the workflow.
+			if (r.custom_sf_cycle_status or "") == "Ended":
+				continue
+			# Raised from a calendar already seeded: the same ground, once.
+			if r.custom_planting_calendar in from_calendars:
+				continue
+			b = self._get(r.custom_block)
+			if not b or not r.custom_planting_date:
+				continue
+			end = r.custom_actual_uproot_date or r.custom_planned_uproot_date
+			# A cycle with no uproot date states no end, so it would hold the
+			# block for ever or not at all. The protocol says how long the crop
+			# stands; use that rather than guess either way.
+			if not end:
+				end = self._protocol_end(r)
+			b["busy"].append({
+				"start": getdate(r.custom_planting_date),
+				"end": getdate(end) if end else getdate(r.custom_planting_date),
+				"beds": cint(r.custom_beds_planted) or b["beds"],
+				"holder": r.name,
+				"variety": r.variety or r.custom_sf_variety,
+				"status": r.custom_sf_cycle_status or "Active",
+				"in_ground": True,
+			})
+
+	def _protocol_end(self, cycle):
+		"""Planting date plus the protocol's weeks in ground, where it says so."""
+		version = cycle.get("custom_crop_protocol_version")
+		if not version:
+			return None
+		if version not in self._lives:
+			self._lives[version] = cint(frappe.db.get_value(
+				"Crop Protocol Version", version, "total_weeks_in_ground"))
+		weeks = self._lives[version]
+		if not weeks:
+			return None
+		return getdate(cycle.custom_planting_date) + datetime.timedelta(weeks=weeks)
 
 	def _get(self, name):
 		for b in self.blocks:
@@ -2456,6 +2537,37 @@ class BlockCalendar:
 		                        c["free_beds"] - beds if c["fits"] else 0,
 		                        c["weeks_late"] if c["weeks_late"] is not None else 9999))
 		return out[:limit]
+
+	def held(self, name, start, end):
+		"""The most beds another crop holds in one block across a window.
+
+		The peak, not the total: three crops that follow one another through a
+		season never hold their beds at the same moment, and charging the plan
+		for all three at once is how ground that is free reads as full."""
+		b = self._get(name)
+		return self._peak_reserved(b, getdate(start), getdate(end)) if b else 0
+
+	def held_on(self, name, when):
+		"""Beds held in one block on one day."""
+		b = self._get(name)
+		if not b:
+			return 0
+		when = getdate(when)
+		return sum(r["beds"] for r in b["busy"] if r["start"] <= when < r["end"])
+
+	def frees_on(self, name, start, end):
+		"""When ground held at the start of a window first comes back.
+
+		The first crop standing on the opening week to come out before the
+		window closes. A date at the very end of the window is no use to a
+		planner, so one is not reported."""
+		b = self._get(name)
+		if not b:
+			return None
+		start, end = getdate(start), getdate(end)
+		ends = [r["end"] for r in b["busy"]
+		        if r["start"] <= start < r["end"] and start < r["end"] < end]
+		return min(ends) if ends else None
 
 	def capacity(self):
 		return max((b["beds"] for b in self.blocks), default=0)

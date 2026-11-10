@@ -27,6 +27,8 @@ def execute(filters=None):
 			"area_stated_ha": t["space_stated_ha"],
 			"area_measured_ha": t["space_measured_ha"],
 			"beds_needed_by_plan": t["beds_required_peak"],
+			"beds_held_at_start": t.get("beds_held_at_start", 0),
+			"beds_held_by_others": t.get("beds_held_peak", 0),
 			"verdict": _("{0}% of the farm's stated space, at the peak").format(
 				round(t["space_utilisation_pct"], 1)),
 		})
@@ -47,8 +49,12 @@ def columns():
 		 "fieldtype": "Float", "precision": 3, "width": 145},
 		{"fieldname": "beds_needed_by_plan", "label": _("Beds This Plan Needs"),
 		 "fieldtype": "Int", "width": 160},
-		{"fieldname": "beds_held_by_others", "label": _("Beds Held By Others"),
-		 "fieldtype": "Int", "width": 155},
+		{"fieldname": "beds_held_at_start", "label": _("Held In Week 1"),
+		 "fieldtype": "Int", "width": 125},
+		{"fieldname": "beds_held_by_others", "label": _("Held At The Peak"),
+		 "fieldtype": "Int", "width": 140},
+		{"fieldname": "frees_on", "label": _("Last Crop Out"),
+		 "fieldtype": "Date", "width": 125},
 		{"fieldname": "beds_free", "label": _("Beds Free"),
 		 "fieldtype": "Int", "width": 100},
 		{"fieldname": "verdict", "label": _("Verdict"), "fieldtype": "Data",

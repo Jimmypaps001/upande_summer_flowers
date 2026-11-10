@@ -55,6 +55,65 @@ class CropProtocolVersion(Document):
 		self.check_effective_from()
 		self.sync_status()
 		self.set_title()
+		self.require_planning_inputs()
+
+	# A figure the planner divides by, multiplies out or dates from. Missing
+	# means zero, and zero does not stop a plan being drawn -- it draws a wrong
+	# one and says nothing. (field, label, why it is needed.)
+	PLANNING_INPUTS = (
+		("plants_per_sqm_net", "Plants per m2 of bed (net)",
+		 "how many plants a bed holds"),
+		("sqm_net_per_bed", "Net area per bed (m2)",
+		 "how many beds a planting takes, and how much land it is"),
+		("plants_per_bed", "Plants per bed", "the size of every planting"),
+		("min_planting_area_sqm", "Minimum planting area (m2)",
+		 "the smallest planting worth putting in"),
+		("total_weeks_in_ground", "Total weeks in ground",
+		 "when the crop comes out and the block is free again"),
+		("rooting_success_pct", "Rooting success %",
+		 "how many cuttings to buy for the plants wanted"),
+		("field_establishment_pct", "Field establishment %",
+		 "how many plants survive to stand in the field"),
+		("cuttings_per_plant_required", "Cuttings per plant required",
+		 "the order quantity sent to the supplier"),
+	)
+
+	def require_planning_inputs(self):
+		"""No planning figure may be left to a default of nothing.
+
+		Every one of these is divided by, multiplied out or counted forward
+		from. A blank reads as zero, and a zero does not stop a plan being
+		drawn: it draws a wrong one in silence -- every planting one bed, the
+		land figures meaningless, nothing to order, the block never free. The
+		protocol is where the farm states them, so the protocol is where they
+		are demanded."""
+		# A draft is a form half filled in; demanding every figure of it would
+		# stop the agronomist saving their work. The demand lands where the
+		# version becomes the one plans are built on.
+		if "Active" not in (self.workflow_state or "", self.version_status or ""):
+			return
+		missing = [(label, why) for field, label, why in self.PLANNING_INPUTS
+		           if not flt(self.get(field))]
+		if not self.growing_cycle:
+			missing.append(("Growing cycle",
+			                "whether production is projected as flushes or as a "
+			                "weekly rate"))
+		elif not self.flush_offsets():
+			missing.append(("Flush schedule",
+			                "the weeks this crop actually cuts in"))
+		if not missing:
+			return
+		frappe.throw(
+			_("{0} cannot be approved until the farm states {1}:<br><br>{2}"
+			  "<br><br>Each of these is a figure the planner divides by or counts "
+			  "forward from. Left blank it reads as zero, and a plan built on a "
+			  "zero is drawn wrong in silence rather than refused.").format(
+				frappe.bold(self.title or self.name),
+				_("one more figure") if len(missing) == 1
+				else _("{0} more figures").format(len(missing)),
+				"<br>".join("&bull; <b>{0}</b> &mdash; {1}".format(_(a), _(b))
+				            for a, b in missing)),
+			title=_("The protocol is not ready to plan with"))
 
 	def set_title(self):
 		"""What this snapshot is called, as against what it is named."""
