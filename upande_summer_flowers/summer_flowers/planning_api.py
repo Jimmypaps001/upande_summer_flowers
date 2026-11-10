@@ -1406,6 +1406,20 @@ def planting_plan(plan=None, variety=None, farm=None):
 			"status": c.calendar_status,
 		})
 
+	# Nothing drawn yet: show what the demand asks for, so the requirement is
+	# on the page while the supply is still being settled. Marked as not drawn,
+	# because it is not a programme until the houses have been agreed.
+	awaiting = 0
+	if not any(x["is_new"] for x in plantings):
+		from upande_summer_flowers.summer_flowers.doctype.summer_flower_production_plan.summer_flower_production_plan import (
+			requirement_rows,
+		)
+
+		asked = requirement_rows(p)
+		if asked:
+			awaiting = 1
+			plantings.extend(asked)
+
 	new_rows = [x for x in plantings if x["is_new"]]
 	blocks_available = frappe.db.count("Block", {
 		"custom_is_summer_flower_block": 1, **({"farm": p.farm} if p.farm else {})
@@ -1421,6 +1435,8 @@ def planting_plan(plan=None, variety=None, farm=None):
 		"protocol_stale": cint(fresh["stale"]),
 		"protocol_note": fresh["note"],
 		"plantings": plantings,
+		# Said once, so the page can head the table with what these rows are.
+		"awaiting_supply": awaiting,
 		# A submitted plan's blocks are not editable, so the allocation control is not
 		"submitted": bool(p.docstatus),
 		"occupancy": occupancy,
@@ -1435,6 +1451,7 @@ def planting_plan(plan=None, variety=None, farm=None):
 			"plants": sum(x["plants"] for x in new_rows),
 			"plants_to_plant": sum(x["plants_to_plant"] for x in new_rows),
 			"cuttings": sum(x["cuttings"] for x in new_rows),
+			"awaiting_supply": awaiting,
 			"blocks_available": blocks_available,
 			"blocks_needed": len(new_rows),
 			"weeks_in_ground": life_weeks,

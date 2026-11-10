@@ -1780,6 +1780,77 @@ def planting_requirement(plan):
 		return [], True
 
 
+def requirement_rows(plan):
+	"""The plantings the demand asks for, before any have been drawn.
+
+	The same shape the plan's own rows are read in, so the planting plan can
+	show what has to go in the ground while the supply is still being settled.
+	A requirement nobody can see is a requirement nobody can buy for."""
+	need, from_demand = planting_requirement(plan)
+	if not need or not from_demand:
+		return []
+	v = frappe.get_cached_doc("Crop Protocol Version", plan.protocol)
+	offsets = v.flush_offsets() or []
+	anchor = cint(sorted(offsets, key=lambda o: o[0])[0][0]) if offsets else 0
+	life_weeks = cint(v.total_weeks_in_ground)
+	min_beds = cint(v.min_planting_beds_derived) or 1
+	back = cint(weeks_to_a_plant(v))
+	# Beds can only be counted where the protocol says how big one is. Without
+	# it size_planting falls back to the minimum and every planting reads as
+	# one bed, whatever its area -- so the row says so rather than letting the
+	# figure be read as ground.
+	no_bed_size = not flt(v.get("sqm_net_per_bed"))
+	out = []
+	for i, (at, standing, to_plant) in enumerate(need, start=1):
+		at = getdate(at)
+		beds, _planted, _a = size_planting(v, to_plant, min_beds)
+		stick = at - datetime.timedelta(weeks=back)
+		sy, sw, _d = stick.isocalendar()
+		py, pw, _d = at.isocalendar()
+		fh = at + datetime.timedelta(weeks=anchor)
+		fy, fw, _d = fh.isocalendar()
+		out.append({
+			"idx": i,
+			"awaiting_supply": 1,
+			"is_new": True,
+			"block": None,
+			"existing_planting": None,
+			"beds": cint(beds),
+			"plants": cint(standing),
+			"plants_to_plant": cint(to_plant),
+			"cuttings": (v.cuttings_for_plants(cint(standing))
+			             if cint(standing) else 0),
+			"season_stems": 0,
+			"stick": "%d-W%02d" % (cint(sy), cint(sw)),
+			"plant": "%d-W%02d" % (cint(py), cint(pw)),
+			"planting_year": cint(py), "planting_week": cint(pw),
+			"sticking_year": cint(sy), "sticking_week": cint(sw),
+			"planting_date": str(at),
+			"sticking_date": str(stick),
+			"pinch_date": None,
+			"first_harvest": "%d-W%02d" % (cint(fy), cint(fw)),
+			"first_harvest_date": str(fh),
+			"first_harvest_year": cint(fy), "first_harvest_week": cint(fw),
+			"uproot_date": str(at + datetime.timedelta(weeks=life_weeks)),
+			"harvest_family": None,
+			"net_area_ha": planting_area_ha(v, cint(standing), cint(beds)),
+			"lifetime_stems": int(round(
+				flt(v.total_stems_per_plant_life or 0) * cint(standing))),
+			"below_minimum": False,
+			"in_past": getdate(at) < getdate(nowdate()),
+			"unallocated": True,
+			"not_placed": True,
+			"row": None,
+			"notes": _("Not drawn yet. This is what the demand asks for; the "
+			           "planting is settled when the supply is agreed.")
+			+ (_(" Beds cannot be counted: {0} does not say how many m² a bed "
+			     "is, so this reads as one bed whatever its area. The area is "
+			     "worked off the density and is right.").format(v.name)
+			   if no_bed_size else ""),
+		})
+	return out
+
+
 def weeks_to_a_plant(v):
 	"""Arrival to a plant the field can take: the first lift, else the route."""
 	lifts = _lift_profile(v, _entry_stage_of(v))
