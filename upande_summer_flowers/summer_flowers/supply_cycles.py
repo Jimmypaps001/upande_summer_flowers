@@ -274,6 +274,7 @@ def plan_supply(plan, picks=None, form=None):
 	# Taken from the same function the material card uses, so the two cards
 	# cannot quote different orders for the same planting again.
 	from upande_summer_flowers.summer_flowers import root_line as rl
+	from upande_summer_flowers.summer_flowers import tc_supply as ts
 
 	per_unit = flt(rl.plants_per_unit_at_plant(v)) or (
 		1.0 / (flt(v.cuttings_per_plant_required) or 1.0))
@@ -302,11 +303,70 @@ def plan_supply(plan, picks=None, form=None):
 		              "units": cint(d.units), "plants": got,
 		              "covers_to": None, "planting_weeks": 0})
 
+	# What a consignment of `plants` actually puts in the field, week by week.
+	# A house that hands over in lifts does not deliver a planting, it delivers
+	# the first lift of one; the rest follows a week or two later and belongs
+	# to the weeks it lands in.
+	def _spread(at, plants, waves):
+		out, running = {}, 0
+		first = cint(waves[0][0]) if waves else 0
+		for i, (wk, share) in enumerate(waves or [(0, 1.0)]):
+			got = (plants - running if i == len(waves) - 1
+			       else int(round(plants * flt(share))))
+			running += got
+			if got <= 0:
+				continue
+			when = add_days(getdate(at), 7 * (cint(wk) - first))
+			out[when] = cint(out.get(when, 0)) + got
+		return out
+
+	# Each house against its OWN share of each week, and its own cycles in the
+	# order they land. A cycle is sized on what is still wanted of that share
+	# -- not on the gross demand in its window -- because the tail of the
+	# cycle before it has already landed in those weeks, and buying for them
+	# twice is how a 10% lift came to be bought again as somebody else's 100%.
+	#
+	# Shares are kept because they are a decision: "Iribov brings 70% of the
+	# season and ACME the rest" is how a farm arranges cover, and a sizing
+	# that let whichever house landed first take the whole week would quietly
+	# throw that arrangement away.
+	for s_ in chosen:
+		s_["waves"] = (ts.handover_for(form, s_["supplier"], 0, v) or [(0, 1.0)])
+		mine = {w: cint(round(cint(q) * flt(s_["share_pct"]) / 100.0))
+		        for w, q in wanted.items()}
+		covered = {}
+		for c in sorted((s_.get("cycles") or []),
+		                key=lambda x: getdate(_monday(x["lands"]))):
+			at = getdate(_monday(c["lands"]))
+			window = [w for w in mine
+			          if getdate(w) >= at and (c.get("covers_to") is None
+			                                   or _iso(w) <= c["covers_to"])]
+			net = sum(max(0, cint(mine[w]) - cint(covered.get(w, 0)))
+			          for w in window)
+			# And big enough that the FIRST lift covers the week this
+			# consignment is for. A house handing over 90/10 against a week
+			# wanting 40,000 must be bought 44,445 for 40,000 to be there on
+			# the day -- buying 40,000 puts 36,000 in the ground and leaves
+			# the week 4,000 short with the balance arriving after it was
+			# wanted.
+			first_share = flt(s_["waves"][0][1]) if s_.get("waves") else 1.0
+			first_need = (max(0, cint(mine[window[0]])
+			                  - cint(covered.get(window[0], 0))) if window else 0)
+			if first_need and 0 < first_share < 1:
+				net = max(net, int(math.ceil(first_need / first_share - 1e-9)))
+			c["net_plants"] = max(0, net)
+			for when, got in _spread(at, c["net_plants"], s_["waves"]).items():
+				covered[when] = cint(covered.get(when, 0)) + got
+
 	bought_total = 0
 	for s_ in chosen:
 		s_plants = buy_plants * flt(s_["share_pct"]) / 100.0
 		for c in s_.get("cycles") or []:
-			plants = int(round(s_plants * flt(c["share"])))
+			# Sized on what is still wanted where the demand is the guide. A
+			# quantity typed on the material card still splits by share: that
+			# is a decision, not an estimate.
+			plants = (cint(c.get("net_plants")) if not agreed_units
+			          else int(round(s_plants * flt(c["share"]))))
 			# Up, never to the nearest: half a plantlet short of a bed is a
 			# bed that cannot be planted, and rounding down put the supply
 			# card one unit under the material card on every order.
@@ -319,7 +379,11 @@ def plan_supply(plan, picks=None, form=None):
 			c["order_passed"] = 1 if getdate(order_week) < getdate(nowdate()) else 0
 			if plants <= 0:
 				continue
-			landing[at] = cint(landing.get(at, 0)) + plants
+			# Landed in lifts, so the weekly walk below spends what has
+			# really arrived. Counting the whole consignment at its first
+			# lift said every week was covered that in fact was 10% short.
+			for when, got in _spread(at, plants, s_["waves"]).items():
+				landing[when] = cint(landing.get(when, 0)) + got
 			bought_total += units
 			c["order_iso"] = _iso(order_week)
 			c["order_passed"] = 1 if getdate(order_week) < getdate(nowdate()) else 0
