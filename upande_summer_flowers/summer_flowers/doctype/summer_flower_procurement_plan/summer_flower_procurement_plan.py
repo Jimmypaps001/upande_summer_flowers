@@ -424,6 +424,45 @@ class SummerFlowerProcurementPlan(Document):
 				frappe.utils.get_link_to_form("Summer Flower Season Plan", name)),
 			indicator="green", title=_("Season planting plan"))
 
+	def propagator_deliveries(self, row):
+		"""[(delivery date, plants), ...] for one outside propagator.
+
+		Their share of each planting week, delivered in the week it is planted.
+		Every propagator on the allocation is dated from their own window and
+		their own share, so two propagators splitting a crop deliver on their
+		own dates and not on one date borrowed from the first of them."""
+		weeks = {}
+		for b in frappe.get_all(
+				"Summer Flower Plan Block",
+				filters={"parent": self.production_plan, "is_new_planting": 1},
+				fields=["planting_year", "planting_week", "plants"]):
+			if not (cint(b.planting_week) and cint(b.planting_year)):
+				continue
+			when = iso_monday(cint(b.planting_year), cint(b.planting_week))
+			weeks[when] = cint(weeks.get(when, 0)) + cint(b.plants)
+		# Outside the window this propagator was given, somebody else delivers.
+		first = getdate(row.plants_from) if row.plants_from else None
+		last = getdate(row.plants_to) if row.plants_to else None
+		wanted = sorted(w for w in weeks
+		                if (first is None or w >= first)
+		                and (last is None or w <= last))
+		if not wanted:
+			return []
+		total = sum(weeks[w] for w in wanted)
+		share = flt(row.share_pct) / 100.0 if flt(row.share_pct) else 1.0
+		mine = cint(row.plants) or int(round(total * share))
+		out, running = [], 0
+		today = getdate(nowdate())
+		for i, w in enumerate(wanted):
+			qty = (mine - running if i == len(wanted) - 1
+			       else int(round(mine * (weeks[w] / float(total)))))
+			running += qty
+			if qty <= 0:
+				continue
+			# A delivery cannot be asked for in the past.
+			out.append((max(w, today), qty))
+		return out
+
 	def raise_propagator_orders(self):
 		"""A draft Purchase Order per outside propagator on the allocation."""
 		item = frappe.db.get_value("Item", self.variety, "name")
@@ -436,12 +475,6 @@ class SummerFlowerProcurementPlan(Document):
 			                  "outside propagators.").format(self.variety), indicator="orange")
 			return
 		today = getdate(nowdate())
-		dates = [getdate(r.required_at_site_date) for r in (self.requirements or [])
-		         if r.required_at_site_date]
-		if not dates:
-			first, _last = self.planting_window()
-			dates = [first] if first else []
-		when = max(min(dates) if dates else today, today)
 		made, failed = [], []
 		for r in rows:
 			# Into the warehouse the plants are actually delivered to. Never a
@@ -451,21 +484,33 @@ class SummerFlowerProcurementPlan(Document):
 				                "Warehouse on farm {1}, or Deliver To on the allocation "
 				                "row.").format(r.supplier, self.farm))
 				continue
+			# A propagator does not deliver the season in one lorry. They deliver
+			# against the weeks the farm plants in, and each of those weeks is its
+			# own delivery date -- which is the whole reason this is an order and
+			# not a propagation plan.
+			schedule = self.propagator_deliveries(r)
+			if not schedule:
+				failed.append(_("{0}: no planting weeks to deliver against.")
+				              .format(r.supplier))
+				continue
 			po = frappe.new_doc("Purchase Order")
 			po.supplier = r.supplier
 			po.company = self.company
 			po.transaction_date = today
-			po.schedule_date = when
+			po.schedule_date = schedule[0][0]
 			if po.meta.get_field("set_warehouse"):
 				po.set_warehouse = warehouse
-			row = {"item_code": item, "qty": cint(r.plants), "rate": flt(r.rate_per_plant),
-			       "schedule_date": when, "warehouse": warehouse,
-			       "description": _("{0} plants raised by {1} for {2}").format(
-				       self.variety, r.supplier, self.get("season") or self.name)}
-			if frappe.get_meta("Purchase Order Item").get_field("custom_purpose"):
-				row["custom_purpose"] = _("{0} propagation, {1}").format(
-					self.variety, self.get("season") or self.name)
-			po.append("items", row)
+			for when, qty in schedule:
+				row = {"item_code": item, "qty": qty,
+				       "rate": flt(r.rate_per_plant),
+				       "schedule_date": when, "warehouse": warehouse,
+				       "description": _("{0} plants raised by {1}, for planting the "
+				                        "week of {2}").format(
+					       self.variety, r.supplier, when)}
+				if frappe.get_meta("Purchase Order Item").get_field("custom_purpose"):
+					row["custom_purpose"] = _("{0} propagation, {1}").format(
+						self.variety, self.get("season") or self.name)
+				po.append("items", row)
 			po.flags.ignore_permissions = True
 			try:
 				po.insert()
@@ -475,7 +520,8 @@ class SummerFlowerProcurementPlan(Document):
 				failed.append("%s: %s" % (r.supplier, str(e).split("\n")[0][:160]))
 				continue
 			r.db_set("purchase_order", po.name, update_modified=False)
-			made.append("%s (%s)" % (po.name, r.supplier))
+			made.append("%s (%s, %s deliveries from %s)"
+			            % (po.name, r.supplier, len(schedule), schedule[0][0]))
 		if made:
 			frappe.msgprint(_("Raised as drafts for the outside propagators: {0}").format(
 				", ".join(made)), indicator="green", title=_("Propagator orders"))
@@ -817,6 +863,29 @@ class SummerFlowerProcurementPlan(Document):
 		        "to_buy": res.get("unallocated", 0),
 		        "units": len(self.propagation_allocation)}
 
+	def own_unit_rows(self):
+		"""The allocation rows raised on one of our own benches.
+
+		A propagation plan is an instruction to a named unit: which bench
+		sticks what, in which week. A row with no unit on it names nobody, and
+		a plan built from one is an instruction addressed to no one."""
+		return [r for r in (self.get("propagation_allocation") or [])
+		        if r.alloc_type != "Outside Propagator"
+		        and r.propagation_unit and cint(r.plants) > 0]
+
+	def default_own_unit(self):
+		"""The one unit this farm raises on, where there is exactly one.
+
+		Where the farm has a single propagation unit there is nothing to
+		choose and asking would be pedantry. Where it has several, the choice
+		is the farm's to make and this returns nothing."""
+		units = frappe.get_all(
+			"Warehouse",
+			filters={"custom_farm": self.farm, "custom_sf_is_propagation_unit": 1,
+			         "is_group": 0, "disabled": 0},
+			pluck="name") if self.farm else []
+		return units[0] if len(units) == 1 else None
+
 	def build_propagation_plan(self):
 		"""Raise the propagation plan, now that propagating is what was chosen."""
 		from upande_summer_flowers.summer_flowers.doctype \
@@ -824,13 +893,11 @@ class SummerFlowerProcurementPlan(Document):
 				build_from_plan,
 			)
 
-		allocated = [r for r in (self.get("propagation_allocation") or [])
-		             if r.alloc_type != "Outside Propagator"
-		             and r.propagation_unit and cint(r.plants) > 0]
+		allocated = self.own_unit_rows()
 		if allocated:
 			return self._build_allocated_plans(allocated, build_from_plan)
-		# Somebody HAS been named and it is not us. The fall-through below would
-		# build a plan for a bench that is raising none of it.
+		# Somebody HAS been named and it is not us. There is nothing here for a
+		# propagation plan to say.
 		if not self.raises_here():
 			frappe.msgprint(
 				_("No propagation plan: every plant on {0} is raised by an outside "
@@ -838,8 +905,23 @@ class SummerFlowerProcurementPlan(Document):
 				  ).format(self.name), indicator="blue", title=_("Propagation"))
 			return
 
+		# Raised here, but nobody has said on which bench. A plan with no unit
+		# on it is an instruction addressed to no one -- it was how 127 of the
+		# 140 plans on this site came to carry no unit at all. Where the farm
+		# has one unit that is the answer; where it has several it is a choice,
+		# and the farm makes it.
+		unit = self.default_own_unit()
+		if not unit:
+			frappe.msgprint(
+				_("No propagation plan was raised: {0} is propagated here, but no "
+				  "propagation unit has been named on the allocation. Choose the "
+				  "unit on the planning dashboard and the plan is drafted as soon "
+				  "as you save."
+				  ).format(self.variety), indicator="orange", title=_("Propagation"))
+			return
 		try:
-			outcome = build_from_plan(self.production_plan, as_dict=True)
+			outcome = build_from_plan(self.production_plan, as_dict=True,
+			                          propagation_unit=unit)
 		except Exception:
 			frappe.log_error(frappe.get_traceback(),
 			                 "Propagation plan for %s" % self.name)
@@ -849,10 +931,62 @@ class SummerFlowerProcurementPlan(Document):
 			return
 		# A TC quantity or date confirmed on the dashboard is a decision, and this
 		carried = self._carry_tc_choice(outcome["name"])
-		frappe.msgprint(_("{0} {1}.{2}").format(
+		frappe.msgprint(_("{0} {1} for {2}.{3}").format(
 			outcome["name"], _("created") if outcome.get("created") else _("updated"),
-			" " + carried if carried else ""),
+			unit, " " + carried if carried else ""),
 			indicator="green", title=_("Propagation plan"))
+
+	@frappe.whitelist()
+	def sync_draft_propagation_plans(self):
+		"""A draft propagation plan for each of our units, the moment it is named.
+
+		The farm should not have to approve a procurement plan to find out what
+		its own bench has been asked to do. Naming a unit is the decision; the
+		draft follows it immediately, one per unit, and an outside propagator
+		gets none -- it is bought from them on an order instead."""
+		from upande_summer_flowers.summer_flowers.doctype \
+			.summer_flower_propagation_plan.summer_flower_propagation_plan import (
+				build_from_plan,
+			)
+
+		made, dropped = [], []
+		wanted = set()
+		for row in self.own_unit_rows():
+			wanted.add(row.propagation_unit)
+			try:
+				outcome = build_from_plan(self.production_plan, as_dict=True,
+				                          propagation_unit=row.propagation_unit)
+			except Exception:
+				frappe.log_error(frappe.get_traceback(),
+				                 "Draft propagation plan for %s at %s"
+				                 % (self.name, row.propagation_unit))
+				continue
+			row.db_set("propagation_plan", outcome["name"], update_modified=False)
+			if outcome.get("created"):
+				made.append("%s (%s)" % (outcome["name"], row.propagation_unit))
+		dropped = self._drop_unallocated_drafts(wanted)
+		return {"drafted": made, "withdrawn": dropped}
+
+	def _drop_unallocated_drafts(self, wanted):
+		"""Withdraw a draft for a unit that is no longer raising any of this.
+
+		Only an untouched draft: once a plan has been submitted, or has had
+		seedling requests raised off it, it is a record of what was asked for
+		and it stays."""
+		gone = []
+		for d in frappe.get_all(
+				"Summer Flower Propagation Plan",
+				filters={"production_plan": self.production_plan, "docstatus": 0},
+				fields=["name", "propagation_unit", "seedling_requests_created",
+				        "status"]):
+			if d.propagation_unit in wanted:
+				continue
+			if cint(d.seedling_requests_created) or d.status not in ("Draft", None, ""):
+				continue
+			frappe.delete_doc("Summer Flower Propagation Plan", d.name,
+			                  ignore_permissions=True, force=False)
+			gone.append(d.name)
+		return gone
 
 	def _build_allocated_plans(self, allocated, build_from_plan):
 		"""One propagation plan per allocated unit."""

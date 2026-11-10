@@ -1622,7 +1622,13 @@ def set_raising(production_plan, rows):
 			"rate_per_plant": flt(r.get("rate")) or 0})
 	doc.flags.ignore_permissions = True
 	doc.save()
-	return raising_choices(production_plan)
+	# Naming our own bench IS the decision; the draft follows it here rather
+	# than waiting for the procurement plan to be approved. An outside
+	# propagator gets none -- they are bought from, on an order.
+	drafts = doc.sync_draft_propagation_plans()
+	out = raising_choices(production_plan)
+	out["propagation_drafts"] = drafts
+	return out
 
 
 @frappe.whitelist()
@@ -1650,12 +1656,15 @@ def set_propagation_unit(production_plan, unit=None, supplier=None, share_pct=10
 		"share_pct": flt(share_pct)})
 	doc.flags.ignore_permissions = True
 	doc.save()
+	drafts = doc.sync_draft_propagation_plans()
 	doc.reload()
 	r = doc.propagation_allocation[-1]
 	return {"procurement_plan": doc.name, "raises": r.raises,
 	        "party": r.party, "share_pct": flt(r.share_pct),
 	        "plants": cint(r.plants), "lead_weeks": cint(r.lead_weeks),
-	        "start_by": str(r.start_by or ""), "basis": r.ready_basis}
+	        "start_by": str(r.start_by or ""), "basis": r.ready_basis,
+	        "propagation_plan": r.propagation_plan,
+	        "propagation_drafts": drafts}
 
 
 @frappe.whitelist()
