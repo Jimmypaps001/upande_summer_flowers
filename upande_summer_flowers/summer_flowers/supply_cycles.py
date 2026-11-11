@@ -130,7 +130,21 @@ def supply_defaults(version):
 	decided = sourcing.route_plan(v)
 	entry = decided.get("entry_stage")
 	form = route_ways.LIFT_FORM.get(entry)
-	cycles = max(0, min(52, cint(v.get("supplier_cycles_per_year"))))
+	cycles = cint(v.get("supplier_cycles_per_year"))
+	houses = cint(v.get("suppliers_available"))
+	# A version that does not carry them falls back to the protocol as it
+	# stands. These are commercial facts -- how often a house comes, how many
+	# houses there are -- not agronomy, so changing one should not mean
+	# re-approving a protocol, and every version approved before the figures
+	# existed would otherwise be deaf to them forever.
+	if (not cycles or not houses) and v.get("crop_protocol"):
+		said = frappe.db.get_value(
+			"Crop Protocol", v.crop_protocol,
+			["custom_sf_supplier_cycles_per_year", "custom_sf_suppliers_available"],
+			as_dict=True) or {}
+		cycles = cycles or cint(said.get("custom_sf_supplier_cycles_per_year"))
+		houses = houses or cint(said.get("custom_sf_suppliers_available"))
+	cycles = max(0, min(52, cycles))
 	return {
 		"form": form or DEFAULT_FORM,
 		"entry_stage": entry,
@@ -138,7 +152,7 @@ def supply_defaults(version):
 		# two figures are not asked for and not offered.
 		"is_bought": bool(form),
 		"cycles_a_year": cycles,
-		"suppliers": max(0, min(12, cint(v.get("suppliers_available")))),
+		"suppliers": max(0, min(12, houses)),
 		"lifts": len(v.get("lifts") or []),
 		"lead_weeks": cint(decided.get("lead_weeks"))
 		              or cint(v.get("supplier_lead_weeks")),

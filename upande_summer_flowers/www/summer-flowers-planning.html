@@ -8494,19 +8494,51 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
       } catch (e) { S.supSaved = null; }
     }
     if (!S.sup) {
-      // One empty row, and nobody in it. The card used to open on whoever had
-      // a lift profile on file, which put the same house on every plan at
-      // 100% of the season before anyone had chosen it -- a profile on file
-      // is a note about how a house hands over, not a decision that it
-      // supplies this crop.
-      S.sup = [{ supplier: "", share_pct: 100,
-                 lead_weeks: (S.supStated || {}).lead_weeks || 0,
-                 cycle_count: (S.supStated || {}).cycles_a_year
-                   || SUP_CHOICES.default_cycle_count || 4, cycles: [] }];
+      // A row per supplier the protocol says is available, and nobody in any
+      // of them. The card used to open on whoever had a lift profile on file,
+      // which put the same house on every plan at 100% of the season before
+      // anyone had chosen it -- a profile on file is a note about how a house
+      // hands over, not a decision that it supplies this crop. How MANY
+      // houses is a different question, and the protocol does answer it.
+      const n = Math.max(1, Math.min(12, (S.supStated || {}).suppliers || 1));
+      S.sup = Array.from({ length: n }, blankSup);
+      evenShares(S.sup);
     }
     showStated();
+    syncHouses();
     renderSupPick();
     return runSupply();
+  }
+
+  // An empty row, on the protocol's own footing: how often that house comes
+  // and how much notice it needs. Four and ten were the module's guesses.
+  function blankSup() {
+    const d = S.supStated || {};
+    return { supplier: "", share_pct: 0, lead_weeks: d.lead_weeks || 0,
+             cycle_count: d.cycles_a_year
+               || (SUP_CHOICES || {}).default_cycle_count || 4, cycles: [] };
+  }
+
+  // The season split level across however many houses there are, to the
+  // nearest hundredth and still adding to a hundred. It is a starting point:
+  // a share typed afterwards is kept.
+  function evenShares(rows) {
+    const n = (rows || []).length;
+    if (!n) return rows;
+    const each = Math.round((100 / n) * 100) / 100;
+    rows.forEach((r, i) => {
+      r.share_pct = i < n - 1
+        ? each : Math.round((100 - each * (n - 1)) * 100) / 100;
+    });
+    return rows;
+  }
+
+  // The Houses box and the rows are two views of one number, so moving either
+  // moves the other. They disagreeing is how a card comes to say "3 houses"
+  // above two rows.
+  function syncHouses() {
+    const h = $("sup-houses");
+    if (h) h.value = Math.max(1, (S.sup || []).length);
   }
 
   // What the protocol says about buying this material. It seeds the two boxes
@@ -10037,9 +10069,11 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
           if (b) {
             if (b.dataset.sup === "add") {
               readSupPick();
-              S.sup.push({ supplier: "", share_pct: 0, lead_weeks: 10,
-                           cycle_count: 4, cycles: [] });
+              S.sup.push(blankSup());
+              evenShares(S.sup);
+              syncHouses();
               renderSupPick();
+              runSupply();
               return;
             }
             if (b.dataset.sup === "reset") {
@@ -10063,6 +10097,9 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
                   // and when is arithmetic, who brings it is the farm's call.
                   S.sup = r.picks.map((x) => ({ ...x, cycles: [] }));
                   S.supSuggest = r;
+                  if (r.from_protocol) S.supStated = r.from_protocol;
+                  syncHouses();
+                  showStated();
                   renderSupPick();
                   runSupply();
                   toast(`${r.deliveries} deliveries across ${houses} house`
@@ -10111,7 +10148,11 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
           if (e.target.classList.contains("sup-del")) {
             readSupPick();
             S.sup.splice(+e.target.closest(".pl-sup-row").dataset.i, 1);
+            if (!S.sup.length) S.sup = [blankSup()];
+            evenShares(S.sup);
+            syncHouses();
             renderSupPick();
+            runSupply();
             return;
           }
           if (e.target.classList.contains("sup-cycle-add")) {
