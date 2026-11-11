@@ -118,6 +118,7 @@
   "supply_short_plants",
   "supply_stranded_plants",
   "supply_note",
+  "supply_proposal",
   "supply_rows_section",
   "plan_supply",
   "plan_consignments_section",
@@ -841,6 +842,13 @@
    "fieldname": "supply_note",
    "fieldtype": "Small Text",
    "label": "What Was Agreed",
+   "read_only": 1
+  },
+  {
+   "description": "Worked out when the plan was drawn, from the protocol's own figures: how many houses can supply this variety, how often one comes, and how a consignment is handed over in lifts. It is a proposal, not an agreement -- nobody has been named and nothing has been ordered.",
+   "fieldname": "supply_proposal",
+   "fieldtype": "Small Text",
+   "label": "What The Protocol Proposes",
    "read_only": 1
   },
   {

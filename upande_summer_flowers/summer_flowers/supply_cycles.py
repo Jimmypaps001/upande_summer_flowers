@@ -109,6 +109,45 @@ def suppliers_for(form=DEFAULT_FORM):
 	                                 pluck="name", order_by="name", limit=400)}
 
 
+def supply_defaults(version):
+	"""What the PROTOCOL says about buying this material, before any plan.
+
+	Two figures the farm states once per variety and farm, rather than typing
+	into every plan: how many times in a year a house delivering this form
+	comes, and how many houses can supply it at all. They are not lifts -- a
+	lift is how one consignment is handed over, a cycle is how often a
+	consignment comes -- and the two were read off the same table for months,
+	which is why a house with two lifts on file was planned as a house that
+	comes twice a year.
+
+	Both are advisory: they seed the card, and the farm overrules them on the
+	plan. Zero means the protocol says nothing, which is not the same as zero
+	suppliers."""
+	from upande_summer_flowers.summer_flowers import route_ways, sourcing
+
+	v = (version if hasattr(version, "material_route")
+	     else frappe.get_cached_doc("Crop Protocol Version", version))
+	decided = sourcing.route_plan(v)
+	entry = decided.get("entry_stage")
+	form = route_ways.LIFT_FORM.get(entry)
+	cycles = max(0, min(52, cint(v.get("supplier_cycles_per_year"))))
+	return {
+		"form": form or DEFAULT_FORM,
+		"entry_stage": entry,
+		# Nothing is bought on a route that starts in our own hands, so the
+		# two figures are not asked for and not offered.
+		"is_bought": bool(form),
+		"cycles_a_year": cycles,
+		"suppliers": max(0, min(12, cint(v.get("suppliers_available")))),
+		"lifts": len(v.get("lifts") or []),
+		"lead_weeks": cint(decided.get("lead_weeks"))
+		              or cint(v.get("supplier_lead_weeks")),
+		# How long a plant may wait if the house comes on the stated rhythm:
+		# the gap between deliveries, less the week it is planted in.
+		"wait_weeks": max(0, int(round(52.0 / cycles)) - 1) if cycles else 0,
+	}
+
+
 def _week_monday(week_iso):
 	"""'2026-W12' -> the Monday of that week."""
 	import re
@@ -120,6 +159,62 @@ def _week_monday(week_iso):
 		return datetime.date.fromisocalendar(int(m.group(1)), int(m.group(2)), 1)
 	except ValueError:
 		return None
+
+
+def _drops(weeks, wait):
+	"""Which of these planting weeks a delivery opens in.
+
+	A delivery opens, and carries the planting weeks behind it until one of
+	them would have waited longer than `wait` weeks on the bench."""
+	out = []
+	for w in weeks:
+		if not out or (getdate(w) - getdate(out[-1])).days > 7 * max(0, cint(wait)):
+			out.append(w)
+	return out
+
+
+def proposal(plan_doc, version=None):
+	"""What the protocol says this plan will have to be delivered.
+
+	Worked out when the plan is drawn, before anyone has been named, from the
+	three things the protocol already states: how often a house comes, how
+	many houses there are, and how a consignment is handed over in lifts."""
+	v = version or frappe.get_cached_doc("Crop Protocol Version",
+	                                     plan_doc.protocol)
+	d = supply_defaults(v)
+	wanted = _wanted_by_week(plan_doc)
+	weeks = sorted(wanted)
+	drops = _drops(weeks, d["wait_weeks"]) if weeks else []
+	d.update({"deliveries": len(drops), "weeks": [_iso(x) for x in drops],
+	          "planting_weeks": len(weeks), "plants": sum(wanted.values())})
+	return d
+
+
+def proposal_note(plan_doc, version=None):
+	"""The same thing in a sentence, for the plan to carry."""
+	d = proposal(plan_doc, version)
+	if not d["is_bought"]:
+		return _("Nothing on this route is bought in, so there is no supply to "
+		         "schedule.")
+	if not d["deliveries"]:
+		return _("Nothing to deliver to yet: this plan has no planting weeks.")
+	bits = []
+	if d["suppliers"]:
+		bits.append(_("{0} supplier(s) available").format(d["suppliers"]))
+	else:
+		bits.append(_("no supplier count stated on the protocol"))
+	if d["cycles_a_year"]:
+		bits.append(_("{0} cycles a year, so a delivery every {1} weeks").format(
+			d["cycles_a_year"], d["wait_weeks"] + 1))
+	else:
+		bits.append(_("no cycle count stated, so one delivery per planting week"))
+	bits.append(_("{0} lift(s) per consignment").format(d["lifts"])
+	            if d["lifts"] else _("no lift profile"))
+	return _("{0}: {1}. On that footing this plan needs {2} deliveries "
+	         "({3}) to cover {4} planting weeks. Nobody has been named yet.").format(
+		d["form"], "; ".join(bits), d["deliveries"],
+		", ".join(d["weeks"][:8]) + ("..." if len(d["weeks"]) > 8 else ""),
+		d["planting_weeks"])
 
 
 def _wanted_by_week(plan):
@@ -153,7 +248,7 @@ def _wanted_by_week(plan):
 		return {}
 
 
-def _normalised(picks, form, wanted=None):
+def _normalised(picks, form, wanted=None, default_count=None):
 	"""The chosen houses: their share of the season, and how often they bring it.
 
 	A cycle is a delivery: "four times a year" is four consignments, each
@@ -167,7 +262,10 @@ def _normalised(picks, form, wanted=None):
 		if not name:
 			continue
 		typed = [c for c in (p.get("cycles") or []) if c]
-		count = cint(p.get("cycle_count")) or len(typed) or DEFAULT_CYCLE_COUNT
+		# What the protocol states for this variety beats the module's guess of
+		# four: the farm has said how often this house comes.
+		count = (cint(p.get("cycle_count")) or len(typed)
+		         or cint(default_count) or DEFAULT_CYCLE_COUNT)
 		count = max(1, min(52, count))
 		# Weeks stated outright beat any drumbeat. This is how a delivery is
 		# added or taken away one at a time: the card hands back the weeks it
@@ -291,7 +389,9 @@ def plan_supply(plan, picks=None, form=None):
 	form = form or route_ways.LIFT_FORM.get(entry) or DEFAULT_FORM
 
 	wanted = _wanted_by_week(doc)
-	chosen = _normalised(picks, form, wanted)
+	stated = supply_defaults(v)
+	chosen = _normalised(picks, form, wanted,
+	                     default_count=stated["cycles_a_year"])
 	# How often a house comes is one question; how each consignment is then
 	# handed over, in lifts weeks apart, is another. The agreement carried only
 	# the first, so every lifted crop was planned as though the whole order
@@ -838,6 +938,9 @@ def saved_supply(plan):
 		                    "share_pct": flt(r.cycle_share_pct),
 		                    "units": cint(r.get("units_typed")) or None})
 	return {"plan": doc.name, "picks": list(picks.values()),
+	        # What the protocol states about buying this material, so the card
+	        # opens on the farm's own agreement rather than on a module guess.
+	        "defaults": supply_defaults(doc.protocol) if doc.protocol else None,
 	        "deliveries": [{"name": d.name, "week_iso": d.week_iso,
 	                        "supplier": d.supplier, "units": cint(d.units),
 	                        "plants": cint(d.plants), "note": d.note}
@@ -1189,7 +1292,7 @@ def consignments_csv(plan):
 
 
 @frappe.whitelist()
-def suggest_supply(plan, houses=1, max_wait_weeks=0):
+def suggest_supply(plan, houses=None, max_wait_weeks=None):
 	"""What the plan would have to be delivered, before anyone is named.
 
 	The farm's question is not "here are my houses, what do they bring" but
@@ -1203,15 +1306,33 @@ def suggest_supply(plan, houses=1, max_wait_weeks=0):
 	planting week. Nought is a delivery for every planting week: no waiting, no
 	surplus, the most deliveries. Raising it folds the later weeks into the
 	consignment before them, which is fewer deliveries and plants waiting.
+
+	Neither number has to be typed. Left out, both are read off the protocol:
+	how many houses can supply this variety, and how often a house comes --
+	from which the waiting follows, because a house that comes four times a
+	year is a delivery every thirteen weeks whether or not anyone says so.
 	"""
 	from upande_summer_flowers.summer_flowers.planning_api import _guard
 
 	_guard()
-	houses = max(1, min(12, cint(houses) or 1))
-	wait = max(0, cint(max_wait_weeks))
 	doc = frappe.get_doc("Summer Flower Production Plan", plan)
 	frappe.has_permission("Summer Flower Production Plan", "read", doc, throw=True)
 	v = frappe.get_cached_doc("Crop Protocol Version", doc.protocol)
+	stated = supply_defaults(v)
+
+	# What the farm typed on the card wins; what it did not type comes off the
+	# protocol; and only where the protocol is silent does the old default
+	# stand -- one house, and a delivery for every planting week.
+	def _given(x):
+		# Nought is an answer -- "a delivery for every planting week" -- and
+		# `x or ""` would read it as silence, so the test is for the absence
+		# of a value, not for its falseness.
+		return x is not None and str(x).strip() not in ("", "None")
+
+	asked_houses = cint(houses) if _given(houses) else 0
+	houses = max(1, min(12, asked_houses or stated["suppliers"] or 1))
+	wait = max(0, cint(max_wait_weeks)) if _given(max_wait_weeks) \
+		else stated["wait_weeks"]
 
 	from upande_summer_flowers.summer_flowers import route_ways, sourcing
 
@@ -1232,10 +1353,7 @@ def suggest_supply(plan, houses=1, max_wait_weeks=0):
 
 	# A delivery opens, and carries the planting weeks behind it until one of
 	# them would have waited longer than the farm is willing to carry it.
-	drops = []
-	for w in weeks:
-		if not drops or (getdate(w) - getdate(drops[-1])).days > 7 * wait:
-			drops.append(w)
+	drops = _drops(weeks, wait)
 
 	span_weeks = max(1, (getdate(weeks[-1]) - getdate(weeks[0])).days // 7 + 1)
 	years = max(span_weeks / 52.0, 1.0 / 52.0)
@@ -1252,7 +1370,11 @@ def suggest_supply(plan, houses=1, max_wait_weeks=0):
 		"supplier": "",
 		"share_pct": share if i < houses - 1 else round(100.0 - share * (houses - 1), 4),
 		"lead_weeks": lead,
-		"cycle_count": max(1, int(round(len(drops) / years))),
+		# How often this house comes. The protocol's figure is the agreement;
+		# what the plan worked out is only what these planting weeks needed,
+		# and a house does not come less often because one season is short.
+		"cycle_count": max(1, stated["cycles_a_year"]
+		                   or int(round(len(drops) / years))),
 		"weeks": [_iso(d) for d in drops],
 	} for i in range(houses)]
 
@@ -1264,6 +1386,10 @@ def suggest_supply(plan, houses=1, max_wait_weeks=0):
 	return {
 		"plan": plan, "form": form, "entry_stage": entry,
 		"lead_weeks": lead,
+		# Where each number came from, so the card can say so rather than
+		# presenting the protocol's agreement as arithmetic of its own.
+		"from_protocol": stated,
+		"houses_asked": asked_houses,
 		"houses_suggested": len(picks),
 		"deliveries": len(drops),
 		"planting_weeks": len(weeks),

@@ -133,6 +133,8 @@
   "m2_steps",
   "lift_section",
   "lifts",
+  "supplier_cycles_per_year",
+  "suppliers_available",
   "establishment_section",
   "weeks_on_tray",
   "weeks_on_pot",
@@ -829,6 +831,20 @@
    "fieldtype": "Table",
    "label": "Lifts",
    "options": "Summer Flower Protocol Lift"
+  },
+  {
+   "depends_on": "eval:doc.crop_type==\"Summer Flowers\"",
+   "description": "How many times in a year a house delivering this form comes. Not lifts: a lift is how one consignment is handed over, a cycle is how often a consignment comes. Left at nought the plan works it out from its own planting weeks.",
+   "fieldname": "supplier_cycles_per_year",
+   "fieldtype": "Int",
+   "label": "Supplier cycles a year"
+  },
+  {
+   "depends_on": "eval:doc.crop_type==\"Summer Flowers\"",
+   "description": "How many houses can supply this variety at this farm. The plan opens on this many and the farm can change it; each one brings its share of every delivery.",
+   "fieldname": "suppliers_available",
+   "fieldtype": "Int",
+   "label": "Suppliers available"
   },
   {
    "description": "Whether this variety is cut from motherstock that stands, rather than bought in for each planting. It decides which card the planning page shows, so a snapshot that does not carry it describes a different crop from the one approved.",

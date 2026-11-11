@@ -3982,8 +3982,13 @@ def plan_supply(plan=None, picks=None, variety=None, farm=None, form=None):
 
 
 @frappe.whitelist()
-def suggest_supply(plan=None, houses=1, max_wait_weeks=0, variety=None, farm=None):
-	"""What has to arrive and when, before anybody has been named."""
+def suggest_supply(plan=None, houses=None, max_wait_weeks=None, variety=None,
+                   farm=None):
+	"""What has to arrive and when, before anybody has been named.
+
+	Both numbers default to what the protocol states -- how many houses can
+	supply this variety and how often one comes -- so the card can be asked
+	for a suggestion without being told anything."""
 	_guard()
 	from upande_summer_flowers.summer_flowers import supply_cycles
 

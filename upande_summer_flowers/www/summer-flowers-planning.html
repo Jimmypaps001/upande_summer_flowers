@@ -662,14 +662,17 @@
             <label class="pl-inline"
                    title="{{ _('How many houses to spread it across. Each brings its share of every delivery, so a week none of them could fill alone is filled between them.') }}"
             >{{ _("Houses") }}<input id="sup-houses" type="number" min="1" max="12"
-                     step="1" value="1" style="width:5em"></label>
+                     step="1" value="1" style="width:5em"
+                     oninput="this.dataset.touched=1"></label>
             <label class="pl-inline"
                    title="{{ _('How long plants may sit on the bench waiting for their planting week. Nought is a delivery for every planting week: no waiting and no surplus, but the most deliveries. Raising it folds later weeks into the consignment before them.') }}"
             >{{ _("Plants may wait") }}<input id="sup-wait" type="number" min="0"
-                     max="26" step="1" value="0" style="width:5em"> {{ _("wks") }}</label>
+                     max="26" step="1" value="0" style="width:5em"
+                     oninput="this.dataset.touched=1"> {{ _("wks") }}</label>
             <button type="button" class="pl-btn pl-btn-primary" data-sup="suggest"
             >{{ _("Suggest a supply plan") }}</button>
           </div>
+          <div class="pl-dim" id="sup-stated" style="margin-top:6px"></div>
         </div>
         <div id="sup-pick"></div>
         <div class="pl-tiles pl-tiles-sm" id="sup-tiles"></div>
@@ -8479,6 +8482,10 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
       try {
         const saved = await call("saved_supply", { plan: S.plan });
         S.supSaved = saved;
+        // The protocol states how many houses can supply this variety and
+        // how often one comes. The boxes open on that, not on 1 and 0.
+        S.supStated = saved.defaults || null;
+        showStated();
         if ((saved.picks || []).length) {
           // Opens on what was agreed, including how often each house comes.
           S.sup = saved.picks.map((p) => ({
@@ -8492,11 +8499,46 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
       // 100% of the season before anyone had chosen it -- a profile on file
       // is a note about how a house hands over, not a decision that it
       // supplies this crop.
-      S.sup = [{ supplier: "", share_pct: 100, lead_weeks: 0,
-                 cycle_count: SUP_CHOICES.default_cycle_count || 4, cycles: [] }];
+      S.sup = [{ supplier: "", share_pct: 100,
+                 lead_weeks: (S.supStated || {}).lead_weeks || 0,
+                 cycle_count: (S.supStated || {}).cycles_a_year
+                   || SUP_CHOICES.default_cycle_count || 4, cycles: [] }];
     }
+    showStated();
     renderSupPick();
     return runSupply();
+  }
+
+  // What the protocol says about buying this material. It seeds the two boxes
+  // and then says so, because a number that appears in a box without
+  // explanation reads as a guess the screen made.
+  function showStated() {
+    const el = $("sup-stated");
+    const d = S.supStated;
+    if (!el) return;
+    if (!d || !d.is_bought) {
+      el.innerHTML = d
+        ? "Nothing on this route is bought in, so there is nobody to schedule."
+        : "";
+      return;
+    }
+    const h = $("sup-houses"), w = $("sup-wait");
+    if (h && d.suppliers && !h.dataset.touched) h.value = d.suppliers;
+    if (w && !w.dataset.touched) w.value = d.wait_weeks || 0;
+    const bits = [];
+    bits.push(d.suppliers
+      ? `<b>${d.suppliers}</b> supplier${d.suppliers === 1 ? "" : "s"} available`
+      : "<b>no</b> supplier count on the protocol");
+    bits.push(d.cycles_a_year
+      ? `<b>${d.cycles_a_year}</b> cycles a year — a delivery every `
+        + `${Math.round(52 / d.cycles_a_year)} weeks`
+      : "<b>no</b> cycle count on the protocol, so the planting weeks decide");
+    bits.push(d.lifts
+      ? `each consignment handed over in <b>${d.lifts}</b> lift`
+        + `${d.lifts === 1 ? "" : "s"}`
+      : "no lift profile on the protocol");
+    el.innerHTML = `${esc(d.form)} · ` + bits.join(" · ")
+      + ` <span class="pl-dim">(from the protocol — change either box to overrule it)</span>`;
   }
 
   function renderSupPick() {
@@ -10007,7 +10049,8 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
             if (b.dataset.sup === "suggest") {
               if (!S.plan) { toast("No plan in scope.", true); return; }
               const houses = Math.max(1, Math.min(12,
-                Number(($("sup-houses") || {}).value) || 1));
+                Number(($("sup-houses") || {}).value)
+                  || (S.supStated || {}).suppliers || 1));
               const wait = Math.max(0,
                 Number(($("sup-wait") || {}).value) || 0);
               call("suggest_supply", { plan: S.plan, houses: houses,

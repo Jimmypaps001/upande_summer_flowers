@@ -2368,6 +2368,22 @@ def _populate(plan, programme=None):
 		})
 	plan.weeks_outside_band = outside
 
+	# What the protocol says this will have to be delivered, worked out as the
+	# plan is drawn rather than waiting for somebody to open the supply card:
+	# how many houses can supply this variety, how often one comes, and how a
+	# consignment is handed over in lifts. A proposal, not an agreement -- it
+	# names nobody and orders nothing, and supply_confirmed still governs
+	# whether the plan may be sent for approval.
+	try:
+		from upande_summer_flowers.summer_flowers import supply_cycles as _sc
+
+		plan.supply_proposal = _sc.proposal_note(plan, protocol)
+	except Exception:
+		# A plan must still be drawable when the supply cannot be read. The
+		# proposal is a convenience; losing it is not worth losing the plan.
+		frappe.log_error(frappe.get_traceback(), "supply proposal")
+		plan.supply_proposal = None
+
 
 class BlockCalendar:
 	"""Which beds are free, in which block, and when."""
