@@ -1021,10 +1021,18 @@ def create_production_plan(demand, farm=None, season_start_year=None, force_new=
 	"""Build the production plan for a demand register."""
 	_guard()
 	if not cint(force_new):
+		# Scoped to the season being asked for. Without it, ANY open draft on
+		# the register answered for EVERY season: asking for 2028-29 while a
+		# 2027-28 draft existed regenerated the 2027-28 draft and handed it
+		# back as though it were the new plan. The second year could not be
+		# built at all, and nothing said so -- the dialog closed on a plan
+		# name, just the wrong one's.
+		f = {"market_demand": demand, "docstatus": 0,
+		     "workflow_state": ["in", ["Draft", "Rejected"]]}
+		if season_start_year:
+			f["season_start_year"] = str(season_year(season_start_year))
 		open_draft = frappe.get_all(
-			"Summer Flower Production Plan",
-			filters={"market_demand": demand, "docstatus": 0,
-			         "workflow_state": ["in", ["Draft", "Rejected"]]},
+			"Summer Flower Production Plan", filters=f,
 			pluck="name", order_by="creation desc", limit=1)
 		if open_draft:
 			doc = frappe.get_doc("Summer Flower Production Plan", open_draft[0])
