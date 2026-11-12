@@ -4395,6 +4395,14 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
     // Beds are rarely what runs out; blocks are, because a block holds one
     // planting for that planting's whole life.
     const notes = [];
+    // The multiplication the TC card worked out, where it has been loaded.
+    // This read a bare `q`, which is declared in renderPlanTab and not here,
+    // so renderChain threw ReferenceError the moment a plan existed -- the
+    // only branch that reaches it is guarded on c.space, which is null until
+    // there is a plan. loadChain caught it and rendered "q is not defined"
+    // where the chain belongs, which took the Create production plan button
+    // with it.
+    const q = (S.tc || {}).from_quantity;
     // The pool over the season, as the thing it is: a staircase down. A single
     // "37,000 cut off" total read as the whole pool thrown away, when what
     // happens is that it is held for the biggest week still ahead of it.
