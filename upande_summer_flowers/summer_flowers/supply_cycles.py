@@ -146,7 +146,11 @@ def supply_defaults(version):
 		houses = houses or cint(said.get("custom_sf_suppliers_available"))
 	cycles = max(0, min(52, cycles))
 	return {
-		"form": form or DEFAULT_FORM,
+		# Only TC and roots are handed over in lifts, so only they have a lift
+		# form. A seed, tuber or bought-in-plant route fell back to the module
+		# default and the card announced "Tissue Culture" over a crop raised
+		# from seed. What is bought is the entry stage; say that.
+		"form": form or entry or DEFAULT_FORM,
 		"entry_stage": entry,
 		# Nothing is bought on a route that starts in our own hands, so the
 		# two figures are not asked for and not offered. A route that buys
@@ -1387,7 +1391,7 @@ def suggest_supply(plan, houses=None, max_wait_weeks=None):
 
 	decided = sourcing.route_plan(v)
 	entry = decided.get("entry_stage")
-	form = route_ways.LIFT_FORM.get(entry) or DEFAULT_FORM
+	form = route_ways.LIFT_FORM.get(entry) or entry or DEFAULT_FORM
 	# The route states the notice the entry stage needs; the lab turnaround is
 	# the fallback, and ten weeks the last resort.
 	lead = cint(decided.get("lead_weeks")) or cint(
