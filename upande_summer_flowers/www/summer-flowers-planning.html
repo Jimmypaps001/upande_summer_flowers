@@ -4166,15 +4166,26 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
   // The same check the desk form does before creating a plan: what it will cover, what
   // it will cost to buy, and what ground it needs.
   function createPlanFromChain() {
-    const demand = S.backChain.demand.name;
+    // S.chain is the register-to-plan chain; S.backChain is the HARVEST back
+    // chain and has no demand on it at all. Reading it here threw
+    // "cannot read properties of undefined" inside the click handler, so the
+    // Create production plan button did nothing at all, silently, on every
+    // variety -- the error never reached a toast because it was thrown before
+    // the first await.
+    const chain = S.chain;
+    if (!(chain && chain.demand && chain.demand.name)) {
+      toast("No demand register in scope, so there is nothing to plan from.", true);
+      return;
+    }
+    const demand = chain.demand.name;
     if (!S.farm) {
       toast("Choose a farm first. A plan is one farm's commitment: the demand is for " +
             "the variety, and which farm grows it decides the blocks and the protocol.",
             true);
       return;
     }
-    const season = S.season || (S.backChain.demand.horizon_start
-      ? +String(S.backChain.demand.horizon_start).slice(0, 4) : null);
+    const season = S.season || (chain.demand.horizon_start
+      ? +String(chain.demand.horizon_start).slice(0, 4) : null);
     run("plan_preview", { market_demand: demand, farm: S.farm,
                           season_start_year: season }, (p) => {
       const rows = [
