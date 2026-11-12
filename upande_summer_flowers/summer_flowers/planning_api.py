@@ -58,7 +58,10 @@ def resolve_plan(variety=None, farm=None, plan=None):
 def plans(variety=None, farm=None):
 	"""Every plan in scope, so the dashboard can offer a choice rather than guess."""
 	_guard()
-	f = {"docstatus": ["<", 2]}
+	# A plan that has been replaced by a newer one for the same variety, farm
+	# and season is history, not a choice. It stays on the list view; it does
+	# not come back to the picker.
+	f = {"docstatus": ["<", 2], "status": ["!=", "Replaced"]}
 	if variety:
 		f["variety"] = variety
 	if farm:

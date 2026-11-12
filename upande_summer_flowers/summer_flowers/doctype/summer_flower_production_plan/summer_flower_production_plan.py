@@ -1782,6 +1782,100 @@ def plan_preview(market_demand, farm=None, season_start_year=None):
 	}
 
 
+def supersede_siblings(plan):
+	"""Retire the other plans for this variety, farm and season.
+
+	One variety at one farm in one season is one plan. Building another used
+	to leave the old one standing, so the picker came to offer thirteen plans
+	for Delphinium at Naivasha and nobody could say which one the farm was
+	actually growing.
+
+	A submitted plan is cancelled, because it was a commitment and cancelling
+	is how a commitment is withdrawn on the record. A draft is marked
+	Replaced, not deleted: a draft can carry an agreed supply, deliveries
+	typed in by hand and a procurement plan hanging off it, and throwing that
+	away silently is worse than leaving a row nobody looks at. Either way it
+	leaves the picker.
+
+	Called AFTER the new plan is in, so a build that fails leaves the farm
+	with the plan it already had rather than with nothing."""
+	if not (plan.variety and plan.farm and plan.season_start_year):
+		return []
+	others = frappe.get_all(
+		"Summer Flower Production Plan",
+		filters={"variety": plan.variety, "farm": plan.farm,
+		         "season_start_year": plan.season_start_year,
+		         "docstatus": ["<", 2], "name": ["!=", plan.name]},
+		fields=["name", "docstatus"])
+	done = []
+	for row in others:
+		try:
+			if cint(row.docstatus) == 1:
+				doc = frappe.get_doc("Summer Flower Production Plan", row.name)
+				doc.flags.ignore_permissions = True
+				doc.cancel()
+				doc.db_set("status", "Replaced", update_modified=False)
+				done.append({"plan": row.name, "what": "cancelled"})
+			else:
+				frappe.db.set_value("Summer Flower Production Plan", row.name,
+				                    "status", "Replaced", update_modified=False)
+				done.append({"plan": row.name, "what": "replaced"})
+		except Exception as e:
+			# A plan that will not cancel -- something submitted hangs off it --
+			# is reported, not forced. The new plan still stands.
+			done.append({"plan": row.name, "what": "left alone",
+			             "why": frappe.utils.strip_html(str(e))[:140]})
+	# Cancelling a plan somebody had approved is not a thing to do quietly,
+	# even when it is the thing that was asked for.
+	if done and not frappe.flags.in_patch and not frappe.flags.in_test:
+		frappe.msgprint(
+			"<br>".join("%s &mdash; %s%s" % (frappe.bold(r["plan"]), r["what"],
+			                                 ": " + r["why"] if r.get("why") else "")
+			            for r in done),
+			title=_("Replaced by {0}").format(plan.name), indicator="orange")
+	return done
+
+
+@frappe.whitelist()
+def tidy_duplicate_plans(dry_run=1, variety=None, farm=None):
+	"""Keep the newest plan for each variety, farm and season; retire the rest.
+
+	The one-off for what built up before a plan replaced its predecessor. It
+	keeps the plan most recently created, which is the one the farm has been
+	working on, and retires the others exactly as a new build would -- a
+	submitted plan cancelled, a draft marked Replaced, neither deleted."""
+	f = {}
+	if variety:
+		f["variety"] = variety
+	if farm:
+		f["farm"] = farm
+	rows = frappe.get_all(
+		"Summer Flower Production Plan", filters=dict(f, docstatus=["<", 2]),
+		fields=["name", "variety", "farm", "season_start_year", "docstatus",
+		        "status", "creation"], order_by="creation desc")
+	groups = {}
+	for r in rows:
+		if r.status == "Replaced":
+			continue
+		groups.setdefault((r.variety, r.farm, r.season_start_year), []).append(r)
+	out = []
+	for key, members in sorted(groups.items(), key=lambda kv: -len(kv[1])):
+		if len(members) < 2:
+			continue
+		keep, retire = members[0], members[1:]
+		row = {"variety": key[0], "farm": key[1], "season": key[2],
+		       "keep": keep.name, "retire": [r.name for r in retire],
+		       "submitted": sum(1 for r in retire if cint(r.docstatus) == 1)}
+		if not cint(dry_run):
+			row["done"] = supersede_siblings(frappe.get_doc(
+				"Summer Flower Production Plan", keep.name))
+		out.append(row)
+	if not cint(dry_run):
+		frappe.db.commit()
+	return {"dry_run": bool(cint(dry_run)), "groups": out,
+	        "plans_retired": sum(len(r["retire"]) for r in out)}
+
+
 @frappe.whitelist()
 def build_from_demand(market_demand, farm=None, season_start_year=None,
                       from_year=None, from_week=None, weeks=None):
@@ -1808,6 +1902,8 @@ def build_from_demand(market_demand, farm=None, season_start_year=None,
 
 	_populate(plan)
 	plan.insert()
+	# One variety, one farm, one season, one plan.
+	plan.flags.superseded = supersede_siblings(plan)
 	return plan.name
 
 
@@ -2713,7 +2809,8 @@ def build_all(season_start_year=None, farm=None, dry_run=1, rebuild=0):
 				out["status"] = _("would build")
 			else:
 				plan.insert()
-				out.update(plan=plan.name, status=_("built"))
+				out.update(plan=plan.name, status=_("built"),
+				           superseded=supersede_siblings(plan))
 		except Exception as e:
 			# One protocol that cannot project must not cost the other plans.
 			out["status"] = "%s: %s" % (type(e).__name__,
