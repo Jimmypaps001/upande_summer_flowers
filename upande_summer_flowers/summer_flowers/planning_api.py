@@ -4125,3 +4125,85 @@ def _week_label(d):
 		return None
 	y, w, _dow = getdate(d).isocalendar()
 	return "%s-W%02d" % (y, w)
+
+
+@frappe.whitelist()
+def week_board(plan=None, variety=None, farm=None):
+	"""Week by week: what is planted, what it owes, what it gives, who brought it.
+
+	One row a week over the union of the plan's own weeks and the weeks it
+	plants in -- a plan's season window and its plantings do not have to
+	overlap, and a board drawn on the window alone shows no plantings at all.
+
+	Everything here is a number or a key. The colours are the page's business;
+	this says what is true and leaves the saying of it to the screen."""
+	from upande_summer_flowers.summer_flowers import supply_cycles as sc
+
+	_guard()
+	name = resolve_plan(variety, farm, plan)
+	if not name:
+		return {"plan": None, "rows": [], "suppliers": []}
+	doc = frappe.get_doc("Summer Flower Production Plan", name)
+	frappe.has_permission("Summer Flower Production Plan", "read", doc, throw=True)
+
+	def iso(d):
+		y, w, _x = getdate(d).isocalendar()
+		return "%s-W%02d" % (y, w)
+
+	weeks = {}
+
+	def row(key):
+		return weeks.setdefault(key, {
+			"week": key, "demand": 0, "production": 0,
+			"planted_new": 0, "planted_existing": 0, "beds": 0,
+			"suppliers": [], "placed": 0, "unplaced": 0})
+
+	for w in (doc.get("plan_weeks") or []):
+		r = row("%s-W%02d" % (cint(w.year), cint(w.week_no)))
+		r["demand"] = cint(w.demand_stems)
+		r["production"] = cint(w.production_stems)
+
+	for b in (doc.get("plan_blocks") or []):
+		if not b.get("planting_date"):
+			continue
+		r = row(iso(b.planting_date))
+		plants = cint(b.get("plants_to_plant")) or cint(b.get("plants"))
+		r["beds"] += cint(b.beds)
+		if cint(b.is_new_planting):
+			r["planted_new"] += plants
+			r["unplaced" if cint(b.get("not_placed")) else "placed"] += plants
+		else:
+			r["planted_existing"] += plants
+			r["placed"] += plants
+
+	# Who brings each planting week. What was agreed where anything was, and
+	# what the protocol proposes where nothing has been.
+	named, agreed = [], bool(doc.get("plan_consignments"))
+	if agreed:
+		for c in doc.get("plan_consignments"):
+			if not c.get("lands_week"):
+				continue
+			r = row(c.lands_week)
+			if c.supplier and c.supplier not in r["suppliers"]:
+				r["suppliers"].append(c.supplier)
+			if c.supplier and c.supplier not in named:
+				named.append(c.supplier)
+	else:
+		prop = sc.proposal(doc)
+		for d in (prop.get("rows") or []):
+			for k, share in enumerate(d["split"]):
+				house = _("House {0}").format(k + 1)
+				if house not in named:
+					named.append(house)
+				for wk in d["covers"]:
+					r = row(wk)
+					if house not in r["suppliers"]:
+						r["suppliers"].append(house)
+
+	out = sorted(weeks.values(), key=lambda r: r["week"])
+	for r in out:
+		r["short"] = max(0, r["demand"] - r["production"])
+		r["over"] = max(0, r["production"] - r["demand"])
+	return {"plan": name, "rows": out, "suppliers": named, "agreed": 1 if agreed else 0,
+	        "existing_total": sum(r["planted_existing"] for r in out),
+	        "new_total": sum(r["planted_new"] for r in out)}

@@ -203,8 +203,33 @@ def proposal(plan_doc, version=None):
 	wanted = _wanted_by_week(plan_doc)
 	weeks = sorted(wanted)
 	drops = _drops(weeks, d["wait_weeks"]) if weeks else []
+	houses = max(1, cint(d["suppliers"]) or 1)
+	# Every delivery, what it carries, and each house's share of it. A delivery
+	# opens in its own planting week and carries the weeks after it until the
+	# next one opens, so what it brings is those weeks' plants added up.
+	rows = []
+	for i, start in enumerate(drops):
+		end = drops[i + 1] if i + 1 < len(drops) else None
+		carried = [w for w in weeks if w >= start and (end is None or w < end)]
+		plants = sum(cint(wanted[w]) for w in carried)
+		base, rem = divmod(plants, houses)
+		rows.append({
+			"no": i + 1,
+			"week": _iso(start),
+			"plants": plants,
+			"covers": [_iso(w) for w in carried],
+			"planting_weeks": len(carried),
+			# Level between the houses, to the plant: a house that is handed a
+			# half of the season still has to cover every week of it.
+			"split": [base + (1 if k < rem else 0) for k in range(houses)],
+		})
 	d.update({"deliveries": len(drops), "weeks": [_iso(x) for x in drops],
-	          "planting_weeks": len(weeks), "plants": sum(wanted.values())})
+	          "planting_weeks": len(weeks), "plants": sum(wanted.values()),
+	          "houses": houses, "rows": rows,
+	          # What actually gets arranged: every house turns up to every
+	          # delivery with its own share, so this is how many consignments
+	          # somebody has to agree, raise an order for and receive.
+	          "supplier_deliveries": len(rows) * houses})
 	return d
 
 
@@ -228,11 +253,15 @@ def proposal_note(plan_doc, version=None):
 		bits.append(_("no cycle count stated, so one delivery per planting week"))
 	bits.append(_("{0} lift(s) per consignment").format(d["lifts"])
 	            if d["lifts"] else _("no lift profile"))
-	return _("{0}: {1}. On that footing this plan needs {2} deliveries "
-	         "({3}) to cover {4} planting weeks. Nobody has been named yet.").format(
-		d["form"], "; ".join(bits), d["deliveries"],
-		", ".join(d["weeks"][:8]) + ("..." if len(d["weeks"]) > 8 else ""),
-		d["planting_weeks"])
+	head = _("{0}: {1}. {2} deliveries x {3} house(s) = {4} consignments, "
+	         "covering {5} planting weeks. Nobody has been named yet.").format(
+		d["form"], "; ".join(bits), d["deliveries"], d["houses"],
+		d["supplier_deliveries"], d["planting_weeks"])
+	lines = ["%s  %s  %s plants  (%s planting weeks)  %s" % (
+		r["no"], r["week"], r["plants"], r["planting_weeks"],
+		" / ".join(str(x) for x in r["split"]))
+		for r in d["rows"]]
+	return head + "\n" + "\n".join(lines)
 
 
 def _wanted_by_week(plan):
@@ -956,9 +985,11 @@ def saved_supply(plan):
 		                    "share_pct": flt(r.cycle_share_pct),
 		                    "units": cint(r.get("units_typed")) or None})
 	return {"plan": doc.name, "picks": list(picks.values()),
-	        # What the protocol states about buying this material, so the card
-	        # opens on the farm's own agreement rather than on a module guess.
-	        "defaults": supply_defaults(doc.protocol) if doc.protocol else None,
+	        # What the protocol states about buying this material, and the
+	        # deliveries that rhythm actually comes to on THIS plan, so the
+	        # card opens on the farm's own agreement rather than on a module
+	        # guess -- and can show what it means rather than assert it.
+	        "defaults": proposal(doc) if doc.protocol else None,
 	        "deliveries": [{"name": d.name, "week_iso": d.week_iso,
 	                        "supplier": d.supplier, "units": cint(d.units),
 	                        "plants": cint(d.plants), "note": d.note}
@@ -1405,8 +1436,9 @@ def suggest_supply(plan, houses=None, max_wait_weeks=None):
 		"plan": plan, "form": form, "entry_stage": entry,
 		"lead_weeks": lead,
 		# Where each number came from, so the card can say so rather than
-		# presenting the protocol's agreement as arithmetic of its own.
-		"from_protocol": stated,
+		# presenting the protocol's agreement as arithmetic of its own. The
+		# protocol's OWN rhythm, not the one the card may have overruled.
+		"from_protocol": proposal(doc, v),
 		"houses_asked": asked_houses,
 		"houses_suggested": len(picks),
 		"deliveries": len(drops),

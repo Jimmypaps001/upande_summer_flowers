@@ -674,6 +674,7 @@
           </div>
           <div class="pl-dim" id="sup-stated" style="margin-top:6px"></div>
         </div>
+        <div id="sup-deliveries" class="pl-scroll"></div>
         <div id="sup-pick"></div>
         <div class="pl-tiles pl-tiles-sm" id="sup-tiles"></div>
         <div id="sup-body" class="pl-scroll"></div>
@@ -700,6 +701,15 @@
            cycles are settled. -->
       <div class="pl-card">
         <div id="tc-planting" class="pl-scroll"></div>
+      </div>
+
+      <!-- The season in one grid, read by colour: what is owed, what is cut,
+           what goes in the ground and who brought it. No prose -- the numbers
+           and the colours are the whole of it. -->
+      <div class="pl-card">
+        <div class="pl-card-head"><div><h2>{{ _("The season, week by week") }}</h2></div></div>
+        <div id="wb-legend" class="pl-dim" style="margin-bottom:8px"></div>
+        <div id="wb-body" class="pl-scroll"></div>
       </div>
       <!-- The TC lifecycle card stood here: build-up cycles, a standing
            "% diverted to propagation", a Prop-MS column and weeks counted
@@ -8506,7 +8516,9 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
     }
     showStated();
     syncHouses();
+    renderDropSchedule();
     renderSupPick();
+    loadBoard();
     return runSupply();
   }
 
@@ -8539,6 +8551,100 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
   function syncHouses() {
     const h = $("sup-houses");
     if (h) h.value = Math.max(1, (S.sup || []).length);
+  }
+
+  // A stable colour per house, so the same supplier is the same colour in
+  // every table on the page.
+  const SUP_HUES = [205, 25, 145, 285, 55, 325, 175, 100];
+  function supColour(name, list) {
+    const i = Math.max(0, (list || []).indexOf(name));
+    return `hsl(${SUP_HUES[i % SUP_HUES.length]} 65% 45%)`;
+  }
+  function chip(label, colour) {
+    return `<span style="display:inline-block;width:.7em;height:.7em;`
+      + `border-radius:2px;background:${colour};margin-right:.35em;`
+      + `vertical-align:-1px"></span>${esc(label)}`;
+  }
+
+  // Every delivery the protocol's rhythm comes to, and each house's share of
+  // it. Drawn before anybody is named, because how many consignments there
+  // are to arrange is the thing the farm is deciding.
+  function renderDropSchedule() {
+    const el = $("sup-deliveries");
+    if (!el) return;
+    const d = S.supStated;
+    const rows = (d && d.rows) || [];
+    if (!d || !d.is_bought || !rows.length) { el.innerHTML = ""; return; }
+    const houses = d.houses || 1;
+    const names = (S.sup || []).map((p) => p.supplier);
+    const head = Array.from({ length: houses }, (_, i) =>
+      `<th class="r">${esc(names[i] || `House ${i + 1}`)}</th>`).join("");
+    el.innerHTML =
+      `<table class="pl-t"><thead><tr>`
+      + `<th>#</th><th>Lands</th><th class="r">Plants</th>`
+      + `<th class="r">Wks</th>${head}</tr></thead><tbody>`
+      + rows.map((r) => `<tr><td>${r.no}</td><td>${esc(r.week)}</td>`
+          + `<td class="r">${num(r.plants)}</td>`
+          + `<td class="r">${r.planting_weeks}</td>`
+          + (r.split || []).map((x, i) =>
+              `<td class="r" style="color:${supColour(names[i] || `House ${i + 1}`,
+                 names.length ? names : null)}">${num(x)}</td>`).join("")
+          + `</tr>`).join("")
+      + `</tbody><tfoot><tr><th></th><th>${d.deliveries} \u00d7 ${houses}`
+      + ` = ${d.supplier_deliveries}</th>`
+      + `<th class="r">${num(d.plants)}</th><th class="r">${d.planting_weeks}</th>`
+      + Array.from({ length: houses }, () => "<th></th>").join("")
+      + `</tr></tfoot></table>`;
+  }
+
+  // The season in one grid. Colour carries the meaning: red short, green
+  // over, a house's own colour on what it brings, grey on ground already
+  // standing. Deliberately wordless.
+  async function loadBoard() {
+    const body = $("wb-body"), leg = $("wb-legend");
+    if (!body) return;
+    if (!S.plan) { body.innerHTML = ""; if (leg) leg.innerHTML = ""; return; }
+    let r;
+    try { r = await call("week_board", { plan: S.plan }); }
+    catch (e) { body.innerHTML = `<div class="pl-dim">${esc(e.message)}</div>`; return; }
+    const sup = r.suppliers || [];
+    const rows = (r.rows || []).filter((x) =>
+      x.demand || x.production || x.planted_new || x.planted_existing);
+    if (leg) {
+      leg.innerHTML = [
+        chip("short", "hsl(5 70% 50%)"),
+        chip("over", "hsl(145 55% 38%)"),
+        chip("standing", "hsl(0 0% 55%)"),
+      ].concat(sup.map((n) => chip(n, supColour(n, sup)))).join(" &nbsp; ");
+    }
+    const cell = (v, colour) => v
+      ? `<td class="r" style="color:${colour};font-weight:600">${num(v)}</td>`
+      : `<td class="r pl-dim">\u2014</td>`;
+    body.innerHTML =
+      `<table class="pl-t"><thead><tr><th>Week</th>`
+      + `<th class="r">Demand</th><th class="r">Production</th>`
+      + `<th class="r">Short</th><th class="r">Over</th>`
+      + `<th class="r">Planted</th><th class="r">Standing</th>`
+      + `<th>Brought by</th></tr></thead><tbody>`
+      + rows.map((x) => {
+          const who = (x.suppliers || []).map((n) =>
+            `<span style="color:${supColour(n, sup)}">${chip(n, supColour(n, sup))}</span>`
+          ).join(" ");
+          const bar = x.demand
+            ? `background:linear-gradient(90deg, ${x.short ? "hsl(5 70% 50% / .13)"
+                : "hsl(145 55% 38% / .13)"} ${Math.min(100, Math.round(
+                  100 * (x.production || 0) / x.demand))}%, transparent 0)`
+            : "";
+          return `<tr style="${bar}"><td>${esc(x.week)}</td>`
+            + `<td class="r">${x.demand ? num(x.demand) : "\u2014"}</td>`
+            + `<td class="r">${x.production ? num(x.production) : "\u2014"}</td>`
+            + cell(x.short, "hsl(5 70% 45%)")
+            + cell(x.over, "hsl(145 55% 32%)")
+            + cell(x.planted_new, "hsl(205 65% 40%)")
+            + cell(x.planted_existing, "hsl(0 0% 45%)")
+            + `<td>${who || "<span class=\"pl-dim\">\u2014</span>"}</td></tr>`;
+        }).join("")
+      + `</tbody></table>`;
   }
 
   // What the protocol says about buying this material. It seeds the two boxes
@@ -10072,6 +10178,7 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
               S.sup.push(blankSup());
               evenShares(S.sup);
               syncHouses();
+              renderDropSchedule();
               renderSupPick();
               runSupply();
               return;
@@ -10100,6 +10207,7 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
                   if (r.from_protocol) S.supStated = r.from_protocol;
                   syncHouses();
                   showStated();
+                  renderDropSchedule();
                   renderSupPick();
                   runSupply();
                   toast(`${r.deliveries} deliveries across ${houses} house`
@@ -10151,6 +10259,7 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
             if (!S.sup.length) S.sup = [blankSup()];
             evenShares(S.sup);
             syncHouses();
+            renderDropSchedule();
             renderSupPick();
             runSupply();
             return;
