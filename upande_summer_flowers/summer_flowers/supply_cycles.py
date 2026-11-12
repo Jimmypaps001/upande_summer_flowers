@@ -149,8 +149,12 @@ def supply_defaults(version):
 		"form": form or DEFAULT_FORM,
 		"entry_stage": entry,
 		# Nothing is bought on a route that starts in our own hands, so the
-		# two figures are not asked for and not offered.
-		"is_bought": bool(form),
+		# two figures are not asked for and not offered. A route that buys
+		# seeds or plants outright IS bought, even though no lift profile
+		# describes how they arrive -- saying "nothing here is bought in"
+		# of a seed crop would be plainly untrue.
+		"is_bought": bool(entry),
+		"handed_over_in_lifts": bool(form),
 		"cycles_a_year": cycles,
 		"suppliers": max(0, min(12, houses)),
 		"lifts": len(v.get("lifts") or []),
