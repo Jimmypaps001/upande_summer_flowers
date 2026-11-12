@@ -536,6 +536,15 @@ def chain_status(variety=None, farm=None, demand=None, plan=None, season=None):
 	# Describe the plan the dashboard is showing. Falling back to the newest is
 	wanted = plan
 	plan = next((p for p in plans if p["name"] == wanted), None) if wanted else None
+	# The season in the scope bar is the question being asked. The plan picker
+	# defaults to the newest plan for the variety whatever season it belongs
+	# to, and passing that back made the chain answer for a different year:
+	# pick 2028-29, and because a 2027-28 plan existed the chain reported the
+	# plan step done and hid "Create production plan". A plan from another
+	# season is not an answer about this one.
+	if (plan is not None and season
+			and season_year(plan.get("season_start_year")) != season_year(season)):
+		plan = None
 	if plan is None:
 		plan = scoped[0] if scoped else None
 
