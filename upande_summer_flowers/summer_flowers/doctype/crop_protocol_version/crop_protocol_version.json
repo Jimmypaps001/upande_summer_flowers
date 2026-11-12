@@ -376,16 +376,14 @@
    "description": "The smallest planting worth making, as an area. Beds are whole, so this rounds up to whole beds and then to plants.",
    "fieldname": "min_planting_area_sqm",
    "fieldtype": "Float",
-   "label": "Minimum planting area (m² net)",
-   "reqd": 1
+   "label": "Minimum planting area (m² net)"
   },
   {
    "description": "The net planted area of one bed. Karen's beds are 50 m² each. Plants per bed follows from this and the density.",
    "fieldname": "sqm_net_per_bed",
    "fieldtype": "Float",
    "label": "m² net per bed",
-   "precision": "2",
-   "reqd": 1
+   "precision": "2"
   },
   {
    "default": "0",
