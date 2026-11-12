@@ -4131,12 +4131,18 @@ def _week_label(d):
 
 
 @frappe.whitelist()
-def week_board(plan=None, variety=None, farm=None):
+def week_board(plan=None, variety=None, farm=None, suppliers=None):
 	"""Week by week: what is planted, what it owes, what it gives, who brought it.
 
 	One row a week over the union of the plan's own weeks and the weeks it
 	plants in -- a plan's season window and its plantings do not have to
 	overlap, and a board drawn on the window alone shows no plantings at all.
+
+	`suppliers` is what the card has picked but not yet saved, in card order.
+	A house that has been chosen is named; one still on "pick a supplier" keeps
+	its House N placeholder. Until the supply is agreed there is nothing on the
+	plan to read a name off, and showing House 1 beside a row when the farm has
+	already said Iribov is the screen being needlessly coy.
 
 	Everything here is a number or a key. The colours are the page's business;
 	this says what is true and leaves the saying of it to the screen."""
@@ -4192,10 +4198,13 @@ def week_board(plan=None, variety=None, farm=None):
 			if c.supplier and c.supplier not in named:
 				named.append(c.supplier)
 	else:
+		picked = frappe.parse_json(suppliers) if isinstance(suppliers, str) \
+			else (suppliers or [])
 		prop = sc.proposal(doc)
 		for d in (prop.get("rows") or []):
 			for k, share in enumerate(d["split"]):
-				house = _("House {0}").format(k + 1)
+				chosen = (picked[k] if k < len(picked) else None) or None
+				house = chosen or _("House {0}").format(k + 1)
 				if house not in named:
 					named.append(house)
 				for wk in d["covers"]:

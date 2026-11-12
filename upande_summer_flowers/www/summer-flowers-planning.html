@@ -8628,7 +8628,10 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
     if (!body) return;
     if (!S.plan) { body.innerHTML = ""; if (leg) leg.innerHTML = ""; return; }
     let r;
-    try { r = await call("week_board", { plan: S.plan }); }
+    // The houses the card has picked, in card order, so a row that has been
+    // given a supplier says the supplier rather than "House 1".
+    const picked = JSON.stringify((S.sup || []).map((p) => p.supplier || ""));
+    try { r = await call("week_board", { plan: S.plan, suppliers: picked }); }
     catch (e) { body.innerHTML = `<div class="pl-dim">${esc(e.message)}</div>`; return; }
     const sup = r.suppliers || [];
     const rows = (r.rows || []).filter((x) =>
@@ -9966,6 +9969,21 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
     });
 
     // Hand-set a weekly target on blur, so typing does not fire a write per keystroke.
+    // Naming a house is not the same as recalculating: what each delivery
+    // carries still waits for Recalculate, but the name belongs to the screen
+    // the moment it is chosen. It was only read on the next click anywhere in
+    // the card, so the delivery columns and the season board went on saying
+    // House 1 over a supplier the farm had already picked.
+    const supBox = $("sup-pick");
+    if (supBox) {
+      supBox.addEventListener("change", (ev) => {
+        if (!ev.target.classList || !ev.target.classList.contains("sup-name")) return;
+        readSupPick();
+        renderDropSchedule();
+        loadBoard();
+      });
+    }
+
     $("pl-root").addEventListener("change", (ev) => {
       const t = ev.target.closest("input.tgt");
       if (!t) return;
@@ -10273,7 +10291,7 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
                 go);
               return;
             }
-            readSupPick(); runSupply();
+            readSupPick(); runSupply(); loadBoard();
             return;
           }
           if (e.target.classList.contains("sup-del")) {
