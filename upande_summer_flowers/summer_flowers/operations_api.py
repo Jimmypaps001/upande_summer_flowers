@@ -592,10 +592,15 @@ def chain_status(variety=None, farm=None, demand=None, plan=None, season=None):
 	steps = [
 		{"key": "demand", "label": _("Market demand"), "done": True,
 		 "name": d["name"], "next": None},
+		# The action is offered whether or not a plan exists. One variety at one
+		# farm in one season is one plan, and building another replaces the one
+		# there -- so hiding the button once a plan existed left no way to redraw
+		# a season at all, and the replacing was unreachable from the dashboard.
 		{"key": "plan", "label": _("Production plan"), "done": bool(plan),
 		 "name": plan["name"] if plan else None,
 		 "state": plan["workflow_state"] if plan else None,
-		 "next": None if plan else "create_plan"},
+		 "replaces": plan["name"] if plan else None,
+		 "next": "create_plan"},
 		{"key": "budget", "label": _("Budget"), "done": bool(budget),
 		 "name": budget["name"] if budget else None,
 		 "state": budget["budget_status"] if budget else None,

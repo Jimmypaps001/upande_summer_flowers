@@ -4355,10 +4355,14 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
       plan_procurement: ["Open the plan and use Actions \u2192 Plan Procurement", null],
     };
     $("ch-steps").innerHTML = '<div class="ch-flow">' + c.steps.map((st, i) => {
+      // A season that already has a plan still offers the action, labelled for
+      // what it will do: building another replaces the one there.
+      const label = st.next === "create_plan" && st.replaces
+        ? "Replace this plan" : (NEXT[st.next] || [])[0];
       const btn = st.next && NEXT[st.next]
         ? (NEXT[st.next][1]
-            ? `<button type="button" class="pl-btn primary" data-ch="${esc(NEXT[st.next][1])}">${esc(NEXT[st.next][0])}</button>`
-            : `<span class="bf-meta">${esc(NEXT[st.next][0])}</span>`)
+            ? `<button type="button" class="pl-btn primary" data-ch="${esc(NEXT[st.next][1])}">${esc(label)}</button>`
+            : `<span class="bf-meta">${esc(label)}</span>`)
         : "";
       return `<div class="ch-step${st.done ? " done" : ""}">` +
         `<div class="ch-k">${i + 1}. ${esc(st.label)}</div>` +
