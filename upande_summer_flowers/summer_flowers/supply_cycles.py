@@ -284,10 +284,13 @@ def proposal(plan_doc, version=None, shares=None):
 	# planting week is served on its own.
 	first, last = weeks[0], weeks[-1]
 	if step:
-		drops, at = [], first
-		while getdate(at) <= getdate(last):
-			drops.append(at)
-			at = add_days(at, 7 * step)
+		# How many whole cycles fit the span, which is the farm's own sum: a
+		# 53-week year at a four-week cycle is thirteen deliveries, not the
+		# fourteen you get by counting both ends of 0, 4, 8 ... 52. The last
+		# delivery's window carries the weeks after it.
+		span_weeks = (getdate(last) - getdate(first)).days // 7 + 1
+		count = max(1, span_weeks // step)
+		drops = [add_days(first, 7 * step * i) for i in range(count)]
 	else:
 		drops = list(weeks)
 
@@ -488,10 +491,15 @@ def _normalised(picks, form, wanted=None, default_count=None):
 			# added by hand is not quietly moved onto the nearest planting.
 			drops = list(x["weeks"])
 		else:
-			drops = []
-			for w in weeks:
-				if not drops or (getdate(w) - getdate(drops[-1])).days >= 7 * step:
-					drops.append(w)
+			# The drumbeat, exactly as the card draws it: one delivery every
+			# `step` weeks from the first planting week, as many whole cycles
+			# as the span holds. Anchoring each cycle on "the next planting
+			# week at least a step on" instead put the consignments on
+			# different weeks from the schedule the farm agreed, so the plan
+			# was saved against a timetable nobody had seen.
+			span_weeks = (getdate(last) - getdate(first)).days // 7 + 1
+			count = max(1, span_weeks // step)
+			drops = [add_days(first, 7 * step * i) for i in range(count)]
 		x["drops_in_plan"] = len(drops)
 		x["weeks_between"] = step
 		# What was asked for, beside what the plan's own shape allows. Four a
@@ -656,6 +664,21 @@ def plan_supply(plan, picks=None, form=None):
 			parts[i][0] += 1
 		split[w] = [p[0] for p in parts]
 
+	# The instalment schedule: the same one the card draws, at the same shares,
+	# so what is saved IS what was agreed. Each consignment used to be sized
+	# from the planting weeks it carried -- a different model from the card's,
+	# which meant the farm agreed instalments and the plan was built on
+	# something else.
+	prop = proposal(doc, v, shares=[flt(x["share_pct"]) for x in chosen])
+	instalment = {}
+	for r in (prop.get("rows") or []):
+		for k, q in enumerate(r.get("split") or []):
+			instalment[(r["week"], k)] = cint(q)
+	# Where the farm has agreed a total on the material card, the instalments
+	# give the shape and that total gives the size.
+	scale = (flt(buy_plants) / flt(prop["plants"])
+	         if agreed_units and prop.get("plants") else 1.0)
+
 	for idx, s_ in enumerate(chosen):
 		s_["waves"] = (ts.handover_for(form, s_["supplier"], 0, v) or [(0, 1.0)])
 		mine = {w: split[w][idx] for w in wanted}
@@ -679,7 +702,14 @@ def plan_supply(plan, picks=None, form=None):
 			                  - cint(covered.get(window[0], 0))) if window else 0)
 			if first_need and 0 < first_share < 1:
 				net = max(net, int(math.ceil(first_need / first_share - 1e-9)))
+			# The instalment for this delivery and this house. A week added by
+			# hand is not on the schedule and keeps the old reckoning from the
+			# weeks it covers.
+			share_of = instalment.get((c.get("lands_iso"), idx))
+			if share_of is not None:
+				net = int(round(share_of * scale))
 			c["net_plants"] = max(0, net)
+			c["instalment"] = 1 if share_of is not None else 0
 			c["suggested_units"] = (int(math.ceil(c["net_plants"] / (per_unit or 1.0)
 			                                      - 1e-9))
 			                        if c["net_plants"] > 0 else 0)
@@ -701,9 +731,11 @@ def plan_supply(plan, picks=None, form=None):
 			# quantity typed on the material card still splits by share: that
 			# is a decision, not an estimate.
 			typed_units = c.get("typed_units")
-			plants = (cint(c.get("net_plants"))
-			          if (typed_units is not None or not agreed_units)
-			          else int(round(s_plants * flt(c["share"]))))
+			# The instalment is the quantity. Apportioning the agreed total by
+			# each cycle's share of the demand in its window was the old model
+			# answering a question the card no longer asks; where the farm has
+			# agreed a total, the instalments were already scaled to it.
+			plants = cint(c.get("net_plants"))
 			# Up, never to the nearest: half a plantlet short of a bed is a
 			# bed that cannot be planted, and rounding down put the supply
 			# card one unit under the material card on every order.
