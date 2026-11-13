@@ -8541,6 +8541,7 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
     syncHouses();
     renderDropSchedule();
     renderSupPick();
+    lockIfSubmitted();
     loadBoard();
     return runSupply();
   }
@@ -8602,6 +8603,32 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
       if (r && r.rows) { S.supStated = Object.assign({}, S.supStated, r); }
     } catch (e) { /* the card still draws on what it had */ }
     renderDropSchedule();
+  }
+
+  // A submitted plan is a commitment, not a draft. The card shows what was
+  // agreed and nothing on it can be moved: to change it the plan is cancelled
+  // and amended, which is the farm withdrawing a commitment on the record.
+  function lockIfSubmitted() {
+    const ds = cint((S.supSaved || {}).docstatus);
+    const box = $("sup-pick");
+    if (!box) return;
+    const locked = ds !== 0;
+    box.querySelectorAll("input, select, button").forEach((el) => {
+      el.disabled = locked;
+    });
+    ["add", "run", "save", "confirm", "reset", "suggest"].forEach((k) => {
+      const b = document.querySelector(`[data-sup="${k}"]`);
+      if (b) b.disabled = locked;
+    });
+    ["sup-houses", "sup-wait"].forEach((id) => {
+      const el = $(id); if (el) el.disabled = locked;
+    });
+    const note = $("sup-stated");
+    if (locked && note) {
+      note.innerHTML = `<b>${S.plan} is submitted.</b> This is the supply it was `
+        + `grown from and it cannot be changed here &mdash; cancel and amend the `
+        + `plan to agree a different one.`;
+    }
   }
 
   function renderDropSchedule() {

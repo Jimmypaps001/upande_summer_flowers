@@ -949,7 +949,23 @@ def save_supply(plan, picks, confirm=0):
 	# One place names the sellers. Choosing cycles for one house on this card
 	# and buying from another on the procurement card is two decisions where
 	# the farm only ever makes one, so what is agreed here is written through.
-	_write_sellers(doc, out)
+	proc_name = _write_sellers(doc, out)
+	# And the bench, where the bench is ours. Agreeing a supply changes what
+	# our own propagation unit has been asked to raise, and the draft plan
+	# that says so was only rebuilt when somebody opened the procurement
+	# card -- so the farm agreed a supply and its own unit went on showing
+	# the quantities from the supply before it.
+	if proc_name:
+		try:
+			proc = frappe.get_doc("Summer Flower Procurement Plan", proc_name)
+			if proc.own_unit_rows():
+				out["propagation"] = proc.sync_draft_propagation_plans()
+		except Exception:
+			# A propagation draft that will not build must not cost the farm
+			# the supply it just agreed. It is logged and said plainly.
+			frappe.log_error(frappe.get_traceback(), "propagation after supply")
+			out["propagation"] = {"error": _("The draft propagation plan could "
+			                                 "not be rebuilt; the supply is saved.")}
 
 	if cint(confirm):
 		doc.supply_confirmed = 1
