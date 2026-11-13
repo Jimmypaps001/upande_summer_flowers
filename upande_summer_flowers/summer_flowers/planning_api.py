@@ -4222,7 +4222,8 @@ def week_board(plan=None, variety=None, farm=None, suppliers=None):
 
 
 @frappe.whitelist()
-def delivery_schedule(plan=None, shares=None, variety=None, farm=None):
+def delivery_schedule(plan=None, shares=None, variety=None, farm=None,
+                      second_half=None, save_second_half=0):
 	"""The deliveries the protocol's rhythm comes to, at the shares on screen.
 
 	The card holds shares that have not been saved, so the schedule cannot be
@@ -4236,4 +4237,14 @@ def delivery_schedule(plan=None, shares=None, variety=None, farm=None):
 		return {"plan": None, "rows": []}
 	doc = frappe.get_doc("Summer Flower Production Plan", name)
 	frappe.has_permission("Summer Flower Production Plan", "read", doc, throw=True)
-	return sc.proposal(doc, shares=shares)
+	# The review figure is kept on the plan once the farm settles it, so the
+	# second half does not revert to arithmetic the next time the card opens.
+	if cint(save_second_half):
+		frappe.has_permission("Summer Flower Production Plan", "write", doc,
+		                      throw=True)
+		if doc.docstatus != 0:
+			frappe.throw(_("{0} is submitted.").format(doc.name))
+		doc.db_set("supply_second_half_plants", cint(second_half),
+		           update_modified=False)
+		doc.reload()
+	return sc.proposal(doc, shares=shares, second_half=second_half)

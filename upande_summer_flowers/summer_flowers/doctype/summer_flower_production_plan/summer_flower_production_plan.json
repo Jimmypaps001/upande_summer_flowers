@@ -119,6 +119,7 @@
   "supply_stranded_plants",
   "supply_note",
   "supply_proposal",
+  "supply_second_half_plants",
   "supply_rows_section",
   "plan_supply",
   "plan_consignments_section",
@@ -852,6 +853,13 @@
    "fieldtype": "Small Text",
    "label": "What The Protocol Proposes",
    "read_only": 1
+  },
+  {
+   "description": "What the second half of the year is to be delivered, set at the half-year once the farm has seen how the first half went. Left at nought it is worked out from the demand in that half, which is the proposal; typed, it is the quantity and the deliveries in the second half are divided over it.",
+   "fieldname": "supply_second_half_plants",
+   "fieldtype": "Int",
+   "label": "Second Half, Plants Agreed",
+   "non_negative": 1
   },
   {
    "fieldname": "supply_rows_section",

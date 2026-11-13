@@ -231,7 +231,7 @@ def _lift_rows(plants, lifts, lift_total, lands):
 	        for i, x in enumerate(lifts)]
 
 
-def proposal(plan_doc, version=None, shares=None):
+def proposal(plan_doc, version=None, shares=None, second_half=None):
 	"""What the protocol says this plan will have to be delivered.
 
 	A cycle is the GAP, not the count: cycle 4 means a house comes every four
@@ -298,6 +298,11 @@ def proposal(plan_doc, version=None, shares=None):
 	# side of it.
 	mid = add_days(getdate(first), (getdate(last) - getdate(first)).days // 2)
 	per_half = (len(drops) / 2.0) or 1.0
+	# What the farm has settled for the second half, where it has settled
+	# anything: the review at the half-year is a decision, and a decision
+	# outranks the arithmetic that stood in for it.
+	agreed_2nd = cint(second_half if second_half not in (None, "")
+	                  else plan_doc.get("supply_second_half_plants"))
 	halves = []
 	for lo, hi in ((first, mid), (mid, None)):
 		ws = [w for w in weeks if getdate(w) >= getdate(lo)
@@ -305,6 +310,8 @@ def proposal(plan_doc, version=None, shares=None):
 		ds = [x for x in drops if getdate(x) >= getdate(lo)
 		      and (hi is None or getdate(x) < getdate(hi))]
 		plants = sum(cint(wanted[w]) for w in ws)
+		if halves and agreed_2nd:
+			plants = agreed_2nd
 		halves.append({
 			"from": _iso(lo), "to": _iso(hi) if hi else _iso(last),
 			"plants": plants, "planting_weeks": len(ws), "deliveries": len(ds),
@@ -313,6 +320,8 @@ def proposal(plan_doc, version=None, shares=None):
 			# half to a half, and 40,000 / 6.5 = 6,154 is the sum the farm does.
 			"split_over": per_half,
 			"per_delivery": int(round(plants / per_half)) if plants else 0,
+			# Whether this half's figure was decided or worked out.
+			"agreed": 1 if (halves and agreed_2nd) else 0,
 		})
 
 	rows = []

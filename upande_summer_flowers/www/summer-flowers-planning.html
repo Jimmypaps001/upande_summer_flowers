@@ -669,6 +669,10 @@
             >{{ _("Plants may wait") }}<input id="sup-wait" type="number" min="0"
                      max="26" step="1" value="0" style="width:5em"
                      oninput="this.dataset.touched=1"> {{ _("wks") }}</label>
+            <label class="pl-inline"
+                   title="{{ _('What the second half of the year is to be delivered, set at the half-year once you have seen how the first half went. Leave it empty and it is worked out from the demand in that half.') }}"
+            >{{ _("Second half") }}<input id="sup-2nd" type="number" min="0"
+                     step="1" style="width:8em" placeholder="{{ _('from demand') }}"></label>
             <button type="button" class="pl-btn pl-btn-primary" data-sup="suggest"
             >{{ _("Suggest a supply plan") }}</button>
           </div>
@@ -8595,11 +8599,17 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
   // are to arrange is the thing the farm is deciding.
   // The schedule depends on the shares typed into the card, which the plan
   // has not been told about, so it is refetched rather than read off state.
-  async function reloadDropSchedule() {
+  async function reloadDropSchedule(saveSecond) {
     if (!S.plan) return;
     const shares = JSON.stringify((S.sup || []).map((p) => Number(p.share_pct) || 0));
+    const box = $("sup-2nd");
+    const second = box && String(box.value).trim() !== "" ? Number(box.value) : null;
     try {
-      const r = await call("delivery_schedule", { plan: S.plan, shares: shares });
+      const r = await call("delivery_schedule", {
+        plan: S.plan, shares: shares,
+        second_half: second === null ? "" : second,
+        save_second_half: saveSecond ? 1 : 0,
+      });
       if (r && r.rows) { S.supStated = Object.assign({}, S.supStated, r); }
     } catch (e) { /* the card still draws on what it had */ }
     renderDropSchedule();
@@ -8641,8 +8651,13 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
     const names = (S.sup || []).map((p) => p.supplier);
     const head = Array.from({ length: houses }, (_, i) =>
       `<th class="r">${esc(names[i] || `House ${i + 1}`)}</th>`).join("");
+    const halves = (d.halves || []).map((h, i) =>
+      `half ${i + 1} · ${esc(h.from)}&ndash;${esc(h.to)} · ${num(h.plants)} plants `
+      + `/ ${h.split_over} = <b>${num(h.per_delivery)}</b> each`
+      + (h.agreed ? " · <b>agreed</b>" : "")).join(" &nbsp;|&nbsp; ");
     el.innerHTML =
-      `<table class="pl-t"><thead><tr>`
+      (halves ? `<div class="pl-dim" style="margin-bottom:6px">${halves}</div>` : "")
+      + `<table class="pl-t"><thead><tr>`
       + `<th>#</th><th>Lands</th><th class="r">Plants</th>`
       + `<th class="r">Wks</th>${head}</tr></thead><tbody>`
       + rows.map((r) => `<tr><td>${r.no}</td><td>${esc(r.week)}</td>`
@@ -8732,9 +8747,13 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
         : "";
       return;
     }
-    const h = $("sup-houses"), w = $("sup-wait");
+    const h = $("sup-houses"), w = $("sup-wait"), q = $("sup-2nd");
     if (h && d.suppliers && !h.dataset.touched) h.value = d.suppliers;
     if (w && !w.dataset.touched) w.value = d.wait_weeks || 0;
+    // The figure the farm settled, where it has settled one. An empty box
+    // means the second half is still being worked out from the demand.
+    const agreed = (d.halves || [])[1];
+    if (q && !q.dataset.touched && agreed && agreed.agreed) q.value = agreed.plants;
     const bits = [];
     bits.push(d.suppliers
       ? `<b>${d.suppliers}</b> supplier${d.suppliers === 1 ? "" : "s"} available`
@@ -10201,6 +10220,17 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
       toggleGroup([["g-month", "month"], ["g-week", "week"]], "grain", dvChart);
       toggleGroup([["pp-by-plant", "plant"], ["pp-by-uproot", "uproot"]],
         "ppBasis", renderPlanting);
+
+      // The second-half figure is a decision, so it is kept on the plan the
+      // moment it is made rather than living in the box until something else
+      // happens to save.
+      const q2 = $("sup-2nd");
+      if (q2) {
+        q2.addEventListener("change", () => {
+          q2.dataset.touched = 1;
+          reloadDropSchedule(true);
+        });
+      }
 
       $("f-season").addEventListener("change", (e) => {
         S.season = e.target.value;
