@@ -144,7 +144,10 @@ def supply_defaults(version):
 			as_dict=True) or {}
 		cycles = cycles or cint(said.get("custom_sf_supplier_cycles_per_year"))
 		houses = houses or cint(said.get("custom_sf_suppliers_available"))
-	cycles = max(0, min(52, cycles))
+	# The farm's figure is a CYCLE LENGTH: 4 means a house comes every four
+	# weeks, so a 53-week year is thirteen deliveries. It was read as
+	# "times a year", which turned every-four-weeks into every-thirteen.
+	cycle_weeks = max(0, min(52, cycles))
 	return {
 		# Only TC and roots are handed over in lifts, so only they have a lift
 		# form. A seed, tuber or bought-in-plant route fell back to the module
@@ -159,14 +162,17 @@ def supply_defaults(version):
 		# of a seed crop would be plainly untrue.
 		"is_bought": bool(entry),
 		"handed_over_in_lifts": bool(form),
-		"cycles_a_year": cycles,
+		# Kept under the old key too: the page and the saved supply rows
+		# still speak it, and both now mean weeks between deliveries.
+		"cycle_weeks": cycle_weeks,
+		"cycles_a_year": cycle_weeks,
 		"suppliers": max(0, min(12, houses)),
 		"lifts": len(v.get("lifts") or []),
 		"lead_weeks": cint(decided.get("lead_weeks"))
 		              or cint(v.get("supplier_lead_weeks")),
 		# How long a plant may wait if the house comes on the stated rhythm:
 		# the gap between deliveries, less the week it is planted in.
-		"wait_weeks": max(0, int(round(52.0 / cycles)) - 1) if cycles else 0,
+		"wait_weeks": max(0, cycle_weeks - 1) if cycle_weeks else 0,
 	}
 
 
@@ -195,45 +201,100 @@ def _drops(weeks, wait):
 	return out
 
 
+def _apportion(total, parts):
+	"""`total` split into `parts` whole numbers that still add to `total`."""
+	parts = max(1, int(parts))
+	base, rem = divmod(int(total), parts)
+	return [base + (1 if i < rem else 0) for i in range(parts)]
+
+
 def proposal(plan_doc, version=None):
 	"""What the protocol says this plan will have to be delivered.
 
-	Worked out when the plan is drawn, before anyone has been named, from the
-	three things the protocol already states: how often a house comes, how
-	many houses there are, and how a consignment is handed over in lifts."""
+	A cycle is the GAP, not the count: cycle 4 means a house comes every four
+	weeks, so a 53-week year is thirteen deliveries. The supplier takes the
+	whole order and brings it in equal instalments on that rhythm.
+
+	The year is worked in halves. Each half's quantity is the material the
+	demand in that half needs -- which is why a hundred thousand for the year
+	can be forty in the first half -- divided by half the year's deliveries.
+	Thirteen deliveries is six and a half to a half, so 40,000 / 6.5 = 6,154
+	every four weeks. At the half-year the farm sees how the first half went
+	and the second half is re-divided over what remains.
+
+	What a planting week happens to want no longer SIZES anything. It is still
+	reported -- the week a delivery covers, what those weeks ask for -- because
+	it is worth knowing, but the instalment is the instalment."""
 	v = version or frappe.get_cached_doc("Crop Protocol Version",
 	                                     plan_doc.protocol)
 	d = supply_defaults(v)
 	wanted = _wanted_by_week(plan_doc)
 	weeks = sorted(wanted)
-	drops = _drops(weeks, d["wait_weeks"]) if weeks else []
 	houses = max(1, cint(d["suppliers"]) or 1)
-	# Every delivery, what it carries, and each house's share of it. A delivery
-	# opens in its own planting week and carries the weeks after it until the
-	# next one opens, so what it brings is those weeks' plants added up.
+	step = cint(d["cycle_weeks"])
+	total = sum(cint(x) for x in wanted.values())
+	if not weeks:
+		d.update({"deliveries": 0, "weeks": [], "planting_weeks": 0, "plants": 0,
+		          "houses": houses, "rows": [], "supplier_deliveries": 0,
+		          "halves": None})
+		return d
+
+	# The drumbeat runs from the first planting week to the last, one delivery
+	# every `step` weeks. No cycle stated means no rhythm to keep, so each
+	# planting week is served on its own.
+	first, last = weeks[0], weeks[-1]
+	if step:
+		drops, at = [], first
+		while getdate(at) <= getdate(last):
+			drops.append(at)
+			at = add_days(at, 7 * step)
+	else:
+		drops = list(weeks)
+
+	# The half-year is a date, and the deliveries fall where they fall either
+	# side of it.
+	mid = add_days(getdate(first), (getdate(last) - getdate(first)).days // 2)
+	per_half = (len(drops) / 2.0) or 1.0
+	halves = []
+	for lo, hi in ((first, mid), (mid, None)):
+		ws = [w for w in weeks if getdate(w) >= getdate(lo)
+		      and (hi is None or getdate(w) < getdate(hi))]
+		ds = [x for x in drops if getdate(x) >= getdate(lo)
+		      and (hi is None or getdate(x) < getdate(hi))]
+		plants = sum(cint(wanted[w]) for w in ws)
+		halves.append({
+			"from": _iso(lo), "to": _iso(hi) if hi else _iso(last),
+			"plants": plants, "planting_weeks": len(ws), "deliveries": len(ds),
+			# Divided by HALF THE YEAR'S deliveries, not by the ones that
+			# happen to land this side of the midpoint: thirteen is six and a
+			# half to a half, and 40,000 / 6.5 = 6,154 is the sum the farm does.
+			"split_over": per_half,
+			"per_delivery": int(round(plants / per_half)) if plants else 0,
+		})
+
 	rows = []
 	for i, start in enumerate(drops):
 		end = drops[i + 1] if i + 1 < len(drops) else None
-		carried = [w for w in weeks if w >= start and (end is None or w < end)]
-		plants = sum(cint(wanted[w]) for w in carried)
-		base, rem = divmod(plants, houses)
+		carried = [w for w in weeks if getdate(w) >= getdate(start)
+		           and (end is None or getdate(w) < getdate(end))]
+		half = 0 if getdate(start) < getdate(mid) else 1
+		plants = halves[half]["per_delivery"]
 		rows.append({
-			"no": i + 1,
-			"week": _iso(start),
+			"no": i + 1, "week": _iso(start), "half": half + 1,
 			"plants": plants,
+			# What the weeks between this delivery and the next ask for.
+			# Reported, not used to size the instalment.
+			"wants": sum(cint(wanted[w]) for w in carried),
 			"covers": [_iso(w) for w in carried],
 			"planting_weeks": len(carried),
-			# Level between the houses, to the plant: a house that is handed a
-			# half of the season still has to cover every week of it.
-			"split": [base + (1 if k < rem else 0) for k in range(houses)],
+			"split": _apportion(plants, houses),
 		})
 	d.update({"deliveries": len(drops), "weeks": [_iso(x) for x in drops],
-	          "planting_weeks": len(weeks), "plants": sum(wanted.values()),
-	          "houses": houses, "rows": rows,
-	          # What actually gets arranged: every house turns up to every
-	          # delivery with its own share, so this is how many consignments
-	          # somebody has to agree, raise an order for and receive.
-	          "supplier_deliveries": len(rows) * houses})
+	          "planting_weeks": len(weeks), "plants": total,
+	          "houses": houses, "rows": rows, "halves": halves,
+	          # Every house turns up to every delivery with its own share, so
+	          # this is how many consignments somebody has to agree and receive.
+	          "supplier_deliveries": len(drops) * houses})
 	return d
 
 
@@ -245,26 +306,29 @@ def proposal_note(plan_doc, version=None):
 		         "schedule.")
 	if not d["deliveries"]:
 		return _("Nothing to deliver to yet: this plan has no planting weeks.")
-	bits = []
-	if d["suppliers"]:
-		bits.append(_("{0} supplier(s) available").format(d["suppliers"]))
-	else:
-		bits.append(_("no supplier count stated on the protocol"))
-	if d["cycles_a_year"]:
-		bits.append(_("{0} cycles a year, so a delivery every {1} weeks").format(
-			d["cycles_a_year"], d["wait_weeks"] + 1))
-	else:
-		bits.append(_("no cycle count stated, so one delivery per planting week"))
-	bits.append(_("{0} lift(s) per consignment").format(d["lifts"])
-	            if d["lifts"] else _("no lift profile"))
-	head = _("{0}: {1}. {2} deliveries x {3} house(s) = {4} consignments, "
-	         "covering {5} planting weeks. Nobody has been named yet.").format(
-		d["form"], "; ".join(bits), d["deliveries"], d["houses"],
-		d["supplier_deliveries"], d["planting_weeks"])
-	lines = ["%s  %s  %s plants  (%s planting weeks)  %s" % (
-		r["no"], r["week"], r["plants"], r["planting_weeks"],
-		" / ".join(str(x) for x in r["split"]))
-		for r in d["rows"]]
+	bits = [
+		_("{0} supplier(s) available").format(d["suppliers"]) if d["suppliers"]
+		else _("no supplier count on the protocol"),
+		_("a delivery every {0} weeks").format(d["cycle_weeks"])
+		if d["cycle_weeks"]
+		else _("no cycle stated, so one delivery per planting week"),
+		_("{0} lift(s) per consignment").format(d["lifts"]) if d["lifts"]
+		else _("no lift profile"),
+	]
+	head = _("{0}: {1}. {2} deliveries x {3} house(s) = {4} consignments over "
+	         "{5} planting weeks, {6} plants in all. Nobody has been named yet."
+	         ).format(d["form"], "; ".join(bits), d["deliveries"], d["houses"],
+	                  d["supplier_deliveries"], d["planting_weeks"], d["plants"])
+	lines = []
+	for n, h in enumerate(d.get("halves") or []):
+		lines.append(_("Half {0}, {1} to {2}: {3} plants / {4} deliveries = "
+		               "{5} each ({6} of them land in this half).").format(
+			n + 1, h["from"], h["to"], h["plants"], h["split_over"],
+			h["per_delivery"], h["deliveries"]))
+	for r in d["rows"]:
+		lines.append("%s  %s  half %s  %s plants  (%s)" % (
+			r["no"], r["week"], r["half"], r["plants"],
+			" / ".join(str(x) for x in r["split"])))
 	return head + "\n" + "\n".join(lines)
 
 
@@ -362,7 +426,9 @@ def _normalised(picks, form, wanted=None, default_count=None):
 	for x in out:
 		# So many a YEAR, over however long the plan runs: a season of two
 		# years at four a year is eight consignments, not four.
-		step = max(1, int(round(52.0 / x["cycle_count"])))
+		# The cycle IS the gap in weeks: 4 means every four weeks, which is
+		# thirteen deliveries in a 53-week year, not four.
+		step = max(1, cint(x["cycle_count"]))
 		# A consignment lands on a week the farm is planting in. Counting the
 		# drumbeat out from the first planting regardless of where the
 		# plantings are put cycles on weeks with nothing to deliver to: a plan
