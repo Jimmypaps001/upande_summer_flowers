@@ -208,7 +208,30 @@ def _apportion(total, parts):
 	return [base + (1 if i < rem else 0) for i in range(parts)]
 
 
-def proposal(plan_doc, version=None):
+def _share_out(total, shares):
+	"""`total` split by percentage, to the plant, still adding to `total`."""
+	total = int(total)
+	raw = [total * flt(p) / 100.0 for p in shares]
+	out = [int(x) for x in raw]
+	for i in sorted(range(len(raw)), key=lambda i: -(raw[i] - out[i]))[:total - sum(out)]:
+		out[i] += 1
+	return out
+
+
+def _lift_rows(plants, lifts, lift_total, lands):
+	"""One row per lift: its share of this delivery and the week it lands."""
+	if not lifts:
+		return []
+	scale = 100.0 if abs(lift_total - 100.0) <= 0.5 else lift_total
+	parts = _share_out(plants, [x["share_pct"] * 100.0 / scale for x in lifts])
+	return [{"lift_no": x["lift_no"], "weeks_after": x["weeks_after"],
+	         "share_pct": round(x["share_pct"] * 100.0 / scale, 2),
+	         "plants": parts[i],
+	         "week": _iso(add_days(lands, 7 * cint(x["weeks_after"])))}
+	        for i, x in enumerate(lifts)]
+
+
+def proposal(plan_doc, version=None, shares=None):
 	"""What the protocol says this plan will have to be delivered.
 
 	A cycle is the GAP, not the count: cycle 4 means a house comes every four
@@ -231,7 +254,24 @@ def proposal(plan_doc, version=None):
 	wanted = _wanted_by_week(plan_doc)
 	weeks = sorted(wanted)
 	houses = max(1, cint(d["suppliers"]) or 1)
+	# What each house was promised. Even where the card has said nothing --
+	# but a share typed on the card is the share, and splitting the instalment
+	# evenly regardless was why changing an allocation moved nothing.
+	if isinstance(shares, str):
+		shares = frappe.parse_json(shares or "[]")
+	shares = [flt(x) for x in (shares or [])][:houses]
+	if len(shares) < houses or sum(shares) <= 0:
+		shares = [100.0 / houses] * houses
 	step = cint(d["cycle_weeks"])
+	# How a consignment is handed over. A lifted crop never gets the whole
+	# delivery in one week: 90% at seven weeks, 10% at eight.
+	lifts = [{"lift_no": cint(r.get("lift_no")) or i + 1,
+	          "weeks_after": cint(r.get("weeks_after_arrival")),
+	          "share_pct": flt(r.get("share_pct"))}
+	         for i, r in enumerate(v.get("lifts") or [])]
+	lift_total = sum(x["share_pct"] for x in lifts)
+	if lifts and lift_total <= 0:
+		lifts = []
 	total = sum(cint(x) for x in wanted.values())
 	if not weeks:
 		d.update({"deliveries": 0, "weeks": [], "planting_weeks": 0, "plants": 0,
@@ -287,7 +327,12 @@ def proposal(plan_doc, version=None):
 			"wants": sum(cint(wanted[w]) for w in carried),
 			"covers": [_iso(w) for w in carried],
 			"planting_weeks": len(carried),
-			"split": _apportion(plants, houses),
+			"split": _share_out(plants, shares),
+			# The delivery broken into the parts it actually arrives in, and
+			# the week each part lands. Without this a lifted crop read as
+			# though the whole consignment turned into plants on the day it
+			# was dropped.
+			"lifts": _lift_rows(plants, lifts, lift_total, start),
 		})
 	d.update({"deliveries": len(drops), "weeks": [_iso(x) for x in drops],
 	          "planting_weeks": len(weeks), "plants": total,

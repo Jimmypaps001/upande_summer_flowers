@@ -4219,3 +4219,21 @@ def week_board(plan=None, variety=None, farm=None, suppliers=None):
 	return {"plan": name, "rows": out, "suppliers": named, "agreed": 1 if agreed else 0,
 	        "existing_total": sum(r["planted_existing"] for r in out),
 	        "new_total": sum(r["planted_new"] for r in out)}
+
+
+@frappe.whitelist()
+def delivery_schedule(plan=None, shares=None, variety=None, farm=None):
+	"""The deliveries the protocol's rhythm comes to, at the shares on screen.
+
+	The card holds shares that have not been saved, so the schedule cannot be
+	read off the plan alone: an allocation typed into the card has to move the
+	figures under it or the farm has changed nothing by changing it."""
+	from upande_summer_flowers.summer_flowers import supply_cycles as sc
+
+	_guard()
+	name = resolve_plan(variety, farm, plan)
+	if not name:
+		return {"plan": None, "rows": []}
+	doc = frappe.get_doc("Summer Flower Production Plan", name)
+	frappe.has_permission("Summer Flower Production Plan", "read", doc, throw=True)
+	return sc.proposal(doc, shares=shares)

@@ -8592,6 +8592,18 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
   // Every delivery the protocol's rhythm comes to, and each house's share of
   // it. Drawn before anybody is named, because how many consignments there
   // are to arrange is the thing the farm is deciding.
+  // The schedule depends on the shares typed into the card, which the plan
+  // has not been told about, so it is refetched rather than read off state.
+  async function reloadDropSchedule() {
+    if (!S.plan) return;
+    const shares = JSON.stringify((S.sup || []).map((p) => Number(p.share_pct) || 0));
+    try {
+      const r = await call("delivery_schedule", { plan: S.plan, shares: shares });
+      if (r && r.rows) { S.supStated = Object.assign({}, S.supStated, r); }
+    } catch (e) { /* the card still draws on what it had */ }
+    renderDropSchedule();
+  }
+
   function renderDropSchedule() {
     const el = $("sup-deliveries");
     if (!el) return;
@@ -8612,7 +8624,14 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
           + (r.split || []).map((x, i) =>
               `<td class="r" style="color:${supColour(names[i] || `House ${i + 1}`,
                  names.length ? names : null)}">${num(x)}</td>`).join("")
-          + `</tr>`).join("")
+          + `</tr>`
+          + ((r.lifts || []).length
+              ? `<tr class="pl-dim"><td></td><td colspan="${3 + houses}">`
+                + (r.lifts || []).map((L) =>
+                    `lift ${L.lift_no} · ${L.share_pct}% · lands ${esc(L.week)} · `
+                    + `${num(L.plants)}`).join(" &nbsp;|&nbsp; ")
+                + `</td></tr>`
+              : "")).join("")
       + `</tbody><tfoot><tr><th></th><th>${d.deliveries} \u00d7 ${houses}`
       + ` = ${d.supplier_deliveries}</th>`
       + `<th class="r">${num(d.plants)}</th><th class="r">${d.planting_weeks}</th>`
@@ -9977,9 +9996,13 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
     const supBox = $("sup-pick");
     if (supBox) {
       supBox.addEventListener("change", (ev) => {
-        if (!ev.target.classList || !ev.target.classList.contains("sup-name")) return;
+        const cls = ev.target.classList;
+        if (!cls) return;
+        // A name, or a share: both change what the schedule says, and a share
+        // changes the figures under every delivery.
+        if (!cls.contains("sup-name") && !cls.contains("sup-share")) return;
         readSupPick();
-        renderDropSchedule();
+        reloadDropSchedule();
         loadBoard();
       });
     }
