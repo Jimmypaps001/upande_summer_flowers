@@ -785,8 +785,10 @@
    "options": "Summer Flower Plan Month"
   },
   {
+   "description": "The supply is agreed on the planning dashboard, Materials Planning. This tab held a second answer to the same question and is kept only so the rows it carries stay on the plan.",
    "fieldname": "supply_tab",
    "fieldtype": "Tab Break",
+   "hidden": 1,
    "label": "Supply"
   },
   {
