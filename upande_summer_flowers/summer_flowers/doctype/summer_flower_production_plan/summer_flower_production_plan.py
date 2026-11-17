@@ -2234,6 +2234,8 @@ def _populate(plan, programme=None):
 	footprints = []
 
 	# ---- what is already on the ground
+	window_start = grid[0][2] if grid else None
+	window_end = add_days(grid[-1][2], 6) if grid else None
 	plan.plan_blocks = []
 	for planting in standing_plantings(plan.farm, plan.variety):
 		hit = False
@@ -2249,16 +2251,35 @@ def _populate(plan, programme=None):
 			getdate(planting.planting_date), planting.end_date(),
 			planting.net_area_ha or 0,
 		))
+		# Crop that holds ground through the window belongs on the plan even when
+		# it projects no stems. Sixteen Active Delphinium cycles at Naivasha have
+		# an empty flush schedule and a live plant count of zero, so this gate --
+		# which used to be `hit` alone -- dropped every one of them, and the plan
+		# listed nothing but the draft calendars a replaced plan had left behind.
+		# The beds are occupied either way; a planner who cannot see them will
+		# plant on top of them.
+		if not hit and window_start and planting.block:
+			hit = (getdate(planting.planting_date) <= window_end
+			       and planting.end_date() >= window_start)
 		if hit:
 			fh_year, fh_week = planting.first_harvest()
 			# `existing_planting` links a Planting Calendar and only that -- the
 			from_cycle = getattr(planting, "doctype", "") == "Crop Cycle"
+			note = (_("Standing crop, from cycle {0}").format(planting.name)
+			        if from_cycle else None)
+			if not mine:
+				# It holds the ground but promises nothing, because nobody has
+				# given it a flush schedule. Say so on the row rather than let
+				# the plan imply the beds are producing.
+				note = ((note + " ") if note else "") + _(
+					"No flush schedule on this record, so it adds no stems to "
+					"the plan. It still holds its beds until {0}."
+				).format(planting.end_date())
 			plan.append("plan_blocks", {
 				"is_new_planting": 0,
 				"block": planting.block,
 				"existing_planting": None if from_cycle else planting.name,
-				"notes": (_("Standing crop, from cycle {0}").format(planting.name)
-				          if from_cycle else None),
+				"notes": note,
 				"beds": planting.beds,
 				"plants": planting.plants,
 				"planting_year": planting.planting_year,
