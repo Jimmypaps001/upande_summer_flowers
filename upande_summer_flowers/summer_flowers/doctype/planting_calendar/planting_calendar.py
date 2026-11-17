@@ -522,11 +522,63 @@ def refresh_coverage(block):
 	frappe.db.set_value("Block", block, coverage_of(block), update_modified=False)
 
 
+def cycle_planted_on(row):
+	"""The day a Crop Cycle went into the ground.
+
+	Cycles reach this app two ways. The loader fills `custom_planting_date`;
+	a cycle keyed in by hand fills only the stock field `planting_date`, and
+	139 live cycles carry nothing else. Reading one field alone left those
+	with no planting date, and a cycle with no planting date holds no ground.
+	"""
+	at = row.get("custom_planting_date") or row.get("planting_date")
+	return getdate(at) if at else None
+
+
+def cycle_end_date(row, planted=None, life_weeks=0):
+	"""The day a Crop Cycle's ground comes free, or None if nothing says.
+
+	An *actual* uprooting date is a record of something that happened, so a
+	date in the future is not one: the cycle load put each crop's planned end
+	of life in the actual field, and 159 live cycles now claim to have been
+	uprooted on a day that has not arrived. Five claim a day before they were
+	planted. Trusting those either frees ground that is still full or -- where
+	the date has passed -- hides a standing crop from the planner, who then
+	plants on top of it.
+	"""
+	planted = planted or cycle_planted_on(row)
+	today = getdate(nowdate())
+	actual = row.get("custom_actual_uproot_date")
+	actual = getdate(actual) if actual else None
+	planned = row.get("custom_planned_uproot_date")
+	planned = getdate(planned) if planned else None
+	# A date before the crop went in is not an uprooting of this crop.
+	if actual and planted and actual < planted:
+		actual = None
+	# It has happened: the ground is free, whatever anyone planned.
+	if actual and actual <= today:
+		return actual
+	# Nothing has happened yet, so both remaining dates are forecasts and the
+	# later one wins. Reading a stale planned date as the end would hand a
+	# planner ground that is still full, which is the error that plants one
+	# crop on top of another; holding the ground too long only shows up as a
+	# plan that cannot place a block, where somebody sees it.
+	ends = [x for x in (planned, actual) if x]
+	if ends:
+		return max(ends)
+	if planted and life_weeks:
+		return planted + datetime.timedelta(weeks=cint(life_weeks))
+	return None
+
+
 class _CycleAsPlanting:
 	"""A Crop Cycle read as a planting, so planning can see it."""
 
-	def __init__(self, doc):
+	def __init__(self, doc, life_weeks=0):
 		self._doc = doc
+		# Weeks in the ground from the protocol, for a cycle that records no
+		# uprooting date at all. Without it such a cycle reads as ending the
+		# day it was planted.
+		self._life_weeks = cint(life_weeks)
 		self.name = doc.name
 		self.doctype = "Crop Cycle"
 		self.block = doc.get("custom_block")
@@ -534,7 +586,7 @@ class _CycleAsPlanting:
 		self.farm = doc.get("farm")
 		self.beds = cint(doc.get("custom_beds_planted"))
 		self.plants = cint(doc.get("custom_live_plant_count"))
-		self.planting_date = doc.get("custom_planting_date") or doc.get("planting_date")
+		self.planting_date = cycle_planted_on(doc)
 		self.flush_projection = doc.get("custom_flush_schedule") or []
 
 		# The planner measures ground in hectares; a cycle records square metres.
@@ -550,10 +602,15 @@ class _CycleAsPlanting:
 		else:
 			self.planting_year = self.planting_week = None
 
+	def effective_planting_date(self):
+		"""The day the crop went in. A cycle records only the date it happened,
+		so there is no planned-versus-actual to choose between here; the method
+		exists so a caller can ask a cycle and a calendar the same question."""
+		return getdate(self.planting_date)
+
 	def end_date(self):
-		return getdate(self._doc.get("custom_actual_uproot_date")
-		               or self._doc.get("custom_planned_uproot_date")
-		               or self.planting_date)
+		return (cycle_end_date(self._doc, self.planting_date, self._life_weeks)
+		        or getdate(self.planting_date))
 
 	def first_harvest(self):
 		"""(year, week) of the first flush, read the same way a calendar reads it."""
@@ -601,13 +658,24 @@ def standing_plantings(farm, variety, as_of=None):
 		filters={"farm": farm, "docstatus": ["<", 2]},
 		or_filters=[{"variety": variety}, {"custom_sf_variety": variety}],
 		fields=["name", "custom_planting_calendar", "custom_sf_cycle_status"])
+	# How long this crop stands here, for a cycle that records no uprooting
+	# date of its own. Resolved once, from the same Active version a plan for
+	# this farm and variety would be built on.
+	life_weeks = 0
+	if rows:
+		from upande_summer_flowers.summer_flowers.doctype.crop_protocol_version \
+			.crop_protocol_version import current_version
+		version = current_version(variety, farm)
+		if version:
+			life_weeks = cint(frappe.db.get_value(
+				"Crop Protocol Version", version, "total_weeks_in_ground"))
 	for r in rows:
 		# Raised from a calendar that is already in the list: same planting.
 		if r.custom_planting_calendar and r.custom_planting_calendar in seen:
 			continue
 		if (r.custom_sf_cycle_status or "") == "Ended":
 			continue
-		pl = _CycleAsPlanting(frappe.get_doc("Crop Cycle", r.name))
+		pl = _CycleAsPlanting(frappe.get_doc("Crop Cycle", r.name), life_weeks)
 		if not (pl.block and pl.planting_date):
 			continue
 		if pl.end_date() >= as_of:

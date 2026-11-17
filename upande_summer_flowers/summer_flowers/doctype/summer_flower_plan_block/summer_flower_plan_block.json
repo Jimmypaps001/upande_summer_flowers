@@ -25,6 +25,7 @@
   "first_harvest_year",
   "first_harvest_week",
   "harvest_week_family",
+  "uproot_date",
   "net_area_ha",
   "lifetime_stems",
   "below_minimum",
@@ -148,6 +149,15 @@
    "read_only": 1
   },
   {
+   "columns": 2,
+   "description": "When the crop comes out. New plantings: the planting date plus the protocol's weeks in the ground. Existing crop: what the planting calendar or crop cycle already records, so an early uprooting shows here.",
+   "fieldname": "uproot_date",
+   "fieldtype": "Date",
+   "in_list_view": 1,
+   "label": "Uprooting Date",
+   "read_only": 1
+  },
+  {
    "description": "Net bed area — the ground the crop occupies, and the only area this app carries.",
    "fieldname": "net_area_ha",
    "fieldtype": "Float",
@@ -217,7 +227,7 @@
  "index_web_pages_for_search": 1,
  "istable": 1,
  "links": [],
- "modified": "2026-10-30 14:00:00.000000",
+ "modified": "2026-11-18 10:00:00.000000",
  "modified_by": "Administrator",
  "module": "Summer Flowers",
  "name": "Summer Flower Plan Block",

@@ -1357,9 +1357,13 @@ def planting_plan(plan=None, variety=None, farm=None):
 			"first_harvest_date": str(iso_monday(b.first_harvest_year,
 			                                     b.first_harvest_week))
 			if b.first_harvest_year and b.first_harvest_week else None,
-			"uproot_date": str(getdate(b.planting_date)
-			                   + datetime.timedelta(weeks=life_weeks))
-			if b.planting_date else None,
+			# What the row records, which for standing crop is what the calendar
+			# or cycle says rather than an arithmetic guess off this plan's
+			# protocol. Older plans, saved before the row carried the date, still
+			# fall back to planting date plus the life in the ground.
+			"uproot_date": str(b.uproot_date) if b.get("uproot_date") else (
+				str(getdate(b.planting_date) + datetime.timedelta(weeks=life_weeks))
+				if b.planting_date else None),
 			"first_harvest": f"{b.first_harvest_year}-W{b.first_harvest_week:02d}"
 			if b.first_harvest_year and b.first_harvest_week else None,
 			"harvest_family": b.harvest_week_family,
@@ -1387,7 +1391,8 @@ def planting_plan(plan=None, variety=None, farm=None):
 			"source": "plan",
 			"ref": b.existing_planting or f"row {b.idx}",
 			"start": str(start),
-			"end": str(start + datetime.timedelta(weeks=life_weeks)),
+			"end": str(getdate(b.uproot_date) if b.get("uproot_date")
+			              else start + datetime.timedelta(weeks=life_weeks)),
 			"beds": b.beds or 0,
 			"status": "Proposed",
 		})
