@@ -1825,6 +1825,10 @@ def supersede_siblings(plan):
 			# is reported, not forced. The new plan still stands.
 			done.append({"plan": row.name, "what": "left alone",
 			             "why": frappe.utils.strip_html(str(e))[:140]})
+			continue
+		dropped = retire_draft_calendars(row.name)
+		if dropped:
+			done[-1]["calendars"] = dropped
 	# Cancelling a plan somebody had approved is not a thing to do quietly,
 	# even when it is the thing that was asked for.
 	if done and not frappe.flags.in_patch and not frappe.flags.in_test:
@@ -1834,6 +1838,41 @@ def supersede_siblings(plan):
 			            for r in done),
 			title=_("Replaced by {0}").format(plan.name), indicator="orange")
 	return done
+
+
+def retire_draft_calendars(plan):
+	"""Cancel the unsigned Planting Calendar entries a retired plan left behind.
+
+	A procurement plan writes a Planting Calendar entry per cohort as soon as
+	its order is placed, and those entries start as drafts. Retiring the plan
+	used to leave them on the calendar, where the next plan for the same
+	variety read them back as standing crop -- so a 2028-29 Delphinium plan
+	opened with fourteen "existing plantings" that were its own predecessor's
+	discarded proposal, sitting on blocks that really hold Eryngium.
+
+	Only drafts go. Anything approved or planted is a commitment the farm has
+	made and outlives the plan that proposed it; anything already cancelled or
+	uprooted is gone already."""
+	# Only this plan's OWN plantings. A row with is_new_planting = 0 points at
+	# somebody else's calendar entry, which is none of this plan's business.
+	names = frappe.get_all(
+		"Summer Flower Plan Block",
+		filters={"parent": plan, "parenttype": "Summer Flower Production Plan",
+		         "is_new_planting": 1, "existing_planting": ["is", "set"]},
+		pluck="existing_planting")
+	if not names:
+		return []
+	drafts = frappe.get_all(
+		"Planting Calendar",
+		filters={"name": ["in", list(set(names))], "docstatus": 0,
+		         "calendar_status": ["in", ("Draft", "Pending Approval")]},
+		pluck="name")
+	for name in drafts:
+		frappe.db.set_value("Planting Calendar", name, {
+			"calendar_status": "Cancelled",
+			"revision_reason": _("Cancelled with plan {0}, which was replaced.").format(plan),
+		}, update_modified=False)
+	return drafts
 
 
 @frappe.whitelist()

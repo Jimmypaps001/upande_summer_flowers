@@ -567,6 +567,15 @@ class _CycleAsPlanting:
 		return getattr(self._doc, item)
 
 
+# A planting the farm has committed to. A Draft calendar is a proposal some
+# plan made and nobody signed; Pending Approval is one waiting for a signature.
+# Counting those as crop in the ground is how a plan came to believe Delphinium
+# was standing on fourteen Naivasha blocks that actually hold Eryngium: an
+# earlier plan had been superseded, its draft calendars outlived it, and the
+# next plan read its own discarded proposal back as fact.
+COMMITTED_PLANTING = ("Approved", "Planted")
+
+
 def standing_plantings(farm, variety, as_of=None):
 	"""Everything of this variety still in the ground at `farm` on `as_of`."""
 	as_of = getdate(as_of or nowdate())
@@ -575,7 +584,7 @@ def standing_plantings(farm, variety, as_of=None):
 		filters={
 			"farm": farm,
 			"variety": variety,
-			"calendar_status": ["not in", ("Cancelled", "Uprooted")],
+			"calendar_status": ["in", COMMITTED_PLANTING],
 		},
 		pluck="name",
 	)
