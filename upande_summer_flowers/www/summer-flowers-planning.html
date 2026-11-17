@@ -2768,6 +2768,11 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
         const f = [];
         if (r.below_minimum) f.push('<span class="pill"><i class="dot2" style="background:var(--warning)"></i>below min</span>');
         if (r.in_past) f.push('<span class="pill"><i class="dot2" style="background:var(--critical)"></i>past</span>');
+        // Crop already in the ground is not crop to plant. It shares the table
+        // because the season is one season, and it is marked because a column
+        // headed "Plants to plant" that counts standing crop is a column that
+        // disagrees with the material plan by the size of the standing crop.
+        if (!r.is_new) f.push('<span class="pill"><i class="dot2" style="background:var(--text-muted,#888)"></i>standing</span>');
         const ha = Number(r.net_area_ha) || 0;
         // Week and date together: the plan is worked in weeks and the calendar is
         // read in dates, and putting one without the other makes somebody convert.
@@ -2777,7 +2782,8 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
         return `<tr><td>${i + 1}</td>` +
           wk(r.plant, r.planting_date) +
           wk(r.uproot_date ? isoLabel(r.uproot_date) : "", r.uproot_date) +
-          `<td class="n">${num(r.plants_to_plant || r.plants)}</td>` +
+          `<td class="n${r.is_new ? "" : " text-muted"}">${
+            num(r.is_new ? (r.plants_to_plant || r.plants) : r.plants)}</td>` +
           `<td class="n">${num(Math.round(ha * 10000))}</td>` +
           `<td class="n">${ha.toFixed(4)}</td>` +
           `<td class="n">${num(r.season_stems)}</td>` +
@@ -2788,19 +2794,35 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
       // The total is of every planting, not only the 400 drawn, so the figure at
       // the bottom answers for the plan rather than for the page.
       (function () {
-        const tp = rows.reduce(
-          (a, r) => a + (Number(r.plants_to_plant || r.plants) || 0), 0);
-        const ts = rows.reduce((a, r) => a + (Number(r.lifetime_stems) || 0), 0);
-        const tseason = rows.reduce((a, r) => a + (Number(r.season_stems) || 0), 0);
-        const th = rows.reduce((a, r) => a + (Number(r.net_area_ha) || 0), 0);
+        // The totals split the way the plan does. What is planted is what is
+        // ordered; what is standing is already paid for and already in the
+        // ground, and adding the two gave a "plants to plant" the material
+        // plan could never match.
+        const fresh = rows.filter((r) => r.is_new);
+        const held = rows.filter((r) => !r.is_new);
+        const sum = (list, f) => list.reduce((a, r) => a + (Number(f(r)) || 0), 0);
+        const tp = sum(fresh, (r) => r.plants_to_plant || r.plants);
+        const th = sum(fresh, (r) => r.net_area_ha);
+        const ts = sum(rows, (r) => r.lifetime_stems);
+        const tseason = sum(rows, (r) => r.season_stems);
+        const hp = sum(held, (r) => r.plants);
+        const hh = sum(held, (r) => r.net_area_ha);
         return '<tr class="pl-tot"><th colspan="3">' +
-          `${num(rows.length)} plantings</th>` +
+          `${num(fresh.length)} to plant</th>` +
           `<th class="n">${num(tp)}</th>` +
           `<th class="n">${num(Math.round(th * 10000))}</th>` +
           `<th class="n">${th.toFixed(4)}</th>` +
           `<th class="n">${num(tseason)}</th>` +
           `<th class="n text-muted">${num(ts)}</th>` +
-          `<th class="n">${tp ? (ts / tp).toFixed(1) : "—"}</th><th></th></tr>`;
+          `<th class="n">${tp ? (ts / tp).toFixed(1) : "—"}</th><th></th></tr>` +
+          (held.length
+            ? `<tr class="pl-tot text-muted"><th colspan="3">` +
+              `${num(held.length)} already standing</th>` +
+              `<th class="n">${num(hp)}</th>` +
+              `<th class="n">${num(Math.round(hh * 10000))}</th>` +
+              `<th class="n">${hh.toFixed(4)}</th>` +
+              `<th colspan="4"></th></tr>`
+            : "");
       })() +
       "</tbody></table>" +
       (rows.length > shown.length

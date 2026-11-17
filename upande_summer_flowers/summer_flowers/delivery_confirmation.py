@@ -584,6 +584,18 @@ def _walk_to_approved(doc):
 	return 1 if cint(doc.docstatus) == 1 else 0
 
 
+def _can_size_beds(v):
+	"""Whether the protocol says enough for a bed count to mean anything."""
+	from upande_summer_flowers.summer_flowers.doctype \
+		.summer_flower_production_plan.summer_flower_production_plan import (
+			plants_per_bed_for,
+		)
+
+	return bool(cint(plants_per_bed_for(v))
+	            or (flt(v.get("plants_per_sqm_net")) and flt(v.get("min_planting_area_sqm"))
+	                and flt(v.get("sqm_net_per_bed"))))
+
+
 def _write_confirmed(plan, targets, v, per_bed):
 	"""Put the confirmed figures on the plantings of a plan being written."""
 	from upande_summer_flowers.summer_flowers.doctype \
@@ -599,11 +611,25 @@ def _write_confirmed(plan, targets, v, per_bed):
 		if not cint(row.get("plants_from_demand")):
 			row.plants_from_demand = cint(row.plants)
 		standing = cint(plants_standing_from(v, landing)) if landing else 0
+		was_plants, was_beds = cint(row.plants), cint(row.beds)
 		row.plants = standing
 		row.plants_to_plant = landing
 		# Beds off what stands, the way every other planting on the plan is
 		# sized, so a short delivery gives the ground back.
-		row.beds = cint(size_planting(v, standing)[0]) if standing else 0
+		#
+		# Unless the protocol cannot size a bed. size_planting falls back to its
+		# min_beds of 1 when it has neither a bed area nor plants per bed, and
+		# writing that 1 over a figure worked out when the protocol DID know is
+		# how SFPP-2026-00072-1 came to put 68,020 plants on one bed -- and then
+		# handed the same 1 to twelve planting calendars. A count that cannot be
+		# computed scales with the plants instead, which is at least true to the
+		# change being made.
+		if not standing:
+			row.beds = 0
+		elif _can_size_beds(v):
+			row.beds = cint(size_planting(v, standing)[0])
+		elif was_beds and was_plants:
+			row.beds = max(1, int(round(was_beds * standing / float(was_plants))))
 		if row.meta.has_field("trimmed_to_materials"):
 			row.trimmed_to_materials = 1 if cint(want["short"]) else 0
 
