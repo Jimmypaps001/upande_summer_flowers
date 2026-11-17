@@ -4222,13 +4222,20 @@ def week_board(plan=None, variety=None, farm=None, suppliers=None):
 
 
 @frappe.whitelist()
-def delivery_schedule(plan=None, shares=None, variety=None, farm=None,
-                      second_half=None, save_second_half=0):
+def supply_delivery_schedule(plan=None, shares=None, variety=None, farm=None,
+                             second_half=None, save_second_half=0, cycles=None):
 	"""The deliveries the protocol's rhythm comes to, at the shares on screen.
 
-	The card holds shares that have not been saved, so the schedule cannot be
-	read off the plan alone: an allocation typed into the card has to move the
-	figures under it or the farm has changed nothing by changing it."""
+	The card holds shares and cycles that have not been saved, so the schedule
+	cannot be read off the plan alone: an allocation or a rhythm typed into the
+	card has to move the figures under it or the farm has changed nothing by
+	changing it.
+
+	Named apart from `delivery_schedule`, which answers a different question --
+	what the propagation unit owes the farms, and the mobile app asks it. Two
+	functions of one name in one module is one function: the second definition
+	simply replaces the first, and for a while this one did, so the mobile
+	delivery schedule was calling a function that did not take its arguments."""
 	from upande_summer_flowers.summer_flowers import supply_cycles as sc
 
 	_guard()
@@ -4247,4 +4254,4 @@ def delivery_schedule(plan=None, shares=None, variety=None, farm=None,
 		doc.db_set("supply_second_half_plants", cint(second_half),
 		           update_modified=False)
 		doc.reload()
-	return sc.proposal(doc, shares=shares, second_half=second_half)
+	return sc.proposal(doc, shares=shares, second_half=second_half, cycles=cycles)

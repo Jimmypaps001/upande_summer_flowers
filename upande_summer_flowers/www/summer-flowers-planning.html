@@ -8602,11 +8602,15 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
   async function reloadDropSchedule(saveSecond) {
     if (!S.plan) return;
     const shares = JSON.stringify((S.sup || []).map((p) => Number(p.share_pct) || 0));
+    // The rhythm each house keeps, which the card owns until it is saved. Send
+    // it or the server answers on the protocol's figure and the Cycles box is
+    // decoration.
+    const cycles = JSON.stringify((S.sup || []).map((p) => Number(p.cycle_count) || 0));
     const box = $("sup-2nd");
     const second = box && String(box.value).trim() !== "" ? Number(box.value) : null;
     try {
-      const r = await call("delivery_schedule", {
-        plan: S.plan, shares: shares,
+      const r = await call("supply_delivery_schedule", {
+        plan: S.plan, shares: shares, cycles: cycles,
         second_half: second === null ? "" : second,
         save_second_half: saveSecond ? 1 : 0,
       });
@@ -8674,8 +8678,10 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
                     + `${num(L.plants)}`).join(" &nbsp;|&nbsp; ")
                 + `</td></tr>`
               : "")).join("")
-      + `</tbody><tfoot><tr><th></th><th>${d.deliveries} \u00d7 ${houses}`
-      + ` = ${d.supplier_deliveries}</th>`
+      + `</tbody><tfoot><tr><th></th><th>${d.uniform_cycle === false
+          ? `${d.deliveries} weeks`
+          : `${d.deliveries} \u00d7 ${houses}`}`
+      + ` = ${d.supplier_deliveries} consignments</th>`
       + `<th class="r">${num(d.plants)}</th><th class="r">${d.planting_weeks}</th>`
       + Array.from({ length: houses }, () => "<th></th>").join("")
       + `</tr></tfoot></table>`;
@@ -8758,10 +8764,14 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
     bits.push(d.suppliers
       ? `<b>${d.suppliers}</b> supplier${d.suppliers === 1 ? "" : "s"} available`
       : "<b>no</b> supplier count on the protocol");
-    bits.push(d.cycles_a_year
-      ? `<b>${d.cycles_a_year}</b> cycles a year — a delivery every `
-        + `${Math.round(52 / d.cycles_a_year)} weeks`
-      : "<b>no</b> cycle count on the protocol, so the planting weeks decide");
+    // The protocol's figure is the GAP between deliveries. Read as "times a
+    // year" it turned a four-week cycle into a thirteen-week one on screen
+    // while the schedule below it was drawn on four.
+    bits.push(d.cycle_weeks
+      ? `a delivery every <b>${d.cycle_weeks}</b> week`
+        + `${d.cycle_weeks === 1 ? "" : "s"}`
+        + (d.deliveries ? ` — <b>${d.deliveries}</b> in this plan` : "")
+      : "<b>no</b> cycle on the protocol, so the planting weeks decide");
     bits.push(d.lifts
       ? `each consignment handed over in <b>${d.lifts}</b> lift`
         + `${d.lifts === 1 ? "" : "s"}`
@@ -8790,9 +8800,10 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
       `this house.">Share %<input class="sup-share" type="number" min="0" ` +
       `max="100" step="0.5" style="width:5.5em" value="${
         Number(p.share_pct) || 0}"></label>` +
-      `<label class="pl-inline" title="How many cycles this house comes in over ` +
-      `a year. Each cycle carries the plantings between it and the ` +
-      `next one.">Cycles<input class="sup-count" type="number" ` +
+      `<label class="pl-inline" title="Weeks between this house's deliveries. ` +
+      `4 means it comes every four weeks, so a 53-week plan is 13 ` +
+      `consignments. Each one carries the plantings between it and the ` +
+      `next.">Every (wks)<input class="sup-count" type="number" ` +
       `min="1" max="52" step="1" style="width:5em" value="${
         Number(p.cycle_count) || 4}"></label>` +
       `<label class="pl-inline" title="Weeks of notice this house needs." ` +
@@ -10044,9 +10055,11 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
       supBox.addEventListener("change", (ev) => {
         const cls = ev.target.classList;
         if (!cls) return;
-        // A name, or a share: both change what the schedule says, and a share
-        // changes the figures under every delivery.
-        if (!cls.contains("sup-name") && !cls.contains("sup-share")) return;
+        // A name, a share, a rhythm or a lead time. All four change what the
+        // schedule says, and the two on the right were not listened for at all,
+        // so typing a different cycle moved nothing on the card.
+        if (!cls.contains("sup-name") && !cls.contains("sup-share")
+            && !cls.contains("sup-count") && !cls.contains("sup-lead")) return;
         readSupPick();
         reloadDropSchedule();
         loadBoard();
