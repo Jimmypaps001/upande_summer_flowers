@@ -1868,8 +1868,12 @@ def retire_draft_calendars(plan):
 		         "calendar_status": ["in", ("Draft", "Pending Approval")]},
 		pluck="name")
 	for name in drafts:
+		# Both fields. The calendar takes calendar_status from workflow_state on
+		# every save, so setting the status alone survives only until somebody
+		# opens the record.
 		frappe.db.set_value("Planting Calendar", name, {
 			"calendar_status": "Cancelled",
+			"workflow_state": "Cancelled",
 			"revision_reason": _("Cancelled with plan {0}, which was replaced.").format(plan),
 		}, update_modified=False)
 	return drafts
