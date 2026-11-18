@@ -2653,7 +2653,7 @@ class BlockCalendar:
 				filters={"docstatus": ["<", 2], "custom_block": ["in", names]},
 				fields=["name", "custom_block", "custom_beds_planted",
 				        "variety", "custom_sf_variety", "custom_planting_date",
-				        "planting_date",
+				        "planting_date", "planned_uprooting_date",
 				        "custom_planned_uproot_date", "custom_actual_uproot_date",
 				        "custom_sf_cycle_status", "custom_planting_calendar",
 				        "custom_crop_protocol_version"]):

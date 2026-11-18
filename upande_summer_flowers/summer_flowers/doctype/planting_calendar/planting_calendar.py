@@ -537,34 +537,44 @@ def cycle_planted_on(row):
 def cycle_end_date(row, planted=None, life_weeks=0):
 	"""The day a Crop Cycle's ground comes free, or None if nothing says.
 
-	An *actual* uprooting date is a record of something that happened, so a
-	date in the future is not one: the cycle load put each crop's planned end
-	of life in the actual field, and 159 live cycles now claim to have been
-	uprooted on a day that has not arrived. Five claim a day before they were
-	planted. Trusting those either frees ground that is still full or -- where
-	the date has passed -- hides a standing crop from the planner, who then
-	plants on top of it.
+	Three fields on a cycle can hold that day, and which one holds it depends
+	on how the record was loaded, so all three are read here.
+
+	`planned_uprooting_date` is the farm's own date, the one its block
+	register states for this crop. `custom_planned_uproot_date` is what this
+	app computes -- planting date plus the protocol's weeks in the ground --
+	and the Crop Cycle controller rewrites it on every save, so on 116 live
+	cycles it has overwritten the farm's figure while the farm's figure sits
+	untouched in the other field. The farm's date is a statement about this
+	crop; the protocol's is arithmetic about the variety. The statement wins.
+
+	`custom_actual_uproot_date` records an uprooting that happened. A date in
+	the future is therefore not one: an earlier load wrote the block
+	register's uprooting date into this field on 159 live cycles, and where a
+	register row can be matched the value is exactly the register's. So a
+	future "actual" is read as the farm's stated date too, not as a crop that
+	is already out of the ground.
 	"""
 	planted = planted or cycle_planted_on(row)
 	today = getdate(nowdate())
-	actual = row.get("custom_actual_uproot_date")
-	actual = getdate(actual) if actual else None
-	planned = row.get("custom_planned_uproot_date")
-	planned = getdate(planned) if planned else None
+
+	def _d(field):
+		v = row.get(field)
+		return getdate(v) if v else None
+
+	actual = _d("custom_actual_uproot_date")
 	# A date before the crop went in is not an uprooting of this crop.
 	if actual and planted and actual < planted:
 		actual = None
 	# It has happened: the ground is free, whatever anyone planned.
 	if actual and actual <= today:
 		return actual
-	# Nothing has happened yet, so both remaining dates are forecasts and the
-	# later one wins. Reading a stale planned date as the end would hand a
-	# planner ground that is still full, which is the error that plants one
-	# crop on top of another; holding the ground too long only shows up as a
-	# plan that cannot place a block, where somebody sees it.
-	ends = [x for x in (planned, actual) if x]
-	if ends:
-		return max(ends)
+	# Nothing has happened yet. Everything left is a forecast, in the order
+	# of how much it knows about this particular crop.
+	for date in (_d("planned_uprooting_date"), actual,
+	             _d("custom_planned_uproot_date")):
+		if date:
+			return date
 	if planted and life_weeks:
 		return planted + datetime.timedelta(weeks=cint(life_weeks))
 	return None
