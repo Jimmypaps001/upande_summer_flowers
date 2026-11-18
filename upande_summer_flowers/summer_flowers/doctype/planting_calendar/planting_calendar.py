@@ -11,6 +11,13 @@ from frappe.utils import add_days, cint, flt, getdate, now_datetime, nowdate
 
 from upande_summer_flowers.summer_flowers.planning import iso_year_week
 
+# A crop nobody has given an uprooting date has no ending. It is not a crop
+# that comes out the day it went in, and it is not one the protocol quietly
+# ends on our behalf either: it holds its ground until somebody states when it
+# stops. This date stands in for that, so the arithmetic that compares windows
+# has something to compare against.
+FOREVER = datetime.date(2999, 12, 31)
+
 # What counts as standing on a block *today* for coverage reporting.
 STANDING_STATES = ("Approved", "Planted")
 # What reserves a block's date window. A draft still reserves it, otherwise two
@@ -170,7 +177,13 @@ class PlantingCalendar(Document):
 			if not r.actual_uproot_date and r.bed_status != "Producing":
 				r.bed_status = self.bed_state()
 
+	def has_ending(self):
+		"""Whether anybody has said when this crop comes out."""
+		return bool(self.actual_uproot_date or self.planned_uproot_date)
+
 	def end_date(self):
+		if not self.has_ending():
+			return FOREVER
 		return getdate(self.actual_uproot_date or self.planned_uproot_date)
 
 	def first_harvest(self):
@@ -534,7 +547,7 @@ def cycle_planted_on(row):
 	return getdate(at) if at else None
 
 
-def cycle_end_date(row, planted=None, life_weeks=0):
+def cycle_end_date(row, planted=None):
 	"""The day a Crop Cycle's ground comes free, or None if nothing says.
 
 	Three fields on a cycle can hold that day, and which one holds it depends
@@ -543,17 +556,18 @@ def cycle_end_date(row, planted=None, life_weeks=0):
 	`planned_uprooting_date` is the farm's own date, the one its block
 	register states for this crop. `custom_planned_uproot_date` is what this
 	app computes -- planting date plus the protocol's weeks in the ground --
-	and the Crop Cycle controller rewrites it on every save, so on 116 live
-	cycles it has overwritten the farm's figure while the farm's figure sits
-	untouched in the other field. The farm's date is a statement about this
-	crop; the protocol's is arithmetic about the variety. The statement wins.
+	and the Crop Cycle controller rewrites it on every save, so it can have
+	overwritten the farm's figure while the farm's figure sits untouched in
+	the other field. The farm's date is a statement about this crop; the
+	protocol's is arithmetic about the variety. The statement wins.
 
 	`custom_actual_uproot_date` records an uprooting that happened. A date in
 	the future is therefore not one: an earlier load wrote the block
-	register's uprooting date into this field on 159 live cycles, and where a
-	register row can be matched the value is exactly the register's. So a
-	future "actual" is read as the farm's stated date too, not as a crop that
-	is already out of the ground.
+	register's uprooting date into this field, so a future "actual" is read as
+	the farm's stated date too, not as a crop already out of the ground.
+
+	None means none of the three says anything, and that is not something to
+	fill in from the protocol. A crop with no stated end has no ending.
 	"""
 	planted = planted or cycle_planted_on(row)
 	today = getdate(nowdate())
@@ -575,20 +589,14 @@ def cycle_end_date(row, planted=None, life_weeks=0):
 	             _d("custom_planned_uproot_date")):
 		if date:
 			return date
-	if planted and life_weeks:
-		return planted + datetime.timedelta(weeks=cint(life_weeks))
 	return None
 
 
 class _CycleAsPlanting:
 	"""A Crop Cycle read as a planting, so planning can see it."""
 
-	def __init__(self, doc, life_weeks=0):
+	def __init__(self, doc):
 		self._doc = doc
-		# Weeks in the ground from the protocol, for a cycle that records no
-		# uprooting date at all. Without it such a cycle reads as ending the
-		# day it was planted.
-		self._life_weeks = cint(life_weeks)
 		self.name = doc.name
 		self.doctype = "Crop Cycle"
 		self.block = doc.get("custom_block")
@@ -618,9 +626,12 @@ class _CycleAsPlanting:
 		exists so a caller can ask a cycle and a calendar the same question."""
 		return getdate(self.planting_date)
 
+	def has_ending(self):
+		"""Whether anybody has said when this crop comes out."""
+		return cycle_end_date(self._doc, self.planting_date) is not None
+
 	def end_date(self):
-		return (cycle_end_date(self._doc, self.planting_date, self._life_weeks)
-		        or getdate(self.planting_date))
+		return cycle_end_date(self._doc, self.planting_date) or FOREVER
 
 	def first_harvest(self):
 		"""(year, week) of the first flush, read the same way a calendar reads it."""
@@ -668,24 +679,13 @@ def standing_plantings(farm, variety, as_of=None):
 		filters={"farm": farm, "docstatus": ["<", 2]},
 		or_filters=[{"variety": variety}, {"custom_sf_variety": variety}],
 		fields=["name", "custom_planting_calendar", "custom_sf_cycle_status"])
-	# How long this crop stands here, for a cycle that records no uprooting
-	# date of its own. Resolved once, from the same Active version a plan for
-	# this farm and variety would be built on.
-	life_weeks = 0
-	if rows:
-		from upande_summer_flowers.summer_flowers.doctype.crop_protocol_version \
-			.crop_protocol_version import current_version
-		version = current_version(variety, farm)
-		if version:
-			life_weeks = cint(frappe.db.get_value(
-				"Crop Protocol Version", version, "total_weeks_in_ground"))
 	for r in rows:
 		# Raised from a calendar that is already in the list: same planting.
 		if r.custom_planting_calendar and r.custom_planting_calendar in seen:
 			continue
 		if (r.custom_sf_cycle_status or "") == "Ended":
 			continue
-		pl = _CycleAsPlanting(frappe.get_doc("Crop Cycle", r.name), life_weeks)
+		pl = _CycleAsPlanting(frappe.get_doc("Crop Cycle", r.name))
 		if not (pl.block and pl.planting_date):
 			continue
 		if pl.end_date() >= as_of:

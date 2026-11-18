@@ -1289,6 +1289,11 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
 .fm-x{margin-left:auto;border:0;background:none;font-size:1.35rem;line-height:1;
   color:var(--text-muted);cursor:pointer;padding:0 3px}
 .fm-body{padding:14px 16px;overflow:auto}
+.fm-body p{font-size:.8rem;color:var(--text-secondary);margin:0 0 11px}
+.nm-list{border:1px solid var(--border);border-radius:7px;max-height:230px;
+  overflow:auto;margin:0 0 11px}
+.nm-row{padding:6px 9px;font-size:.78rem;border-bottom:1px solid var(--border)}
+.nm-row:last-child{border-bottom:0}
 .fm-intro{font-size:.8rem;color:var(--text-secondary);margin:0 0 11px}
 .fm-f{display:block;margin-bottom:12px}
 .fm-f>span{display:block;font-size:.74rem;font-weight:600;margin-bottom:4px;
@@ -2426,8 +2431,15 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
     // across three years, a today marker, and the planting named inside its own
     // bar wherever the bar is wide enough to hold it.
     const blocks = [...new Set(occ.map((o) => o.block))].sort();
+    // A crop nobody has given an uprooting date holds its block with no end.
+    // The server says so with a sentinel far-future date; drawn literally it
+    // would put the axis in the year 2999 and squeeze three real years into a
+    // few pixels, so the scale ends at the last date anybody actually stated
+    // and those bars run off the right-hand edge instead.
+    const openEnded = (o) => +new Date(o.end) > +new Date("2900-01-01");
     const t0 = Math.min(...occ.map((o) => +new Date(o.start)));
-    const t1 = Math.max(...occ.map((o) => +new Date(o.end)));
+    const stated = occ.filter((o) => !openEnded(o)).map((o) => +new Date(o.end));
+    const t1 = Math.max(...stated, ...occ.map((o) => +new Date(o.start)), Date.now());
     const span = Math.max(1, t1 - t0);
     const padL = 132, padR = 18, padT = 40, rowH = 26, padB = 14;
     const h = padT + blocks.length * rowH + padB, w = 1120;
@@ -2475,12 +2487,14 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
     let bars = "";
     occ.forEach((o) => {
       const i = blocks.indexOf(o.block);
+      const open = openEnded(o);
       const bx = x(+new Date(o.start));
-      const bw = Math.max(4, x(+new Date(o.end)) - bx);
+      const bw = Math.max(4, (open ? w - padR : x(+new Date(o.end))) - bx);
       const y = padT + i * rowH + 4;
-      const label = `${shortBlock(o.block)} · ${o.beds}b`;
+      const label = `${shortBlock(o.block)} · ${o.beds}b${open ? " · no end" : ""}`;
       bars += `<g data-tip="${esc(`<b>${shortBlock(o.block)}</b><br>${o.ref}<br>` +
-        `${o.start} → ${o.end}<br>${o.beds} beds · ${o.status}`)}">` +
+        `${o.start} → ${open ? "no uprooting date, so no end" : o.end}` +
+        `<br>${o.beds} beds · ${o.status}`)}">` +
         `<rect x="${bx.toFixed(1)}" y="${y}" width="${bw.toFixed(1)}" ` +
         `height="${rowH - 9}" rx="3" fill="${FILL[o.status] || "var(--seq-200)"}"/>` +
         (bw > 92 ? `<text x="${(bx + 6).toFixed(1)}" y="${y + rowH - 15}" ` +
@@ -2781,7 +2795,10 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
           `${date ? ` <span class="bf-meta">${fdate(date)}</span>` : ""}</td>`;
         return `<tr><td>${i + 1}</td>` +
           wk(r.plant, r.planting_date) +
-          wk(r.uproot_date ? isoLabel(r.uproot_date) : "", r.uproot_date) +
+          (r.open_ended
+            ? `<td><span class="pill"><i class="dot2" style="background:var(--warning)"></i>` +
+              `no end stated</span></td>`
+            : wk(r.uproot_date ? isoLabel(r.uproot_date) : "", r.uproot_date)) +
           `<td class="n${r.is_new ? "" : " text-muted"}">${
             num(r.is_new ? (r.plants_to_plant || r.plants) : r.plants)}</td>` +
           `<td class="n">${num(Math.round(ha * 10000))}</td>` +
@@ -2943,7 +2960,7 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
     const body = rows.map(({ b, p }, i) => {
       const tot = Object.values(cellAt[i]).reduce((a, c) => a + c.stems, 0);
       return `<tr><td class="hc-k" title="${esc(p.name)} · planted ` +
-        `${fdate(p.planting_date)} · uproot ${fdate(p.uproot_date)}">` +
+        `${fdate(p.planting_date)} · uproot ${p.uproot_date ? fdate(p.uproot_date) : "none stated"}">` +
         `${esc(b.block_code)}</td>` +
         `<td class="hc-m">${esc(vname(p.variety))}</td>` +
         `<td class="hc-m">${num(p.beds)}</td>` +
@@ -3863,6 +3880,54 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
 
   const toast = (msg, bad) => frappe.show_alert(
     { message: msg, indicator: bad ? "red" : "green" }, bad ? 8 : 5);
+
+  // A pop-up that only tells you something. frappe.msgprint belongs to the desk
+  // bundle and a portal page does not load it, so a message the server wanted
+  // shown never reached anybody here.
+  function noticeModal({ title, html, okLabel }) {
+    const wrap = document.createElement("div");
+    wrap.className = "fm-back";
+    wrap.innerHTML = `<div class="fm-box" role="dialog" aria-modal="true" ` +
+      `aria-label="${esc(title)}"><div class="fm-head"><b>${esc(title)}</b>` +
+      `<button type="button" class="fm-x" aria-label="Close">&times;</button></div>` +
+      `<div class="fm-body">${html}</div>` +
+      `<div class="fm-foot"><button type="button" class="pl-btn primary fm-ok">` +
+      `${esc(okLabel || "Got it")}</button></div></div>`;
+    document.body.appendChild(wrap);
+    const close = () => wrap.remove();
+    wrap.querySelector(".fm-x").onclick = close;
+    wrap.querySelector(".fm-ok").onclick = close;
+    wrap.addEventListener("click", (e) => { if (e.target === wrap) close(); });
+    document.addEventListener("keydown", function esc3(e) {
+      if (e.key === "Escape") { close(); document.removeEventListener("keydown", esc3); }
+    });
+    wrap.querySelector(".fm-ok").focus();
+    return wrap;
+  }
+
+  // Crop the farm has given no uprooting date. The plan treats it as having no
+  // ending and keeps its beds held, which is a thing to say out loud: a planner
+  // reading a blank cell will take it for ground that is free.
+  function warnOpenEnded(pp) {
+    const rows = (pp && pp.open_ended) || [];
+    const key = (pp && pp.plan) || "";
+    if (!rows.length || S.openEndedFor === key) return;
+    S.openEndedFor = key;
+    const lines = rows.slice(0, 20).map((r) =>
+      `<div class="nm-row"><b>${esc(r.block || "no block")}</b> — ` +
+      `${num(r.beds)} beds, ${num(r.plants)} plants, planted ${fdate(r.planted)}` +
+      `${r.ref ? ` · ${esc(r.ref)}` : ""}</div>`).join("");
+    noticeModal({
+      title: rows.length === 1 ? "A crop with no uprooting date"
+                               : `${rows.length} crops with no uprooting date`,
+      html: `<p>Nobody has said when ${rows.length === 1 ? "this crop comes" : "these crops come"} out, ` +
+        `so the plan gives ${rows.length === 1 ? "it" : "them"} no ending: the beds stay held ` +
+        `until a date is recorded, and no new planting is placed on them.</p>` +
+        `<div class="nm-list">${lines}</div>` +
+        (rows.length > 20 ? `<p>…and ${rows.length - 20} more.</p>` : "") +
+        `<p>Give each one an uprooting date on its crop cycle, then generate the plan again.</p>`,
+    });
+  }
 
   // A portal page loads frappe-web.bundle, which has no frappe.ui.form.make_control,
   // so frappe.ui.Dialog can only render HTML here -- give it a field and it throws
@@ -6834,7 +6899,8 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
             >${w.is_harvest_week ? "F" + w.flush_number : ""}</div>`).join("");
         return `<div class="bf-plant"><span class="bf-meta">${esc(vname(p.variety))} · ${p.beds} beds · ` +
           `${num(p.plants)} plants · planted ${fdate(p.planting_date)} · pinch ${p.pinch_date ? fdate(p.pinch_date) : "—"}` +
-          ` · <strong>uproot ${fdate(p.uproot_date)}</strong> · ${harv.length} harvest weeks of ` +
+          ` · <strong>uproot ${p.uproot_date ? fdate(p.uproot_date) : "none stated"}</strong>` +
+          ` · ${harv.length} harvest weeks of ` +
           `${p.cycle_weeks} · ${num(p.expected_stems_life)} stems</span>` +
           `<div class="bf-weeks">${cells}</div></div>`;
       }).join("") : `<div class="bf-idle">Nothing planted, so nothing forecast.</div>`;
@@ -8188,6 +8254,7 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
       S.calYear = cal.years && cal.years.length ? cal.years[0] : null;
 
       renderOverview(); renderDemand(); renderPlanting();
+      warnOpenEnded(pp);
       renderBlocks(); renderLifetime();
       renderCalendar(); renderProtocol();
       // Keep the picker honest about which plan the page is actually showing.

@@ -11,6 +11,11 @@ from frappe.utils import add_days, cint, flt, getdate, nowdate
 from upande_summer_flowers.summer_flowers.doctype.crop_protocol_version.crop_protocol_version import (
 	bed_sqm_per_ha,
 )
+from upande_summer_flowers.summer_flowers.doctype.planting_calendar.planting_calendar import (
+	FOREVER,
+	cycle_end_date,
+	cycle_planted_on,
+)
 from upande_summer_flowers.summer_flowers.doctype.summer_flower_production_plan.summer_flower_production_plan import (
 	protocol_freshness,
 )
@@ -1307,6 +1312,52 @@ def simulate_buildup(version, tc_plants, tc_arrival_date, rounds=4, field_pct=0,
 	return res
 
 
+def _rows_with_no_ending(plan):
+	"""Standing rows whose own record states no uprooting date.
+
+	A row drawn before the plan carried an uprooting date is blank too, and a
+	blank cell is not the same thing as a crop with no ending. So the question
+	is put to the record the row came from -- its planting calendar, or the
+	cycle standing on that block -- and not to the cell.
+	"""
+	blank = [b for b in plan.plan_blocks
+	         if not b.is_new_planting and not b.get("uproot_date")]
+	if not blank:
+		return set()
+
+	ended = {}
+	names = [b.existing_planting for b in blank if b.existing_planting]
+	if names:
+		for r in frappe.get_all(
+				"Planting Calendar", filters={"name": ["in", names]},
+				fields=["name", "planned_uproot_date", "actual_uproot_date"]):
+			ended[r.name] = bool(r.planned_uproot_date or r.actual_uproot_date)
+
+	# Rows raised from a crop cycle carry no link back to it, so the cycle is
+	# found the way the row was built: the block it stands on, planted that day.
+	cycles = {}
+	blocks = [b.block for b in blank if not b.existing_planting and b.block]
+	if blocks:
+		for r in frappe.get_all(
+				"Crop Cycle",
+				filters={"custom_block": ["in", blocks], "docstatus": ["<", 2]},
+				fields=["custom_block", "custom_planting_date", "planting_date",
+				        "planned_uprooting_date", "custom_planned_uproot_date",
+				        "custom_actual_uproot_date"]):
+			key = (r.custom_block, str(cycle_planted_on(r) or ""))
+			cycles[key] = cycles.get(key) or bool(cycle_end_date(r))
+
+	out = set()
+	for b in blank:
+		if b.existing_planting:
+			has_end = ended.get(b.existing_planting, False)
+		else:
+			has_end = cycles.get((b.block, str(b.planting_date or "")), False)
+		if not has_end:
+			out.add(b.name)
+	return out
+
+
 @frappe.whitelist()
 def planting_plan(plan=None, variety=None, farm=None):
 	"""The planting plan: what to stick, when to plant, and where it lands."""
@@ -1325,6 +1376,8 @@ def planting_plan(plan=None, variety=None, farm=None):
 
 	in_season = {i: sum(cint(q) for q in (wk or {}).values())
 	             for i, wk in (_weekly_cut(p) or {}).items()}
+
+	no_ending = _rows_with_no_ending(p)
 
 	plantings = []
 	for i, b in enumerate(p.plan_blocks):
@@ -1362,8 +1415,13 @@ def planting_plan(plan=None, variety=None, farm=None):
 			# protocol. Older plans, saved before the row carried the date, still
 			# fall back to planting date plus the life in the ground.
 			"uproot_date": str(b.uproot_date) if b.get("uproot_date") else (
+				None if not b.is_new_planting else
 				str(getdate(b.planting_date) + datetime.timedelta(weeks=life_weeks))
 				if b.planting_date else None),
+			# Standing crop with no uprooting date anywhere on its record. It
+			# has no ending until somebody gives it one, and it holds its beds
+			# meanwhile, so the page says so instead of printing a blank cell.
+			"open_ended": b.name in no_ending,
 			"first_harvest": f"{b.first_harvest_year}-W{b.first_harvest_week:02d}"
 			if b.first_harvest_year and b.first_harvest_week else None,
 			"harvest_family": b.harvest_week_family,
@@ -1392,6 +1450,7 @@ def planting_plan(plan=None, variety=None, farm=None):
 			"ref": b.existing_planting or f"row {b.idx}",
 			"start": str(start),
 			"end": str(getdate(b.uproot_date) if b.get("uproot_date")
+			              else FOREVER if b.name in no_ending
 			              else start + datetime.timedelta(weeks=life_weeks)),
 			"beds": b.beds or 0,
 			"status": "Proposed",
@@ -1409,7 +1468,8 @@ def planting_plan(plan=None, variety=None, farm=None):
 			"source": "calendar",
 			"ref": c.name,
 			"start": str(c.planting_date),
-			"end": str(c.actual_uproot_date or c.planned_uproot_date),
+			# Nothing says when it comes out, so nothing says the block is free.
+			"end": str(c.actual_uproot_date or c.planned_uproot_date or FOREVER),
 			"beds": c.beds or 0,
 			"status": c.calendar_status,
 		})
@@ -1443,6 +1503,13 @@ def planting_plan(plan=None, variety=None, farm=None):
 		"protocol_stale": cint(fresh["stale"]),
 		"protocol_note": fresh["note"],
 		"plantings": plantings,
+		# Crop the farm has not said an end for. The page pops this up: a plan
+		# drawn over ground that is held open-ended is not one to act on until
+		# the dates are settled.
+		"open_ended": [{
+			"block": x["block"], "beds": x["beds"], "plants": x["plants"],
+			"planted": x["planting_date"], "ref": x["existing_planting"],
+		} for x in plantings if x.get("open_ended")],
 		# Said once, so the page can head the table with what these rows are.
 		"awaiting_supply": awaiting,
 		# A submitted plan's blocks are not editable, so the allocation control is not

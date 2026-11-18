@@ -14,6 +14,7 @@ from upande_summer_flowers.summer_flowers.doctype.crop_protocol_version.crop_pro
 	current_version,
 )
 from upande_summer_flowers.summer_flowers.doctype.planting_calendar.planting_calendar import (
+	FOREVER,
 	RESERVING_STATES,
 	cycle_end_date,
 	cycle_planted_on,
@@ -2243,6 +2244,7 @@ def _populate(plan, programme=None):
 	window_start = grid[0][2] if grid else None
 	window_end = add_days(grid[-1][2], 6) if grid else None
 	plan.plan_blocks = []
+	no_end = []
 	for planting in standing_plantings(plan.farm, plan.variety):
 		hit = False
 		mine = defaultdict(int)
@@ -2253,6 +2255,13 @@ def _populate(plan, programme=None):
 		# derived from the actual, so the two disagreed by the slip.
 		started = planting.effective_planting_date()
 		ends = planting.end_date()
+		# Nobody has said when this one comes out, so it has no ending: it
+		# holds its beds until somebody states a date. The plan says so on the
+		# row and tells the planner, rather than inventing an end from the
+		# protocol and quietly handing the ground to a new planting.
+		open_ended = not planting.has_ending()
+		if open_ended:
+			no_end.append(planting)
 		for (y, w), stems in production_by_week(planting).items():
 			if (y, w) in index:
 				production[(y, w)] += stems
@@ -2280,10 +2289,19 @@ def _populate(plan, programme=None):
 				# It holds the ground but promises nothing, because nobody has
 				# given it a flush schedule. Say so on the row rather than let
 				# the plan imply the beds are producing.
-				note = ((note + " ") if note else "") + _(
+				note = ((note + " ") if note else "") + (_(
+					"No flush schedule on this record, so it adds no stems to "
+					"the plan. It still holds its beds, with no end stated."
+				) if open_ended else _(
 					"No flush schedule on this record, so it adds no stems to "
 					"the plan. It still holds its beds until {0}."
-				).format(ends)
+				).format(ends))
+			if open_ended:
+				note = ((note + " ") if note else "") + _(
+					"No uprooting date on this record, so the plan treats it as "
+					"having no ending: it holds {0} beds until somebody states "
+					"when the crop comes out."
+				).format(cint(planting.beds))
 			plan.append("plan_blocks", {
 				"is_new_planting": 0,
 				"block": planting.block,
@@ -2301,11 +2319,33 @@ def _populate(plan, programme=None):
 				"net_area_ha": planting.net_area_ha,
 				"lifetime_stems": planting.expected_stems_life,
 				# What the record itself says, so a crop uprooted early, or one
-				# whose protocol has since changed, reads true on the plan.
-				"uproot_date": ends,
+				# whose protocol has since changed, reads true on the plan. A
+				# crop with no stated end leaves the cell empty: an invented
+				# date here is the thing that frees occupied ground.
+				"uproot_date": None if open_ended else ends,
 				"planting_in_past": 1 if started < getdate(nowdate()) else 0,
 			})
-			per_row.append({"weeks": dict(mine), "uproot": str(ends)})
+			per_row.append({"weeks": dict(mine),
+			                "uproot": "" if open_ended else str(ends)})
+
+	# Tell whoever built the plan, by name, which crop it is holding ground for
+	# with no end in sight. This is the farm's own record to settle, and a plan
+	# drawn over an open-ended crop is a plan nobody should act on until it is.
+	if no_end:
+		frappe.msgprint(
+			_("{0} of the crop standing here has no uprooting date, so this plan "
+			  "treats it as having no ending and keeps its beds held:").format(
+				len(no_end))
+			+ "<br><br>" + "<br>".join(
+				_("{0} — {1} beds, planted {2}").format(
+					frappe.bold(p.block or _("no block")), cint(p.beds),
+					p.effective_planting_date())
+				for p in no_end[:20])
+			+ ("<br>" + _("...and {0} more.").format(len(no_end) - 20)
+			   if len(no_end) > 20 else "")
+			+ "<br><br>" + _("Give each one an uprooting date on its crop cycle "
+			                 "and rebuild the plan."),
+			title=_("Crop with no uprooting date"), indicator="orange")
 
 	# ---- close the remaining deficits
 	offsets = protocol.flush_offsets()
@@ -2567,8 +2607,6 @@ class BlockCalendar:
 		for r in rows:
 			self.blocks.append({"name": r.name, "beds": cint(r.custom_total_beds),
 			                    "busy": []})
-		self._lives = {}
-		self._versions = {}
 		self._seed_standing(variety)
 		self._seed_history()
 
@@ -2624,10 +2662,12 @@ class BlockCalendar:
 			b = self._get(r.block)
 			if not b or not r.planting_date:
 				continue
+			# No uprooting date is no ending, not an ending on the day it was
+			# planted: the block stays claimed until somebody states a date.
 			end = r.actual_uproot_date or r.planned_uproot_date
 			b["busy"].append({
 				"start": getdate(r.planting_date),
-				"end": getdate(end) if end else getdate(r.planting_date),
+				"end": getdate(end) if end else FOREVER,
 				"beds": cint(r.beds) or b["beds"],
 				"holder": r.name,
 				"variety": r.variety,
@@ -2672,49 +2712,19 @@ class BlockCalendar:
 			# Read defensively: a cycle may keep its planting date in either
 			# field, and an "actual" uprooting date that has not happened yet
 			# is the load's planned end of life, not a fact about the ground.
-			end = cycle_end_date(r, planted)
-			# A cycle with no uproot date states no end, so it would hold the
-			# block for ever or not at all. The protocol says how long the crop
-			# stands; use that rather than guess either way.
-			if not end:
-				end = self._protocol_end(r, planted)
+			# With no stated end the crop has no ending, so the block stays
+			# held. Filling that in from the protocol is how a planner is told
+			# ground is free when a crop is still standing on it.
+			end = cycle_end_date(r, planted) or FOREVER
 			b["busy"].append({
 				"start": planted,
-				"end": getdate(end) if end else planted,
+				"end": getdate(end),
 				"beds": cint(r.custom_beds_planted) or b["beds"],
 				"holder": r.name,
 				"variety": r.variety or r.custom_sf_variety,
 				"status": r.custom_sf_cycle_status or "Active",
 				"in_ground": True,
 			})
-
-	def _protocol_end(self, cycle, planted=None):
-		"""Planting date plus the protocol's weeks in ground, where it says so."""
-		version = cycle.get("custom_crop_protocol_version")
-		planted = planted or cycle_planted_on(cycle)
-		if not planted:
-			return None
-		if not version:
-			# Cycles keyed in by hand carry no protocol link. The Active version
-			# for this variety on this farm is the same one a plan for it would
-			# use, and without it the block reads as free from the day it was
-			# planted.
-			key = (cycle.get("variety") or cycle.get("custom_sf_variety"),
-			       cycle.get("farm") or self.farm)
-			if not key[0] or not key[1]:
-				return None
-			if key not in self._versions:
-				self._versions[key] = current_version(key[0], key[1])
-			version = self._versions[key]
-		if not version:
-			return None
-		if version not in self._lives:
-			self._lives[version] = cint(frappe.db.get_value(
-				"Crop Protocol Version", version, "total_weeks_in_ground"))
-		weeks = self._lives[version]
-		if not weeks:
-			return None
-		return planted + datetime.timedelta(weeks=weeks)
 
 	def _get(self, name):
 		for b in self.blocks:
