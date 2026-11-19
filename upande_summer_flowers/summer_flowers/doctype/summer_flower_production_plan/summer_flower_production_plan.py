@@ -2782,8 +2782,14 @@ class BlockCalendar:
 		for b in self.blocks:
 			free = self.free_beds(b, start, end)
 			# What is standing there, whether or not there is room for more. A block
+			# A crop with no uprooting date holds the block with no end. The
+			# far-future date that stands in for that is ours, not the farm's,
+			# so it is reported as what it means and never as a date somebody
+			# might write down.
 			on_it = [{"planting": r["holder"], "variety": r.get("variety"),
-			          "beds": r["beds"], "frees_on": str(r["end"]),
+			          "beds": r["beds"],
+			          "frees_on": None if r["end"] >= FOREVER else str(r["end"]),
+			          "open_ended": r["end"] >= FOREVER,
 			          "in_ground": r["in_ground"]}
 			         for r in sorted(b["busy"], key=lambda x: x["end"])
 			         if not (end <= r["start"] or start >= r["end"])]
@@ -2798,6 +2804,10 @@ class BlockCalendar:
 			         if not (end <= r["start"] or start >= r["end"])]
 			free_from = None
 			for r in sorted(clash, key=lambda x: x["end"]):
+				if r["end"] >= FOREVER:
+					# Nothing after this frees anything: the block comes back
+					# when somebody gives that crop a date, and not before.
+					break
 				if b["beds"] - self._peak_reserved(b, r["end"], end) >= beds:
 					free_from = r["end"]
 					break
@@ -2807,10 +2817,16 @@ class BlockCalendar:
 				"free_from": str(free_from) if free_from else None,
 				"weeks_late": ((free_from - start).days // 7) if free_from else None,
 				"blockers": [{"planting": r["holder"], "status": r["status"],
-				              "beds": r["beds"], "frees_on": str(r["end"]),
+				              "beds": r["beds"],
+				              "frees_on": (None if r["end"] >= FOREVER
+				                           else str(r["end"])),
+				              "open_ended": r["end"] >= FOREVER,
 				              "in_ground": r["in_ground"],
-				              "uproot_weeks_early": max(
-					              0, (r["end"] - start).days // 7)}
+				              # There is no uprooting to bring forward when
+				              # nobody has said when it happens.
+				              "uproot_weeks_early": (
+					              None if r["end"] >= FOREVER
+					              else max(0, (r["end"] - start).days // 7))}
 				             for r in sorted(clash, key=lambda x: x["end"])[:3]],
 				"standing": on_it,
 				"history": b.get("history") or [],

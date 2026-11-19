@@ -4214,7 +4214,10 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
         const b = (c.blockers || [])[0] || {};
         const held = b.planting
           ? `held by ${esc(b.planting)} (${esc(b.status || "?")}${
-              b.in_ground ? ", in the ground" : ""})`
+              b.in_ground ? ", in the ground" : ""})` +
+            (b.open_ended
+              ? `<br>no uprooting date on it, so it holds the block with no end`
+              : "")
           : "held";
         return `<div class="bk-opt no"><span class="bk-b">${esc(shortBlock(c.block))}</span>` +
           `<span class="bk-m">${c.free_beds} of ${c.total_beds} free — needs ${beds}<br>` +
@@ -4230,7 +4233,7 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
         <h3 class="fm-h">Block for planting ${p.idx}</h3>
         <p class="fm-i">${beds} beds, stuck ${esc(p.sticking_week)}, planted ${
           fdate(p.planting_date)}, pinched ${p.pinch_date ? fdate(p.pinch_date) : "—"}, uprooted ${
-          fdate(p.uproot_date)}. It needs those beds for the whole of that.</p>
+          p.uproot_date ? fdate(p.uproot_date) : "—"}. It needs those beds for the whole of that.</p>
         <div class="fm-b">${opts}</div>
         <div class="fm-a">
           ${p.assigned ? '<button type="button" class="pl-btn" data-pick="">Leave unassigned</button>' : ""}
