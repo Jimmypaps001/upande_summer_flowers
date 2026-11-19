@@ -1312,18 +1312,21 @@ def simulate_buildup(version, tc_plants, tc_arrival_date, rounds=4, field_pct=0,
 	return res
 
 
-def _rows_with_no_ending(plan):
-	"""Standing rows whose own record states no uprooting date.
+def _endings_of_blank_rows(plan):
+	"""For every standing row with no uprooting date: what its record says.
 
 	A row drawn before the plan carried an uprooting date is blank too, and a
 	blank cell is not the same thing as a crop with no ending. So the question
 	is put to the record the row came from -- its planting calendar, or the
-	cycle standing on that block -- and not to the cell.
+	cycle standing on that block -- and not to the cell. The answer doubles as
+	the date to show, so a plan nobody has rebuilt yet still reads true.
+
+	Returns {row name: the day it comes out, or None for a crop with no end}.
 	"""
 	blank = [b for b in plan.plan_blocks
 	         if not b.is_new_planting and not b.get("uproot_date")]
 	if not blank:
-		return set()
+		return {}
 
 	ended = {}
 	names = [b.existing_planting for b in blank if b.existing_planting]
@@ -1331,7 +1334,7 @@ def _rows_with_no_ending(plan):
 		for r in frappe.get_all(
 				"Planting Calendar", filters={"name": ["in", names]},
 				fields=["name", "planned_uproot_date", "actual_uproot_date"]):
-			ended[r.name] = bool(r.planned_uproot_date or r.actual_uproot_date)
+			ended[r.name] = r.actual_uproot_date or r.planned_uproot_date
 
 	# Rows raised from a crop cycle carry no link back to it, so the cycle is
 	# found the way the row was built: the block it stands on, planted that day.
@@ -1345,16 +1348,14 @@ def _rows_with_no_ending(plan):
 				        "planned_uprooting_date", "custom_planned_uproot_date",
 				        "custom_actual_uproot_date"]):
 			key = (r.custom_block, str(cycle_planted_on(r) or ""))
-			cycles[key] = cycles.get(key) or bool(cycle_end_date(r))
+			cycles[key] = cycles.get(key) or cycle_end_date(r)
 
-	out = set()
+	out = {}
 	for b in blank:
 		if b.existing_planting:
-			has_end = ended.get(b.existing_planting, False)
+			out[b.name] = ended.get(b.existing_planting)
 		else:
-			has_end = cycles.get((b.block, str(b.planting_date or "")), False)
-		if not has_end:
-			out.add(b.name)
+			out[b.name] = cycles.get((b.block, str(b.planting_date or "")))
 	return out
 
 
@@ -1377,7 +1378,9 @@ def planting_plan(plan=None, variety=None, farm=None):
 	in_season = {i: sum(cint(q) for q in (wk or {}).values())
 	             for i, wk in (_weekly_cut(p) or {}).items()}
 
-	no_ending = _rows_with_no_ending(p)
+	# Standing rows the plan has no date for, answered from their own records.
+	blank_ends = _endings_of_blank_rows(p)
+	no_ending = {name for name, end in blank_ends.items() if not end}
 
 	plantings = []
 	for i, b in enumerate(p.plan_blocks):
@@ -1415,7 +1418,10 @@ def planting_plan(plan=None, variety=None, farm=None):
 			# protocol. Older plans, saved before the row carried the date, still
 			# fall back to planting date plus the life in the ground.
 			"uproot_date": str(b.uproot_date) if b.get("uproot_date") else (
-				None if not b.is_new_planting else
+				# A standing row with nothing stored: what its own record says,
+				# so a plan drawn before the field existed still reads true.
+				str(blank_ends[b.name]) if blank_ends.get(b.name)
+				else None if not b.is_new_planting else
 				str(getdate(b.planting_date) + datetime.timedelta(weeks=life_weeks))
 				if b.planting_date else None),
 			# Standing crop with no uprooting date anywhere on its record. It
@@ -1451,6 +1457,7 @@ def planting_plan(plan=None, variety=None, farm=None):
 			"start": str(start),
 			"end": str(getdate(b.uproot_date) if b.get("uproot_date")
 			              else FOREVER if b.name in no_ending
+			              else blank_ends[b.name] if blank_ends.get(b.name)
 			              else start + datetime.timedelta(weeks=life_weeks)),
 			"beds": b.beds or 0,
 			"status": "Proposed",
