@@ -8644,7 +8644,7 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
   function blankSup() {
     const d = S.supStated || {};
     return { supplier: "", share_pct: 0, lead_weeks: d.lead_weeks || 0,
-             cycle_count: d.cycles_a_year
+             cycle_count: d.cycle_weeks
                || (SUP_CHOICES || {}).default_cycle_count || 4, cycles: [] };
   }
 
@@ -8990,7 +8990,7 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
             supplier: x.supplier, share_pct: x.share_pct,
             lead_weeks: x.lead_weeks, units: x.units, plants: x.plants,
             cycle_count: x.cycle_count, drops_in_plan: x.drops_in_plan,
-            cycles_a_year: x.cycles_a_year, cycles_in_plan: x.cycles_in_plan,
+            cycle_weeks: x.cycle_weeks, cycles_in_plan: x.cycles_in_plan,
             weeks: (x.cycles || []).map((c) => c.lands_iso).filter(Boolean),
             cycles: (x.cycles || []).map((c) => ({ ...c })),
           }));

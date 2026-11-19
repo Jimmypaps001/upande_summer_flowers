@@ -165,7 +165,6 @@ def supply_defaults(version):
 		# Kept under the old key too: the page and the saved supply rows
 		# still speak it, and both now mean weeks between deliveries.
 		"cycle_weeks": cycle_weeks,
-		"cycles_a_year": cycle_weeks,
 		"suppliers": max(0, min(12, houses)),
 		"lifts": len(v.get("lifts") or []),
 		"lead_weeks": cint(decided.get("lead_weeks"))
@@ -583,7 +582,7 @@ def _normalised(picks, form, wanted=None, default_count=None):
 		# What was asked for, beside what the plan's own shape allows. Four a
 		# year over a plan that only plants in three weeks is three cycles,
 		# and saying so is better than quietly delivering a different number.
-		x["cycles_a_year"] = x["cycle_count"]
+		x["cycle_weeks"] = x["cycle_count"]
 		x["cycles_in_plan"] = len(drops)
 		cycles = []
 		for i, at in enumerate(drops):
@@ -639,7 +638,7 @@ def plan_supply(plan, picks=None, form=None):
 	wanted = _wanted_by_week(doc)
 	stated = supply_defaults(v)
 	chosen = _normalised(picks, form, wanted,
-	                     default_count=stated["cycles_a_year"])
+	                     default_count=stated["cycle_weeks"])
 	# How often a house comes is one question; how each consignment is then
 	# handed over, in lifts weeks apart, is another. The agreement carried only
 	# the first, so every lifted crop was planned as though the whole order
@@ -1047,11 +1046,15 @@ def save_supply(plan, picks, confirm=0):
 		"weeks covered{6}."
 	).format(
 		" and ".join(
-			"{} ({}%, {} cycles a year)".format(
+			# A cycle is the gap between deliveries, so this number is weeks,
+			# not deliveries a year. The note used to read "5 cycles a year"
+			# beside a proposal that said "a delivery every 4 weeks", for the
+			# same house on the same plan.
+			"{} ({}%, a delivery every {} weeks)".format(
 				s["supplier"], round(flt(s["share_pct"])), cint(s["cycle_count"]))
 			for s in out["suppliers"]),
 		"{:,}".format(cint(out["plants_wanted"])),
-		_("{0} cycles over the plan").format(
+		_("{0} deliveries over the plan").format(
 			sum(cint(s.get("drops_in_plan")) for s in out["suppliers"])),
 		"{:,} {}".format(cint(out["units_bought"]), out["form"]),
 		out["weeks_total"] - out["weeks_short"], out["weeks_total"],
@@ -1664,7 +1667,7 @@ def suggest_supply(plan, houses=None, max_wait_weeks=None):
 		# How often this house comes. The protocol's figure is the agreement;
 		# what the plan worked out is only what these planting weeks needed,
 		# and a house does not come less often because one season is short.
-		"cycle_count": max(1, stated["cycles_a_year"]
+		"cycle_count": max(1, stated["cycle_weeks"]
 		                   or int(round(len(drops) / years))),
 		"weeks": [_iso(d) for d in drops],
 	} for i in range(houses)]
@@ -1686,7 +1689,7 @@ def suggest_supply(plan, houses=None, max_wait_weeks=None):
 		"deliveries": len(drops),
 		"planting_weeks": len(weeks),
 		"max_wait_weeks": wait,
-		"cycles_a_year": [p["cycle_count"] for p in picks],
+		"cycle_weeks_by_house": [p["cycle_count"] for p in picks],
 		# Ready to drop straight into the card: shares, cycles and the weeks
 		# themselves, with the names left for the farm to fill in.
 		"picks": picks,
