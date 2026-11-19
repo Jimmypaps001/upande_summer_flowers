@@ -237,12 +237,17 @@ def proposal(plan_doc, version=None, shares=None, second_half=None, cycles=None)
 	weeks, so a 53-week year is thirteen deliveries. The supplier takes the
 	whole order and brings it in equal instalments on that rhythm.
 
-	The year is worked in halves. Each half's quantity is the material the
-	demand in that half needs -- which is why a hundred thousand for the year
-	can be forty in the first half -- divided by half the year's deliveries.
-	Thirteen deliveries is six and a half to a half, so 40,000 / 6.5 = 6,154
-	every four weeks. At the half-year the farm sees how the first half went
-	and the second half is re-divided over what remains.
+	The order is worked in halves. The halves are halves of THIS plan: from
+	its first planting week to its last, split at the midpoint date -- which
+	is why they start and end on weeks nobody would call a half-year.
+
+	Each half's quantity is the material the planting weeks inside it need,
+	which is why a hundred thousand for the year can be forty in the first
+	half. It is divided by the deliveries that actually land in that half,
+	not by half the year's: twelve deliveries can be seven and five, and
+	dividing both halves by six over-delivered the first and starved the
+	second. At the midpoint the farm sees how the first half went, and a
+	figure it agrees for the second half replaces the arithmetic.
 
 	What a planting week happens to want no longer SIZES anything. It is still
 	reported -- the week a delivery covers, what those weeks ask for -- because
