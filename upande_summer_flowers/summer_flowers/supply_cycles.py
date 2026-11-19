@@ -109,6 +109,134 @@ def suppliers_for(form=DEFAULT_FORM):
 	                                 pluck="name", order_by="name", limit=400)}
 
 
+def protocol_suppliers(version, default_cycle=0, default_lead=0):
+	"""The houses the protocol names for this variety, each with its own cycle.
+
+	A cycle belongs to a house, not to a variety. Two houses supplying the
+	same Craspedia can be on a four-week rhythm and a twelve-week one, and
+	the single figure the protocol used to carry could only ever be one of
+	them -- so a plan drawn on it either hurried one house or starved the
+	other. This reads the table, keeps the row that names this farm over the
+	row that names none, and fills the blanks from the protocol's own figures
+	so a half-typed row is still usable.
+
+	Rows with no supplier, and rows for another farm, are not here."""
+	v = (version if hasattr(version, "get")
+	     else frappe.get_cached_doc("Crop Protocol Version", version))
+	rows = list(v.get("suppliers") or [])
+	# A version taken before the table existed carries none, and re-approving
+	# every protocol to teach it who supplies it would be a poor trade. The
+	# master is read directly in that case -- these are commercial facts, and
+	# the version is a snapshot of the agronomy.
+	if not rows and v.get("crop_protocol"):
+		rows = frappe.get_all(
+			"Summer Flower Protocol Supplier",
+			filters={"parent": v.crop_protocol,
+			         "parenttype": "Crop Protocol",
+			         "parentfield": "custom_sf_suppliers"},
+			fields=["supplier", "farm", "cycle_weeks", "lead_weeks", "share_pct",
+			        "min_order_qty", "first_delivery_week", "preferred", "idx"],
+			parent_doctype="Crop Protocol", order_by="idx asc")
+	farm = v.get("farm")
+	best = {}
+	for i, r in enumerate(rows):
+		name = (r.get("supplier") or "").strip()
+		if not name:
+			continue
+		at = (r.get("farm") or "").strip()
+		if at and farm and at != farm:
+			continue
+		# A row naming this farm is this farm's arrangement; a blank row is the
+		# standing one. Keeping both would plan the same house twice.
+		if name in best and not at and best[name]["farm"]:
+			continue
+		best[name] = {
+			"supplier": name,
+			"farm": at or None,
+			"cycle_weeks": max(0, min(52, cint(r.get("cycle_weeks"))
+			                          or cint(default_cycle))),
+			"lead_weeks": cint(r.get("lead_weeks")) or cint(default_lead),
+			"share_pct": flt(r.get("share_pct")),
+			"min_order_qty": cint(r.get("min_order_qty")),
+			"first_week": (r.get("first_delivery_week") or "").strip() or None,
+			"preferred": cint(r.get("preferred")),
+			"idx": cint(r.get("idx")) or i + 1,
+		}
+	out = sorted(best.values(), key=lambda x: (not x["preferred"], x["idx"]))
+	# The share is ours to give. Typed shares are scaled to a hundred; where
+	# none are typed the order is split evenly, which is a starting point.
+	total = sum(flt(x["share_pct"]) for x in out)
+	if out and total <= 0:
+		for x in out:
+			x["share_pct"] = round(100.0 / len(out), 4)
+	elif out and abs(total - 100.0) > 0.01:
+		for x in out:
+			x["share_pct"] = round(flt(x["share_pct"]) * 100.0 / total, 4)
+	return out
+
+
+def delivery_weeks(houses, earliest, until, order_from=None, anchor=None):
+	"""Every week one of these houses could put material on the ground.
+
+	A house comes on a rhythm and not before its lead time is up, so the
+	weeks it can serve are: the first one it could reach, and then every
+	`cycle_weeks` after it. `earliest` is the first week the plan would
+	plant in, `until` the last; `order_from` is the day the farm could place
+	an order, which is today for a plan being drawn now.
+
+	Returned as {Monday: [supplier, ...]}, because two houses on different
+	rhythms land on the same week often enough to matter.
+
+	A house with no cycle stated is on no rhythm at all: it can serve any
+	week from its first. Saying otherwise would invent a timetable.
+
+	`anchor` is the week the farm most wants served -- normally the one the
+	first demand has to be cut in. The supplier states the GAP between its
+	deliveries and the notice it needs; which particular week the rhythm
+	starts on is not its to state, and taking it to be "as early as possible"
+	made the phase an accident of the day the plan was drawn. The beat is
+	counted out from the anchor instead, forward in whole cycles until it
+	clears the lead time, so the same plan drawn next week keeps the same
+	weeks. A house with a first delivery week on file overrules all of it."""
+	first = _monday(earliest)
+	last = _monday(until)
+	if not first or not last or last < first:
+		return {}
+	order_day = _monday(order_from or nowdate())
+	at_anchor = _monday(anchor) if anchor else None
+	out = {}
+	for h in houses or []:
+		# Nothing can land before the house has had its lead time, counted
+		# from the day an order could be placed. A plan that plants in week
+		# three on twelve weeks' lead is a plan nobody can supply.
+		ready = max(first, add_days(order_day, 7 * max(0, cint(h["lead_weeks"]))))
+		stated = _week_monday(h.get("first_week")) if h.get("first_week") else None
+		step = cint(h["cycle_weeks"])
+		if stated:
+			start = max(ready, _monday(stated))
+		elif at_anchor and step:
+			# Whole cycles from the anchor to the first week the house could
+			# actually reach, so the anchor week itself stays on the beat.
+			behind = (ready - at_anchor).days
+			hops = -(-behind // (7 * step)) if behind > 0 else 0
+			start = add_days(at_anchor, 7 * step * hops)
+		else:
+			start = ready
+		if start > last:
+			continue
+		if not step:
+			at = start
+			while at <= last:
+				out.setdefault(at, []).append(h["supplier"])
+				at = add_days(at, 7)
+			continue
+		at = start
+		while at <= last:
+			out.setdefault(at, []).append(h["supplier"])
+			at = add_days(at, 7 * step)
+	return dict(sorted(out.items()))
+
+
 def supply_defaults(version):
 	"""What the PROTOCOL says about buying this material, before any plan.
 
@@ -148,6 +276,18 @@ def supply_defaults(version):
 	# weeks, so a 53-week year is thirteen deliveries. It was read as
 	# "times a year", which turned every-four-weeks into every-thirteen.
 	cycle_weeks = max(0, min(52, cycles))
+	# Who can actually bring it, each on its own rhythm. Where the protocol
+	# names houses, THEY are the answer to "how often" and "how many": a
+	# single number over every house was only ever a stand-in for a table
+	# nobody had been given a place to type.
+	houses_named = protocol_suppliers(v, default_cycle=cycle_weeks,
+	                                  default_lead=cint(decided.get("lead_weeks"))
+	                                  or cint(v.get("supplier_lead_weeks")))
+	if houses_named:
+		cycle_weeks = min(h["cycle_weeks"] for h in houses_named
+		                  if h["cycle_weeks"]) if any(
+			h["cycle_weeks"] for h in houses_named) else cycle_weeks
+		houses = len(houses_named)
 	return {
 		# Only TC and roots are handed over in lifts, so only they have a lift
 		# form. A seed, tuber or bought-in-plant route fell back to the module
@@ -166,6 +306,13 @@ def supply_defaults(version):
 		# still speak it, and both now mean weeks between deliveries.
 		"cycle_weeks": cycle_weeks,
 		"suppliers": max(0, min(12, houses)),
+		# The named houses themselves, in the order the protocol lists them.
+		# Empty where the protocol states only the two numbers, and the rest
+		# of the module goes on treating the suppliers as interchangeable.
+		# NOT "houses": proposal() uses that for the COUNT, and a key that is
+		# a list in one function and an integer in the next is a trap.
+		"named_houses": houses_named,
+		"named": bool(houses_named),
 		"lifts": len(v.get("lifts") or []),
 		"lead_weeks": cint(decided.get("lead_weeks"))
 		              or cint(v.get("supplier_lead_weeks")),
@@ -264,6 +411,11 @@ def proposal(plan_doc, version=None, shares=None, second_half=None, cycles=None)
 	if isinstance(shares, str):
 		shares = frappe.parse_json(shares or "[]")
 	shares = [flt(x) for x in (shares or [])][:houses]
+	# Where the protocol names the houses, their own shares are the default --
+	# an even split is only right when nobody has said otherwise.
+	named = d.get("named_houses") or []
+	if (len(shares) < houses or sum(shares) <= 0) and len(named) == houses:
+		shares = [flt(h["share_pct"]) for h in named]
 	if len(shares) < houses or sum(shares) <= 0:
 		shares = [100.0 / houses] * houses
 	step = cint(d["cycle_weeks"])
@@ -274,6 +426,12 @@ def proposal(plan_doc, version=None, shares=None, second_half=None, cycles=None)
 	if isinstance(cycles, str):
 		cycles = frappe.parse_json(cycles or "[]")
 	cyc = [max(0, min(52, cint(c))) or step for c in (cycles or [])][:houses]
+	# Each named house brings its own rhythm with it. Falling back to one
+	# figure for all of them was the old shape, and it planned two houses on
+	# four weeks and twelve as though both came every four.
+	if len(named) == houses:
+		cyc += [max(0, min(52, cint(h["cycle_weeks"]))) or step
+		        for h in named[len(cyc):]]
 	cyc += [step] * (houses - len(cyc))
 	uniform = len(set(cyc)) <= 1
 	# How a consignment is handed over. A lifted crop never gets the whole
@@ -374,6 +532,19 @@ def proposal(plan_doc, version=None, shares=None, second_half=None, cycles=None)
 			"agreed": 1 if (n and agreed_2nd) else 0,
 		})
 
+	# A house will not break an order below its minimum, so an instalment
+	# under that figure is one it cannot bring. Said here, where the figure is
+	# worked out, rather than discovered when the order is placed.
+	under = []
+	for n, half in enumerate(halves):
+		for h in range(houses):
+			floor = cint(named[h].get("min_order_qty")) if h < len(named) else 0
+			got = (half["per_house"][h]["per_delivery"]
+			       if h < len(half["per_house"]) else 0)
+			if floor and got and got < floor:
+				under.append({"house": named[h]["supplier"], "half": n + 1,
+				              "per_delivery": got, "minimum": floor})
+
 	rows = []
 	for i, start in enumerate(drops):
 		end = drops[i + 1] if i + 1 < len(drops) else None
@@ -415,6 +586,9 @@ def proposal(plan_doc, version=None, shares=None, second_half=None, cycles=None)
 	          # rhythms it is each house's own count, added up.
 	          "supplier_deliveries": sum(len(hd) for hd in house_drops),
 	          "cycles_by_house": cyc,
+	          # Houses whose instalment on this rhythm is below the smallest
+	          # order they accept. Empty where every house can bring its share.
+	          "below_minimum": under,
 	          "uniform_cycle": uniform})
 	return d
 
@@ -427,10 +601,19 @@ def proposal_note(plan_doc, version=None):
 		         "schedule.")
 	if not d["deliveries"]:
 		return _("Nothing to deliver to yet: this plan has no planting weeks.")
+	named = d.get("named_houses") or []
 	bits = [
-		_("{0} supplier(s) available").format(d["suppliers"]) if d["suppliers"]
-		else _("no supplier count on the protocol"),
-		_("a delivery every {0} weeks").format(d["cycle_weeks"])
+		# Named houses are named. "Three suppliers available" was all the
+		# protocol could say when it held a count instead of a table, and a
+		# plan that cannot say who it is buying from cannot be checked.
+		_("{0}").format(", ".join(h["supplier"] for h in named)) if named
+		else _("{0} supplier(s) available").format(d["suppliers"])
+		if d["suppliers"] else _("no supplier count on the protocol"),
+		_("; ").join(_("{0} every {1} wk").format(h["supplier"],
+		                                          h["cycle_weeks"] or "?")
+		             for h in named) if named and len(set(
+			h["cycle_weeks"] for h in named)) > 1
+		else _("a delivery every {0} weeks").format(d["cycle_weeks"])
 		if d["cycle_weeks"]
 		else _("no cycle stated, so one delivery per planting week"),
 		_("{0} lift(s) per consignment").format(d["lifts"]) if d["lifts"]
@@ -455,6 +638,12 @@ def proposal_note(plan_doc, version=None):
 						d.get("cycles_by_house") or []) else "?",
 					x["deliveries"], x["per_delivery"])
 				for i, x in enumerate(h.get("per_house") or [])))
+	for u in (d.get("below_minimum") or []):
+		lines.append(_("{0} would bring {1} plants each time in half {2}, under "
+		               "the {3} it will break an order for. Give it a longer "
+		               "cycle, a bigger share, or buy from somebody else."
+		               ).format(u["house"], u["per_delivery"], u["half"],
+		                        u["minimum"]))
 	for r in d["rows"]:
 		lines.append("%s  %s  half %s  %s plants  (%s)" % (
 			r["no"], r["week"], r["half"], r["plants"],

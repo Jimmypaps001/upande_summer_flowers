@@ -8623,15 +8623,27 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
       } catch (e) { S.supSaved = null; }
     }
     if (!S.sup) {
-      // A row per supplier the protocol says is available, and nobody in any
-      // of them. The card used to open on whoever had a lift profile on file,
-      // which put the same house on every plan at 100% of the season before
-      // anyone had chosen it -- a profile on file is a note about how a house
-      // hands over, not a decision that it supplies this crop. How MANY
-      // houses is a different question, and the protocol does answer it.
-      const n = Math.max(1, Math.min(12, (S.supStated || {}).suppliers || 1));
-      S.sup = Array.from({ length: n }, blankSup);
-      evenShares(S.sup);
+      // The protocol now names the houses and gives each one its own rhythm,
+      // so the card opens on them: who, how often, how much notice. This is
+      // not an agreement -- nothing is ordered until the plan is rebuilt on
+      // it and signed for -- it is the farm's own standing arrangement,
+      // which it should not have to retype onto every plan.
+      const named = ((S.supStated || {}).named_houses || []).filter((h) => h.supplier);
+      if (named.length) {
+        S.sup = named.map((h) => ({
+          supplier: h.supplier, share_pct: h.share_pct || 0,
+          lead_weeks: h.lead_weeks || 0,
+          cycle_count: h.cycle_weeks || (S.supStated || {}).cycle_weeks || 4,
+          cycles: [] }));
+        if (!named.some((h) => h.share_pct > 0)) evenShares(S.sup);
+      } else {
+        // Nobody named. A row per supplier the protocol says is available,
+        // and nobody in any of them: a lift profile on file is a note about
+        // how a house hands over, not a decision that it supplies this crop.
+        const n = Math.max(1, Math.min(12, (S.supStated || {}).suppliers || 1));
+        S.sup = Array.from({ length: n }, blankSup);
+        evenShares(S.sup);
+      }
     }
     showStated();
     syncHouses();
@@ -8853,17 +8865,38 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
     const agreed = (d.halves || [])[1];
     if (q && !q.dataset.touched && agreed && agreed.agreed) q.value = agreed.plants;
     const bits = [];
-    bits.push(d.suppliers
-      ? `<b>${d.suppliers}</b> supplier${d.suppliers === 1 ? "" : "s"} available`
-      : "<b>no</b> supplier count on the protocol");
-    // The protocol's figure is the GAP between deliveries. Read as "times a
-    // year" it turned a four-week cycle into a thirteen-week one on screen
-    // while the schedule below it was drawn on four.
-    bits.push(d.cycle_weeks
-      ? `a delivery every <b>${d.cycle_weeks}</b> week`
-        + `${d.cycle_weeks === 1 ? "" : "s"}`
-        + (d.deliveries ? ` — <b>${d.deliveries}</b> in this plan` : "")
-      : "<b>no</b> cycle on the protocol, so the planting weeks decide");
+    // Named houses are named, each on its own rhythm. A count was all the
+    // protocol could say when it held a number instead of a table, and
+    // "three suppliers available" tells a planner nothing they can check.
+    const named = (d.named_houses || []).filter((x) => x.supplier);
+    if (named.length) {
+      bits.push(named.map((x) =>
+        `<b>${esc(x.supplier)}</b>` +
+        (x.cycle_weeks ? ` every ${x.cycle_weeks} wk` : " on no fixed rhythm") +
+        (x.lead_weeks ? `, ${x.lead_weeks} wk lead` : "") +
+        (x.min_order_qty ? `, min ${num(x.min_order_qty)}` : "")
+      ).join(" · "));
+      if (d.deliveries) bits.push(`<b>${d.deliveries}</b> deliveries in this plan`);
+    } else {
+      bits.push(d.suppliers
+        ? `<b>${d.suppliers}</b> supplier${d.suppliers === 1 ? "" : "s"} available`
+        : "<b>no</b> supplier count on the protocol");
+      // The protocol's figure is the GAP between deliveries. Read as "times a
+      // year" it turned a four-week cycle into a thirteen-week one on screen
+      // while the schedule below it was drawn on four.
+      bits.push(d.cycle_weeks
+        ? `a delivery every <b>${d.cycle_weeks}</b> week`
+          + `${d.cycle_weeks === 1 ? "" : "s"}`
+          + (d.deliveries ? ` — <b>${d.deliveries}</b> in this plan` : "")
+        : "<b>no</b> cycle on the protocol, so the planting weeks decide");
+    }
+    // An instalment a house will not break an order for. The plan was drawn
+    // on this rhythm, so this is a thing to settle, not a note.
+    for (const u of (d.below_minimum || [])) {
+      bits.push(`<b style="color:var(--warn,#b45309)">${esc(u.house)} would bring `
+        + `${num(u.per_delivery)} each time in half ${u.half}, under its `
+        + `minimum of ${num(u.minimum)}</b>`);
+    }
     bits.push(d.lifts
       ? `each consignment handed over in <b>${d.lifts}</b> lift`
         + `${d.lifts === 1 ? "" : "s"}`

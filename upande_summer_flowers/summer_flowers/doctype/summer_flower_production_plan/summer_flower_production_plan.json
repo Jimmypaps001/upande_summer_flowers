@@ -119,6 +119,7 @@
   "supply_stranded_plants",
   "supply_note",
   "supply_proposal",
+  "supply_rhythm_note",
   "supply_second_half_plants",
   "supply_rows_section",
   "plan_supply",
@@ -852,6 +853,13 @@
    "fieldname": "supply_proposal",
    "fieldtype": "Small Text",
    "label": "What The Protocol Proposes",
+   "read_only": 1
+  },
+  {
+   "description": "Which planting weeks were open to a delivery when this plan was drawn, and on whose rhythm. The programme was solved against these weeks, so no planting here is in a week nobody could have supplied.",
+   "fieldname": "supply_rhythm_note",
+   "fieldtype": "Small Text",
+   "label": "Weeks A House Could Deliver In",
    "read_only": 1
   },
   {

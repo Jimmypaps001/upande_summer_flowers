@@ -963,6 +963,47 @@ def validate(doc, method=None):
 	set_length_distribution(doc)
 	set_native_flush_schedule(doc)
 	fill_field_activities(doc)
+	check_suppliers(doc)
+
+
+def check_suppliers(doc):
+	"""The supplier table, read the way the planner will read it.
+
+	A plan is drawn on these rows now, so a row that says something impossible
+	stops being a typo on a protocol and starts being a planting week nobody
+	can supply. Two things are worth refusing: the same house twice for the
+	same farm, which would double its share of every order, and a cycle longer
+	than a year, which is not a rhythm."""
+	rows = doc.get("custom_sf_suppliers") or []
+	if not rows:
+		return
+	seen = {}
+	for r in rows:
+		if not r.get("supplier"):
+			frappe.throw(_("Row {0} of the supplier table has no supplier.")
+			             .format(r.idx), title=_("Who supplies it?"))
+		key = (r.supplier, (r.get("farm") or "").strip())
+		if key in seen:
+			frappe.throw(
+				_("{0} is listed twice{1}. One row per house: a house that comes "
+				  "on two rhythms is two arrangements, and the plan cannot tell "
+				  "which one it is buying on.").format(
+					frappe.bold(r.supplier),
+					_(" for {0}").format(r.farm) if r.get("farm") else ""),
+				title=_("The same house twice"))
+		seen[key] = r.idx
+		if cint(r.get("cycle_weeks")) < 0 or cint(r.get("cycle_weeks")) > 52:
+			frappe.throw(
+				_("{0} comes every {1} weeks, which is not a rhythm. The cycle is "
+				  "the GAP between deliveries in weeks: 4 means every four weeks. "
+				  "Leave it empty where the house keeps no rhythm.").format(
+					frappe.bold(r.supplier), cint(r.get("cycle_weeks"))),
+				title=_("Cycle out of range"))
+		if cint(r.get("lead_weeks")) < 0:
+			frappe.throw(_("{0} cannot have a negative lead time.")
+			             .format(frappe.bold(r.supplier)),
+			             title=_("Lead time"))
+
 
 # ---------------------------------------------------------------------------
 

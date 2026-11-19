@@ -818,6 +818,10 @@ class SummerFlowerProductionPlan(Document):
 				self.protocol = current
 		before = _plants_in(self)
 		_populate(self)
+		# A plan rebuilt before anybody had opened the supply card gets the
+		# protocol's houses now. One that already carries rows keeps them:
+		# a rebuild must not quietly overwrite an arrangement somebody typed.
+		seed_supply_from_protocol(self)
 		self.save()
 		self._warn_if_agreement_stale(before)
 		if was and was != self.protocol:
@@ -1947,6 +1951,10 @@ def build_from_demand(market_demand, farm=None, season_start_year=None,
 	plan.set_season()
 
 	_populate(plan)
+	# The plan arrives knowing who supplies this variety and how often each
+	# house comes, because the protocol says so. Nothing is agreed by this:
+	# no units, no confirmation, and before_submit still asks for a signature.
+	seed_supply_from_protocol(plan)
 	plan.insert()
 	# One variety, one farm, one season, one plan.
 	plan.flags.superseded = supersede_siblings(plan)
@@ -2205,6 +2213,127 @@ def supply_is_agreed(plan):
 	            or (plan.get("plan_consignments") or []))
 
 
+def supply_rhythm(plan, protocol, window_start, grid, cut_offset, plant_offset=0,
+                  week_demand=None):
+	"""The weeks a house could deliver into, as offsets the solver understands.
+
+	Returns (allowed starts, description). `None` for the starts means no
+	rhythm applies and every week is open -- a crop cut from our own standing
+	pool is paced by the pool, not by a supplier, and a protocol that names
+	nobody and states no cycle has said nothing to honour.
+
+	A cohort's "start" is the week it first CUTS, which is `cut_offset` weeks
+	after it is planted. The rhythm is about planting weeks, so each
+	deliverable week is carried forward by that offset before the solver sees
+	it.
+
+	`plant_offset` is the gap between a consignment landing and its becoming
+	a plant the field can take -- the protocol's first lift. A house that
+	hands over at seven weeks is not supplying the week it delivers in, and
+	counting it as though it were put every planting seven weeks early.
+
+	The beat is anchored on the first week the market actually asks for
+	stems, so the plan is phased to the demand rather than to the day it
+	happened to be drawn. A supplier states a gap and a lead time; it does
+	not state which week of the year its rhythm begins on, and inventing
+	that from today's date made a plan drawn on Monday plant different weeks
+	from the same plan drawn the Monday after."""
+	from upande_summer_flowers.summer_flowers import supply_cycles as sc
+
+	if not grid:
+		return None, None
+	# Bought material arrives on somebody's rhythm. Material cut from a pool we
+	# keep ourselves does not: what paces it is what the pool can give in a
+	# week, and the propagation solver already answers that.
+	if _cut_from_a_pool(protocol):
+		return None, None
+	try:
+		d = sc.supply_defaults(protocol)
+	except Exception:
+		frappe.log_error(frappe.get_traceback(), "supply rhythm")
+		return None, None
+	if not d.get("is_bought"):
+		return None, None
+	# ONLY where houses have been named. The bare "supplier cycles a year"
+	# figure reads like a stated rhythm and is not one: every summer flower
+	# protocol on this site carries 4 and 2 houses, the same pair on all 251
+	# of them, because that is what the field defaults to and nobody has ever
+	# typed one. Holding a plan to it would impose a timetable the farm never
+	# agreed, and it cost 19 of 30 plans real coverage when tried. A rhythm
+	# binds a plan when somebody has said who brings the material and how
+	# often; until then the plan is drawn as it always was, and the figure
+	# goes on doing what it always did, which is open the supply card.
+	houses = list(d.get("named_houses") or [])
+	if not houses:
+		return None, None
+	span = len(grid)
+	# Every planting week the solver could reach: from the earliest cohort it
+	# is allowed to start (one whose last cut is the window's first week) to
+	# the last week of the window.
+	earliest = window_start - datetime.timedelta(weeks=span + cint(cut_offset))
+	latest = grid[-1][2]
+	# The week the first demand has to be CUT in, carried back to the week it
+	# would have to be planted in. That is the week to put a delivery on.
+	wanted_at = next((i for i, d in enumerate(week_demand or []) if cint(d)), None)
+	anchor = (window_start + datetime.timedelta(
+		weeks=cint(wanted_at) - cint(cut_offset) - cint(plant_offset))
+		if wanted_at is not None else None)
+	landings = sc.delivery_weeks(houses, earliest, latest, anchor=anchor)
+	# What lands in week W is planted in W + the first lift.
+	weeks = {add_days(at, 7 * cint(plant_offset)): who
+	         for at, who in landings.items()}
+	starts = sorted({(getdate(at) - window_start).days // 7 + cint(cut_offset)
+	                 for at in weeks})
+	named = [h["supplier"] for h in houses if h.get("supplier")]
+	bits = []
+	for h in houses:
+		bits.append(_("{0}: every {1} weeks, {2} weeks' lead").format(
+			h.get("supplier") or _("the stated cycle"),
+			cint(h["cycle_weeks"]) or _("any week"), cint(h["lead_weeks"])))
+	first_open = min(weeks) if weeks else None
+	note = _("{0} planting week(s) are open to a delivery, from {1}. {2}").format(
+		len(weeks), first_open or _("none"), "; ".join(bits))
+	why = (_("The earliest anything ordered today becomes a plant the field can "
+	         "take is {0}: {1} week(s) of lead, then {2} week(s) from landing to "
+	         "planting.").format(
+		first_open, min(cint(h["lead_weeks"]) for h in houses),
+		cint(plant_offset))
+		if houses else "")
+	return starts, {"note": note, "why": why, "weeks": weeks, "houses": houses,
+	                "named": named}
+
+
+def seed_supply_from_protocol(plan, protocol=None):
+	"""Open the plan on the houses the protocol names, with their own cycles.
+
+	The supply card used to open on nobody, so every plan started by asking a
+	question the protocol had already answered. Seeding is not agreeing: the
+	rows carry no units and supply_confirmed stays off until somebody signs
+	for them. It only means the plan arrives knowing who it is buying from."""
+	from upande_summer_flowers.summer_flowers import supply_cycles as sc
+
+	if plan.get("plan_supply"):
+		return 0
+	v = protocol or (frappe.get_cached_doc("Crop Protocol Version", plan.protocol)
+	                 if plan.get("protocol") else None)
+	if not v:
+		return 0
+	houses = sc.protocol_suppliers(v)
+	if not houses:
+		return 0
+	lead_fallback = cint(sc.supply_defaults(v).get("lead_weeks"))
+	for h in houses:
+		plan.append("plan_supply", {
+			"supplier": h["supplier"],
+			"share_pct": flt(h["share_pct"]),
+			"lead_weeks": cint(h["lead_weeks"]) or lead_fallback,
+			# The card speaks of this as a count; it has meant the GAP in weeks
+			# since the rename, and the protocol states the gap.
+			"cycle_count": cint(h["cycle_weeks"]),
+		})
+	return len(houses)
+
+
 def _populate(plan, programme=None):
 	"""Fill plan_weeks and plan_blocks.
 
@@ -2398,6 +2527,10 @@ def _populate(plan, programme=None):
 	plan.weekly_variance_band_pct = tolerance if tolerance > 0 else 10.0
 
 	window_start = grid[0][2]
+	# Cleared before either branch: the note describes a programme that was
+	# PROPOSED against a rhythm, and a plan rebuilt on consignments the farm
+	# actually agreed has no business carrying yesterday's proposal.
+	plan.supply_rhythm_note = None
 	if programme is not None:
 		# Dated by the lifts: each wave of each consignment is its own planting,
 		# in the week it actually becomes a plant the field can take.
@@ -2416,9 +2549,64 @@ def _populate(plan, programme=None):
 	# DECIDED, and that is said by supplied_production_stems, which stays at
 	# zero until somebody has actually agreed to supply it.
 	else:
+		# Which weeks a house could actually put material in the ground, worked
+		# out BEFORE the programme rather than discovered afterwards on the
+		# supply card. A solver free to plant in any week will plant in the
+		# week that closes a gap most neatly, and then the card has to explain
+		# that nobody comes that week -- so the plan was always drawn twice,
+		# once as a wish and once as a timetable.
+		open_weeks, rhythm = supply_rhythm(plan, protocol, window_start, grid,
+		                                   anchor, stick_weeks, week_demand)
 		cohorts, _solved = plan_cohorts(rates, week_demand, week_standing,
 		                                band=band,
-		                                rounding_plants=max(1, cint(step)))
+		                                rounding_plants=max(1, cint(step)),
+		                                allowed_starts=open_weeks)
+		if rhythm:
+			plan.supply_rhythm_note = rhythm.get("note")
+			short = _solved.get("weeks_out_of_reach") or []
+			if _solved.get("no_delivery_weeks"):
+				frappe.msgprint(
+					_("No supplier named on this protocol can deliver inside this "
+					  "plan's window, so it proposes no new planting. {0}").format(
+						rhythm.get("why") or ""),
+					title=_("Nothing can be delivered in time"), indicator="orange")
+			elif short:
+				# Two different reasons, and they want saying apart. A week
+				# before the first cut anything ordered today could give is a
+				# LEAD TIME week: no rhythm would have helped it. A week after
+				# that is a week the beat itself skips -- the houses come, but
+				# the crop they bring does not cut in that week. Calling both
+				# "too early" sent the planner to renegotiate a lead time that
+				# was not the problem.
+				opened = min(open_weeks) if open_weeks else None
+				early = [i for i in short if opened is None or i < opened]
+				between = [i for i in short if opened is not None and i >= opened]
+				label = lambda ix: ["%s-W%02d" % (grid[i][0], grid[i][1])
+				                    for i in ix if i < len(grid)]
+				lines = []
+				if early:
+					lines.append(_("{0} week(s) fall before anything ordered "
+					               "today could be cut: {1}. {2}").format(
+						len(early), ", ".join(label(early)[:10])
+						+ (_(" and {0} more").format(len(early) - 10)
+						   if len(early) > 10 else ""),
+						rhythm.get("why") or ""))
+				if between:
+					lines.append(_("{0} week(s) fall between what these rhythms "
+					               "can plant, so no planting the houses allow "
+					               "cuts in them: {1}. A shorter cycle, or a "
+					               "house on a different beat, is what closes "
+					               "them.").format(
+						len(between), ", ".join(label(between)[:10])
+						+ (_(" and {0} more").format(len(between) - 10)
+						   if len(between) > 10 else "")))
+				frappe.msgprint(
+					_("This plan is drawn on the suppliers' own cycles, so it "
+					  "plants only in weeks a house can deliver into. That "
+					  "leaves {0} week(s) of demand in deficit.").format(len(short))
+					+ "<br><br>" + "<br><br>".join(lines),
+					title=_("Weeks the supply rhythm cannot reach"),
+					indicator="orange")
 	for idx, (start, wanted_plants) in enumerate(sorted(cohorts.items())):
 		if idx >= MAX_NEW_PLANTINGS:
 			break

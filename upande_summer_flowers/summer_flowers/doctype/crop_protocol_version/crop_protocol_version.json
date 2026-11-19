@@ -135,6 +135,7 @@
   "lifts",
   "supplier_cycles_per_year",
   "suppliers_available",
+  "suppliers",
   "establishment_section",
   "weeks_on_tray",
   "weeks_on_pot",
@@ -843,6 +844,14 @@
    "fieldname": "suppliers_available",
    "fieldtype": "Int",
    "label": "Suppliers available"
+  },
+  {
+   "depends_on": "eval:doc.crop_type==\"Summer Flowers\"",
+   "description": "The houses that can supply this variety, each with its own gap between deliveries and its own lead time. Copied from the protocol when this version was taken; the plan is drawn on these rhythms, so a planting week no house can reach in time is not proposed.",
+   "fieldname": "suppliers",
+   "fieldtype": "Table",
+   "label": "Suppliers and their cycles",
+   "options": "Summer Flower Protocol Supplier"
   },
   {
    "description": "Whether this variety is cut from motherstock that stands, rather than bought in for each planting. It decides which card the planning page shows, so a snapshot that does not carry it describes a different crop from the one approved.",

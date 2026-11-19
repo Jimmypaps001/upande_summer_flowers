@@ -1,0 +1,109 @@
+{
+ "actions": [],
+ "allow_bulk_edit": 1,
+ "allow_rename": 1,
+ "creation": "2026-11-19 09:00:00.000000",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "supplier",
+  "farm",
+  "cycle_weeks",
+  "lead_weeks",
+  "share_pct",
+  "cb_protocol_supplier",
+  "min_order_qty",
+  "first_delivery_week",
+  "preferred",
+  "note"
+ ],
+ "fields": [
+  {
+   "columns": 3,
+   "description": "The house that supplies this variety. A house named here is one the farm can buy from, not one it has committed to: a plan still has to agree what each one brings.",
+   "fieldname": "supplier",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "label": "Supplier",
+   "options": "Supplier",
+   "reqd": 1
+  },
+  {
+   "columns": 2,
+   "description": "Leave empty where the arrangement holds for every farm. A row naming a farm is that farm's arrangement and beats the blank one for the same house.",
+   "fieldname": "farm",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "label": "Farm",
+   "options": "Farm"
+  },
+  {
+   "columns": 2,
+   "description": "The GAP between this house's deliveries, in weeks. 4 means it comes every four weeks, which is thirteen deliveries in a year -- not four. Empty falls back to the figure above the table.",
+   "fieldname": "cycle_weeks",
+   "fieldtype": "Int",
+   "in_list_view": 1,
+   "label": "A delivery every (weeks)"
+  },
+  {
+   "columns": 2,
+   "description": "Order to delivery for this house. A planting week this house cannot reach in time is a week the plan will not propose to it.",
+   "fieldname": "lead_weeks",
+   "fieldtype": "Int",
+   "in_list_view": 1,
+   "label": "Lead (weeks)"
+  },
+  {
+   "columns": 1,
+   "description": "How much of the order this house is promised. Leave the column empty to split it evenly.",
+   "fieldname": "share_pct",
+   "fieldtype": "Percent",
+   "in_list_view": 1,
+   "label": "Share %"
+  },
+  {
+   "fieldname": "cb_protocol_supplier",
+   "fieldtype": "Column Break"
+  },
+  {
+   "description": "The smallest order this house accepts, in plants. Zero means it has none on file.",
+   "fieldname": "min_order_qty",
+   "fieldtype": "Int",
+   "label": "Minimum order (plants)"
+  },
+  {
+   "description": "The week this house's rhythm starts from, as 2027-W26. Where it is empty the rhythm is counted from the first week the plan could plant, once this house's lead is allowed for.",
+   "fieldname": "first_delivery_week",
+   "fieldtype": "Data",
+   "label": "First delivery week"
+  },
+  {
+   "default": "0",
+   "description": "Preferred houses are offered first where the plan has to choose.",
+   "fieldname": "preferred",
+   "fieldtype": "Check",
+   "label": "Preferred"
+  },
+  {
+   "fieldname": "note",
+   "fieldtype": "Small Text",
+   "label": "Note"
+  }
+ ],
+ "grid_page_length": 50,
+ "index_web_pages_for_search": 1,
+ "istable": 1,
+ "links": [],
+ "modified": "2026-11-19 09:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Summer Flowers",
+ "name": "Summer Flower Protocol Supplier",
+ "owner": "Administrator",
+ "permissions": [],
+ "row_format": "Dynamic",
+ "rows_threshold_for_grid_search": 20,
+ "sort_field": "creation",
+ "sort_order": "DESC",
+ "states": []
+}

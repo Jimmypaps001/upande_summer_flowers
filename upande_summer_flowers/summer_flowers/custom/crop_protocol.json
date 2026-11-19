@@ -4957,6 +4957,20 @@
    "insert_after": "custom_sf_min_planting_area_sqm",
    "label": "Minimum Order Quantity",
    "module": "Summer Flowers"
+  },
+  {
+   "depends_on": "eval:doc.crop_type==\"Summer Flowers\" && (doc.custom_sf_material_route||[]).some(function(r){return r.is_purchase;})",
+   "description": "Who can supply this variety, and how often each one comes. A row per house: its own gap between deliveries, its own lead time, its share of the order. The two figures above are what the farm says when it has not named anybody; a house named here beats them, and the plan is drawn on these rhythms rather than having one imposed on it afterwards.",
+   "doctype": "Custom Field",
+   "dt": "Crop Protocol",
+   "fieldname": "custom_sf_suppliers",
+   "fieldtype": "Table",
+   "insert_after": "custom_sf_suppliers_available",
+   "label": "Suppliers and their cycles",
+   "modified": "2026-11-19 09:00:00",
+   "module": "Summer Flowers",
+   "name": "Crop Protocol-custom_sf_suppliers",
+   "options": "Summer Flower Protocol Supplier"
   }
  ],
  "custom_perms": [
