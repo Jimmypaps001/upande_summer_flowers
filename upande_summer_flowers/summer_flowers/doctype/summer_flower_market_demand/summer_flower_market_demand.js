@@ -154,6 +154,11 @@ function confirm_plan(frm, values, s) {
 	const num = (v) => (Number(v) || 0).toLocaleString("en-US");
 	const ha = (v) => (Number(v) || 0).toFixed(2);
 	const esc = (v) => frappe.utils.escape_html(String(v == null ? "" : v));
+	// Compounding four losses gives four decimals nobody wants to read.
+	const numPct = (v) => {
+		const n = Number(v) || 0;
+		return Math.abs(n - Math.round(n)) < 0.005 ? String(Math.round(n)) : n.toFixed(2);
+	};
 	const g = s.ground || {}, b = s.bench, r = s.route, L = s.losses;
 	const sp = s.space || {};
 
@@ -189,22 +194,59 @@ function confirm_plan(frm, values, s) {
 	// One line each, because each is one idea. The route IS the plan: what is
 	// bought, what it passes through, what it loses on the way.
 	const facts = [];
-	if (r) {
-		const road = (r.stages || []).map((x) =>
-			`<b>${esc(x.stage)}</b>${x.weeks ? ` ${x.weeks}w` : ""}${
-				x.loss_pct ? ` <span class="pv-bad">−${x.loss_pct}%</span>` : ""}`)
-			.join(" <span class='pv-dim'>→</span> ");
-		const lifts = (r.lifts || []).length > 1
-			? ` · ${__("handed over in")} ${r.lifts.length} ${__("lifts")}: ` +
-			  r.lifts.map((x) => `${x.share_pct}% ${__("at")} ${x.weeks_after}w`).join(" · ")
-			: "";
-		facts.push([__("The route"), road + lifts]);
+	// One line per ROUTE, not one line for the crop. A variety bought as
+	// tissue culture and as roots travels two roads with two sets of losses
+	// and two lift profiles, and running them together described neither.
+	const road = (stages) => (stages || []).map((x) =>
+		`<b>${esc(x.stage)}</b>${x.weeks ? ` ${x.weeks}w` : ""}${
+			x.loss_pct ? ` <span class="pv-bad">−${x.loss_pct}%</span>` : ""}`)
+		.join(" <span class='pv-dim'>→</span> ");
+	const liftText = (lifts) => ((lifts || []).length > 1
+		? ` · ${__("handed over in")} ${lifts.length} ${__("lifts")}: ` +
+		  lifts.map((x) => `${x.share_pct}% ${__("at")} ${x.weeks_after}w`).join(" · ")
+		: "");
+	const routes = (r && r.routes) || [];
+	if (routes.length > 1) {
+		routes.forEach((x) => {
+			facts.push([__("Route {0}", [x.no]),
+				`<span class="pv-dim">${numPct(x.share_pct)}% ${__("of the order")}${
+					x.bought && x.lead_weeks ? ` · ${x.lead_weeks}w ${__("lead")}` : ""
+				}</span><br>${road(x.stages)}${liftText(x.lifts)}`]);
+		});
+	} else if (r) {
+		facts.push([__("The route"), road(r.stages) + liftText(r.lifts)]);
 	}
-	if (L) {
-		facts.push([__("Losses"),
-			`${__("Rooting")} ${L.rooting_pct}% × ${__("establishment")} ${
+	if (L && (L.routes || []).length > 1) {
+		// Each road's own ladder. The blend underneath is only there because
+		// somebody always wants one number, and it says what it is a blend of.
+		L.routes.forEach((x) => {
+			const chain = (x.losses || []).map((y) =>
+				`${esc(y.at)} <span class="pv-bad">−${numPct(y.loss_pct)}%</span>`)
+				.join(" · ") || __("nothing stated");
+			facts.push([__("Losses, route {0}", [x.no]),
+				`${chain} = <b>${numPct(x.survival_pct)}%</b> ${
+					__("of what is bought stands up")}`]);
+		});
+		if (L.blended_survival_pct != null) {
+			facts.push([__("Losses, blended"),
+				`<b>${numPct(L.blended_survival_pct)}%</b> ${
+					__("across both roads, weighted by the share each carries")}` +
+				(L.grading_pct ? ` · ${L.grading_pct}% ${
+					__("of cut stems fail grading")}` : "") +
+				(L.routes_differ ? "" : ` <span class="pv-dim">(${
+					__("both roads are set to lose the same, which usually means only one has been measured")
+				})</span>`)]);
+		}
+	} else if (L) {
+		const one = (L.routes || [])[0];
+		const chain = one && (one.losses || []).length
+			? (one.losses.map((y) =>
+				`${esc(y.at)} <span class="pv-bad">−${numPct(y.loss_pct)}%</span>`).join(" · ") +
+			   ` = <b>${numPct(one.survival_pct)}%</b> ${__("of what is bought stands up")}`)
+			: `${__("Rooting")} ${L.rooting_pct}% × ${__("establishment")} ${
 				L.establishment_pct}% = <b>${L.survival_pct}%</b> ${
-				__("of what is bought stands up")}` +
+				__("of what is bought stands up")}`;
+		facts.push([__("Losses"), chain +
 			(L.per_plant ? ` <span class="pv-dim">(${L.per_plant} ${
 				__("bought a standing plant")})</span>` : "") +
 			(L.grading_pct ? ` · ${L.grading_pct}% ${__("of cut stems fail grading")}` : "")]);

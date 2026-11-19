@@ -12,11 +12,15 @@
   "share_pct",
   "lead_weeks",
   "plants_per_unit",
-  "rate"
+  "rate",
+  "losses_break",
+  "order_loss_pct",
+  "rooting_success_pct",
+  "field_establishment_pct"
  ],
  "fields": [
   {
-   "columns": 3,
+   "columns": 2,
    "fieldname": "route",
    "fieldtype": "Link",
    "in_list_view": 1,
@@ -25,12 +29,12 @@
    "reqd": 1
   },
   {
+   "fetch_from": "route.bought",
    "fieldname": "bought",
    "fieldtype": "Check",
-   "label": "Bought In",
-   "read_only": 1,
    "hidden": 1,
-   "fetch_from": "route.bought"
+   "label": "Bought In",
+   "read_only": 1
   },
   {
    "columns": 1,
@@ -40,7 +44,7 @@
    "label": "Share %"
   },
   {
-   "columns": 2,
+   "columns": 1,
    "fieldname": "lead_weeks",
    "fieldtype": "Int",
    "in_list_view": 1,
@@ -48,7 +52,7 @@
    "read_only_depends_on": "eval:!doc.bought"
   },
   {
-   "columns": 2,
+   "columns": 1,
    "default": "1",
    "fieldname": "plants_per_unit",
    "fieldtype": "Float",
@@ -59,18 +63,48 @@
    "columns": 2,
    "fieldname": "rate",
    "fieldtype": "Currency",
+   "hidden": 1,
    "in_list_view": 0,
    "label": "Cost per unit (item valuation)",
-   "read_only_depends_on": "eval:!doc.bought",
    "read_only": 1,
-   "hidden": 1
+   "read_only_depends_on": "eval:!doc.bought"
+  },
+  {
+   "fieldname": "losses_break",
+   "fieldtype": "Section Break",
+   "label": "What this route loses"
+  },
+  {
+   "columns": 1,
+   "depends_on": "eval:doc.bought",
+   "description": "Blank takes the protocol's own allowance.",
+   "fieldname": "order_loss_pct",
+   "fieldtype": "Percent",
+   "in_list_view": 1,
+   "label": "Allowed on the order %"
+  },
+  {
+   "columns": 2,
+   "description": "Blank takes the protocol's own figure. 100 means this route loses nothing raising its material.",
+   "fieldname": "rooting_success_pct",
+   "fieldtype": "Percent",
+   "in_list_view": 1,
+   "label": "Root in propagation %"
+  },
+  {
+   "columns": 2,
+   "description": "Blank takes the protocol's own figure. A crown that goes straight in the ground does not establish like a plantlet.",
+   "fieldname": "field_establishment_pct",
+   "fieldtype": "Percent",
+   "in_list_view": 1,
+   "label": "Establish once planted %"
   }
  ],
  "grid_page_length": 50,
  "index_web_pages_for_search": 1,
  "istable": 1,
  "links": [],
- "modified": "2026-10-30 09:00:00.000000",
+ "modified": "2026-11-19 09:00:00.000000",
  "modified_by": "Administrator",
  "module": "Summer Flowers",
  "name": "Crop Protocol Way",

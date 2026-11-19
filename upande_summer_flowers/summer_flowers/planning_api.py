@@ -2065,10 +2065,28 @@ def _route_chains_payload(version):
 				              "trough_weeks": cint(row.get("trough_weeks")),
 				              "rooting_weeks": cint(row.get("rooting_weeks")),
 				              "share_pct": round(share * 100, 1)})
+		# What this ROUTE loses, which is not what the protocol loses. Losses
+		# compound down a chain and they differ between chains: a crown that
+		# goes straight in the ground does not establish like a plantlet, and
+		# one survival figure over both roads could only ever be right about
+		# one of them.
+		survival, steps_lost = 1.0, []
+		for x in stages:
+			if flt(x["loss_pct"]):
+				steps_lost.append({"at": x["stage"], "loss_pct": round(flt(x["loss_pct"]), 4)})
+				survival *= 1.0 - flt(x["loss_pct"]) / 100.0
+			for y in x["steps"]:
+				if flt(y["loss_pct"]):
+					steps_lost.append({"at": y["step"] or x["stage"],
+					                   "loss_pct": round(flt(y["loss_pct"]), 4)})
+					survival *= 1.0 - flt(y["loss_pct"]) / 100.0
 		out.append({
 			"entry": entry["stage"],
 			"form": form,
 			"lifts": lifts,
+			"losses": steps_lost,
+			"survival_pct": round(survival * 100.0, 2),
+			"loss_pct": round((1.0 - survival) * 100.0, 2),
 			"label": " → ".join(x["stage"] for x in stages if x["stage"]),
 			"is_purchase": entry["is_purchase"],
 			"lead_weeks": entry["lead_weeks"],

@@ -217,7 +217,15 @@ class CropProtocolVersion(Document):
 	def set_from_route(self):
 		"""Take the per-stage figures off the route, where the route states them."""
 		blocks = self.route_blocks()
-		steps = {s.step: s for _stage, rows in blocks for s in rows if s.step}
+		# First wins, not last: these are the protocol's own headline figures
+		# and they describe the PRIMARY way in. With a second route carrying
+		# its own losses, letting it write last meant the headline silently
+		# became the minor road's.
+		steps = {}
+		for _stage, rows in blocks:
+			for sr in rows:
+				if sr.step:
+					steps.setdefault(sr.step, sr)
 		if not steps:
 			return
 

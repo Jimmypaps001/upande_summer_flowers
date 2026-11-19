@@ -535,6 +535,30 @@ def _native_blocks(rows):
 	return blocks
 
 
+WAYS_FIELD = "custom_sf_ways"
+
+
+def _losses_per_chain(doc, chains, native=False):
+	"""{id(stage row): the way's own loss figures}, where the ways line up.
+
+	The ways table and the chains are built from each other and stay in step
+	-- sync_route_from_ways writes one chain per way, in order. Where they do
+	not line up (a protocol mid-edit, a version snapshotted before the ways
+	existed) nothing is claimed and every chain falls back to the protocol."""
+	ways = list(doc.get("ways" if native else WAYS_FIELD) or [])
+	if not ways or len(ways) != len(chains):
+		return {}
+	keys = ("order_loss_pct", "rooting_success_pct", "field_establishment_pct")
+	out = {}
+	for way, chain in zip(ways, chains):
+		mine = {k: flt(way.get(k)) for k in keys}
+		if not any(mine.values()):
+			continue
+		for stage, _steps in chain:
+			out[id(stage)] = mine
+	return out
+
+
 def set_route_quantities(doc, native=False):
 	"""Write the protocol's own arithmetic onto the route's quantity columns."""
 	# A Crop Protocol holds these under custom_sf_*; the Version that snapshots it
@@ -562,10 +586,30 @@ def set_route_quantities(doc, native=False):
 			bought_in_chain.add(id(entry))
 
 	# With one way in, every stage figure comes off the protocol's own fields and
-	multi = len(_chains_of(blocks)) > 1 or bool(not native and doc.flags.sf_typed_weeks)
+	chains = _chains_of(blocks)
+	multi = len(chains) > 1 or bool(not native and doc.flags.sf_typed_weeks)
+
+	# What each ROUTE loses, where the route says. A loss belongs to the road
+	# the material travels, not to the variety: a crown that goes straight in
+	# the ground does not establish like a plantlet off a tray, and tissue
+	# culture does not root like a cutting. Until now one pair of percentages
+	# was copied onto every chain, so an Eryngium bought two ways was planned
+	# as though both ways lost exactly 9.75% -- not because anybody had
+	# measured that twice, but because there was only one place to type it.
+	# A blank on the route still takes the protocol's figure, so nothing that
+	# has not been given its own answer changes.
+	own = _losses_per_chain(doc, chains, native=native)
 
 	for stage, steps in blocks:
 		name = stage.stage
+		mine = own.get(id(stage)) or {}
+		# Survival percentages: 0 is "this route has not been asked", 100 is
+		# "this route loses nothing here". The protocol's own fields read the
+		# same way, which is why these carry the same names.
+		rooting_here = (flt(mine.get("rooting_success_pct")) / 100.0
+		                if flt(mine.get("rooting_success_pct")) else rooting)
+		establish_here = (flt(mine.get("field_establishment_pct")) / 100.0
+		                  if flt(mine.get("field_establishment_pct")) else establishment)
 		standing = 1 if name in STANDING_STAGES else 0
 		stage.is_purchase = 1 if id(stage) in bought_in_chain else 0
 		typed_weeks = cint(stage.get("weeks")) if multi else 0
@@ -596,7 +640,7 @@ def set_route_quantities(doc, native=False):
 		if name == ROUTE_END:
 			# Planting out. The end of the road multiplies nothing, but it is not
 			stage.yields_per_unit = 1
-			stage.loss_pct = round((1 - establishment) * 100, 4)
+			stage.loss_pct = round((1 - establish_here) * 100, 4)
 			continue
 		if standing:
 			# One plantlet becomes `factor` mother plants over its cycles, and each
@@ -606,11 +650,12 @@ def set_route_quantities(doc, native=False):
 		elif cint(stage.is_purchase):
 			# The allowance on the order itself: order the requirement exactly and
 			stage.yields_per_unit = 1
-			stage.loss_pct = _n(doc, "tc_order_loss_pct", native=native)
+			stage.loss_pct = (flt(mine.get("order_loss_pct"))
+			                  or _n(doc, "tc_order_loss_pct", native=native))
 		elif name in ROOTING_LOSSES:
 			# Raising bought or cut material to something plantable. What is lost
 			stage.yields_per_unit = 1
-			stage.loss_pct = round((1 - rooting) * 100, 4)
+			stage.loss_pct = round((1 - rooting_here) * 100, 4)
 		else:
 			stage.yields_per_unit = 1
 		for step in steps:

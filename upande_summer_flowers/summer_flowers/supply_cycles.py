@@ -197,7 +197,15 @@ def delivery_weeks(houses, earliest, until, order_from=None, anchor=None):
 	made the phase an accident of the day the plan was drawn. The beat is
 	counted out from the anchor instead, forward in whole cycles until it
 	clears the lead time, so the same plan drawn next week keeps the same
-	weeks. A house with a first delivery week on file overrules all of it."""
+	weeks. A house with a first delivery week on file overrules all of it.
+
+	The lead time bars the weeks still to be ORDERED FOR, not the whole span.
+	A plan whose season opened last winter is not ordering for last winter;
+	whatever came then came. Barring those weeks too emptied every plan drawn
+	over a season already under way -- eleven of them here -- and said the
+	reason was a notice period nobody could have given retrospectively. So
+	the beat runs across the whole window and the lead takes out one stretch:
+	from the day the order would be placed to the day it could arrive."""
 	first = _monday(earliest)
 	last = _monday(until)
 	if not first or not last or last < first:
@@ -206,35 +214,122 @@ def delivery_weeks(houses, earliest, until, order_from=None, anchor=None):
 	at_anchor = _monday(anchor) if anchor else None
 	out = {}
 	for h in houses or []:
-		# Nothing can land before the house has had its lead time, counted
-		# from the day an order could be placed. A plan that plants in week
-		# three on twelve weeks' lead is a plan nobody can supply.
-		ready = max(first, add_days(order_day, 7 * max(0, cint(h["lead_weeks"]))))
+		# Nothing ordered now can land before the house has had its lead time.
+		# A plan that plants in week three on twelve weeks' lead is a plan
+		# nobody can supply -- but only if week three is still ahead of us.
+		lead = max(0, cint(h["lead_weeks"]))
+		ready = add_days(order_day, 7 * lead)
+		barred = (lambda at: order_day <= at < ready) if lead else (lambda at: False)
 		stated = _week_monday(h.get("first_week")) if h.get("first_week") else None
 		step = cint(h["cycle_weeks"])
+		# Where a house sits inside the cycle. Two houses on the same four-week
+		# rhythm are not one house that comes twice as often unless they are
+		# staggered, and houses all put on the same beat was why a protocol
+		# saying "two houses, every four weeks" planned exactly like one.
+		phase = cint(h.get("phase_weeks")) % step if step else 0
 		if stated:
-			start = max(ready, _monday(stated))
+			start = max(first, _monday(stated))
 		elif at_anchor and step:
-			# Whole cycles from the anchor to the first week the house could
-			# actually reach, so the anchor week itself stays on the beat.
-			behind = (ready - at_anchor).days
-			hops = -(-behind // (7 * step)) if behind > 0 else 0
-			start = add_days(at_anchor, 7 * step * hops)
+			# Whole cycles from the anchor to the first week of the window, so
+			# the anchor week itself stays on the beat. The count runs
+			# BACKWARDS as readily as forwards: the rhythm did not begin on
+			# the week we happened to ask about it.
+			base = add_days(at_anchor, 7 * phase)
+			behind = (first - base).days
+			hops = -(-behind // (7 * step))
+			start = add_days(base, 7 * step * hops)
 		else:
-			start = ready
+			start = add_days(first, 7 * phase)
 		if start > last:
 			continue
-		if not step:
-			at = start
-			while at <= last:
-				out.setdefault(at, []).append(h["supplier"])
-				at = add_days(at, 7)
-			continue
 		at = start
+		gap = 7 * (step or 1)
 		while at <= last:
-			out.setdefault(at, []).append(h["supplier"])
-			at = add_days(at, 7 * step)
+			if not barred(at):
+				out.setdefault(at, []).append(h["supplier"])
+			at = add_days(at, gap)
 	return dict(sorted(out.items()))
+
+
+def default_houses(defaults, phases=None):
+	"""The houses a protocol implies but does not name, from its two numbers.
+
+	A protocol that says "two houses, every four weeks" has said something
+	real about how this material arrives, and a plan drawn deaf to it is a
+	plan drawn on a rhythm nobody has. It is an ASSUMPTION and says so --
+	nobody has typed these houses -- but it is the farm's own assumption and
+	it is the right place for a first plan to start.
+
+	The houses are spread evenly round the cycle, because that is what having
+	more than one of them buys: two houses on a four-week rhythm, staggered,
+	put material down every second week. Stacking them on the same beat makes
+	a second house worth nothing, which is how the figure came to look useless.
+
+	More houses than there are weeks in the cycle cannot beat weekly, so the
+	count is capped there rather than inventing two deliveries in one week.
+
+	`phases` overrides where in the cycle each house sits. An even spread is
+	the obvious arrangement and usually the right one, but it is not always
+	the one that covers the most weeks -- see stagger_patterns()."""
+	cycle = max(0, min(52, cint(defaults.get("cycle_weeks"))))
+	if not cycle:
+		# No rhythm stated is not a rhythm of one: it is silence, and silence
+		# constrains nothing.
+		return []
+	count = max(1, min(cint(defaults.get("suppliers")) or 1, cycle))
+	lead = cint(defaults.get("lead_weeks"))
+	step = cycle / float(count)
+	if phases is None:
+		phases = [int(round(i * step)) for i in range(count)]
+	return [{
+		"supplier": _("House {0}").format(i + 1),
+		"farm": None,
+		"cycle_weeks": cycle,
+		"lead_weeks": lead,
+		"share_pct": round(100.0 / count, 4),
+		"min_order_qty": 0,
+		"first_week": None,
+		"preferred": 0,
+		"idx": i + 1,
+		"phase_weeks": cint(phases[i]) if i < len(phases) else int(round(i * step)),
+		# Nobody typed this house. Everything that reports on it has to say so.
+		"assumed": True,
+	} for i in range(count)]
+
+
+def stagger_patterns(cycle, count):
+	"""Ways to arrange `count` houses round a `cycle`-week rhythm, best first.
+
+	An even spread is the arrangement anyone would describe: two houses on a
+	four-week cycle, a fortnight apart. It is also, for some crops, the worst
+	one available -- and for a reason nothing about the supply makes obvious.
+
+	A crop whose flushes are an even number of weeks apart, planted only in
+	even weeks, can only ever cut in even weeks. SFR-TCPLANTS flushes at 12
+	and 14 weeks after planting; two houses a fortnight apart leave 26 of its
+	52 weeks short, every odd week of the year, and no amount of ordering
+	more plants fixes it. The same two houses a WEEK apart -- 0, 1, 4, 5, 8,
+	9 -- leave none short at all, because that set of weeks reaches both
+	halves of the year.
+
+	So the arrangements are offered as candidates and the caller picks the
+	one that covers the most demand. Even spread leads, and wins every tie,
+	because where it costs nothing it is the one to ask a supplier for."""
+	cycle = max(1, cint(cycle))
+	count = max(1, min(cint(count), cycle))
+	step = cycle / float(count)
+	even = [int(round(i * step)) for i in range(count)]
+	out = []
+	for p in (even,
+	          # Consecutive weeks: the houses come back to back and then the
+	          # cycle waits. Lumpy, and it is the one that breaks a parity.
+	          list(range(count)),
+	          # Even, but every other house nudged a week off the beat.
+	          [(v + (i % 2)) % cycle for i, v in enumerate(even)]):
+		p = sorted({v % cycle for v in p})
+		if len(p) == count and p not in out:
+			out.append(p)
+	return out
 
 
 def supply_defaults(version):

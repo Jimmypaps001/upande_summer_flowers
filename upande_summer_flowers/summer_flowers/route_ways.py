@@ -97,6 +97,20 @@ def check_ways(doc):
 		seen.add(w.route)
 		if w.route not in ROUTES:
 			frappe.throw(_("{0} is not a Material Route.").format(w.route))
+		# A route's own losses. They are percentages and the plan is grossed
+		# up by them, so a figure outside 0-100 is not a typo to live with:
+		# 120% establishment would shrink an order below what the field needs.
+		for field, label in (("order_loss_pct", _("allowed on the order")),
+		                     ("rooting_success_pct", _("root in propagation")),
+		                     ("field_establishment_pct", _("establish once planted"))):
+			val = flt(w.get(field))
+			if val < 0 or val > 100:
+				frappe.throw(
+					_("{0} on {1} is {2}%. It is a percentage of what travels this "
+					  "road, so it lies between 0 and 100 -- and blank means the "
+					  "protocol's own figure.").format(
+						label.capitalize(), frappe.bold(w.route), round(val, 2)),
+					title=_("That is not a percentage"))
 	if len(ways) == 1:
 		# One way in carries the whole order, whatever was typed.
 		ways[0].share_pct = 100

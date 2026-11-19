@@ -1404,7 +1404,12 @@ def _bench_at(farm, plants_needed, chosen=None, exclude_plan=None):
 
 
 def _route_of(v):
-	"""The road the crop takes, as the protocol draws it."""
+	"""The road the crop takes, as the protocol draws it -- one entry per way in.
+
+	`stages` is kept flat for everything that still reads it as one road.
+	`routes` is the truth: a variety bought as tissue culture AND as roots
+	travels two roads, and a column of stages that runs them together
+	describes neither."""
 	stages = []
 	for r in (v.get("material_route") or []):
 		if (r.get("row_type") or "Stage") != "Stage":
@@ -1413,17 +1418,78 @@ def _route_of(v):
 		               "loss_pct": flt(r.loss_pct),
 		               "bought": 1 if cint(r.is_purchase) else 0})
 	return {"summary": v.get("route_summary") or " -> ".join(
-		x["stage"] for x in stages), "stages": stages}
+		x["stage"] for x in stages), "stages": stages,
+		"routes": _routes_of(v)}
+
+
+def _routes_of(v):
+	"""Each way in as its own road, with its own losses and its own lifts."""
+	from upande_summer_flowers.summer_flowers import crop_protocol as cp
+
+	try:
+		chains = cp.route_chains(v) or []
+	except Exception:
+		frappe.clear_last_message()
+		return []
+	out = []
+	for n, chain in enumerate(chains, 1):
+		entry = chain[0][0]
+		rows, survival, lost = [], 1.0, []
+		for stage, steps in chain:
+			rows.append({"stage": stage.stage, "weeks": cint(stage.weeks),
+			             "loss_pct": flt(stage.loss_pct),
+			             "bought": 1 if cint(stage.is_purchase) else 0})
+			for where, loss in ([(stage.stage, flt(stage.loss_pct))]
+			                    + [(x.step or stage.stage, flt(x.loss_pct))
+			                       for x in steps]):
+				if loss:
+					lost.append({"at": where, "loss_pct": round(loss, 4)})
+					survival *= 1.0 - loss / 100.0
+		out.append({
+			"no": n,
+			"entry": entry.stage,
+			"label": " → ".join(x["stage"] for x in rows if x["stage"]),
+			"share_pct": flt(entry.share_pct) or (100.0 if len(chains) == 1 else 0.0),
+			"bought": 1 if cint(entry.is_purchase) else 0,
+			"lead_weeks": cint(entry.lead_weeks),
+			"stages": rows,
+			"losses": lost,
+			"survival_pct": round(survival * 100.0, 2),
+			"loss_pct": round((1.0 - survival) * 100.0, 2),
+			"lifts": _lift_profile(v, entry.stage),
+		})
+	return out
 
 
 def _losses_of(v):
-	"""Every loss the plan is grossed up for, in one line."""
+	"""Every loss the plan is grossed up for -- for the crop, and per route.
+
+	The three headline percentages describe the PRIMARY way in and are kept
+	because a great deal still reads them. `routes` is what the farm actually
+	has: each road's own ladder, compounded down its own chain. Where one
+	road is tissue culture and the other is bare roots, there is no single
+	honest answer to "what does this variety lose", and printing one was how
+	a 9.75% figure came to stand over both."""
 	root = flt(v.rooting_success_pct) or 100.0
 	field = flt(v.field_establishment_pct) or 100.0
 	grade = flt(v.cutting_reject_pct)
+	routes = _routes_of(v)
+	# One figure over the lot, where somebody insists on one: each road's own
+	# survival, weighted by the share of the order it carries.
+	share = sum(flt(r["share_pct"]) for r in routes)
+	blended = (round(sum(flt(r["share_pct"]) * flt(r["survival_pct"])
+	                     for r in routes) / share, 2) if share else None)
 	return {"rooting_pct": root, "establishment_pct": field, "grading_pct": grade,
 	        "survival_pct": round(root * field / 100.0, 1),
-	        "per_plant": flt(v.cuttings_per_plant_required)}
+	        "per_plant": flt(v.cuttings_per_plant_required),
+	        "routes": [{"no": r["no"], "entry": r["entry"], "label": r["label"],
+	                    "share_pct": r["share_pct"], "losses": r["losses"],
+	                    "survival_pct": r["survival_pct"],
+	                    "loss_pct": r["loss_pct"]} for r in routes],
+	        "blended_survival_pct": blended,
+	        # Worth saying out loud: two roads that lose the same amount are
+	        # usually two roads nobody has measured separately yet.
+	        "routes_differ": len({r["survival_pct"] for r in routes}) > 1}
 
 
 def _cut_from_a_pool(v):
@@ -1455,6 +1521,34 @@ def _lift_profile(v, stage):
 	except Exception:
 		frappe.clear_last_message()
 		return []
+
+
+def _plantable_offsets(v):
+	"""Weeks from a consignment landing to a plant the field can take.
+
+	One figure per LIFT, across every route the material is bought on. A
+	consignment handed over in three waves gives three planting weeks, not
+	one, and reading only the first lift threw away two thirds of the weeks
+	a house could actually serve. An Eryngium bought as tissue culture and
+	as roots lifts at 7 and 8 weeks down one road and 16, 18 and 20 down the
+	other: five planting weeks per landing, and the plan should know it."""
+	from upande_summer_flowers.summer_flowers import crop_protocol as cp
+
+	out = set()
+	try:
+		chains = cp.route_chains(v) or []
+	except Exception:
+		frappe.clear_last_message()
+		chains = []
+	for chain in chains:
+		entry = next((st.stage for st, _steps in chain
+		              if cint(st.get("is_purchase"))), None)
+		if not entry:
+			continue
+		for L in _lift_profile(v, entry):
+			if flt(L.get("share_pct")):
+				out.add(max(0, cint(L.get("weeks_after"))))
+	return sorted(out)
 
 
 def _weeks_to_a_plant(v):
@@ -2214,7 +2308,7 @@ def supply_is_agreed(plan):
 
 
 def supply_rhythm(plan, protocol, window_start, grid, cut_offset, plant_offset=0,
-                  week_demand=None):
+                  week_demand=None, lift_offsets=None, rates=None):
 	"""The weeks a house could deliver into, as offsets the solver understands.
 
 	Returns (allowed starts, description). `None` for the starts means no
@@ -2254,16 +2348,19 @@ def supply_rhythm(plan, protocol, window_start, grid, cut_offset, plant_offset=0
 		return None, None
 	if not d.get("is_bought"):
 		return None, None
-	# ONLY where houses have been named. The bare "supplier cycles a year"
-	# figure reads like a stated rhythm and is not one: every summer flower
-	# protocol on this site carries 4 and 2 houses, the same pair on all 251
-	# of them, because that is what the field defaults to and nobody has ever
-	# typed one. Holding a plan to it would impose a timetable the farm never
-	# agreed, and it cost 19 of 30 plans real coverage when tried. A rhythm
-	# binds a plan when somebody has said who brings the material and how
-	# often; until then the plan is drawn as it always was, and the figure
-	# goes on doing what it always did, which is open the supply card.
+	# Named houses are the arrangement. Where there are none, the two figures
+	# the protocol does carry -- how many houses, how often each comes -- are
+	# the farm's own assumption about how this material arrives, and a first
+	# plan is better drawn on it than on nothing. They only bind once they are
+	# read properly: N houses on a C-week cycle, STAGGERED, put material down
+	# every C/N weeks, and each landing plants in as many weeks as there are
+	# lifts. Read that way the default is not a cage, it is a timetable.
 	houses = list(d.get("named_houses") or [])
+	assumed = not houses
+	if assumed:
+		houses = sc.default_houses(d)
+	# Nothing named and no cycle stated is silence, and silence constrains
+	# nothing: every week stays open, exactly as before any of this.
 	if not houses:
 		return None, None
 	span = len(grid)
@@ -2272,35 +2369,91 @@ def supply_rhythm(plan, protocol, window_start, grid, cut_offset, plant_offset=0
 	# the last week of the window.
 	earliest = window_start - datetime.timedelta(weeks=span + cint(cut_offset))
 	latest = grid[-1][2]
+	# Every wave a consignment is handed over in. A landing becomes a plant at
+	# each of them, so one delivery opens as many planting weeks as the
+	# protocol states lifts -- which is the other half of what the farm has
+	# already told us about how this material arrives.
+	offsets = sorted({max(0, cint(x)) for x in (lift_offsets or [])}) \
+		or [max(0, cint(plant_offset))]
 	# The week the first demand has to be CUT in, carried back to the week it
-	# would have to be planted in. That is the week to put a delivery on.
+	# would have to be LAND in. The first lift is what dates the landing: it is
+	# the soonest a consignment can be a plant.
 	wanted_at = next((i for i, d in enumerate(week_demand or []) if cint(d)), None)
 	anchor = (window_start + datetime.timedelta(
-		weeks=cint(wanted_at) - cint(cut_offset) - cint(plant_offset))
+		weeks=cint(wanted_at) - cint(cut_offset) - offsets[0])
 		if wanted_at is not None else None)
-	landings = sc.delivery_weeks(houses, earliest, latest, anchor=anchor)
-	# What lands in week W is planted in W + the first lift.
-	weeks = {add_days(at, 7 * cint(plant_offset)): who
-	         for at, who in landings.items()}
-	starts = sorted({(getdate(at) - window_start).days // 7 + cint(cut_offset)
-	                 for at in weeks})
-	named = [h["supplier"] for h in houses if h.get("supplier")]
+	def plantable(hs):
+		"""Planting weeks these houses open, and the cohort starts they are."""
+		landings = sc.delivery_weeks(hs, earliest, latest, anchor=anchor)
+		# What lands in week W is planted in W + each lift.
+		at_weeks = {}
+		for at, who in landings.items():
+			for off in offsets:
+				at_weeks.setdefault(add_days(at, 7 * off), set()).update(who)
+		at_weeks = {k: sorted(v) for k, v in sorted(at_weeks.items())}
+		return at_weeks, sorted(
+			{(getdate(at) - window_start).days // 7 + cint(cut_offset)
+			 for at in at_weeks})
+
+	def reaches(starts):
+		"""How many weeks of demand any cohort starting in these weeks can cut.
+
+		Not how many weeks are open -- how many weeks of DEMAND they serve.
+		Two arrangements can open the same number of weeks and one of them
+		reach every week the market asks for while the other reaches half."""
+		if not rates or not week_demand:
+			return 0
+		life = len(rates)
+		hit = 0
+		for w, want in enumerate(week_demand):
+			if not cint(want):
+				continue
+			if any(0 <= w - st < life and flt(rates[w - st]) > 0 for st in starts):
+				hit += 1
+		return hit
+
+	if assumed:
+		# The arrangement is ours to propose, so propose the one that covers
+		# the most of the demand. An even spread leads and wins ties: where it
+		# costs nothing it is the one to ask a supplier for.
+		best = None
+		for ph in sc.stagger_patterns(d.get("cycle_weeks"), d.get("suppliers")):
+			hs = sc.default_houses(d, phases=ph)
+			wks, sts = plantable(hs)
+			score = reaches(sts)
+			if best is None or score > best[0]:
+				best = (score, ph, hs, wks, sts)
+		_score, phases, houses, weeks, starts = best
+	else:
+		phases = None
+		weeks, starts = plantable(houses)
+	named = [] if assumed else [h["supplier"] for h in houses if h.get("supplier")]
 	bits = []
 	for h in houses:
 		bits.append(_("{0}: every {1} weeks, {2} weeks' lead").format(
 			h.get("supplier") or _("the stated cycle"),
 			cint(h["cycle_weeks"]) or _("any week"), cint(h["lead_weeks"])))
 	first_open = min(weeks) if weeks else None
-	note = _("{0} planting week(s) are open to a delivery, from {1}. {2}").format(
-		len(weeks), first_open or _("none"), "; ".join(bits))
+	beat = _(" They are offset by {0} to reach the most weeks of demand.").format(
+		", ".join(_("week {0}").format(x) for x in phases)) \
+		if assumed and len(houses) > 1 else ""
+	lifted = _(" Each delivery plants in {0} week(s) after it lands: {1}.").format(
+		len(offsets), ", ".join("+%dw" % o for o in offsets)) if len(offsets) > 1 else ""
+	head = (_("Nobody is named on this protocol, so this assumes the {0} house(s) "
+	          "and {1}-week cycle it states.{2}").format(
+		len(houses), cint(houses[0]["cycle_weeks"]), beat)
+		if assumed else "")
+	note = _("{0}{1} planting week(s) are open to a delivery, from {2}.{3} {4}").format(
+		head + " " if head else "", len(weeks), first_open or _("none"), lifted,
+		"; ".join(bits))
 	why = (_("The earliest anything ordered today becomes a plant the field can "
 	         "take is {0}: {1} week(s) of lead, then {2} week(s) from landing to "
 	         "planting.").format(
-		first_open, min(cint(h["lead_weeks"]) for h in houses),
-		cint(plant_offset))
+		first_open, min(cint(h["lead_weeks"]) for h in houses), offsets[0])
 		if houses else "")
 	return starts, {"note": note, "why": why, "weeks": weeks, "houses": houses,
-	                "named": named}
+	                "named": named, "assumed": assumed, "lift_offsets": offsets,
+	                "phases": phases}
 
 
 def seed_supply_from_protocol(plan, protocol=None):
@@ -2556,7 +2709,9 @@ def _populate(plan, programme=None):
 		# that nobody comes that week -- so the plan was always drawn twice,
 		# once as a wish and once as a timetable.
 		open_weeks, rhythm = supply_rhythm(plan, protocol, window_start, grid,
-		                                   anchor, stick_weeks, week_demand)
+		                                   anchor, stick_weeks, week_demand,
+		                                   lift_offsets=_plantable_offsets(protocol),
+		                                   rates=rates)
 		cohorts, _solved = plan_cohorts(rates, week_demand, week_standing,
 		                                band=band,
 		                                rounding_plants=max(1, cint(step)),
@@ -2566,8 +2721,11 @@ def _populate(plan, programme=None):
 			short = _solved.get("weeks_out_of_reach") or []
 			if _solved.get("no_delivery_weeks"):
 				frappe.msgprint(
-					_("No supplier named on this protocol can deliver inside this "
-					  "plan's window, so it proposes no new planting. {0}").format(
+					_("{0} can deliver inside this plan's window, so it proposes "
+					  "no new planting. {1}").format(
+						_("Nothing arriving on the cycle this protocol states")
+						if rhythm.get("assumed")
+						else _("No supplier named on this protocol"),
 						rhythm.get("why") or ""),
 					title=_("Nothing can be delivered in time"), indicator="orange")
 			elif short:
