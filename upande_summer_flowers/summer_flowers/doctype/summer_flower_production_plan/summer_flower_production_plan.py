@@ -2396,21 +2396,35 @@ def supply_rhythm(plan, protocol, window_start, grid, cut_offset, plant_offset=0
 			 for at in at_weeks})
 
 	def reaches(starts):
-		"""How many weeks of demand any cohort starting in these weeks can cut.
+		"""What demand any cohort starting in these weeks can cut.
 
-		Not how many weeks are open -- how many weeks of DEMAND they serve.
-		Two arrangements can open the same number of weeks and one of them
-		reach every week the market asks for while the other reaches half."""
+		Not how many weeks are open -- how much DEMAND they serve. Two
+		arrangements can open the same number of weeks and one of them reach
+		every week the market asks for while the other reaches half.
+
+		The stems asked for lead, because a week wanting five thousand is
+		worth more than a week wanting fifty and counting weeks said they
+		were the same; the count of weeks breaks the tie.
+
+		Nothing else breaks it. "More open weeks" was tried as a third test
+		and is not one: opening a week the demand cannot use moves the whole
+		arrangement for no gain, and on a plan whose demand was already fully
+		reachable it cost production. Where this cannot tell two arrangements
+		apart they ARE the same to the plan, and the houses stay where they
+		are.
+		"""
 		if not rates or not week_demand:
-			return 0
+			return (0, 0)
 		life = len(rates)
-		hit = 0
+		got = hit = 0
 		for w, want in enumerate(week_demand):
-			if not cint(want):
+			want = cint(want)
+			if not want:
 				continue
 			if any(0 <= w - st < life and flt(rates[w - st]) > 0 for st in starts):
+				got += want
 				hit += 1
-		return hit
+		return (got, hit)
 
 	if assumed:
 		# The arrangement is ours to propose, so propose the one that covers
@@ -2425,7 +2439,14 @@ def supply_rhythm(plan, protocol, window_start, grid, cut_offset, plant_offset=0
 				best = (score, ph, hs, wks, sts)
 		_score, phases, houses, weeks, starts = best
 	else:
-		phases = None
+		# Named houses state a gap, not a starting week. Every one of them
+		# used to open on the same beat, so three houses on three different
+		# cycles landed together and the plan was as thin as one house's.
+		# Which week each begins on is ours to ask for, so it is chosen --
+		# against this plan's own demand, and with the lifts already folded
+		# in, because what a landing is worth is the weeks it plants in.
+		phases = sc.choose_phases(
+			houses, lambda hs: reaches(plantable(hs)[1]))
 		weeks, starts = plantable(houses)
 	named = [] if assumed else [h["supplier"] for h in houses if h.get("supplier")]
 	bits = []
@@ -2436,16 +2457,25 @@ def supply_rhythm(plan, protocol, window_start, grid, cut_offset, plant_offset=0
 	first_open = min(weeks) if weeks else None
 	beat = _(" They are offset by {0} to reach the most weeks of demand.").format(
 		", ".join(_("week {0}").format(x) for x in phases)) \
-		if assumed and len(houses) > 1 else ""
+		if assumed and phases and len(houses) > 1 else ""
+	# The same thing said of houses that have names: which week each was
+	# asked to begin on, and why it is not simply "all of them, now".
+	stagger = ""
+	if not assumed and phases and len(houses) > 1 and any(cint(x) for x in phases):
+		stagger = _(" Started {0} so their deliveries fall apart rather than "
+		            "together, which reaches the most of the demand.").format(
+			", ".join(_("{0} {1} week(s) in").format(
+				h.get("supplier") or _("a house"), cint(x))
+				for h, x in zip(houses, phases) if cint(x)))
 	lifted = _(" Each delivery plants in {0} week(s) after it lands: {1}.").format(
 		len(offsets), ", ".join("+%dw" % o for o in offsets)) if len(offsets) > 1 else ""
 	head = (_("Nobody is named on this protocol, so this assumes the {0} house(s) "
 	          "and {1}-week cycle it states.{2}").format(
 		len(houses), cint(houses[0]["cycle_weeks"]), beat)
 		if assumed else "")
-	note = _("{0}{1} planting week(s) are open to a delivery, from {2}.{3} {4}").format(
+	note = _("{0}{1} planting week(s) are open to a delivery, from {2}.{3}{4} {5}").format(
 		head + " " if head else "", len(weeks), first_open or _("none"), lifted,
-		"; ".join(bits))
+		stagger, "; ".join(bits))
 	why = (_("The earliest anything ordered today becomes a plant the field can "
 	         "take is {0}: {1} week(s) of lead, then {2} week(s) from landing to "
 	         "planting.").format(

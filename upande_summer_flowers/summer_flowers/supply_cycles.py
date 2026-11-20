@@ -341,6 +341,69 @@ def stagger_patterns(cycle, count):
 	return out
 
 
+def offsets_to_try(step, cap=16):
+	"""The starting weeks worth trying for a house on a `step`-week cycle.
+
+	Every one of them where the cycle is short. Where it is long the search
+	would cost more than the answer is worth, so it is sampled evenly: a house
+	on a 52-week cycle does not need all 52 tried to be put somewhere sensible.
+	"""
+	step = max(1, cint(step))
+	if step <= cap:
+		return list(range(step))
+	stride = max(1, step // cap)
+	return list(range(0, step, stride))
+
+
+def choose_phases(houses, measure, rounds=2):
+	"""Give each house a starting week so the set reaches the most demand.
+
+	A supplier states a GAP between deliveries and a lead time. It does not
+	state which week of the year its rhythm begins on -- that is ours to ask
+	for. Left unasked every house started on the same week, so three houses on
+	three different cycles all landed together on the first beat and the plan
+	was as thin as one house's, while the farm was paying for three.
+
+	`measure` is handed the houses with their phases set and answers how good
+	that arrangement is; bigger is better. It is passed in because what counts
+	as good is the demand, which lives on the plan, not here.
+
+	A house whose first delivery week IS stated is left where it is. That is a
+	fact about an arrangement somebody made, not a free variable.
+	"""
+	free = [i for i, h in enumerate(houses)
+	        if not h.get("first_week") and cint(h.get("cycle_weeks")) > 1]
+	if not free or len(houses) < 2:
+		return None
+	best = [cint(h.get("phase_weeks")) for h in houses]
+
+	def put(phases):
+		for h, ph in zip(houses, phases):
+			h["phase_weeks"] = cint(ph)
+		return measure(houses)
+
+	mark = put(best)
+	for _round in range(max(1, cint(rounds))):
+		moved = False
+		# The longest cycle first: it lands least often, so where it falls
+		# decides the most, and the shorter ones fill in around it.
+		for i in sorted(free, key=lambda j: -cint(houses[j]["cycle_weeks"])):
+			for ph in offsets_to_try(houses[i]["cycle_weeks"]):
+				if ph == best[i]:
+					continue
+				trial = list(best)
+				trial[i] = ph
+				got = put(trial)
+				if got > mark:
+					mark, best, moved = got, trial, True
+		# A second pass lets a house moved early improve now the others have
+		# settled. It converges quickly, so it stops as soon as nothing moves.
+		if not moved:
+			break
+	put(best)
+	return best
+
+
 def supply_defaults(version):
 	"""What the PROTOCOL says about buying this material, before any plan.
 
@@ -560,7 +623,7 @@ def proposal(plan_doc, version=None, shares=None, second_half=None, cycles=None)
 	first, last = weeks[0], weeks[-1]
 	span_weeks = (getdate(last) - getdate(first)).days // 7 + 1
 
-	def _beat(gap):
+	def _beat(gap, phase=0):
 		# How many whole cycles fit the span, which is the farm's own sum: a
 		# 53-week year at a four-week cycle is thirteen deliveries, not the
 		# fourteen you get by counting both ends of 0, 4, 8 ... 52. The last
@@ -568,12 +631,45 @@ def proposal(plan_doc, version=None, shares=None, second_half=None, cycles=None)
 		# no rhythm to keep, so each planting week is served on its own.
 		if not gap:
 			return list(weeks)
-		return [add_days(first, 7 * gap * i)
-		        for i in range(max(1, span_weeks // gap))]
+		phase = cint(phase) % gap
+		return [add_days(first, 7 * (phase + gap * i))
+		        for i in range(max(1, (span_weeks - phase) // gap))]
+
+	# Which week each house BEGINS on. A supplier states the gap between its
+	# deliveries, never the week its rhythm starts, so every house used to
+	# open on the first planting week: three houses on three different cycles
+	# all landed together and the plan waited as long as if one had come.
+	# Started apart, the same three houses cover the same season with the
+	# material arriving nearer the week it goes in the ground.
+	import bisect
+
+	def _covers(hs):
+		"""Plants served, then how long they wait, then how spread it is."""
+		at = sorted({getdate(x)
+		             for h in hs
+		             for x in _beat(cint(h["cycle_weeks"]), h["phase_weeks"])})
+		if not at:
+			return (0, 0, 0)
+		served = waiting = 0
+		for w in weeks:
+			wd = getdate(w)
+			i = bisect.bisect_right(at, wd)
+			if not i:
+				continue          # nothing has landed yet for this week
+			served += cint(wanted[w])
+			waiting += cint(wanted[w]) * ((wd - at[i - 1]).days // 7)
+		return (served, -waiting, len(at))
+
+	beat_houses = [{"cycle_weeks": g, "phase_weeks": 0,
+	                "first_week": (named[i].get("first_week")
+	                               if i < len(named) else None)}
+	               for i, g in enumerate(cyc)]
+	choose_phases(beat_houses, _covers)
+	phases = [cint(h["phase_weeks"]) for h in beat_houses]
 
 	# One beat per house, and the schedule is their union: a week where only
 	# the second house comes is still a week something lands.
-	house_drops = [_beat(g) for g in cyc]
+	house_drops = [_beat(g, p) for g, p in zip(cyc, phases)]
 	lands = [set(_iso(x) for x in hd) for hd in house_drops]
 	drops = sorted({getdate(x) for hd in house_drops for x in hd})
 
@@ -690,6 +786,10 @@ def proposal(plan_doc, version=None, shares=None, second_half=None, cycles=None)
 	          # rhythms it is each house's own count, added up.
 	          "supplier_deliveries": sum(len(hd) for hd in house_drops),
 	          "cycles_by_house": cyc,
+	          # Which week each house was asked to begin on, so the card can
+	          # say so and the saved schedule can keep it. Zero means "with
+	          # the first planting", which is where they all used to start.
+	          "phases_by_house": phases,
 	          # Houses whose instalment on this rhythm is below the smallest
 	          # order they accept. Empty where every house can bring its share.
 	          "below_minimum": under,
@@ -846,6 +946,46 @@ def _normalised(picks, form, wanted=None, default_count=None):
 		return out
 	first, last = weeks[0], weeks[-1]
 	span_weeks = max(1, (getdate(last) - getdate(first)).days // 7 + 1)
+
+	def _run(x, phase):
+		"""Where this house's deliveries land, begun `phase` weeks in."""
+		if x.get("weeks"):
+			return [getdate(w) for w in x["weeks"]]
+		gap = max(1, cint(x["cycle_count"]))
+		phase = cint(phase) % gap
+		return [add_days(first, 7 * (phase + gap * i))
+		        for i in range(max(1, (span_weeks - phase) // gap))]
+
+	# Which week each house begins on. The gap between a house's deliveries is
+	# the supplier's; the week its rhythm starts is ours, and asking for none
+	# put every house on the same beat -- three houses landing together, then
+	# nothing for weeks, with the plants waiting on the bench in between.
+	# A house whose weeks are stated outright is left exactly where it is.
+	import bisect
+
+	def _covers(hs):
+		at = sorted({d for h, x in zip(hs, out)
+		             for d in _run(x, h["phase_weeks"])})
+		if not at:
+			return (0, 0, 0)
+		served = waiting = 0
+		for w in weeks:
+			wd = getdate(w)
+			i = bisect.bisect_right(at, wd)
+			if not i:
+				continue
+			served += cint((wanted or {}).get(w) or 0)
+			waiting += cint((wanted or {}).get(w) or 0) * ((wd - at[i - 1]).days // 7)
+		return (served, -waiting, len(at))
+
+	beat = [{"cycle_weeks": max(1, cint(x["cycle_count"])), "phase_weeks": 0,
+	         # Stated weeks are a fact, so that house is not moved.
+	         "first_week": _iso(first) if x.get("weeks") else None}
+	        for x in out]
+	choose_phases(beat, _covers)
+	for x, h in zip(out, beat):
+		x["phase_weeks"] = cint(h["phase_weeks"])
+
 	for x in out:
 		# The cycle IS the gap in weeks: 4 means every four weeks, which is
 		# thirteen deliveries in a 53-week year, not four. Over however long
@@ -873,8 +1013,10 @@ def _normalised(picks, form, wanted=None, default_count=None):
 			# different weeks from the schedule the farm agreed, so the plan
 			# was saved against a timetable nobody had seen.
 			span_weeks = (getdate(last) - getdate(first)).days // 7 + 1
-			count = max(1, span_weeks // step)
-			drops = [add_days(first, 7 * step * i) for i in range(count)]
+			phase = cint(x.get("phase_weeks")) % step
+			count = max(1, (span_weeks - phase) // step)
+			drops = [add_days(first, 7 * (phase + step * i))
+			         for i in range(count)]
 		x["drops_in_plan"] = len(drops)
 		x["weeks_between"] = step
 		# What was asked for, beside what the plan's own shape allows. A
