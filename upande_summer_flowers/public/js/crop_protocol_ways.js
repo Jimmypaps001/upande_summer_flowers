@@ -113,28 +113,29 @@ frappe.ui.form.on("Crop Protocol", {
 		// and a crown does not establish like a plantlet, so a protocol with
 		// two roads and one set of percentages is almost always describing
 		// only one of them.
-		const p_ord = flt(frm.doc.custom_sf_tc_order_loss_pct);
-		const p_root = flt(frm.doc.custom_sf_rooting_success_pct);
-		const p_est = flt(frm.doc.custom_sf_field_establishment_pct);
-		const ord = flt(w.order_loss_pct) || p_ord;
-		const root = flt(w.rooting_success_pct) || p_root || 100;
-		const est = flt(w.field_establishment_pct) || p_est || 100;
+		// This road and no other. There is no protocol-wide figure behind it
+		// any more: a box left empty means this road loses nothing there, and
+		// the survival below says so plainly rather than quietly borrowing a
+		// number typed for a different road.
+		const ord = flt(w.order_loss_pct);
+		const root = flt(w.rooting_success_pct) || 100;
+		const est = flt(w.field_establishment_pct) || 100;
 		const survives = (1 - ord / 100) * (root / 100) * (est / 100) * 100;
-		const borrowed = [
-			!flt(w.order_loss_pct) && p_ord ? __("allowed on the order") : null,
-			!flt(w.rooting_success_pct) && p_root ? __("rooting") : null,
-			!flt(w.field_establishment_pct) && p_est ? __("establishment") : null,
+		const blank = [
+			!flt(w.order_loss_pct) ? __("the order") : null,
+			!flt(w.rooting_success_pct) ? __("rooting") : null,
+			!flt(w.field_establishment_pct) ? __("establishment") : null,
 		].filter((x) => x);
 		const losses_block = `<div class="mt-3"><b>${__("What this route loses")}</b>
-			<span class="text-muted small">${__("blank takes the protocol's own figure")}</span>
+			<span class="text-muted small">${__("the only place losses are typed; the extra to order follows from them")}</span>
 			<div class="row mt-1 row-cols-4">
-				<div class="col"><label class="small text-muted">${__("Allowed on the order %")}</label>${num(w.doctype, w.name, "order_loss_pct", flt(w.order_loss_pct), false)}</div>
+				<div class="col"><label class="small text-muted">${__("Lost on the order %")}</label>${num(w.doctype, w.name, "order_loss_pct", flt(w.order_loss_pct), false)}</div>
 				<div class="col"><label class="small text-muted">${__("Root in propagation %")}</label>${num(w.doctype, w.name, "rooting_success_pct", flt(w.rooting_success_pct), false)}</div>
 				<div class="col"><label class="small text-muted">${__("Establish once planted %")}</label>${num(w.doctype, w.name, "field_establishment_pct", flt(w.field_establishment_pct), false)}</div>
 				<div class="col"><label class="small text-muted">${__("Of what is bought, stands up")}</label>
 					<div class="form-control input-xs ${survives < 60 ? "text-danger" : ""}" style="background:transparent"><b>${format_number(survives, null, 2)}%</b></div></div>
 			</div>
-			${borrowed.length ? `<div class="text-muted small mt-1">${__("Taken from the protocol on this road: {0}. A figure typed here beats it.", [borrowed.join(", ")])}</div>` : ""}
+			${blank.length ? `<div class="text-muted small mt-1">${__("Nothing is lost on this road at: {0}. Leave a box empty only if that is true of it.", [blank.join(", ")])}</div>` : ""}
 		</div>`;
 
 		const lifts_block = info.lifts

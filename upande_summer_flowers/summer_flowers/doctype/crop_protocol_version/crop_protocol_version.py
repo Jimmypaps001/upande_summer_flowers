@@ -106,6 +106,58 @@ class CropProtocolVersion(Document):
 			self.refresh_current_flag()
 
 	# ------------------------------------------------------------------ identity
+	def _set_losses_from_roads(self, blocks):
+		"""What the roads lose between them, weighted by the share each carries.
+
+		A road that carries three quarters of the order decides three quarters
+		of the answer. A road with no stated share still counts -- as an equal
+		part -- because a share nobody typed is not a share of nothing.
+		"""
+		from upande_summer_flowers.summer_flowers.crop_protocol import _chains_of
+
+		chains = _chains_of(blocks)
+		if not chains:
+			return
+		shares = [flt(chain[0][0].share_pct) for chain in chains]
+		if sum(shares) <= 0:
+			shares = [1.0] * len(chains)
+		total = sum(shares)
+
+		def weighted(pick):
+			"""The share-weighted loss %, or None where no road states one."""
+			got, seen = 0.0, False
+			for chain, share in zip(chains, shares):
+				loss = pick(chain)
+				if loss is None:
+					continue
+				seen = True
+				got += flt(loss) * share
+			return (got / total) if seen else None
+
+		def step_loss(name):
+			def pick(chain):
+				for stage, rows in chain:
+					for sr in rows:
+						if sr.step == name and flt(sr.loss_pct):
+							return flt(sr.loss_pct)
+				return None
+			return pick
+
+		def entry_loss(chain):
+			entry = chain[0][0]
+			return flt(entry.loss_pct) if cint(entry.is_purchase) and flt(
+				entry.loss_pct) else None
+
+		for pick, field in ((step_loss("Sticking"), "rooting_success_pct"),
+		                    (step_loss("Field establishment"),
+		                     "field_establishment_pct")):
+			loss = weighted(pick)
+			if loss is not None:
+				setattr(self, field, round(100.0 - loss, 4))
+		order = weighted(entry_loss)
+		if order is not None:
+			self.tc_order_loss_pct = round(order, 4)
+
 	def set_variety(self):
 		if self.crop_protocol:
 			self.variety = frappe.db.get_value("Crop Protocol", self.crop_protocol, "variety")
@@ -237,18 +289,18 @@ class CropProtocolVersion(Document):
 			if step in steps:
 				setattr(self, field, cint(steps[step].weeks))
 
-		for step, field in (("Sticking", "rooting_success_pct"),
-		                    ("Field establishment", "field_establishment_pct")):
-			row = steps.get(step)
-			if row and flt(row.loss_pct):
-				setattr(self, field, round(100.0 - flt(row.loss_pct), 4))
+		# The three loss figures are no longer typed anywhere: each road states
+		# its own, and these are what the roads come to between them. They are
+		# read by everything that needs ONE answer for the crop -- how many to
+		# plant for a thousand standing, what the propagation solver buys, the
+		# explanation ladder -- and taking the first road's figure for all of
+		# them meant a crop bought two ways was sized on one of them. Weighted
+		# by the share of the order each road carries.
+		self._set_losses_from_roads(blocks)
 
 		bought = next((st for st, _ in blocks if cint(st.is_purchase)), None)
-		if bought:
-			if cint(bought.lead_weeks):
-				self.supplier_lead_weeks = cint(bought.lead_weeks)
-			if flt(bought.loss_pct):
-				self.tc_order_loss_pct = flt(bought.loss_pct)
+		if bought and cint(bought.lead_weeks):
+			self.supplier_lead_weeks = cint(bought.lead_weeks)
 
 		# Cycles a stage may be run round again: motherstock generations, or the
 		mult = next((st for st, _ in blocks

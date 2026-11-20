@@ -27,7 +27,7 @@
    "in_list_view": 1,
    "label": "Supplier",
    "options": "Supplier",
-   "reqd": 1
+   "reqd": 0
   },
   {
    "columns": 2,
@@ -40,7 +40,6 @@
   },
   {
    "columns": 2,
-   "description": "The GAP between this house's deliveries, in weeks. 4 means it comes every four weeks, which is thirteen deliveries in a year -- not four. Empty falls back to the figure above the table.",
    "fieldname": "cycle_weeks",
    "fieldtype": "Int",
    "in_list_view": 1,

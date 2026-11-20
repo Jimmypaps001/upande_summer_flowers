@@ -2452,7 +2452,7 @@ def supply_rhythm(plan, protocol, window_start, grid, cut_offset, plant_offset=0
 	bits = []
 	for h in houses:
 		bits.append(_("{0}: every {1} weeks, {2} weeks' lead").format(
-			h.get("supplier") or _("the stated cycle"),
+			h.get("label") or h.get("supplier") or _("the stated cycle"),
 			cint(h["cycle_weeks"]) or _("any week"), cint(h["lead_weeks"])))
 	first_open = min(weeks) if weeks else None
 	beat = _(" They are offset by {0} to reach the most weeks of demand.").format(
@@ -2465,7 +2465,7 @@ def supply_rhythm(plan, protocol, window_start, grid, cut_offset, plant_offset=0
 		stagger = _(" Started {0} so their deliveries fall apart rather than "
 		            "together, which reaches the most of the demand.").format(
 			", ".join(_("{0} {1} week(s) in").format(
-				h.get("supplier") or _("a house"), cint(x))
+				h.get("label") or h.get("supplier") or _("a house"), cint(x))
 				for h, x in zip(houses, phases) if cint(x)))
 	lifted = _(" Each delivery plants in {0} week(s) after it lands: {1}.").format(
 		len(offsets), ", ".join("+%dw" % o for o in offsets)) if len(offsets) > 1 else ""
@@ -2495,8 +2495,21 @@ def seed_supply_from_protocol(plan, protocol=None):
 	for them. It only means the plan arrives knowing who it is buying from."""
 	from upande_summer_flowers.summer_flowers import supply_cycles as sc
 
-	if plan.get("plan_supply"):
-		return 0
+	# Rows nobody has worked on are a copy of the protocol, so they follow it.
+	# Keeping them untouched meant a plan could show "every 3 weeks" from the
+	# day it was drawn while the protocol said five and the rhythm note under
+	# it said five -- three answers on one screen, and no way to tell which
+	# the plan obeyed. An arrangement somebody HAS worked on is theirs: units
+	# typed against a cycle, or a supply already agreed, and that is kept.
+	existing = list(plan.get("plan_supply") or [])
+	if existing:
+		worked = cint(plan.get("supply_confirmed")) or any(
+			cint(r.get("units_typed")) or cint(r.get("units"))
+			or cint(r.get("plants")) or cint(r.get("cycle_no"))
+			for r in existing)
+		if worked:
+			return 0
+		plan.set("plan_supply", [])
 	v = protocol or (frappe.get_cached_doc("Crop Protocol Version", plan.protocol)
 	                 if plan.get("protocol") else None)
 	if not v:

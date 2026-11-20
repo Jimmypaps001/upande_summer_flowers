@@ -72,20 +72,18 @@
   {
    "fieldname": "losses_break",
    "fieldtype": "Section Break",
-   "label": "What this route loses"
+   "label": "What this route loses \u2014 the only place losses are typed"
   },
   {
    "columns": 1,
    "depends_on": "eval:doc.bought",
-   "description": "Blank takes the protocol's own allowance.",
    "fieldname": "order_loss_pct",
    "fieldtype": "Percent",
    "in_list_view": 1,
-   "label": "Allowed on the order %"
+   "label": "Lost on the order %"
   },
   {
    "columns": 2,
-   "description": "Blank takes the protocol's own figure. 100 means this route loses nothing raising its material.",
    "fieldname": "rooting_success_pct",
    "fieldtype": "Percent",
    "in_list_view": 1,
@@ -93,7 +91,6 @@
   },
   {
    "columns": 2,
-   "description": "Blank takes the protocol's own figure. A crown that goes straight in the ground does not establish like a plantlet.",
    "fieldname": "field_establishment_pct",
    "fieldtype": "Percent",
    "in_list_view": 1,

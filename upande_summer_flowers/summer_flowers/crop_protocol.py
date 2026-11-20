@@ -539,33 +539,6 @@ WAYS_FIELD = "custom_sf_ways"
 SUPPLIERS_FIELD = "custom_sf_suppliers"
 
 
-def set_supply_from_suppliers(doc, native=False):
-	"""Where houses are named, THEY are how many there are and how often.
-
-	The two figures above the table -- how many houses, how often each comes --
-	are what the farm says when it has not named anybody. Once a house IS named
-	they are no longer the answer, and left alone they contradict it: "Suppliers
-	available 2" sitting over a table of three, with nothing on screen to say
-	which one the plan obeyed. It obeys the table, so the figures are made to
-	say what the table says.
-
-	The cycle is the SHORTEST of the named gaps, which is what supply_defaults
-	already reduces them to: the beat the plan can count on, with any slower
-	house landing on some of the same weeks.
-	"""
-	field = SUPPLIERS_FIELD if not native else "suppliers"
-	rows = [r for r in (doc.get(field) or [])
-	        if (r.get("supplier") or "").strip()]
-	if not rows:
-		return
-	count = "suppliers_available"
-	cycle = "supplier_cycles_per_year"
-	doc.set(count if native else source_field(count), len(rows))
-	gaps = [cint(r.get("cycle_weeks")) for r in rows if cint(r.get("cycle_weeks"))]
-	if gaps:
-		doc.set(cycle if native else source_field(cycle), min(gaps))
-
-
 def _losses_per_chain(doc, chains, native=False):
 	"""{id(stage row): the way's own loss figures}, where the ways line up.
 
@@ -593,8 +566,12 @@ def set_route_quantities(doc, native=False):
 	cycles = cint(_n(doc, "max_multiplication_cycles", native=native))
 	per_cycle = _n(doc, "multiplication_factor_per_cycle", native=native)
 	factor = multiplication_factor(cycles, per_cycle)
-	rooting = _n(doc, "rooting_success_pct", 100, native=native) / 100.0
-	establishment = _n(doc, "field_establishment_pct", 100, native=native) / 100.0
+	# Losses are stated on the road and nowhere else. There is no protocol-wide
+	# figure to fall back to any more: a road that says nothing loses nothing,
+	# and says so on its own card ("of what is bought, stands up: 100%").
+	# Falling back used to hide the question -- a crop bought two ways showed
+	# one survival down both roads because one pair of numbers answered for
+	# both, which is almost never true of tissue culture and bare roots.
 	rows = (doc.get("material_route") or []) if native else None
 
 	# Weeks each stage takes, off the protocol's own timings. They were typed on the
@@ -631,13 +608,12 @@ def set_route_quantities(doc, native=False):
 	for stage, steps in blocks:
 		name = stage.stage
 		mine = own.get(id(stage)) or {}
-		# Survival percentages: 0 is "this route has not been asked", 100 is
-		# "this route loses nothing here". The protocol's own fields read the
-		# same way, which is why these carry the same names.
-		rooting_here = (flt(mine.get("rooting_success_pct")) / 100.0
-		                if flt(mine.get("rooting_success_pct")) else rooting)
-		establish_here = (flt(mine.get("field_establishment_pct")) / 100.0
-		                  if flt(mine.get("field_establishment_pct")) else establishment)
+		# Survival percentages: 0 is "this road has not been asked", 100 is
+		# "this road loses nothing here". Unasked and losing nothing come to
+		# the same arithmetic; what tells them apart is the card, which shows
+		# an empty box rather than a figure somebody chose.
+		rooting_here = flt(mine.get("rooting_success_pct")) / 100.0 or 1.0
+		establish_here = flt(mine.get("field_establishment_pct")) / 100.0 or 1.0
 		standing = 1 if name in STANDING_STAGES else 0
 		stage.is_purchase = 1 if id(stage) in bought_in_chain else 0
 		typed_weeks = cint(stage.get("weeks")) if multi else 0
@@ -1028,7 +1004,6 @@ def validate(doc, method=None):
 	set_harvest_is_scheduled(doc)
 	check_lifts(doc)
 	set_route_quantities(doc)
-	set_supply_from_suppliers(doc)
 	rm.sync_methods_from_route(doc)
 	rw.fill_way_stages(doc)
 	fill_native_gaps(doc)
@@ -1053,9 +1028,13 @@ def check_suppliers(doc):
 		return
 	seen = {}
 	for r in rows:
+		# A row with no name is allowed: the farm knows it buys from three
+		# houses on three rhythms long before it knows which three, and the
+		# plan is drawn on the rhythm either way. Refusing the row meant the
+		# only way to state a rhythm was to invent a supplier, and the two
+		# blanket numbers this table replaced never asked for a name at all.
 		if not r.get("supplier"):
-			frappe.throw(_("Row {0} of the supplier table has no supplier.")
-			             .format(r.idx), title=_("Who supplies it?"))
+			continue
 		key = (r.supplier, (r.get("farm") or "").strip())
 		if key in seen:
 			frappe.throw(
@@ -1071,7 +1050,8 @@ def check_suppliers(doc):
 				_("{0} comes every {1} weeks, which is not a rhythm. The cycle is "
 				  "the GAP between deliveries in weeks: 4 means every four weeks. "
 				  "Leave it empty where the house keeps no rhythm.").format(
-					frappe.bold(r.supplier), cint(r.get("cycle_weeks"))),
+					frappe.bold(r.supplier or _("Row {0}").format(r.idx)),
+					cint(r.get("cycle_weeks"))),
 				title=_("Cycle out of range"))
 		if cint(r.get("lead_weeks")) < 0:
 			frappe.throw(_("{0} cannot have a negative lead time.")

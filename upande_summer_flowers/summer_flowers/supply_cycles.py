@@ -255,7 +255,7 @@ def delivery_weeks(houses, earliest, until, order_from=None, anchor=None):
 		gap = 7 * (step or 1)
 		while at <= last:
 			if not barred(at):
-				out.setdefault(at, []).append(h["supplier"])
+				out.setdefault(at, []).append(h.get("label") or h["supplier"])
 			at = add_days(at, gap)
 	return dict(sorted(out.items()))
 
@@ -291,7 +291,11 @@ def default_houses(defaults, phases=None):
 	if phases is None:
 		phases = [int(round(i * step)) for i in range(count)]
 	return [{
-		"supplier": _("House {0}").format(i + 1),
+		# Not a Supplier link: nobody has been named, and writing "House 2"
+		# into a field that points at the Supplier master would not save.
+		"supplier": "",
+		"label": _("House {0}").format(i + 1),
+		"named": False,
 		"farm": None,
 		"cycle_weeks": cycle,
 		"lead_weeks": lead,
@@ -425,36 +429,21 @@ def supply_defaults(version):
 	decided = sourcing.route_plan(v)
 	entry = decided.get("entry_stage")
 	form = route_ways.LIFT_FORM.get(entry)
-	cycles = cint(v.get("supplier_cycles_per_year"))
-	houses = cint(v.get("suppliers_available"))
-	# A version that does not carry them falls back to the protocol as it
-	# stands. These are commercial facts -- how often a house comes, how many
-	# houses there are -- not agronomy, so changing one should not mean
-	# re-approving a protocol, and every version approved before the figures
-	# existed would otherwise be deaf to them forever.
-	if (not cycles or not houses) and v.get("crop_protocol"):
-		said = frappe.db.get_value(
-			"Crop Protocol", v.crop_protocol,
-			["custom_sf_supplier_cycles_per_year", "custom_sf_suppliers_available"],
-			as_dict=True) or {}
-		cycles = cycles or cint(said.get("custom_sf_supplier_cycles_per_year"))
-		houses = houses or cint(said.get("custom_sf_suppliers_available"))
-	# The farm's figure is a CYCLE LENGTH: 4 means a house comes every four
-	# weeks, so a 53-week year is thirteen deliveries. It was read as
-	# "times a year", which turned every-four-weeks into every-thirteen.
-	cycle_weeks = max(0, min(52, cycles))
-	# Who can actually bring it, each on its own rhythm. Where the protocol
-	# names houses, THEY are the answer to "how often" and "how many": a
-	# single number over every house was only ever a stand-in for a table
-	# nobody had been given a place to type.
-	houses_named = protocol_suppliers(v, default_cycle=cycle_weeks,
-	                                  default_lead=cint(decided.get("lead_weeks"))
-	                                  or cint(v.get("supplier_lead_weeks")))
-	if houses_named:
-		cycle_weeks = min(h["cycle_weeks"] for h in houses_named
-		                  if h["cycle_weeks"]) if any(
-			h["cycle_weeks"] for h in houses_named) else cycle_weeks
-		houses = len(houses_named)
+	# Who brings it, each on its own rhythm. The table is the only place this
+	# is stated: there were two numbers beside it saying the same thing for
+	# the whole crop, and when they disagreed with the table nothing on screen
+	# said which the plan obeyed. (It obeyed the table.)
+	#
+	# A row's cycle is a GAP IN WEEKS -- 4 means a house comes every four
+	# weeks, so a 53-week year is thirteen deliveries, not four.
+	houses_named = protocol_suppliers(
+		v, default_lead=cint(decided.get("lead_weeks"))
+		or cint(v.get("supplier_lead_weeks")))
+	# The beat the plan can count on is the shortest gap among them; a slower
+	# house lands on some of the same weeks and never on fewer.
+	gaps = [h["cycle_weeks"] for h in houses_named if h["cycle_weeks"]]
+	cycle_weeks = min(gaps) if gaps else 0
+	houses = len(houses_named)
 	return {
 		# Only TC and roots are handed over in lifts, so only they have a lift
 		# form. A seed, tuber or bought-in-plant route fell back to the module
@@ -742,7 +731,8 @@ def proposal(plan_doc, version=None, shares=None, second_half=None, cycles=None)
 			got = (half["per_house"][h]["per_delivery"]
 			       if h < len(half["per_house"]) else 0)
 			if floor and got and got < floor:
-				under.append({"house": named[h]["supplier"], "half": n + 1,
+				under.append({"house": (named[h].get("label")
+				                         or named[h]["supplier"]), "half": n + 1,
 				              "per_delivery": got, "minimum": floor})
 
 	rows = []
@@ -810,10 +800,11 @@ def proposal_note(plan_doc, version=None):
 		# Named houses are named. "Three suppliers available" was all the
 		# protocol could say when it held a count instead of a table, and a
 		# plan that cannot say who it is buying from cannot be checked.
-		_("{0}").format(", ".join(h["supplier"] for h in named)) if named
+		_("{0}").format(", ".join(h.get("label") or h["supplier"]
+		                          for h in named)) if named
 		else _("{0} supplier(s) available").format(d["suppliers"])
 		if d["suppliers"] else _("no supplier count on the protocol"),
-		_("; ").join(_("{0} every {1} wk").format(h["supplier"],
+		_("; ").join(_("{0} every {1} wk").format(h.get("label") or h["supplier"],
 		                                          h["cycle_weeks"] or "?")
 		             for h in named) if named and len(set(
 			h["cycle_weeks"] for h in named)) > 1
