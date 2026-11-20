@@ -4112,6 +4112,18 @@ def save_supply(plan=None, picks=None, confirm=0, variety=None, farm=None):
 
 
 @frappe.whitelist()
+def adopt_to_protocol(plan=None, variety=None, farm=None):
+	"""Make this plan's houses and their cycles the protocol's own default."""
+	_guard()
+	from upande_summer_flowers.summer_flowers import supply_cycles
+
+	name = resolve_plan(variety, farm, plan)
+	if not name:
+		frappe.throw(_("No plan in scope."))
+	return supply_cycles.adopt_to_protocol(name)
+
+
+@frappe.whitelist()
 def clear_supply(plan=None, variety=None, farm=None):
 	"""Un-agree the supply so it can be chosen again."""
 	_guard()

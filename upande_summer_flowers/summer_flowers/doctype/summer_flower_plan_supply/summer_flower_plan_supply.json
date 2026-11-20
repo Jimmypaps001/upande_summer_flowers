@@ -44,7 +44,8 @@
    "description": "How often this house delivers. The consignments below are what that comes to over this plan.",
    "fieldname": "cycle_count",
    "fieldtype": "Int",
-   "label": "Deliveries A Year"
+   "description": "The GAP between this house's deliveries, in weeks. 4 means it comes every four weeks, which is thirteen deliveries in a year -- not four.",
+   "label": "A Delivery Every (Weeks)"
   },
   {
    "fieldname": "cb_supply",

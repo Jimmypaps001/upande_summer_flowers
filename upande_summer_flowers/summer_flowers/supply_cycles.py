@@ -22,16 +22,24 @@ from frappe.utils import add_days, cint, flt, getdate, nowdate
 
 DEFAULT_FORM = "Tissue Culture"
 
-# What a house offers when nothing else is known: four lifts a week apart,
-# the bulk in the first. A supplier who works differently is edited on screen;
-# this is only the shape to start the conversation from.
+# Two different fours, which were one constant until they were told apart.
+# DEFAULT_CYCLE_COUNT is a GAP IN WEEKS -- a delivery every four weeks, not
+# four deliveries in a year. DEFAULT_LIFT_COUNT is how many lifts one
+# consignment is handed over in: four, a week apart, the bulk in the first.
+# A supplier who works differently is edited on screen; this is only the shape
+# to start the conversation from.
 DEFAULT_CYCLE_COUNT = 4
+DEFAULT_LIFT_COUNT = 4
 DEFAULT_CYCLE_SHARES = (55.0, 25.0, 12.0, 8.0)
 DEFAULT_FIRST_WEEK = 7
 
 
-def default_cycles(count=DEFAULT_CYCLE_COUNT, first_week=DEFAULT_FIRST_WEEK):
-	"""`count` cycles a week apart, front-loaded, adding to a hundred."""
+def default_cycles(count=DEFAULT_LIFT_COUNT, first_week=DEFAULT_FIRST_WEEK):
+	"""`count` LIFTS a week apart, front-loaded, adding to a hundred.
+
+	Named for cycles and kept so because the page reads the key, but what it
+	returns is a lift profile: how one consignment is handed over, never how
+	often a consignment comes."""
 	count = max(1, cint(count))
 	if count == len(DEFAULT_CYCLE_SHARES):
 		shares = list(DEFAULT_CYCLE_SHARES)
@@ -60,9 +68,9 @@ def _monday(d):
 def stated_lifts(supplier=None, form=DEFAULT_FORM):
 	"""The LIFTS a supplier hands one consignment over in, as Settings states.
 
-	Not cycles. How often a house comes in a year is a commercial arrangement
-	and nothing on file states it; how one consignment is then handed over, in
-	lifts a week or two apart, is this. The two were read off the same table,
+	Not cycles. How many weeks a house leaves between deliveries is a
+	commercial arrangement and nothing on file states it; how one consignment
+	is then handed over, in lifts a week or two apart, is this. The two were read off the same table,
 	so Iribov's two lifts were offered as "Cycles 2" and the card proposed a
 	delivery rhythm the supplier had never agreed to."""
 	rows = frappe.get_all(
@@ -95,7 +103,8 @@ def suppliers_for(form=DEFAULT_FORM):
 	for name in sorted(named):
 		# The lift profile is what is on file for this house. It is offered for
 		# the reader to see, never as a delivery rhythm: nobody has said how
-		# many times a year this house comes, so nothing here says it either.
+		# many weeks this house leaves between deliveries, so nothing here
+		# says it either.
 		out.append({"supplier": name, "lifts": stated_lifts(name, form),
 		            "cycle_count": DEFAULT_CYCLE_COUNT, "stated": 1})
 	return {"form": form, "default_cycles": default_cycles(),
@@ -336,12 +345,12 @@ def supply_defaults(version):
 	"""What the PROTOCOL says about buying this material, before any plan.
 
 	Two figures the farm states once per variety and farm, rather than typing
-	into every plan: how many times in a year a house delivering this form
-	comes, and how many houses can supply it at all. They are not lifts -- a
-	lift is how one consignment is handed over, a cycle is how often a
-	consignment comes -- and the two were read off the same table for months,
-	which is why a house with two lifts on file was planned as a house that
-	comes twice a year.
+	into every plan: how many weeks a house delivering this form leaves
+	between one delivery and the next, and how many houses can supply it at
+	all. They are not lifts -- a lift is how one consignment is handed over, a
+	cycle is how often a consignment comes -- and the two were read off the
+	same table for months, which is why a house with two lifts on file was
+	planned as a house that comes every two weeks.
 
 	Both are advisory: they seed the card, and the farm overrules them on the
 	plan. Zero means the protocol says nothing, which is not the same as zero
@@ -780,8 +789,8 @@ def _wanted_by_week(plan):
 def _normalised(picks, form, wanted=None, default_count=None):
 	"""The chosen houses: their share of the season, and how often they bring it.
 
-	A cycle is a delivery: "four times a year" is four consignments, each
-	carrying the plants wanted between it and the next one. The share of each
+	A cycle is the GAP between deliveries: "every four weeks" is a consignment
+	a month, each carrying the plants wanted between it and the next one. The share of each
 	is suggested from the demand in its window and can be overruled, which is
 	how a house that insists on equal drops is planned for."""
 	weeks = sorted(wanted or {})
@@ -831,17 +840,17 @@ def _normalised(picks, form, wanted=None, default_count=None):
 			x["share_pct"] = round(flt(x["share_pct"]) * 100.0 / share, 4)
 
 	# When each delivery lands, and what the season wants between it and the
-	# next. A year has 52 weeks whatever the plan covers, so "four a year" is a
-	# delivery every thirteen weeks, counted from the first planting.
+	# next. The cycle IS the gap in weeks, so "4" is a delivery every four
+	# weeks, counted from the first planting.
 	if not weeks:
 		return out
 	first, last = weeks[0], weeks[-1]
 	span_weeks = max(1, (getdate(last) - getdate(first)).days // 7 + 1)
 	for x in out:
-		# So many a YEAR, over however long the plan runs: a season of two
-		# years at four a year is eight consignments, not four.
 		# The cycle IS the gap in weeks: 4 means every four weeks, which is
-		# thirteen deliveries in a 53-week year, not four.
+		# thirteen deliveries in a 53-week year, not four. Over however long
+		# the plan runs: two years on a four-week cycle is twenty-six
+		# consignments, not four.
 		step = max(1, cint(x["cycle_count"]))
 		# A consignment lands on a week the farm is planting in. Counting the
 		# drumbeat out from the first planting regardless of where the
@@ -868,9 +877,10 @@ def _normalised(picks, form, wanted=None, default_count=None):
 			drops = [add_days(first, 7 * step * i) for i in range(count)]
 		x["drops_in_plan"] = len(drops)
 		x["weeks_between"] = step
-		# What was asked for, beside what the plan's own shape allows. Four a
-		# year over a plan that only plants in three weeks is three cycles,
-		# and saying so is better than quietly delivering a different number.
+		# What was asked for, beside what the plan's own shape allows. A
+		# four-week cycle over a plan that only plants in three weeks is three
+		# cycles, and saying so is better than quietly delivering a different
+		# number.
 		x["cycle_weeks"] = x["cycle_count"]
 		x["cycles_in_plan"] = len(drops)
 		cycles = []
@@ -1144,7 +1154,7 @@ def plan_supply(plan, picks=None, form=None):
 
 	# Walk the planting weeks forward, spending what has landed. A consignment
 	# carries the weeks between it and the next one, so plants wait on the
-	# bench -- which is the cost of being delivered four times a year.
+	# bench -- which is the cost of being delivered every four weeks.
 	rows = []
 	stock = []
 	short_total = 0
@@ -1297,7 +1307,7 @@ def save_supply(plan, picks, confirm=0):
 				# How often they come, kept as the number that was chosen. The
 				# rows below are what it came to over THIS plan, which is
 				# fewer, and reading the count off them told a buyer their
-				# four a year had become two.
+				# four-week cycle had become an eight-week one.
 				"cycle_count": cint(s.get("cycle_count")),
 				"cycle_no": cint(c["lift_no"]) or i + 1,
 				"weeks_after": cint(c.get("weeks_after")),
@@ -1990,3 +2000,54 @@ def suggest_supply(plan, houses=None, max_wait_weeks=None):
 		"plants_needed": cint(run.get("plants_needed")),
 		"preview": run,
 	}
+
+
+@frappe.whitelist()
+def adopt_to_protocol(plan):
+	"""Write this plan's agreed houses back onto the protocol as the default.
+
+	The arrangement is worked out on the plan, where the demand is. Until now
+	it died there: the next plan for the same variety opened on the protocol's
+	two blanket figures again, and the farm re-typed what it had already
+	settled. The table on the protocol is what every later plan opens on, so
+	this is the one place the dashboard is allowed to write to it.
+
+	Only the arrangement travels -- who, how often, how much notice, what
+	share. The agronomy is untouched, so no version is taken and nothing needs
+	re-approving: these are commercial facts about who brings the material.
+	"""
+	doc = frappe.get_doc("Summer Flower Production Plan", plan)
+	rows = [r for r in (doc.get("plan_supply") or [])
+	        if (r.get("supplier") or "").strip()]
+	if not rows:
+		frappe.throw(_("Nothing to adopt: no supplier is named on this plan."))
+	cp = frappe.db.get_value("Crop Protocol Version", doc.protocol, "crop_protocol")
+	if not cp:
+		frappe.throw(_("This plan's protocol version does not say which Crop "
+		               "Protocol it came from, so there is nowhere to write."))
+	master = frappe.get_doc("Crop Protocol", cp)
+	frappe.has_permission("Crop Protocol", "write", doc=master, throw=True)
+	# One row per house, in the order the plan lists them. A house named twice
+	# on the plan -- once per cycle -- is one house on the protocol.
+	seen, keep = set(), []
+	for r in rows:
+		name = (r.get("supplier") or "").strip()
+		if name in seen:
+			continue
+		seen.add(name)
+		keep.append({"supplier": name,
+		             "farm": doc.farm,
+		             "cycle_weeks": max(0, min(52, cint(r.get("cycle_count")))),
+		             "lead_weeks": cint(r.get("lead_weeks")),
+		             "share_pct": flt(r.get("share_pct")),
+		             "preferred": 0})
+	master.set("custom_sf_suppliers", [])
+	for row in keep:
+		master.append("custom_sf_suppliers", row)
+	master.save()
+	frappe.db.commit()
+	return {"protocol": cp, "houses": len(keep),
+	        "note": _("{0} now opens on {1}: {2}.").format(
+		        cp, _("these houses") if len(keep) > 1 else _("this house"),
+		        ", ".join("{0} every {1} wk".format(
+			        x["supplier"], x["cycle_weeks"] or "?") for x in keep))}

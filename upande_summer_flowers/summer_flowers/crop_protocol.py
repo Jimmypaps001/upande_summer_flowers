@@ -536,6 +536,34 @@ def _native_blocks(rows):
 
 
 WAYS_FIELD = "custom_sf_ways"
+SUPPLIERS_FIELD = "custom_sf_suppliers"
+
+
+def set_supply_from_suppliers(doc, native=False):
+	"""Where houses are named, THEY are how many there are and how often.
+
+	The two figures above the table -- how many houses, how often each comes --
+	are what the farm says when it has not named anybody. Once a house IS named
+	they are no longer the answer, and left alone they contradict it: "Suppliers
+	available 2" sitting over a table of three, with nothing on screen to say
+	which one the plan obeyed. It obeys the table, so the figures are made to
+	say what the table says.
+
+	The cycle is the SHORTEST of the named gaps, which is what supply_defaults
+	already reduces them to: the beat the plan can count on, with any slower
+	house landing on some of the same weeks.
+	"""
+	field = SUPPLIERS_FIELD if not native else "suppliers"
+	rows = [r for r in (doc.get(field) or [])
+	        if (r.get("supplier") or "").strip()]
+	if not rows:
+		return
+	count = "suppliers_available"
+	cycle = "supplier_cycles_per_year"
+	doc.set(count if native else source_field(count), len(rows))
+	gaps = [cint(r.get("cycle_weeks")) for r in rows if cint(r.get("cycle_weeks"))]
+	if gaps:
+		doc.set(cycle if native else source_field(cycle), min(gaps))
 
 
 def _losses_per_chain(doc, chains, native=False):
@@ -1000,6 +1028,7 @@ def validate(doc, method=None):
 	set_harvest_is_scheduled(doc)
 	check_lifts(doc)
 	set_route_quantities(doc)
+	set_supply_from_suppliers(doc)
 	rm.sync_methods_from_route(doc)
 	rw.fill_way_stages(doc)
 	fill_native_gaps(doc)

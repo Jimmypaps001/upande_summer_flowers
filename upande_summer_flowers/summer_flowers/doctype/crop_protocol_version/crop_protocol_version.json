@@ -833,10 +833,10 @@
   },
   {
    "depends_on": "eval:doc.crop_type==\"Summer Flowers\"",
-   "description": "How many times in a year a house delivering this form comes. Not lifts: a lift is how one consignment is handed over, a cycle is how often a consignment comes. Left at nought the plan works it out from its own planting weeks.",
+   "description": "The GAP between one delivery and the next, in weeks. 4 means a house comes every four weeks, not four times a year. Not lifts: a lift is how one consignment is handed over, a cycle is how often a consignment comes. Left at nought the plan works it out from its own planting weeks.",
    "fieldname": "supplier_cycles_per_year",
    "fieldtype": "Int",
-   "label": "Supplier cycles a year"
+   "label": "A delivery every (weeks)"
   },
   {
    "depends_on": "eval:doc.crop_type==\"Summer Flowers\"",

@@ -645,6 +645,9 @@
             <button type="button" class="pl-btn pl-btn-primary" data-sup="confirm"
                     title="{{ _('Agrees the suppliers and their cycles. The plan cannot be sent for approval until this is done, because what they hand over is what it will be grown from.') }}"
             >{{ _("Confirm the supply") }}</button>
+            <button type="button" class="pl-btn" data-sup="adopt"
+                    title="{{ _('Writes these houses and their cycles onto the Crop Protocol, so every later plan for this variety opens on them instead of on the two blanket figures. Only who brings it changes — no agronomy, so nothing needs re-approving.') }}"
+            >{{ _("Make this the protocol's default") }}</button>
             <button type="button" class="pl-btn" data-sup="reset">{{ _("Start again") }}</button>
             <button type="button" class="pl-btn" data-sup="csv"
                     title="{{ _('The consignments as a CSV, to send to a supplier or keep beside the order.') }}"
@@ -10529,6 +10532,25 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
                     + `${houses === 1 ? "" : "s"} — pick who brings them.`);
                 })
                 .catch((e) => toast(esc(e.message), true));
+              return;
+            }
+            if (b.dataset.sup === "adopt") {
+              if (!S.plan) { toast("No plan in scope.", true); return; }
+              const picks = readSupPick().filter((p) => p.supplier);
+              if (!picks.length) { toast("Pick a supplier first.", true); return; }
+              // The saved rows are what travels, not what is on screen
+              // unsaved: adopting a house the plan itself is not grown on is
+              // how a protocol comes to name somebody nobody ever planned for.
+              frappe.confirm(
+                __("Write these {0} house(s) and their cycles onto the "
+                   + "protocol as its default? Save the supply first if you "
+                   + "have changed it here.", [picks.length]),
+                () => call("adopt_to_protocol", { plan: S.plan })
+                  .then((r) => {
+                    toast(r.note || "Protocol updated.");
+                    loadSupPick();
+                  })
+                  .catch((e) => toast(esc(e.message), true)));
               return;
             }
             if (b.dataset.sup === "csv") {
