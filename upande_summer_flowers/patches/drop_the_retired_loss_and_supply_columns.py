@@ -28,13 +28,17 @@ COLUMNS = {
 }
 
 
+def _columns(doctype):
+	return {c.Field for c in frappe.db.sql("desc `tab%s`" % doctype, as_dict=True)}
+
+
 def execute():
 	if not _carried():
 		return
 	dropped = []
 	for doctype, columns in COLUMNS.items():
 		table = "tab%s" % doctype
-		have = {c.Field for c in frappe.db.sql("desc `%s`" % table, as_dict=True)}
+		have = _columns(doctype)
 		for column in columns:
 			if column not in have:
 				continue
@@ -57,6 +61,11 @@ def _carried():
 		print("NOT dropping: %d route(s) still state no losses of their own. "
 		      "Run one_place_for_losses_and_houses first." % bare_ways)
 		return False
+	# The house count can only be weighed while the column is still there to
+	# read it. Where it has already gone there is nothing left to lose, and
+	# asking would be an unknown-column error rather than an answer.
+	if "custom_sf_suppliers_available" not in _columns("Crop Protocol"):
+		return True
 	# A protocol that said how many houses it had must now have the rows.
 	short = frappe.db.sql("""
 		select count(*) from `tabCrop Protocol` cp
