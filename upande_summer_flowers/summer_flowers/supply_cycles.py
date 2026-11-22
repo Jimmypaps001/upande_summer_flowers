@@ -562,12 +562,24 @@ def proposal(plan_doc, version=None, shares=None, second_half=None, cycles=None)
 	d = supply_defaults(v)
 	wanted = _wanted_by_week(plan_doc)
 	weeks = sorted(wanted)
-	houses = max(1, cint(d["suppliers"]) or 1)
 	# What each house was promised. Even where the card has said nothing --
 	# but a share typed on the card is the share, and splitting the instalment
 	# evenly regardless was why changing an allocation moved nothing.
 	if isinstance(shares, str):
 		shares = frappe.parse_json(shares or "[]")
+	if isinstance(cycles, str):
+		cycles = frappe.parse_json(cycles or "[]")
+	# How many houses this plan is BUYING FROM, which is not always how many
+	# the protocol names. The count came off the protocol while the card
+	# iterated the houses the plan had picked, and the two were matched by
+	# position: a plan buying from one of the two houses named got one share
+	# of a two-way split and the other was simply lost, and before the houses
+	# were named at all the count fell to one, so every picked house read the
+	# same instalment and each brought the whole order. A caller that has
+	# picked its houses has already answered this; only where it has picked
+	# none does the protocol's count stand.
+	picked = max(len(shares or []), len(cycles or []))
+	houses = max(1, picked or cint(d["suppliers"]) or 1)
 	shares = [flt(x) for x in (shares or [])][:houses]
 	# Where the protocol names the houses, their own shares are the default --
 	# an even split is only right when nobody has said otherwise.
@@ -581,8 +593,6 @@ def proposal(plan_doc, version=None, shares=None, second_half=None, cycles=None)
 	# number typed there has to move the schedule under it -- a box that does
 	# nothing is worse than no box. Where a row says nothing, the protocol's
 	# figure stands.
-	if isinstance(cycles, str):
-		cycles = frappe.parse_json(cycles or "[]")
 	cyc = [max(0, min(52, cint(c))) or step for c in (cycles or [])][:houses]
 	# Each named house brings its own rhythm with it. Falling back to one
 	# figure for all of them was the old shape, and it planned two houses on
@@ -754,11 +764,27 @@ def proposal(plan_doc, version=None, shares=None, second_half=None, cycles=None)
 		           and (end is None or getdate(w) < getdate(end))]
 		half = 0 if getdate(start) < getdate(mid) else 1
 		here = _iso(start)
-		# Equal cycles: every house comes every time, and the instalment is
-		# shared out exactly as it always was. Unequal: each house brings its
-		# own figure on its own weeks and nothing on the others.
+		# Who is actually due this week. Equal cycles used to be read as
+		# "every house comes every time", which was true only while they all
+		# started together -- and starting them apart is the whole point of
+		# the stagger. Two houses on four weeks, a week apart, come on
+		# alternate drops: giving each of them half of EVERY drop left the
+		# half that fell on a week they do not visit belonging to nobody, and
+		# the plan bought half what it needed. The instalment is shared among
+		# the houses that land, and only those.
+		due = [h for h in range(houses) if here in lands[h]]
 		if uniform:
-			split = _share_out(halves[half]["per_delivery"], shares)
+			# Shared among the houses that land, in proportion to each other.
+			# _share_out reads a share as a percentage of a hundred, so handing
+			# it one house on fifty gave away half the delivery and left the
+			# rest belonging to nobody.
+			due_sh = [flt(shares[h]) for h in due]
+			scale = sum(due_sh) or 1.0
+			part = (_share_out(halves[half]["per_delivery"],
+			                   [x * 100.0 / scale for x in due_sh]) if due else [])
+			split = [0] * houses
+			for k, h in enumerate(due):
+				split[h] = part[k]
 		else:
 			split = [halves[half]["per_house"][h]["per_delivery"]
 			         if here in lands[h] else 0 for h in range(houses)]
@@ -767,7 +793,7 @@ def proposal(plan_doc, version=None, shares=None, second_half=None, cycles=None)
 			"no": i + 1, "week": here, "half": half + 1,
 			"plants": plants,
 			# Who is actually due this week.
-			"houses_landing": [h for h in range(houses) if here in lands[h]],
+			"houses_landing": due,
 			# What the weeks between this delivery and the next ask for.
 			# Reported, not used to size the instalment.
 			"wants": sum(cint(wanted[w]) for w in carried),
