@@ -540,9 +540,11 @@ def proposal(plan_doc, version=None, shares=None, second_half=None, cycles=None)
 	weeks, so a 53-week year is thirteen deliveries. The supplier takes the
 	whole order and brings it in equal instalments on that rhythm.
 
-	The order is worked in halves. The halves are halves of THIS plan: from
-	its first planting week to its last, split at the midpoint date -- which
-	is why they start and end on weeks nobody would call a half-year.
+	The order is worked in halves, and a half is half a YEAR: 26 weeks of a
+	52-week plan, 27 of a 53-week one. It runs from the first planting week,
+	because that is when the first delivery is due, so the halves start and
+	end on weeks nobody would call a half-year -- but each one is a half-year
+	long, which is what the farm reviews on.
 
 	Each half's quantity is the material the planting weeks inside it need,
 	which is why a hundred thousand for the year can be forty in the first
@@ -662,9 +664,14 @@ def proposal(plan_doc, version=None, shares=None, second_half=None, cycles=None)
 	lands = [set(_iso(x) for x in hd) for hd in house_drops]
 	drops = sorted({getdate(x) for hd in house_drops for x in hd})
 
-	# The half-year is a date, and the deliveries fall where they fall either
-	# side of it.
-	mid = add_days(getdate(first), (getdate(last) - getdate(first)).days // 2)
+	# Half a year, counted from the first planting week -- not half of
+	# whatever span the plantings happen to cover. Splitting the span made a
+	# "half" as long as the span was: a plan whose plantings ran over two
+	# years was quoting the farm a twelve-month instalment and calling it a
+	# half. The odd week of a 53-week year goes to the first half, which is
+	# the one already running when the review falls due.
+	year_weeks = cint(plan_doc.get("weeks_covered")) or 52
+	mid = add_days(getdate(first), 7 * ((year_weeks + 1) // 2))
 	# What the farm has settled for the second half, where it has settled
 	# anything: the review at the half-year is a decision, and a decision
 	# outranks the arithmetic that stood in for it.
@@ -702,7 +709,12 @@ def proposal(plan_doc, version=None, shares=None, second_half=None, cycles=None)
 		# delivery schedule and the plan's plants to plant did not agree.
 		over = len(ds) or 1
 		halves.append({
-			"from": _iso(lo), "to": _iso(hi) if hi else _iso(last),
+			# A plan whose plantings end before the half-year is up has an
+			# empty second half. Its window still starts at the midpoint, so
+			# it is shown closing there too rather than at a last planting
+			# week that fell before it began.
+			"from": _iso(lo),
+			"to": _iso(hi) if hi else _iso(max(getdate(last), getdate(lo))),
 			"plants": plants, "planting_weeks": len(ws), "deliveries": len(ds),
 			"split_over": over,
 			"per_delivery": int(round(plants / over)) if plants else 0,
