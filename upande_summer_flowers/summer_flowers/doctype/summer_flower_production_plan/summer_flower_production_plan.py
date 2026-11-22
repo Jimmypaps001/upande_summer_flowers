@@ -689,7 +689,7 @@ class SummerFlowerProductionPlan(Document):
 			b.plants = cint(b.plants_from_demand)
 
 		# Which engine answers depends on how the crop is RAISED, not on whether
-		pool = bool(cint(v.get("raised_from_pool"))) or any(
+		pool = bool(cint(v.get("cut_from_own_stock"))) or any(
 			cint(r.is_standing) for r in (v.material_route or []))
 		got = (built or {}).get("supplied_by_row") or {}
 		if not pool and not any(cint(x) for x in got.values()):
@@ -1494,7 +1494,7 @@ def _losses_of(v):
 
 def _cut_from_a_pool(v):
 	"""Whether this crop is cut from something standing, or bought and planted."""
-	return bool(cint(v.get("raised_from_pool"))
+	return bool(cint(v.get("cut_from_own_stock"))
 	            or any(cint(r.is_standing) for r in (v.get("material_route") or [])))
 
 

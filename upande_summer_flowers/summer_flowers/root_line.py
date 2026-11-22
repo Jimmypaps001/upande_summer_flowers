@@ -524,7 +524,7 @@ def arrival_plan(plan, tc_share=None, returns_per_plant=None,
 		# The same answer the losses and the ladder were worked out from, rather
 		# Whether the crop is cut from a standing pool. The card above owns the
 		# order for those; the bought-material tables must not state a second one.
-		"raised_from_pool": 1 if (cint(v.get("raised_from_pool"))
+		"cut_from_own_stock": 1 if (cint(v.get("cut_from_own_stock"))
 		                          or any(cint(r.get("is_standing")) for r in rows)) else 0,
 		"primary_stage": primary,
 		"secondary_stage": ways[1] if len(ways) > 1 else None,

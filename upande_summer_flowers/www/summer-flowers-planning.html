@@ -5850,7 +5850,7 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
     // A pool crop buys its tissue culture once to raise mothers; the motherstock
     // card above says when. A weekly consignment table would state a second,
     // different order for the same crop.
-    if (cintish(m.raised_from_pool) || !rows.length
+    if (cintish(m.cut_from_own_stock) || !rows.length
         || !(m.tc_order_schedule || []).length) { box.innerHTML = ""; return; }
     const r = raising(m), one = wayOne(m);
     const lead = cintish(m.tc_lead_weeks), grow = cintish(m.tc_weeks_to_ground);

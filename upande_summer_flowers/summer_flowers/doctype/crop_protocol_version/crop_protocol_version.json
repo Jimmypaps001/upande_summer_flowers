@@ -110,7 +110,7 @@
   "way_stages",
   "route_table_section",
   "material_route",
-  "raised_from_pool",
+  "cut_from_own_stock",
   "m1_section",
   "m1_entry",
   "m1_entry_weeks",
@@ -840,9 +840,9 @@
   },
   {
    "description": "Whether this variety is cut from motherstock that stands, rather than bought in for each planting. It decides which card the planning page shows, so a snapshot that does not carry it describes a different crop from the one approved.",
-   "fieldname": "raised_from_pool",
+   "fieldname": "cut_from_own_stock",
    "fieldtype": "Check",
-   "label": "Raised From A Standing Pool"
+   "label": "Cut from our own stock"
   },
   {
    "description": "Whether the cut comes in named flushes rather than continuously. Every yield figure on a plan follows from it.",
@@ -1284,13 +1284,13 @@
    "label": "Worked out from the establishment weeks above"
   },
   {
-   "depends_on": "eval:doc.crop_type==\"Summer Flowers\" && doc.custom_sf_raised_from_pool",
+   "depends_on": "eval:doc.crop_type==\"Summer Flowers\" && doc.custom_sf_cut_from_own_stock",
    "fieldname": "bench_section",
    "fieldtype": "Section Break",
    "label": "Bench & Cutting Yield"
   },
   {
-   "depends_on": "eval:doc.crop_type==\"Summer Flowers\" && doc.custom_sf_raised_from_pool",
+   "depends_on": "eval:doc.crop_type==\"Summer Flowers\" && doc.custom_sf_cut_from_own_stock",
    "fieldname": "multiplication_section",
    "fieldtype": "Section Break",
    "label": "Multiplication"

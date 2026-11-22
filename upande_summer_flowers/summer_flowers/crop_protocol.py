@@ -999,7 +999,7 @@ def validate(doc, method=None):
 	number_flushes(doc)
 	derive(doc)
 	check_route(doc)
-	set_raised_from_pool(doc)
+	set_cut_from_own_stock(doc)
 	set_row_types(doc)
 	set_harvest_is_scheduled(doc)
 	check_lifts(doc)
@@ -1117,10 +1117,10 @@ def lift_slack():
 	return lift_share_tolerance()
 
 
-def set_raised_from_pool(doc):
+def set_cut_from_own_stock(doc):
 	"""Whether this crop is cut from a pool of its own, or handed its material."""
 	rows = route_rows(doc) or []
-	doc.custom_sf_raised_from_pool = 1 if any(
+	doc.custom_sf_cut_from_own_stock = 1 if any(
 		(r.get("stage") or "") in POOL_STAGES for r in rows) else 0
 
 

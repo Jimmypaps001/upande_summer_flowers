@@ -25,16 +25,16 @@ def execute():
 
 		cur = frappe.db.get_value(
 			"Crop Protocol", name,
-			["custom_sf_harvest_is_scheduled", "custom_sf_raised_from_pool"],
+			["custom_sf_harvest_is_scheduled", "custom_sf_cut_from_own_stock"],
 			as_dict=True) or {}
 		if cint(cur.get("custom_sf_harvest_is_scheduled")) != want_sched:
 			frappe.db.set_value("Crop Protocol", name,
 			                    "custom_sf_harvest_is_scheduled", want_sched,
 			                    update_modified=False)
 			scheduled += 1
-		if cint(cur.get("custom_sf_raised_from_pool")) != want_pool:
+		if cint(cur.get("custom_sf_cut_from_own_stock")) != want_pool:
 			frappe.db.set_value("Crop Protocol", name,
-			                    "custom_sf_raised_from_pool", want_pool,
+			                    "custom_sf_cut_from_own_stock", want_pool,
 			                    update_modified=False)
 			pooled += 1
 

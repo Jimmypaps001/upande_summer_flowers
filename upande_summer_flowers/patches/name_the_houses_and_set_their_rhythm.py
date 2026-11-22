@@ -14,7 +14,7 @@ four weeks, and saying four would have the plan order thirteen times for a
 block it fills once. A crop planted from what arrives has the lab delivering
 on a rhythm, and four weeks is that rhythm here.
 
-Which is which is not guessed: `custom_sf_raised_from_pool` already says so,
+Which is which is not guessed: `custom_sf_cut_from_own_stock` already says so,
 derived from the standing stage on the material route, and it is right on
 every protocol -- 1 for each TC -> Motherstock -> Plants, 0 for each
 TC -> Propagation -> Plants.
@@ -46,7 +46,7 @@ def execute():
 		return
 	pool = set(frappe.get_all("Crop Protocol",
 	                          filters={"custom_is_summer_flower": 1,
-	                                   "custom_sf_raised_from_pool": 1},
+	                                   "custom_sf_cut_from_own_stock": 1},
 	                          pluck="name"))
 	rows = frappe.get_all(
 		"Summer Flower Protocol Supplier",
