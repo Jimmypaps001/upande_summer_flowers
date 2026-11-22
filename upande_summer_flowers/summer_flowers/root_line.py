@@ -238,6 +238,91 @@ def _plants_per_unit_from(rows, stage):
 	return out
 
 
+def _consignments(plan, v, waves):
+	"""The consignments this plan actually buys, in the order they land.
+
+	The card used to draw one consignment per PLANTING week, counted back by
+	the lead and the handover. That reads as a schedule and is not one: a
+	house does not come because the field is planting, it comes on its own
+	rhythm and what it brings covers the weeks until it comes again. Twenty-one
+	planting weeks became twenty-one consignments landing in whatever weeks the
+	field happened to want plants, which is why the table never followed the
+	cycles the protocol states.
+
+	So the schedule is read, not invented. Where the plan has consignments --
+	agreed, or proposed and not yet confirmed -- they are the answer, with the
+	house that brings each one. Where it has none, the protocol's own houses
+	and their cycles say what it would be, from the same function the supply
+	card uses, so the two cannot show different schedules for one plan.
+	"""
+	from frappe.utils import add_days, getdate
+	today = getdate()
+
+	def _row(no, supplier, cycle_no, lands, order, units, plants, covers_to,
+	         planting_weeks, lifts):
+		return {
+			"no": no, "supplier": supplier or None, "cycle_no": cint(cycle_no),
+			"lands_iso": lands, "order_iso": order,
+			"units": cint(units), "plants": cint(plants),
+			"covers_to": covers_to, "planting_weeks": cint(planting_weeks),
+			"order_passed": (1 if order and getdate(_monday(order)) < today
+			                 else 0),
+			"lifts": lifts or [],
+		}
+
+	agreed = [c for c in (plan.get("plan_consignments") or [])
+	          if not cint(c.get("by_hand"))]
+	if agreed:
+		agreed.sort(key=lambda c: (str(c.get("lands_week") or ""),
+		                           str(c.get("supplier") or "")))
+		return {
+			"source": "agreed",
+			"rows": [_row(i + 1, c.get("supplier"), c.get("cycle_no"),
+			              c.get("lands_week"), c.get("order_week"),
+			              c.get("units"), c.get("plants"), c.get("covers_to"),
+			              c.get("planting_weeks"),
+			              _lifts_of(cint(c.get("units")), cint(c.get("plants")),
+			                        _monday(c.get("lands_week")), waves))
+			         for i, c in enumerate(agreed)],
+		}
+
+	# Nothing agreed yet: what the protocol's houses would bring, on their own
+	# cycles. One function answers this for both cards.
+	from upande_summer_flowers.summer_flowers import supply_cycles as sc
+
+	try:
+		prop = sc.proposal(plan, v)
+	except Exception:
+		frappe.log_error(frappe.get_traceback(), "consignments from the protocol")
+		return {"source": "none", "rows": []}
+	houses = prop.get("named_houses") or []
+	per_unit = flt(plants_per_unit_at_plant(v)) or 1.0
+	out, no = [], 0
+	for r in (prop.get("rows") or []):
+		for h, qty in enumerate(r.get("split") or []):
+			if not cint(qty):
+				continue
+			no += 1
+			who = (houses[h].get("supplier") if h < len(houses) else None)
+			lead = cint(houses[h].get("lead_weeks")) if h < len(houses) else 0
+			lands = _monday(r["week"])
+			units = (int(math.ceil(cint(qty) / per_unit - 1e-9))
+			         if per_unit > 0 else cint(qty))
+			out.append(_row(
+				no, who, r.get("no"), iso(lands),
+				iso(add_days(lands, -7 * lead)), units, qty,
+				(r.get("covers") or [None])[-1], r.get("planting_weeks"),
+				_lifts_of(units, cint(qty), lands, waves)))
+	out.sort(key=lambda x: (x["lands_iso"] or "", x["supplier"] or ""))
+	for i, x in enumerate(out):
+		x["no"] = i + 1
+	return {"source": "protocol", "rows": out,
+	        "houses": [{"supplier": h.get("supplier"),
+	                    "cycle_weeks": cint(h.get("cycle_weeks")),
+	                    "lead_weeks": cint(h.get("lead_weeks")),
+	                    "share_pct": flt(h.get("share_pct"))} for h in houses]}
+
+
 def arrival_plan(plan, tc_share=None, returns_per_plant=None,
                  tc_qty=None, roots_qty=None):
 	"""Both ways in, landing plants in the week the field wants them."""
@@ -535,6 +620,9 @@ def arrival_plan(plan, tc_share=None, returns_per_plant=None,
 		"returns_per_plant": per_root,
 		# Said plainly, because a buyer reading these figures has to know
 		# whether they answer a programme or only the demand behind it.
+		# The schedule the farm actually buys on: the houses and their
+		# cycles, not one row per planting week.
+		"consignments": _consignments(plan, v, waves),
 		"sized_from_demand": sized_from_demand,
 		"tc_weeks_to_ground": tc_weeks, "tc_lead_weeks": tc_lead,
 		# How the way in is handed over, as the protocol states it.

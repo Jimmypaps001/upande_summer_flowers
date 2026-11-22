@@ -5843,6 +5843,87 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
   // in -- tissue culture, seed, cuttings -- had no such block: it was columns
   // inside the week table and nothing said when a consignment was ordered or
   // when it landed. Same shape, same questions answered.
+  // One row per consignment and the house that brings it. Where the supply is
+  // agreed this is what was agreed; where it is not, it is what the protocol's
+  // houses and their cycles would bring, from the same function the supply card
+  // uses -- so the two cards cannot show one plan two schedules.
+  function boughtByHouse(m, cons) {
+    const one = wayOne(m);
+    const rows = cons.rows || [];
+    const agreed = cons.source === "agreed";
+    const lifted = rows.some((x) => (x.lifts || []).length > 1);
+    const totUnits = rows.reduce((a, x) => a + cintish(x.units), 0);
+    const totPlants = rows.reduce((a, x) => a + cintish(x.plants), 0);
+    const gone = rows.filter((x) => x.order_passed);
+    const goneUnits = gone.reduce((a, x) => a + cintish(x.units), 0);
+    const firstOpen = rows.find((x) => !x.order_passed);
+    const houses = cons.houses || [];
+    const who = houses.length
+      ? houses.map((h) => `${esc(h.supplier || "a house not yet named")}` +
+          ` — every ${h.cycle_weeks} wk, ${h.lead_weeks} wk notice,` +
+          ` ${h.share_pct}%`).join("  ·  ")
+      : "";
+    const warn = gone.length
+      ? `<div style="margin:8px 0;padding:8px 12px;border-radius:6px;` +
+        `border:1px solid #f5c6cb;background:#fdf3f4">` +
+        `<b>${gone.length} of ${rows.length} consignment${
+          rows.length === 1 ? "" : "s"} can no longer be ordered</b> ` +
+        `<span class="text-muted">— ${num(goneUnits)} ${esc(one.toLowerCase())}, ` +
+        `${Math.round((goneUnits / (totUnits || 1)) * 100)}% of the season.` +
+        (firstOpen
+          ? ` The first still open to buy is ${esc(firstOpen.order_iso)}, landing ` +
+            `${esc(firstOpen.lands_iso)}.`
+          : ` None of this schedule can still be bought.`) +
+        `</span></div>`
+      : "";
+    const body = rows.map((x) => {
+      const lifts = x.lifts || [];
+      const span = lifted && lifts.length ? lifts.length : 1;
+      const head =
+        `<tr><td class="n text-muted" rowspan="${span}">${x.no}</td>` +
+        `<td rowspan="${span}">${esc(x.supplier || "not yet named")}</td>` +
+        `<td class="n text-muted" rowspan="${span}">${x.cycle_no || ""}</td>` +
+        `<td rowspan="${span}">${esc(x.order_iso || "")}${
+          x.order_passed ? ' <span class="text-muted">passed</span>' : ""}</td>` +
+        `<td rowspan="${span}">${esc(x.lands_iso || "")}</td>` +
+        `<td class="n" rowspan="${span}">${num(x.units)}</td>` +
+        `<td class="text-muted" rowspan="${span}">${esc(x.covers_to || "")}</td>`;
+      if (!lifted || !lifts.length) {
+        return head + `<td class="n">${num(x.plants)}</td></tr>`;
+      }
+      return lifts.map((l, i) =>
+        (i ? "<tr>" : head) +
+        `<td class="n text-muted">${l.lift_no}</td>` +
+        `<td class="n text-muted">${l.share_pct}%</td>` +
+        `<td>${esc(l.week || l.week_iso || "")}</td>` +
+        `<td class="n">${num(l.plants)}</td></tr>`).join("");
+    }).join("");
+    return `<div class="text-muted small" style="text-transform:uppercase;` +
+      `letter-spacing:.05em;margin:14px 0 4px">` +
+      `${agreed ? "The supply agreed for this plan" : "What the protocol's houses would bring"}` +
+      `</div>` + warn +
+      `<p class="pl-note"><b>${num(totUnits)} ${esc(one.toLowerCase())} over ` +
+      `${rows.length} consignment${rows.length === 1 ? "" : "s"}</b>, ` +
+      `${num(totPlants)} plants.` +
+      (who ? ` ${who}.` : "") +
+      (agreed
+        ? " This is what was agreed on the supply card; change it there."
+        : " Nothing is agreed yet — these are the protocol's own houses and" +
+          " cycles. Agree them on the supply card to make them the plan's.") +
+      `</p>` +
+      `<table class="pl-t"><thead><tr>` +
+      `<th class="n">#</th><th>House</th><th class="n">Cycle</th>` +
+      `<th>Ordered</th><th>Lands</th><th class="n">${esc(one)}</th>` +
+      `<th>Covers to</th>` +
+      (lifted ? `<th class="n">Lift</th><th class="n">Share</th><th>Hands over</th>` : "") +
+      `<th class="n">Plants</th>` +
+      `</tr></thead><tbody>${body}</tbody>` +
+      `<tfoot><tr><th colspan="5">Season</th>` +
+      `<th class="n">${num(totUnits)}</th><th></th>` +
+      (lifted ? `<th colspan="3"></th>` : "") +
+      `<th class="n">${num(totPlants)}</th></tr></tfoot></table>`;
+  }
+
   function renderBought(m) {
     const box = $("tc-buy-plan");
     if (!box) return;
@@ -5854,6 +5935,13 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
         || !(m.tc_order_schedule || []).length) { box.innerHTML = ""; return; }
     const r = raising(m), one = wayOne(m);
     const lead = cintish(m.tc_lead_weeks), grow = cintish(m.tc_weeks_to_ground);
+    // The schedule the farm buys on, read off the plan: who brings each
+    // consignment, on that house's own cycle. The table underneath this one
+    // drew a consignment per PLANTING week, which is not a schedule anybody
+    // orders against -- a house comes on its rhythm and what it brings covers
+    // the weeks until it comes again.
+    const cons = m.consignments || {};
+    if ((cons.rows || []).length) { box.innerHTML = boughtByHouse(m, cons); return; }
     // The route cannot always say what one unit becomes, and then the season
     // total comes back empty while the weeks still carry units. Add them up.
     const totUnits = cintish(m.tc_units_total)
