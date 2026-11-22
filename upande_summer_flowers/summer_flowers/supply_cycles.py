@@ -1625,6 +1625,46 @@ def _write_sellers(plan_doc, out):
 
 
 @frappe.whitelist()
+def set_consignment_supplier(plan, row, supplier=None):
+	"""Hand one consignment to a different house.
+
+	Which house brings a particular drop is a commercial fact that changes
+	after the rhythm is agreed -- one lab is short that month, another takes
+	it -- and it is not a reason to re-agree the whole supply. So this writes
+	the one row and nothing else: no quantity moves, no week moves, and the
+	schedule the plan was built on is untouched.
+
+	A name is not checked against the Supplier list because the field never
+	was one: a house the farm has not set up yet is still the house that is
+	bringing it, and refusing the name would only send somebody to create a
+	record before they could record what already happened.
+	"""
+	from upande_summer_flowers.summer_flowers.planning_api import _guard
+
+	_guard()
+	doc = frappe.get_doc("Summer Flower Production Plan", plan)
+	frappe.has_permission("Summer Flower Production Plan", "write", doc, throw=True)
+	if cint(doc.docstatus) != 0:
+		frappe.throw(_("{0} has been submitted, so its consignments cannot be "
+		               "handed to another house here.").format(doc.name))
+	for c in (doc.get("plan_consignments") or []):
+		if c.name != row:
+			continue
+		was = c.supplier
+		now = (supplier or "").strip() or None
+		if was == now:
+			return {"row": row, "supplier": now, "changed": 0}
+		# Straight to the row. Saving the plan would redraw the programme from
+		# the supply, and the supply has not changed -- only who is bringing
+		# one drop of it.
+		c.db_set("supplier", now, update_modified=False)
+		frappe.db.commit()
+		return {"row": row, "supplier": now, "was": was, "changed": 1,
+		        "note": _("{0} now brings the consignment landing {1}.").format(
+			        now or _("nobody"), c.lands_week or "")}
+	frappe.throw(_("That consignment is not on {0}.").format(doc.name))
+
+@frappe.whitelist()
 def clear_supply(plan):
 	"""Un-agree the supply, so it can be chosen again."""
 	from upande_summer_flowers.summer_flowers.planning_api import _guard

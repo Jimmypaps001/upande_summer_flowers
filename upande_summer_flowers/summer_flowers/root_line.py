@@ -259,9 +259,12 @@ def _consignments(plan, v, waves):
 	today = getdate()
 
 	def _row(no, supplier, cycle_no, lands, order, units, plants, covers_to,
-	         planting_weeks, lifts):
+	         planting_weeks, lifts, row=None):
 		return {
 			"no": no, "supplier": supplier or None, "cycle_no": cint(cycle_no),
+			# The child row behind this consignment, where there is one. A
+			# proposed schedule has none: nothing has been written to change.
+			"row": row,
 			"lands_iso": lands, "order_iso": order,
 			"units": cint(units), "plants": cint(plants),
 			"covers_to": covers_to, "planting_weeks": cint(planting_weeks),
@@ -282,7 +285,8 @@ def _consignments(plan, v, waves):
 			              c.get("units"), c.get("plants"), c.get("covers_to"),
 			              c.get("planting_weeks"),
 			              _lifts_of(cint(c.get("units")), cint(c.get("plants")),
-			                        _monday(c.get("lands_week")), waves))
+			                        _monday(c.get("lands_week")), waves),
+			              c.get("name"))
 			         for i, c in enumerate(agreed)],
 		}
 

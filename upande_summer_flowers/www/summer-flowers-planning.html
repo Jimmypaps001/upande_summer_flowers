@@ -1503,6 +1503,15 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
 
   // Transactions live in their own module: planning_api reads, operations_api writes.
   const OPS = "upande_summer_flowers.summer_flowers.operations_api.";
+  // supply_cycles owns who brings what. The consignment table writes one field
+  // there and nowhere else -- changing a house is not re-agreeing a supply.
+  const SC = "upande_summer_flowers.summer_flowers.supply_cycles.";
+  const callSupply = (m, a) => new Promise((res, rej) => {
+    frappe.call({ method: SC + m, args: a || {},
+      callback: (r) => res(r && r.message),
+      error: (r) => rej(new Error((r && r.responseJSON &&
+        (r.responseJSON.exc_type || r.responseJSON.message)) || (m + ": failed"))) });
+  });
   const callOp = (m, a) => new Promise((res, rej) => {
     let done = false; const fin = (f, v) => { if (!done) { done = true; f(v); } };
     setTimeout(() => fin(rej, new Error("Timed out: " + m)), 45000);
@@ -5876,12 +5885,25 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
           : ` None of this schedule can still be bought.`) +
         `</span></div>`
       : "";
+    // A proposed schedule has no rows to write to, so it reads as text and
+    // says where to change it. An agreed one is the plan's own consignments,
+    // and which house brings a drop can change without re-agreeing the rhythm.
+    const choices = Array.from(new Set(
+      (cons.houses || []).map((h) => h.supplier).filter(Boolean)));
+    function houseCell(x) {
+      if (!x.row) return esc(x.supplier || "not yet named");
+      const opts = Array.from(new Set([x.supplier].concat(choices).filter(Boolean)));
+      return `<select class="cons-sup" data-row="${esc(x.row)}">` +
+        opts.map((o) =>
+          `<option${o === x.supplier ? " selected" : ""}>${esc(o)}</option>`).join("") +
+        `</select>`;
+    }
     const body = rows.map((x) => {
       const lifts = x.lifts || [];
       const span = lifted && lifts.length ? lifts.length : 1;
       const head =
         `<tr><td class="n text-muted" rowspan="${span}">${x.no}</td>` +
-        `<td rowspan="${span}">${esc(x.supplier || "not yet named")}</td>` +
+        `<td rowspan="${span}">${houseCell(x)}</td>` +
         `<td class="n text-muted" rowspan="${span}">${x.cycle_no || ""}</td>` +
         `<td rowspan="${span}">${esc(x.order_iso || "")}${
           x.order_passed ? ' <span class="text-muted">passed</span>' : ""}</td>` +
@@ -10337,6 +10359,17 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
         loadBoard();
       });
     }
+
+    // Hand one consignment to another house. Only the row changes: no
+    // quantity moves and no week moves, so the plan is not redrawn under it.
+    $("pl-root").addEventListener("change", (ev) => {
+      const sel = ev.target.closest("select.cons-sup");
+      if (!sel) return;
+      callSupply("set_consignment_supplier",
+                 { plan: S.plan, row: sel.dataset.row, supplier: sel.value })
+        .then((r) => { toast((r && r.note) || "House changed."); loadDetail(); })
+        .catch((e) => { toast(esc(e.message || String(e)), true); loadDetail(); });
+    });
 
     $("pl-root").addEventListener("change", (ev) => {
       const t = ev.target.closest("input.tgt");
