@@ -84,6 +84,7 @@
   "peak_beds_week",
   "workflow_state",
   "protocol_built_on",
+  "cycles_read_on",
   "amended_from",
   "sf_pending_selling",
   "sf_pending_raising",
@@ -643,6 +644,16 @@
    "read_only": 1
   },
   {
+   "allow_on_submit": 1,
+   "description": "When this plan last read the crop already in the ground (crop cycles and committed planting calendars). Cycles changed after this make the plan stale.",
+   "fieldname": "cycles_read_on",
+   "fieldtype": "Datetime",
+   "hidden": 1,
+   "label": "Standing Crop Read At",
+   "no_copy": 1,
+   "read_only": 1
+  },
+  {
    "fieldname": "amended_from",
    "fieldtype": "Link",
    "label": "Amended From",
@@ -1082,7 +1093,7 @@
    "table_fieldname": null
   }
  ],
- "modified": "2026-11-10 14:00:00.000000",
+ "modified": "2026-11-23 23:12:26.241793",
  "modified_by": "Administrator",
  "module": "Summer Flowers",
  "name": "Summer Flower Production Plan",

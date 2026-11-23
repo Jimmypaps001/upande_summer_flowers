@@ -43,7 +43,7 @@ def resolve_plan(variety=None, farm=None, plan=None):
 	"""The plan the dashboard should show when none was asked for."""
 	if plan:
 		return plan
-	f = {"docstatus": ["<", 2]}
+	f = {"docstatus": ["<", 2], "status": ["!=", "Replaced"]}
 	# Kept out of the return so every existing caller is untouched: what this
 	if variety:
 		f["variety"] = variety
@@ -212,8 +212,11 @@ def demand_vs_production(variety=None, farm=None, plan=None):
 
 	new_rows = [b for b in p.plan_blocks if b.is_new_planting]
 	plants = sum((b.plants or 0) for b in new_rows)
+	fresh = protocol_freshness(p)
 	return {
 		"plan": p.name,
+		"stale": cint(fresh["stale"]),
+		"stale_note": fresh["note"],
 		"variety": p.variety,
 		"farm": p.farm,
 		"version": p.protocol,
@@ -238,6 +241,8 @@ def demand_vs_production(variety=None, farm=None, plan=None):
 			                          else flt(p.coverage_pct)),
 			"weeks_in_deficit": p.weeks_in_deficit or 0,
 			"plants_required": plants,
+			"plants_needed": sum(max(cint(b.plants_required), cint(b.plants))
+			                     for b in new_rows),
 			"beds_required": p.new_beds_required or 0,
 			"plantings_proposed": len(new_rows),
 			"peak_weekly_sticking": p.peak_weekly_sticking or 0,
@@ -254,24 +259,33 @@ def demand_vs_production(variety=None, farm=None, plan=None):
 def demand_vs_production_by_variety(farm=None, season=None):
 	"""Every variety's demand and production in one payload, and their sum."""
 	_guard()
-	f = {"docstatus": ["<", 2]}
+	# A Replaced plan is history: the picker already leaves it out, and the
+	# overview summed it in whenever nothing newer had been approved.
+	f = {"docstatus": ["<", 2], "status": ["!=", "Replaced"]}
 	if farm:
 		f["farm"] = farm
 	if season:
 		f["season_start_year"] = season_year(season)
 	rows = frappe.get_all("Summer Flower Production Plan", filters=f,
-	                      fields=["name", "variety", "docstatus", "creation"],
+	                      fields=["name", "variety", "farm", "season_start_year",
+	                              "docstatus", "creation"],
 	                      order_by="creation desc")
 
 	# One plan per variety: the authoritative one where there is one, else the
+	# ...for each variety, farm and season. Keyed on the variety alone, a
+	# variety grown at two farms showed one farm's plan as the whole crop, and
+	# "All financial years" kept one season of each variety and dropped the
+	# rest while calling the sum every year's.
 	best = {}
 	for r in rows:
-		cur = best.get(r.variety)
+		key = (r.variety, r.farm, season_year(r.season_start_year))
+		cur = best.get(key)
 		if cur is None or (r.docstatus == 1 and cur.docstatus != 1):
-			best[r.variety] = r
+			best[key] = r
 
 	series, weeks, months = [], {}, {}
-	for variety, r in sorted(best.items()):
+	for (variety, _farm, _season), r in sorted(best.items(),
+	                                           key=lambda kv: tuple(str(x) for x in kv[0])):
 		d = demand_vs_production(plan=r.name)
 		if not d.get("plan"):
 			continue
@@ -281,7 +295,7 @@ def demand_vs_production_by_variety(farm=None, season=None):
 			"Summer Flower Plan Block",
 			filters={"parent": r.name, "parenttype": "Summer Flower Production Plan",
 			         "is_new_planting": 1},
-			fields=["planting_date", "beds", "plants", "block"])
+			fields=["planting_date", "beds", "plants", "plants_required", "block"])
 		dates = sorted(b.planting_date for b in blocks if b.planting_date)
 		prop = frappe.db.get_value(
 			"Summer Flower Propagation Plan",
@@ -297,13 +311,22 @@ def demand_vs_production_by_variety(farm=None, season=None):
 			as_dict=True)
 		series.append({
 			"variety": variety, "plan": d["plan"], "farm": d["farm"],
+			"season": _season,
 			"status": d["status"],
+			# Whether the figures are still the farm's: the protocol, or the crop
+			# already standing, changed after the plan was drawn.
+			"stale": cint(d.get("stale")),
+			"stale_note": d.get("stale_note"),
 			"demand_stems": cint(t["demand_stems"]),
 			"production_stems": cint(t["production_stems"]),
 			"coverage_pct": flt(t["coverage_pct"]),
 			"plantings": len(blocks),
 			"beds": sum(cint(b.beds) for b in blocks),
 			"plants": sum(cint(b.plants) for b in blocks),
+			# What the plantings need, placed or not. "plants" is only what has
+			# a block, so a plan with nowhere to plant read as a small order.
+			"plants_needed": sum(max(cint(b.plants_required), cint(b.plants))
+			                     for b in blocks),
 			"placed": sum(1 for b in blocks if b.block),
 			"first_planting": str(dates[0]) if dates else None,
 			"last_planting": str(dates[-1]) if dates else None,
@@ -338,6 +361,7 @@ def demand_vs_production_by_variety(farm=None, season=None):
 			"demand_stems": tot_d, "production_stems": tot_p,
 			"coverage_pct": (tot_p / tot_d * 100) if tot_d else 0,
 			"plans": len(series),
+			"plans_stale": sum(1 for x in series if x["stale"]),
 		},
 	}
 

@@ -1599,7 +1599,26 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
       // Biggest first, so the fixed colour order runs down the page in the order
       // the reader meets the lines. Beyond four, the rest fold into Other rather
       // than inventing a fifth hue.
-      const ranked = S.mv.series.slice().sort((a, b) =>
+      // The API sends one entry per plan -- variety, farm and season -- so
+      // "All financial years" carries a variety once per season. One line per
+      // crop: seasons joined, and the farm named where a variety has two.
+      const farmsOf = {};
+      S.mv.series.forEach((x) => {
+        (farmsOf[x.variety] = farmsOf[x.variety] || new Set()).add(x.farm);
+      });
+      const lines = new Map();
+      S.mv.series.forEach((x) => {
+        const name = farmsOf[x.variety].size > 1
+          ? `${x.variety} · ${x.farm || "—"}` : x.variety;
+        const m = lines.get(name) || { variety: name, weeks: [], months: [],
+                                       demand_stems: 0, production_stems: 0 };
+        m.weeks = m.weeks.concat(x.weeks || []);
+        m.months = m.months.concat(x.months || []);
+        m.demand_stems += x.demand_stems || 0;
+        m.production_stems += x.production_stems || 0;
+        lines.set(name, m);
+      });
+      const ranked = [...lines.values()].sort((a, b) =>
         (b[key + "_stems"] || 0) - (a[key + "_stems"] || 0));
       labels = (S.mv[grain] || []).map((r) => r.label);
       const idx = new Map(labels.map((l, i) => [l, i]));
@@ -1608,7 +1627,7 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
         const vals = new Array(labels.length).fill(0);
         (v[grain] || []).forEach((r) => {
           const at = idx.get(r.label);
-          if (at != null) vals[at] = r[key] || 0;
+          if (at != null) vals[at] += r[key] || 0;
         });
         series.push({ label: v.variety, color: VARIETY_COLORS[i], values: vals,
                       fill: i === 0 });
@@ -1624,6 +1643,9 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
       }
       note = `${S.dvSeries === "demand" ? "Demand" : "Production"} by variety · ` +
         `${ranked.length} varieties`;
+      if (S.mv.totals && S.mv.totals.plans_stale) {
+        note += ` · ${S.mv.totals.plans_stale} of the plans are out of date`;
+      }
     } else {
       const src = multi ? S.mv : S.dv;
       const rows = (src && src[grain]) || [];
@@ -2170,7 +2192,7 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
       const tD = all.reduce((a, x) => a + (x.demand_stems || 0), 0);
       const tP = all.reduce((a, x) => a + (x.production_stems || 0), 0);
       const tPl = all.reduce((a, x) => a + (x.plantings || 0), 0);
-      const tPlants = all.reduce((a, x) => a + (x.plants || 0), 0);
+      const tPlants = all.reduce((a, x) => a + (x.plants_needed || x.plants || 0), 0);
       const unplaced = all.reduce((a, x) => a + ((x.plantings || 0) - (x.placed || 0)), 0);
       secs.push(sec("All varieties", `${all.length} plans`, [
         row("Demand", num(tD), "stems asked for, every variety"),
@@ -2265,7 +2287,13 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
         all.map((x) => {
           const pr = x.propagation, pc = x.procurement;
           const cov = x.coverage_pct || 0;
-          return `<tr><td>${esc(x.variety)}</td><td>${esc(x.farm || "—")}</td>` +
+          return `<tr><td>${esc(x.variety)}` +
+            (S.season ? "" : `<br><span class="pl-note">${esc(seasonLabel(x.season))}</span>`) +
+            (x.stale
+              ? ` <span class="pill" title="${esc(x.stale_note || "")}">` +
+                `<i class="dot2" style="background:var(--warning)"></i>out of date</span>`
+              : "") +
+            `</td><td>${esc(x.farm || "—")}</td>` +
             `<td class="n">${num(x.demand_stems)}</td>` +
             `<td class="n">${num(x.production_stems)}</td>` +
             `<td class="n" style="color:var(${cov >= 100 ? "--good" : "--serious"})">` +
@@ -2274,6 +2302,10 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
             `<td class="n">${num(x.plantings)}` +
               (x.plantings && x.placed < x.plantings
                 ? ` <span class="pl-note">(${num(x.plantings - x.placed)} unplaced)</span>`
+                : "") +
+              ((x.plants_needed || 0) > (x.plants || 0)
+                ? `<br><span class="pl-note">${num(x.plants || 0)} of ` +
+                  `${num(x.plants_needed)} plants have a block</span>`
                 : "") + `</td>` +
             `<td>${pr ? `<a href="/app/summer-flower-propagation-plan/${
                  encodeURIComponent(pr.name)}" target="_blank">${esc(pr.name)}</a>` +
@@ -3490,8 +3522,9 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
       `${esc(r.variety)} at ${esc(r.farm)} · status <b>${esc(r.status)}</b>` +
       (r.protocol ? ` · protocol ${esc(r.protocol)}` : "") +
       (r.protocol_stale
-        ? ' <span class="pill"><i class="dot2" style="background:var(--warning)"></i>' +
-          'protocol changed since build</span>' : "");
+        ? ` <span class="pill" title="${esc(r.protocol_note || "")}">` +
+          '<i class="dot2" style="background:var(--warning)"></i>' +
+          'out of date since build</span>' : "");
     $("pg-actions").innerHTML = [
       r.status === "Draft" || r.status === "Rejected"
         ? `<button type="button" class="pl-btn" data-pg="submit">Submit for approval</button>` : "",
@@ -3742,8 +3775,11 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
       (S.version ? ` · built on protocol <b>${esc(S.version)}</b>` : "") +
       (pr.protocol_status ? ` (${esc(pr.protocol_status)})` : "") +
       (stale
-        ? ' <span class="pill"><i class="dot2" style="background:var(--warning)"></i>' +
-          "protocol changed since this plan was built — regenerate to apply</span>"
+        ? ` <span class="pill" title="${esc(pr.protocol_note || (S.pg && S.pg.protocol_note) || "")}">` +
+          '<i class="dot2" style="background:var(--warning)"></i>' +
+          // The protocol, or the crop already standing, changed after the
+          // plan was drawn; the tooltip says which.
+          "out of date since this plan was built — regenerate to apply</span>"
         : "");
   }
 

@@ -888,7 +888,11 @@ def protocol_freshness(plan):
 	# cycles and committed calendars only when it is built, so cycles loaded
 	# afterwards left approved plans planting for stems the farm already had
 	# (110402 at Carzan Ks: 88 cycles loaded after its three plans).
-	if built and plan.get("farm") and plan.get("variety"):
+	# Plans built before cycles_read_on existed fall back to their creation:
+	# it over-flags a plan regenerated since, which Regenerate then clears.
+	read_on = plan.get("cycles_read_on") or plan.get("creation")
+	read_on = get_datetime(read_on) if read_on else None
+	if read_on and plan.get("farm") and plan.get("variety"):
 		# This plan's own plantings become calendars, then cycles, after it is
 		# approved. They are what it asked for, not news, so a calendar on a
 		# block this plan plants on that date is not counted -- nor its cycle.
@@ -897,7 +901,7 @@ def protocol_freshness(plan):
 		changed = frappe.get_all("Planting Calendar", filters={
 			"farm": plan.farm, "variety": plan.variety,
 			"calendar_status": ["in", ("Approved", "Planted")],
-			"modified": [">", built]},
+			"modified": [">", read_on]},
 			fields=["name", "block", "planting_date"])
 		mine = {c.name for c in frappe.get_all("Planting Calendar", filters={
 			"farm": plan.farm, "variety": plan.variety,
@@ -907,7 +911,7 @@ def protocol_freshness(plan):
 		calendars = len([c for c in changed if c.name not in mine])
 		cycles = [r.name for r in frappe.get_all(
 			"Crop Cycle",
-			filters={"farm": plan.farm, "modified": [">", built]},
+			filters={"farm": plan.farm, "modified": [">", read_on]},
 			or_filters=[{"variety": plan.variety},
 			            {"custom_sf_variety": plan.variety}],
 			fields=["name", "custom_planting_calendar"])
@@ -918,7 +922,7 @@ def protocol_freshness(plan):
 				"changed since this plan was built on {4}, so its standing crop "
 				"and the plants it asks for may be out of date."
 			).format(len(cycles), calendars, plan.variety, plan.farm,
-			         frappe.format(built, "Datetime")))
+			         frappe.format(read_on, "Datetime")))
 
 	# Edits sitting on the Crop Protocol that were never approved. A plan is
 	unapproved = None
@@ -2613,6 +2617,9 @@ def _populate(plan, programme=None):
 	protocol = frappe.get_cached_doc("Crop Protocol Version", plan.protocol)
 	# Watermark the version as it stands at this moment, so a later edit to it can
 	plan.protocol_built_on = protocol.modified
+	# And when the standing crop was read, which is now: the cycles and
+	# calendars netted off below are as they stand at this moment.
+	plan.cycles_read_on = now_datetime()
 
 	grid = week_sequence(plan.from_year, plan.from_week, plan.weeks_covered)
 	index = {(y, w): i for i, (y, w, _d) in enumerate(grid)}
