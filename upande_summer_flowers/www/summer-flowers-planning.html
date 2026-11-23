@@ -8928,8 +8928,10 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
     const names = (S.sup || []).map((p) => p.supplier);
     const head = Array.from({ length: houses }, (_, i) =>
       `<th class="r">${esc(names[i] || `House ${i + 1}`)}</th>`).join("");
+    // Named by the calendar half it is -- "2026 H2" -- not counted off the
+    // plan. A planner reviewing in January needs to see which January.
     const halves = (d.halves || []).map((h, i) =>
-      `half ${i + 1} · ${esc(h.from)}&ndash;${esc(h.to)} · ${num(h.plants)} plants `
+      `${esc(h.label || `half ${i + 1}`)} · ${esc(h.from)}&ndash;${esc(h.to)} · ${num(h.plants)} plants `
       + `/ ${h.split_over} = <b>${num(h.per_delivery)}</b> each`
       + (h.agreed ? " · <b>agreed</b>" : "")).join(" &nbsp;|&nbsp; ");
     el.innerHTML =
