@@ -65,6 +65,85 @@ def _monday(d):
 	return add_days(d, -d.weekday())
 
 
+def _week_edge(d):
+	"""The Monday of the week `d` belongs to, counted the way ISO counts.
+
+	Rounding DOWN to Monday would put the 1st of January in the old year
+	whenever it fell on a Thursday, which is the one case ISO puts it in the
+	new one. Mon-Thu belong to the week that has already started; Fri-Sun to
+	the one about to. For a year opening on 1 January this returns ISO week 1
+	exactly, and it keeps doing something sensible for a financial year that
+	opens on any other day."""
+	d = getdate(d)
+	return add_days(d, -d.weekday() if d.weekday() <= 3 else 7 - d.weekday())
+
+
+def financial_halves():
+	"""(Monday it opens, what to call it) for every half of every financial
+	year on file, in order.
+
+	The halves are the FINANCIAL year's, not the calendar's. A farm reviews
+	an order against the year it reports on, and where those two are the same
+	-- as they are here, 1 January to 31 December -- this is the ISO week 1
+	and week 27 everyone already expects. Where a site runs a year to June,
+	the halves move with it and nothing else has to know.
+
+	The odd week of a 53-week year falls in the second half, which is where
+	counting 53 // 2 = 26 weeks from the start of the first one puts it."""
+	out = []
+	for r in frappe.get_all("Fiscal Year",
+	                        fields=["name", "year_start_date", "year_end_date"],
+	                        order_by="year_start_date"):
+		if not (r.year_start_date and r.year_end_date):
+			continue
+		opens = _week_edge(r.year_start_date)
+		# Where the NEXT year opens, which is how long this one is in weeks.
+		closes = _week_edge(add_days(getdate(r.year_end_date), 1))
+		weeks = (closes - opens).days // 7
+		if weeks < 2:
+			continue
+		out.append((opens, "%s H1" % r.name))
+		out.append((add_days(opens, 7 * (weeks // 2)), "%s H2" % r.name))
+	return sorted(out)
+
+
+def _calendar_halves(lo, hi):
+	"""The same thing off the calendar, for a span the Fiscal Year table does
+	not reach. ISO week 1 and ISO week 27, named for the year they fall in."""
+	out = []
+	y = getdate(lo).isocalendar()[0] - 1
+	while True:
+		for w in (1, 27):
+			try:
+				d = datetime.date.fromisocalendar(y, w, 1)
+			except ValueError:
+				continue
+			out.append((d, "%s H%d" % (y, 1 if w == 1 else 2)))
+		if datetime.date.fromisocalendar(y, 1, 1) > getdate(hi):
+			break
+		y += 1
+	return sorted(out)
+
+
+def half_year_periods(lo, hi):
+	"""Every half-year boundary the span lo..hi sits in or crosses.
+
+	The financial year decides it. Only where the Fiscal Year table does not
+	reach the whole span -- a plan running past the last year anybody has
+	opened -- does the calendar stand in, because a plan still has to be
+	halved somewhere."""
+	lo, hi = getdate(lo), getdate(hi)
+	fy = financial_halves()
+	if not fy or fy[0][0] > lo or fy[-1][0] < hi:
+		fy = _calendar_halves(lo, hi)
+	# The first period opens where the plan does, carrying the name of the
+	# half it falls in: the plan has nothing to say about the weeks before it.
+	before = [x for x in fy if x[0] <= lo]
+	out = [(lo, before[-1][1] if before else "%s H%d" % lo.isocalendar()[:2])]
+	out += [x for x in fy if lo < x[0] <= hi]
+	return out
+
+
 def stated_lifts(supplier=None, form=DEFAULT_FORM):
 	"""The LIFTS a supplier hands one consignment over in, as Settings states.
 
@@ -540,15 +619,22 @@ def proposal(plan_doc, version=None, shares=None, second_half=None, cycles=None)
 	weeks, so a 53-week year is thirteen deliveries. The supplier takes the
 	whole order and brings it in equal instalments on that rhythm.
 
-	The order is worked in halves of the CALENDAR year: ISO weeks 1 to 26, and
-	27 to the end. The farm reviews in January and in July, so those are the
-	weeks a period can start on. A plan that opens in week 38 opens inside the
-	second half of that year and is cut at the new year, not twenty-six weeks
-	after whatever week its plantings happened to begin on.
+	The order is worked in halves of the FINANCIAL year, read from the Fiscal
+	Year table, so where a site runs its year to June the halves move with it.
+	On a year of 1 January to 31 December they are ISO weeks 1 to 26 and 27 to
+	the end -- the weeks the farm actually reviews on. A plan opening in week
+	38 opens inside the second half of that year and is cut at the new year,
+	not twenty-six weeks after whatever week its plantings happened to begin.
 
-	That means a plan gets as many periods as calendar halves it touches: two
+	That means a plan gets as many periods as financial halves it touches: two
 	for most, three for a full year that starts mid-half, more for a plan that
 	runs over several years -- which used to be handed one 79-week "half".
+
+	A half is grouped on the week the TC has to be DELIVERED, not the week it
+	is planted. The two part company at every boundary, because the
+	consignment covering the first weeks of a half lands in the one before it:
+	the order is placed, paid for and received against the delivery, so the
+	delivery is what the half holds.
 
 	Each half's quantity is the material the planting weeks inside it need,
 	which is why a hundred thousand for the year can be forty in the first
@@ -697,24 +783,9 @@ def proposal(plan_doc, version=None, shares=None, second_half=None, cycles=None)
 	# always two -- which also retires the other half of the same fault, a
 	# plan running over two years quoting the farm a seventy-nine-week
 	# instalment and calling it a half.
-	def _half_after(d):
-		"""The Monday of the next calendar half-year to open after `d`."""
-		y, w, _dow = getdate(d).isocalendar()
-		return (datetime.date.fromisocalendar(y, 27, 1) if w < 27
-		        else datetime.date.fromisocalendar(y + 1, 1, 1))
-
-	def _half_label(d):
-		y, w, _dow = getdate(d).isocalendar()
-		return "%s H%d" % (y, 1 if w < 27 else 2)
-
-	# The first period opens where the plantings do, not where its calendar
-	# half did: the plan has nothing to say about the weeks before it starts.
-	edges = [getdate(first)]
-	while True:
-		nxt = _half_after(edges[-1])
-		if nxt > getdate(last):
-			break
-		edges.append(nxt)
+	periods = half_year_periods(first, last)
+	edges = [x[0] for x in periods]
+	names = [x[1] for x in periods]
 	# What the farm has settled for the second half, where it has settled
 	# anything: the review at the half-year is a decision, and a decision
 	# outranks the arithmetic that stood in for it.
@@ -727,31 +798,41 @@ def proposal(plan_doc, version=None, shares=None, second_half=None, cycles=None)
 
 	bounds = [(e, edges[i + 1] if i + 1 < len(edges) else None)
 	          for i, e in enumerate(edges)]
-	want = []
-	for lo, hi in bounds:
-		ws = _in_half(weeks, lo, hi)
-		want.append(sum(cint(wanted[w]) for w in ws))
-	if agreed_2nd:
+
+	# Which delivery brings each planting week's material: the last one to
+	# land on or before it. Weeks that run before anything has arrived belong
+	# to the first delivery, because that is the one that has to carry them.
+	carried_by = [max(0, bisect.bisect_right(drops, getdate(w)) - 1)
+	              for w in weeks]
+	per_drop = [0] * len(drops)
+	weeks_on = [0] * len(drops)
+	for i, w in zip(carried_by, weeks):
+		per_drop[i] += cint(wanted[w])
+		weeks_on[i] += 1
+
+	# Which period each delivery lands in. The delivery date is the thing
+	# being grouped: a half is the TC the farm has to TAKE DELIVERY of in it.
+	of_half = [max(n for n, (lo, _hi) in enumerate(bounds)
+	               if getdate(dt) >= getdate(lo)) for dt in drops]
+
+	# Grouped on the delivery, not on the planting week. The two part company
+	# at every year end, because the consignment that covers January lands in
+	# December: counted on the planting week, the first half asked for
+	# material nothing was due to bring and the half that WAS bringing it
+	# showed none of it. The order is placed against the delivery, so the
+	# delivery is what the half is. It also retires the rule that used to
+	# hand an empty half's plants back to a full one -- a half with no
+	# delivery in it now has no plants in it, by construction.
+	want = [0] * len(bounds)
+	served = [0] * len(bounds)
+	for i, _dt in enumerate(drops):
+		want[of_half[i]] += per_drop[i]
+		served[of_half[i]] += weeks_on[i]
+	if agreed_2nd and len(want) > 1:
 		want[1] = agreed_2nd
-	# A half with no delivery in it has nowhere to put its plants. They do not
-	# evaporate: they go to the half that does come, because the order is one
-	# order and the farm still has to plant them.
-	counts = [len(_in_half(drops, lo, hi)) for lo, hi in bounds]
-	live = [n for n, c in enumerate(counts) if c]
-	for n, c in enumerate(counts):
-		if c or not want[n] or not live:
-			continue
-		# Material has to be on the farm before the week it is planted, so
-		# the plants go back to the last period something did land in. Only
-		# where nothing has landed yet do they go forward to the first.
-		earlier = [m for m in live if m < n]
-		onto = earlier[-1] if earlier else live[0]
-		want[onto] += want[n]
-		want[n] = 0
 
 	halves = []
 	for n, (lo, hi) in enumerate(bounds):
-		ws = _in_half(weeks, lo, hi)
 		ds = _in_half(drops, lo, hi)
 		plants = want[n]
 		# Divided by the deliveries that actually land in this half. Dividing
@@ -766,10 +847,15 @@ def proposal(plan_doc, version=None, shares=None, second_half=None, cycles=None)
 			# week that fell before it began.
 			"from": _iso(lo),
 			"to": _iso(hi) if hi else _iso(max(getdate(last), getdate(lo))),
-			# Which calendar half this is, so the card can name the period the
-			# farm reviews on instead of counting "half 1, half 2" off a plan.
-			"label": _half_label(lo),
-			"plants": plants, "planting_weeks": len(ws), "deliveries": len(ds),
+			# Which half of which financial year this is, so the card can name
+			# the period the farm reviews on instead of counting "half 1,
+			# half 2" off whichever week a plan happens to open in.
+			"label": names[n],
+			"plants": plants,
+			# The planting weeks this half's DELIVERIES cover, which is what
+			# it is answerable for -- not the weeks that fall between its own
+			# two dates, which somebody else's consignment may be bringing.
+			"planting_weeks": served[n], "deliveries": len(ds),
 			"split_over": over,
 			"per_delivery": int(round(plants / over)) if plants else 0,
 			# What each house brings each time it comes. Equal cycles make
@@ -806,8 +892,7 @@ def proposal(plan_doc, version=None, shares=None, second_half=None, cycles=None)
 		end = drops[i + 1] if i + 1 < len(drops) else None
 		carried = [w for w in weeks if getdate(w) >= getdate(start)
 		           and (end is None or getdate(w) < getdate(end))]
-		half = max(n for n, (lo, _hi) in enumerate(bounds)
-		           if getdate(start) >= getdate(lo))
+		half = of_half[i]
 		here = _iso(start)
 		# Who is actually due this week. Equal cycles used to be read as
 		# "every house comes every time", which was true only while they all

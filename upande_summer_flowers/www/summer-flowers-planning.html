@@ -673,8 +673,8 @@
                      max="26" step="1" value="0" style="width:5em"
                      oninput="this.dataset.touched=1"> {{ _("wks") }}</label>
             <label class="pl-inline"
-                   title="{{ _('What the second half of the year is to be delivered, set at the half-year once you have seen how the first half went. Leave it empty and it is worked out from the demand in that half.') }}"
-            >{{ _("Second half") }}<input id="sup-2nd" type="number" min="0"
+                   title="{{ _('What the next half of the financial year is to be DELIVERED -- set at the half-year, once you have seen how the one running went. Leave it empty and it is worked out from the consignments due in that half.') }}"
+            ><span id="sup-2nd-lbl">{{ _("Second half") }}</span><input id="sup-2nd" type="number" min="0"
                      step="1" style="width:8em" placeholder="{{ _('from demand') }}"></label>
             <button type="button" class="pl-btn pl-btn-primary" data-sup="suggest"
             >{{ _("Suggest a supply plan") }}</button>
@@ -9035,6 +9035,11 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
     // means the second half is still being worked out from the demand.
     const agreed = (d.halves || [])[1];
     if (q && !q.dataset.touched && agreed && agreed.agreed) q.value = agreed.plants;
+    // Say WHICH half the box settles. "Second half" was true of a plan and
+    // meaningless to a planner, who is agreeing a figure for a named half of
+    // a named financial year.
+    const lbl = $("sup-2nd-lbl");
+    if (lbl) lbl.textContent = agreed && agreed.label ? agreed.label : "Second half";
     const bits = [];
     // Named houses are named, each on its own rhythm. A count was all the
     // protocol could say when it held a number instead of a table, and
