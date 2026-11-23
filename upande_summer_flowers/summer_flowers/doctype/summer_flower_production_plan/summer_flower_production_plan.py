@@ -1964,7 +1964,7 @@ def supersede_siblings(plan):
 	others = frappe.get_all(
 		"Summer Flower Production Plan",
 		filters={"variety": plan.variety, "farm": plan.farm,
-		         "season_start_year": plan.season_start_year,
+		         "season_start_year": ["in", _season_spellings(plan.season_start_year)],
 		         "docstatus": ["<", 2], "name": ["!=", plan.name]},
 		fields=["name", "docstatus"])
 	done = []
@@ -2062,7 +2062,10 @@ def tidy_duplicate_plans(dry_run=1, variety=None, farm=None):
 	for r in rows:
 		if r.status == "Replaced":
 			continue
-		groups.setdefault((r.variety, r.farm, r.season_start_year), []).append(r)
+		# By the year, not the spelling: "2027" and "2027-2028" are one season,
+		# and grouping on the text kept an approved plan for each.
+		groups.setdefault((r.variety, r.farm, season_year(r.season_start_year)),
+		                  []).append(r)
 	out = []
 	for key, members in sorted(groups.items(), key=lambda kv: -len(kv[1])):
 		if len(members) < 2:
@@ -3433,3 +3436,11 @@ def _iso_monday(week_iso):
 		return datetime.date.fromisocalendar(int(m.group(1)), int(m.group(2)), 1)
 	except ValueError:
 		return None
+
+
+def _season_spellings(value):
+	"""Every way the site writes this season: "2027" and "2027-2028"."""
+	y = season_year(value)
+	if not y:
+		return [value]
+	return list({str(value), str(y), "{0}-{1}".format(y, y + 1)})
