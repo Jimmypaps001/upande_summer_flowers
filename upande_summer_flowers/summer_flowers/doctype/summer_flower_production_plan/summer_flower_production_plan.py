@@ -2,6 +2,7 @@
 
 import datetime
 import math
+import re
 from collections import defaultdict
 
 import frappe
@@ -88,6 +89,19 @@ class SummerFlowerProductionPlan(Document):
 				  "when, is what this plan will be grown from."
 				  ).format(self.name),
 				title=_("The supply has not been agreed"))
+		# Agreed is not the same as still possible. Warn, not bar: a farm may
+		# already have ordered by phone, and the card is where it says so.
+		today = getdate(nowdate())
+		late = [c for c in self.get("plan_consignments") or []
+		        if c.order_week and _iso_monday(c.order_week)
+		        and _iso_monday(c.order_week) < today]
+		if late:
+			frappe.msgprint(
+				_("{0} of {1} consignments on {2} have an order week already past "
+				  "(first: {3} from {4}). Check they were actually ordered."
+				  ).format(len(late), len(self.plan_consignments), self.name,
+				           late[0].order_week, late[0].supplier),
+				title=_("Order dates already passed"), indicator="orange")
 		if cint(self.tc_choice_committed):
 			return
 		frappe.throw(
@@ -870,6 +884,42 @@ def protocol_freshness(plan):
 		notes.append(_("{0} is now the version in force for {1} at {2}.")
 		             .format(in_force, plan.variety, plan.farm))
 
+	# The crop already in the ground. A plan nets its demand against standing
+	# cycles and committed calendars only when it is built, so cycles loaded
+	# afterwards left approved plans planting for stems the farm already had
+	# (110402 at Carzan Ks: 88 cycles loaded after its three plans).
+	if built and plan.get("farm") and plan.get("variety"):
+		# This plan's own plantings become calendars, then cycles, after it is
+		# approved. They are what it asked for, not news, so a calendar on a
+		# block this plan plants on that date is not counted -- nor its cycle.
+		own = {(b.block, str(b.planting_date)) for b in plan.get("plan_blocks") or []
+		       if cint(b.is_new_planting) and b.block and b.planting_date}
+		changed = frappe.get_all("Planting Calendar", filters={
+			"farm": plan.farm, "variety": plan.variety,
+			"calendar_status": ["in", ("Approved", "Planted")],
+			"modified": [">", built]},
+			fields=["name", "block", "planting_date"])
+		mine = {c.name for c in frappe.get_all("Planting Calendar", filters={
+			"farm": plan.farm, "variety": plan.variety,
+			"block": ["in", list({k[0] for k in own}) or [""]]},
+			fields=["name", "block", "planting_date"])
+			if (c.block, str(c.planting_date)) in own}
+		calendars = len([c for c in changed if c.name not in mine])
+		cycles = [r.name for r in frappe.get_all(
+			"Crop Cycle",
+			filters={"farm": plan.farm, "modified": [">", built]},
+			or_filters=[{"variety": plan.variety},
+			            {"custom_sf_variety": plan.variety}],
+			fields=["name", "custom_planting_calendar"])
+			if r.custom_planting_calendar not in mine]
+		if cycles or calendars:
+			notes.append(_(
+				"{0} crop cycle(s) and {1} planting calendar(s) of {2} at {3} have "
+				"changed since this plan was built on {4}, so its standing crop "
+				"and the plants it asks for may be out of date."
+			).format(len(cycles), calendars, plan.variety, plan.farm,
+			         frappe.format(built, "Datetime")))
+
 	# Edits sitting on the Crop Protocol that were never approved. A plan is
 	unapproved = None
 	if v.crop_protocol:
@@ -1600,6 +1650,11 @@ def plan_preview(market_demand, farm=None, season_start_year=None):
 			"The demand register has no weeks inside season {0}-{1} (1 July {0} to 30 "
 			"June {1}). Extend its horizon, or plan a season it covers."
 		).format(year, year + 1))
+	elif not stems:
+		blocking.append(_(
+			"The demand register asks for no stems in season {0}-{1}. Enter the "
+			"demand first -- a plan sized to nothing plants nothing."
+		).format(year, year + 1))
 
 	existing = frappe.db.get_value("Summer Flower Production Plan", {
 		"market_demand": market_demand, "farm": farm,
@@ -1982,12 +2037,14 @@ def retire_draft_calendars(plan):
 
 @frappe.whitelist()
 def tidy_duplicate_plans(dry_run=1, variety=None, farm=None):
-	"""Keep the newest plan for each variety, farm and season; retire the rest.
+	"""Keep one plan for each variety, farm and season; retire the rest.
 
 	The one-off for what built up before a plan replaced its predecessor. It
-	keeps the plan most recently created, which is the one the farm has been
-	working on, and retires the others exactly as a new build would -- a
-	submitted plan cancelled, a draft marked Replaced, neither deleted."""
+	keeps the newest APPROVED plan where there is one, and the newest draft
+	only where nothing was approved, and retires the others exactly as a new
+	build would -- a submitted plan cancelled, a draft marked Replaced,
+	neither deleted. Keeping the newest regardless cancelled signed plans in
+	favour of drafts nobody had looked at."""
 	f = {}
 	if variety:
 		f["variety"] = variety
@@ -2006,6 +2063,8 @@ def tidy_duplicate_plans(dry_run=1, variety=None, farm=None):
 	for key, members in sorted(groups.items(), key=lambda kv: -len(kv[1])):
 		if len(members) < 2:
 			continue
+		# Already newest first; a stable sort lifts the approved ones above.
+		members = sorted(members, key=lambda r: cint(r.docstatus) != 1)
 		keep, retire = members[0], members[1:]
 		row = {"variety": key[0], "farm": key[1], "season": key[2],
 		       "keep": keep.name, "retire": [r.name for r in retire],
@@ -2041,6 +2100,14 @@ def build_from_demand(market_demand, farm=None, season_start_year=None,
 	# One plan covers one season. Defaults to the season the register opens in, so a
 	plan.season_start_year = season_year(season_start_year) or season_for(
 		first.week_start_date or iso_monday(cint(first.year), cint(first.week_no)))
+	# The form only creates a plan when the preview has nothing blocking it,
+	# but this is whitelisted and called from elsewhere too, which is how a
+	# plan for a register with no demand in its season came to exist.
+	blocking = plan_preview(market_demand, farm=farm,
+	                        season_start_year=plan.season_start_year).get("blocking")
+	if blocking:
+		frappe.throw("<br>".join(blocking),
+		             title=_("This plan cannot be created yet"))
 	plan.pull_header_from_demand()
 	plan.set_season()
 
@@ -3348,3 +3415,14 @@ def report_build_all(season_start_year=None, farm=None, dry_run=1, rebuild=0):
 	ok = [x for x in r["rows"] if x["status"] in ("would build", "built")]
 	print("\n%d of %d registers planned" % (len(ok), len(r["rows"])))
 	return r
+
+
+def _iso_monday(week_iso):
+	"""'2026-W12' -> the Monday of that week, or None."""
+	m = re.match(r"^(\d{4})-W(\d{1,2})$", str(week_iso or "").strip())
+	if not m:
+		return None
+	try:
+		return datetime.date.fromisocalendar(int(m.group(1)), int(m.group(2)), 1)
+	except ValueError:
+		return None

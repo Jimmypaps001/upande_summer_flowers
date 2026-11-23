@@ -211,20 +211,7 @@ def protocol_suppliers(version, default_cycle=0, default_lead=0):
 	Rows with no supplier, and rows for another farm, are not here."""
 	v = (version if hasattr(version, "get")
 	     else frappe.get_cached_doc("Crop Protocol Version", version))
-	rows = list(v.get("suppliers") or [])
-	# A version taken before the table existed carries none, and re-approving
-	# every protocol to teach it who supplies it would be a poor trade. The
-	# master is read directly in that case -- these are commercial facts, and
-	# the version is a snapshot of the agronomy.
-	if not rows and v.get("crop_protocol"):
-		rows = frappe.get_all(
-			"Summer Flower Protocol Supplier",
-			filters={"parent": v.crop_protocol,
-			         "parenttype": "Crop Protocol",
-			         "parentfield": "custom_sf_suppliers"},
-			fields=["supplier", "farm", "cycle_weeks", "lead_weeks", "share_pct",
-			        "min_order_qty", "first_delivery_week", "preferred", "idx"],
-			parent_doctype="Crop Protocol", order_by="idx asc")
+	rows = _supplier_rows(v)
 	farm = v.get("farm")
 	best = {}
 	for i, r in enumerate(rows):
@@ -261,6 +248,49 @@ def protocol_suppliers(version, default_cycle=0, default_lead=0):
 		for x in out:
 			x["share_pct"] = round(flt(x["share_pct"]) * 100.0 / total, 4)
 	return out
+
+
+def _supplier_rows(v):
+	"""The protocol's supplier rows, from the version or else its master."""
+	rows = list(v.get("suppliers") or [])
+	# A version taken before the table existed carries none, and re-approving
+	# every protocol to teach it who supplies it would be a poor trade. The
+	# master is read directly in that case -- these are commercial facts, and
+	# the version is a snapshot of the agronomy.
+	if not rows and v.get("crop_protocol"):
+		rows = frappe.get_all(
+			"Summer Flower Protocol Supplier",
+			filters={"parent": v.crop_protocol,
+			         "parenttype": "Crop Protocol",
+			         "parentfield": "custom_sf_suppliers"},
+			fields=["supplier", "farm", "cycle_weeks", "lead_weeks", "share_pct",
+			        "min_order_qty", "first_delivery_week", "preferred", "idx"],
+			parent_doctype="Crop Protocol", order_by="idx asc")
+	return rows
+
+
+def unnamed_rhythm(version):
+	"""What the protocol's supplier rows say when they name nobody.
+
+	A row with the cycle and lead typed but the house left blank is still the
+	farm saying "this comes every five weeks, fifteen weeks after ordering".
+	protocol_suppliers() leaves such rows out, because a plan cannot buy from
+	nobody, and for months that meant 3359 was planned as though its
+	protocol said nothing at all. Read here as the same assumption the two
+	protocol-wide figures make: N interchangeable houses on the shortest gap."""
+	v = (version if hasattr(version, "get")
+	     else frappe.get_cached_doc("Crop Protocol Version", version))
+	farm = v.get("farm")
+	rows = [r for r in _supplier_rows(v)
+	        if not (r.get("supplier") or "").strip()
+	        and not ((r.get("farm") or "").strip() and farm
+	                 and (r.get("farm") or "").strip() != farm)]
+	gaps = [max(0, min(52, cint(r.get("cycle_weeks")))) for r in rows]
+	gaps = [g for g in gaps if g]
+	leads = [cint(r.get("lead_weeks")) for r in rows if cint(r.get("lead_weeks"))]
+	return {"houses": len(rows) if gaps else 0,
+	        "cycle_weeks": min(gaps) if gaps else 0,
+	        "lead_weeks": max(leads) if leads else 0}
 
 
 def delivery_weeks(houses, earliest, until, order_from=None, anchor=None):
@@ -523,6 +553,13 @@ def supply_defaults(version):
 	gaps = [h["cycle_weeks"] for h in houses_named if h["cycle_weeks"]]
 	cycle_weeks = min(gaps) if gaps else 0
 	houses = len(houses_named)
+	lead_weeks = cint(decided.get("lead_weeks")) or cint(v.get("supplier_lead_weeks"))
+	if not houses_named:
+		# Rows that give a rhythm but no name are an assumption, not silence.
+		u = unnamed_rhythm(v)
+		cycle_weeks = cycle_weeks or u["cycle_weeks"]
+		houses = houses or u["houses"]
+		lead_weeks = lead_weeks or u["lead_weeks"]
 	return {
 		# Only TC and roots are handed over in lifts, so only they have a lift
 		# form. A seed, tuber or bought-in-plant route fell back to the module
@@ -549,8 +586,7 @@ def supply_defaults(version):
 		"named_houses": houses_named,
 		"named": bool(houses_named),
 		"lifts": len(v.get("lifts") or []),
-		"lead_weeks": cint(decided.get("lead_weeks"))
-		              or cint(v.get("supplier_lead_weeks")),
+		"lead_weeks": lead_weeks,
 		# How long a plant may wait if the house comes on the stated rhythm:
 		# the gap between deliveries, less the week it is planted in.
 		"wait_weeks": max(0, cycle_weeks - 1) if cycle_weeks else 0,
@@ -1660,6 +1696,16 @@ def save_supply(plan, picks, confirm=0):
 		out["weeks_total"] - out["weeks_short"], out["weeks_total"],
 		(_(", {0} plant short") if short == 1 else _(", {0} plants short")
 		 ).format("{:,}".format(short)) if short else "")
+	# An order week already behind us is a delivery that cannot happen on the
+	# date shown. The rows knew (order_passed); the note never said so, and a
+	# plan for next season went out with its first orders dated last year.
+	late = [d for d in (out.get("drops") or []) if cint(d.get("order_passed"))]
+	if late:
+		doc.supply_note += " " + _(
+			"{0} of {1} consignments should already have been ordered (first: "
+			"{2}, needed by {3}); move them or the plantings behind them."
+		).format(len(late), len(out.get("drops") or []),
+		         late[0]["supplier"], late[0].get("order_iso"))
 	# One place names the sellers. Choosing cycles for one house on this card
 	# and buying from another on the procurement card is two decisions where
 	# the farm only ever makes one, so what is agreed here is written through.

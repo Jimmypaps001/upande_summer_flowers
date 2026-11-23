@@ -115,9 +115,10 @@ frappe.ui.form.on("Summer Flower Production Plan", {
 		}
 
 		set_headline(frm);
-		// A submitted plan never runs validate again, so its stored verdict is
-		// frozen at approval. Ask for the live one.
-		if (frm.doc.docstatus === 1) {
+		// A submitted plan never runs validate again, and a draft only on save,
+		// so the stored verdict misses crop cycles loaded since. Ask for the
+		// live one; set_headline leaves the stale warning to this.
+		if (!frm.is_new() && frm.doc.docstatus < 2) {
 			frm.call({ doc: frm.doc, method: "get_protocol_freshness" }).then((r) => {
 				const f = r.message || {};
 				if (f.stale) {
@@ -145,16 +146,6 @@ frappe.ui.form.on("Summer Flower Production Plan", {
 
 function set_headline(frm) {
 	const parts = [];
-
-	if (frm.doc.protocol_stale) {
-		frm.dashboard.add_comment(
-			__("These numbers were built on an older reading of {0}. Regenerate to apply it.", [
-				frm.doc.protocol,
-			]),
-			"orange",
-			true
-		);
-	}
 
 	if (frm.doc.total_demand_stems) {
 		parts.push(
