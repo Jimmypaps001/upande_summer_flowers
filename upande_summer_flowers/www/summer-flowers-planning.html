@@ -8688,8 +8688,12 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
         done(Promise.all([
           call("save_propagators", { procurement_plan: plan,
                                      rows: JSON.stringify(out) }),
-          S.plan ? call("save_raisers", { plan: S.plan,
-                                          rows: JSON.stringify(out) })
+          // supply_cycles owns who raises the plants, not planning_api. Asked
+          // of the wrong module this was a 500 on every allocation -- "has no
+          // attribute 'save_raisers'" -- and because the two saves go up
+          // together, the half that worked was reported as a failure too.
+          S.plan ? callSupply("save_raisers", { plan: S.plan,
+                                                rows: JSON.stringify(out) })
                  : Promise.resolve(),
         ]));
       });
