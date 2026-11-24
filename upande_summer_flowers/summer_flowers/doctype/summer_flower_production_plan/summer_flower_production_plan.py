@@ -2320,23 +2320,24 @@ def weeks_to_a_plant(v):
 	        else cint(v.sticking_to_planting_weeks))
 
 
-def wanted_plants_by_week(plan):
-	"""{Monday of the planting week: plants the demand asks to go in the ground}.
+def production_basis(plan):
+	"""What a plan is sized against, in one place: the season's weeks, the
+	demand in each, what standing crop already cuts in each, and what one
+	standing plant cuts at each week after planting.
 
-	Worked from the demand curve and what is already standing, with no
-	reference to the plan's own plantings. That is the whole point: this is
-	what the consignments are sized against, and it has to be answerable
-	before a single planting exists."""
+	The planting solver and the supply card both size off this. Each working
+	it out for itself is how two cards come to quote different quantities for
+	the same season."""
 	if not plan.get("protocol") or not plan.get("market_demand"):
-		return {}
+		return None
 	protocol = frappe.get_cached_doc("Crop Protocol Version", plan.protocol)
 	offsets = protocol.flush_offsets()
 	if not offsets:
-		return {}
+		return None
 	demand = frappe.get_doc("Summer Flower Market Demand", plan.market_demand)
 	grid = week_sequence(plan.from_year, plan.from_week, plan.weeks_covered)
 	if not grid:
-		return {}
+		return None
 	index = {(y, w): i for i, (y, w, _d) in enumerate(grid)}
 	demand_map = {(r.year, r.week_no): cint(r.demand_stems)
 	              for r in demand.demand_weeks if (r.year, r.week_no) in index}
@@ -2356,13 +2357,31 @@ def wanted_plants_by_week(plan):
 	tolerance = flt(frappe.db.get_single_value(
 		"Summer Flower Settings", "weekly_variance_tolerance_pct"))
 	band = (tolerance if tolerance > 0 else 10.0) / 100.0
+	return {
+		"protocol": protocol, "grid": grid, "rates": rates, "anchor": anchor,
+		"band": band,
+		"demand": [demand_map.get((y, w), 0) for (y, w, _m) in grid],
+		"standing": [production[(y, w)] for (y, w, _m) in grid],
+	}
+
+
+def wanted_plants_by_week(plan):
+	"""{Monday of the planting week: plants the demand asks to go in the ground}.
+
+	Worked from the demand curve and what is already standing, with no
+	reference to the plan's own plantings. That is the whole point: this is
+	what the consignments are sized against, and it has to be answerable
+	before a single planting exists."""
+	basis = production_basis(plan)
+	if not basis:
+		return {}
+	protocol, grid, rates, anchor = (basis["protocol"], basis["grid"],
+	                                 basis["rates"], basis["anchor"])
 	min_beds = cint(protocol.min_planting_beds_derived) or 1
 	_b, step, _a = size_planting(protocol, 1, min_beds)
 	cohorts, _solved = plan_cohorts(
-		rates,
-		[demand_map.get((y, w), 0) for (y, w, _m) in grid],
-		[production[(y, w)] for (y, w, _m) in grid],
-		band=band, rounding_plants=max(1, cint(step)))
+		rates, basis["demand"], basis["standing"],
+		band=basis["band"], rounding_plants=max(1, cint(step)))
 
 	window_start = grid[0][2]
 	out = {}

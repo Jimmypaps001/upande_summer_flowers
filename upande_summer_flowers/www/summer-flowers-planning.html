@@ -8983,14 +8983,35 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
     // plan. A planner reviewing in January needs to see which January.
     const halves = (d.halves || []).map((h, i) =>
       `${esc(h.label || `half ${i + 1}`)} · ${esc(h.from)}&ndash;${esc(h.to)} · ${num(h.plants)} plants `
-      + `/ ${h.split_over} = <b>${num(h.per_delivery)}</b> each`
+      + (h.steady
+          ? `over ${h.split_over} deliveries`
+          : `/ ${h.split_over} = <b>${num(h.per_delivery)}</b> each`)
       + (h.agreed ? " · <b>agreed</b>" : "")).join(" &nbsp;|&nbsp; ");
+    // A house on a cycle brings the same quantity every time, sized so every
+    // week of the season is cut. Said once, above the table, with what it
+    // costs and what no delivery can reach.
+    const st = d.steady;
+    const steadyLine = st
+      ? `<div class="pl-dim" style="margin-bottom:6px">Same quantity every cycle: `
+        + (st.per_house || []).map((q, i) => q
+            ? `<b>${esc(names[i] || `House ${i + 1}`)} ${num(q)}</b> each delivery` : "")
+            .filter(Boolean).join(" · ")
+        + ` · ${num(st.season_plants)} plants over the programme, sized so every week is `
+        + `within ${Math.round((st.band || 0) * 100)}% of demand`
+        + (st.surplus_stems ? ` · ${num(st.surplus_stems)} stems over demand` : "")
+        + ((st.unreachable || []).length
+            ? ` · <span style="color:var(--serious)">${st.unreachable.length} week(s) `
+              + `no delivery can reach (first ${esc(st.unreachable[0].week)})</span>` : "")
+        + `</div>`
+      : "";
     el.innerHTML =
-      (halves ? `<div class="pl-dim" style="margin-bottom:6px">${halves}</div>` : "")
+      steadyLine
+      + (halves ? `<div class="pl-dim" style="margin-bottom:6px">${halves}</div>` : "")
       + `<table class="pl-t"><thead><tr>`
-      + `<th>#</th><th>Lands</th><th class="r">Plants</th>`
+      + `<th>#</th><th>Arrives</th><th>First planting</th><th class="r">Plants</th>`
       + `<th class="r">Wks</th>${head}</tr></thead><tbody>`
-      + rows.map((r) => `<tr><td>${r.no}</td><td>${esc(r.week)}</td>`
+      + rows.map((r) => `<tr><td>${r.no}</td><td>${esc(r.arrives || r.week)}</td>`
+          + `<td>${esc(r.week)}</td>`
           + `<td class="r">${num(r.plants)}</td>`
           + `<td class="r">${r.planting_weeks}</td>`
           + (r.split || []).map((x, i) =>
@@ -8998,17 +9019,18 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
                  names.length ? names : null)}">${num(x)}</td>`).join("")
           + `</tr>`
           + ((r.lifts || []).length
-              ? `<tr class="pl-dim"><td></td><td colspan="${3 + houses}">`
+              ? `<tr class="pl-dim"><td></td><td colspan="${4 + houses}">`
                 + (r.lifts || []).map((L) =>
-                    `lift ${L.lift_no} · ${L.share_pct}% · lands ${esc(L.week)} · `
+                    `lift ${L.lift_no} · ${L.share_pct}% · planted ${esc(L.week)} · `
                     + `${num(L.plants)}`).join(" &nbsp;|&nbsp; ")
                 + `</td></tr>`
               : "")).join("")
       + `</tbody><tfoot><tr><th></th><th>${d.uniform_cycle === false
           ? `${d.deliveries} weeks`
           : `${d.deliveries} \u00d7 ${houses}`}`
-      + ` = ${d.supplier_deliveries} consignments</th>`
-      + `<th class="r">${num(d.plants)}</th><th class="r">${d.planting_weeks}</th>`
+      + ` = ${d.supplier_deliveries} consignments</th><th></th>`
+      + `<th class="r">${num(d.plants_bought != null ? d.plants_bought : d.plants)}</th>`
+      + `<th class="r">${d.planting_weeks}</th>`
       + Array.from({ length: houses }, () => "<th></th>").join("")
       + `</tr></tfoot></table>`;
   }
