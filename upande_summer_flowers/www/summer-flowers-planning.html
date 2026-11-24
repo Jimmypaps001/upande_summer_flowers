@@ -8999,18 +8999,39 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
         + ` · ${num(st.season_plants)} plants over the programme, sized so every week is `
         + `within ${Math.round((st.band || 0) * 100)}% of demand`
         + (st.surplus_stems ? ` · ${num(st.surplus_stems)} stems over demand` : "")
+        + (st.window && st.window.plants_saved
+            ? ` · programme ${st.window.start_cycles > 0
+                ? `starts ${st.window.start_cycles} cycle(s) before the first planting`
+                : st.window.start_cycles < 0
+                  ? `starts ${-st.window.start_cycles} cycle(s) after the first planting` : ""}`
+              + `${st.window.start_cycles && st.window.end_trimmed ? " and " : ""}`
+              + `${st.window.end_trimmed ? `stops ${st.window.end_trimmed} deliveries early` : ""}`
+              + `, ${num(st.window.plants_saved)} fewer plants than running it over the plantings`
+            : "")
         + ((st.unreachable || []).length
             ? ` · <span style="color:var(--serious)">${st.unreachable.length} week(s) `
               + `no delivery can reach (first ${esc(st.unreachable[0].week)})</span>` : "")
         + `</div>`
       : "";
+    // Deliveries whose order week has already gone. The first plan still asks
+    // for them -- it meets demand in full -- but they cannot be ordered now.
+    const pastLine = d.past_deliveries
+      ? `<div class="pl-dim" style="margin-bottom:6px;color:var(--serious)">`
+        + `${d.past_deliveries} of ${rows.length} deliveries (${num(d.past_plants)} plants) `
+        + `should already have been ordered; the first that can still be ordered is `
+        + `${esc((rows.find((r) => !r.past) || {}).week || "none")}.</div>`
+      : "";
     el.innerHTML =
       steadyLine
+      + pastLine
       + (halves ? `<div class="pl-dim" style="margin-bottom:6px">${halves}</div>` : "")
       + `<table class="pl-t"><thead><tr>`
       + `<th>#</th><th>Arrives</th><th>First planting</th><th class="r">Plants</th>`
       + `<th class="r">Wks</th>${head}</tr></thead><tbody>`
-      + rows.map((r) => `<tr><td>${r.no}</td><td>${esc(r.arrives || r.week)}</td>`
+      + rows.map((r) => `<tr><td>${r.no}</td><td>${esc(r.arrives || r.week)}`
+          + (r.past ? ` <span class="pill" title="Order by ${esc(r.order_by || "")} - already passed">`
+              + `<i class="dot2" style="background:var(--serious)"></i>past</span>` : "")
+          + `</td>`
           + `<td>${esc(r.week)}</td>`
           + `<td class="r">${num(r.plants)}</td>`
           + `<td class="r">${r.planting_weeks}</td>`
