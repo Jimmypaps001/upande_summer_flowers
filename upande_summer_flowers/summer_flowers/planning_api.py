@@ -195,6 +195,9 @@ def demand_vs_production(variety=None, farm=None, plan=None):
 			# What the confirmed order can actually supply this week. Equal to
 			"supplied": (cint(w.supplied_production_stems) if committed
 			             else cint(w.production_stems)),
+			# What material ordered today could still grow this week.
+			"on_time": (cint(w.get("on_time_production_stems"))
+			            if p.get("earliest_planting_date") else cint(w.production_stems)),
 			"area_ha": flt(w.area_ha),
 		}
 		for w in p.plan_weeks
@@ -235,6 +238,12 @@ def demand_vs_production(variety=None, farm=None, plan=None):
 			"production_stems": p.total_production_stems or 0,
 			"variance_stems": p.total_variance_stems or 0,
 			"coverage_pct": flt(p.coverage_pct),
+			"on_time_coverage_pct": (flt(p.get("on_time_coverage_pct"))
+			                         if p.get("earliest_planting_date")
+			                         else flt(p.coverage_pct)),
+			"earliest_planting": str(p.get("earliest_planting_date") or "") or None,
+			"too_late_plantings": cint(p.get("too_late_plantings")),
+			"too_late_plants": cint(p.get("too_late_plants")),
 			"supplied_stems": (cint(p.supplied_production_stems) if committed
 			                   else cint(p.total_production_stems)),
 			"supplied_coverage_pct": (flt(p.supplied_coverage_pct) if committed
@@ -320,6 +329,8 @@ def demand_vs_production_by_variety(farm=None, season=None):
 			"demand_stems": cint(t["demand_stems"]),
 			"production_stems": cint(t["production_stems"]),
 			"coverage_pct": flt(t["coverage_pct"]),
+			"on_time_coverage_pct": flt(t.get("on_time_coverage_pct")),
+			"too_late_plantings": cint(t.get("too_late_plantings")),
 			"plantings": len(blocks),
 			"beds": sum(cint(b.beds) for b in blocks),
 			"plants": sum(cint(b.plants) for b in blocks),
@@ -1459,6 +1470,9 @@ def planting_plan(plan=None, variety=None, farm=None):
 			"lifetime_stems": b.lifetime_stems or 0,
 			"below_minimum": bool(b.below_minimum),
 			"in_past": bool(b.planting_in_past),
+			# Before the earliest week material ordered today could go in: kept
+			# because the demand needs it, but it needs cuttings or plants.
+			"too_late": bool(b.get("too_late")),
 			"unallocated": bool(b.is_new_planting and not b.block),
 			"not_placed": bool(b.get("not_placed")),
 			"notes": b.notes,
@@ -1553,6 +1567,8 @@ def planting_plan(plan=None, variety=None, farm=None):
 			"unallocated": len([x for x in new_rows if x["unallocated"]]),
 			"below_minimum": len([x for x in new_rows if x["below_minimum"]]),
 			"in_past": len([x for x in new_rows if x["in_past"]]),
+			"too_late": len([x for x in new_rows if x["too_late"]]),
+			"earliest_planting": str(p.get("earliest_planting_date") or "") or None,
 			"beds": sum(x["beds"] for x in new_rows),
 			"plants": sum(x["plants"] for x in new_rows),
 			"plants_to_plant": sum(x["plants_to_plant"] for x in new_rows),

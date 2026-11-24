@@ -2297,7 +2297,11 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
             `<td class="n">${num(x.demand_stems)}</td>` +
             `<td class="n">${num(x.production_stems)}</td>` +
             `<td class="n" style="color:var(${cov >= 100 ? "--good" : "--serious"})">` +
-              `${cov.toFixed(0)}%</td>` +
+              `${cov.toFixed(0)}%` +
+              (x.too_late_plantings && x.on_time_coverage_pct != null
+                ? `<br><span class="pl-note" title="Leaving out the ${num(x.too_late_plantings)} plantings that are too late for a new order">` +
+                  `${(x.on_time_coverage_pct || 0).toFixed(0)}% on time</span>`
+                : "") + `</td>` +
             `<td>${d8(x.first_planting)}</td><td>${d8(x.last_planting)}</td>` +
             `<td class="n">${num(x.plantings)}` +
               (x.plantings && x.placed < x.plantings
@@ -2821,6 +2825,12 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
         m: "under the protocol's minimum area", c: t.below_minimum ? "--warning" : "--good" },
       { k: "Week passed", v: num(t.in_past), m: "cannot be planted",
         c: t.in_past ? "--critical" : "--good" },
+      // Kept in the plan because the demand needs them, but material ordered
+      // today lands too late for them: they need rooted cuttings or plants.
+      { k: "Too late for a new order", v: num(t.too_late || 0),
+        m: t.earliest_planting ? "earliest planting " + t.earliest_planting
+                               : "no order lead on this route",
+        c: t.too_late ? "--serious" : "--good" },
     ].map(tile).join("");
     // Ordered by whichever date is being read. A planting plan is read as a
     // sequence -- first to last -- and which date puts it in sequence depends on
@@ -2861,6 +2871,7 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
         const f = [];
         if (r.below_minimum) f.push('<span class="pill"><i class="dot2" style="background:var(--warning)"></i>below min</span>');
         if (r.in_past) f.push('<span class="pill"><i class="dot2" style="background:var(--critical)"></i>past</span>');
+        if (r.too_late && !r.in_past) f.push('<span class="pill" title="Before the earliest week material ordered today could be planted: needs rooted cuttings or plants"><i class="dot2" style="background:var(--serious)"></i>too late</span>');
         // Crop already in the ground is not crop to plant. It shares the table
         // because the season is one season, and it is marked because a column
         // headed "Plants to plant" that counts standing crop is a column that

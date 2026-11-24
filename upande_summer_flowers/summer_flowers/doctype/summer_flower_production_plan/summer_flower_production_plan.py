@@ -367,6 +367,38 @@ class SummerFlowerProductionPlan(Document):
 		for w in self.plan_weeks:
 			w.placeable_production_stems = placeable.get(
 				"%s-%s" % (cint(w.year), cint(w.week_no)), 0)
+		self.refresh_on_time(stems)
+
+	def refresh_on_time(self, stems):
+		"""Which proposed plantings material ordered today could still reach.
+
+		The first plan sizes every planting the demand needs, even one that
+		should have gone in last month, and keeps it: that is what meeting the
+		demand takes, and the farm decides how. What it must not do is let
+		those plantings read as crop that will be cut. Each one dated before
+		the earliest week a new order could be planted is flagged "too late",
+		and its stems are kept out of the on-time figures, the way a planting
+		with no block is kept out of the placeable ones."""
+		v = getattr(self, "_version", None)
+		if v is None and self.get("protocol"):
+			try:
+				v = frappe.get_cached_doc("Crop Protocol Version", self.protocol)
+			except Exception:
+				v = None
+		earliest = earliest_new_planting(self, v) if v else None
+		self.earliest_planting_date = earliest
+		on_time = defaultdict(int)
+		for row, mine in zip(self.plan_blocks, stems):
+			late = bool(earliest and cint(row.is_new_planting) and row.planting_date
+			            and getdate(row.planting_date) < getdate(earliest))
+			row.too_late = 1 if late else 0
+			if late:
+				continue
+			for key, val in ((mine or {}).get("weeks") or {}).items():
+				on_time[key] += cint(val)
+		for w in self.plan_weeks:
+			w.on_time_production_stems = on_time.get(
+				"%s-%s" % (cint(w.year), cint(w.week_no)), 0)
 
 	def set_totals(self):
 		self.refresh_placement()
@@ -383,6 +415,20 @@ class SummerFlowerProductionPlan(Document):
 		)
 		self.placeable_coverage_pct = (
 			self.placeable_production_stems / self.total_demand_stems * 100
+			if self.total_demand_stems else 0
+		)
+		# What material ordered today could still grow: every planting dated
+		# before the earliest week it could go in is left out. Plans saved
+		# before the weeks carried the figure read as fully on time.
+		late_rows = [b for b in self.plan_blocks
+		             if cint(b.is_new_planting) and cint(b.get("too_late"))]
+		self.too_late_plantings = len(late_rows)
+		self.too_late_plants = sum(cint(b.plants) for b in late_rows)
+		self.on_time_production_stems = (
+			sum((w.get("on_time_production_stems") or 0) for w in weeks)
+			if self.get("earliest_planting_date") else self.total_production_stems)
+		self.on_time_coverage_pct = (
+			self.on_time_production_stems / self.total_demand_stems * 100
 			if self.total_demand_stems else 0
 		)
 
@@ -555,7 +601,20 @@ class SummerFlowerProductionPlan(Document):
 			).format(weeks[0]))
 
 		notes = [agreed_note] if agreed_note else []
-		if self.tc_order_by_date and self.tc_order_by_date < getdate(nowdate()):
+		late = [b for b in self.plan_blocks
+		        if cint(b.is_new_planting) and cint(b.get("too_late"))]
+		if late:
+			first_late = min(getdate(b.planting_date) for b in late)
+			notes.append(_(
+				"{0} of the plantings ({1} plants) fall before {2}, the earliest "
+				"week material ordered today can be planted. They stay in the plan "
+				"because the demand needs them: to grow them, buy rooted cuttings "
+				"or plants for their planting dates, the first by {3}. Without "
+				"them the plan covers {4}% of demand on time."
+			).format(len(late), "{:,}".format(sum(cint(b.plants) for b in late)),
+			         self.earliest_planting_date, first_late,
+			         "{:.0f}".format(flt(self.get("on_time_coverage_pct")))))
+		elif self.tc_order_by_date and self.tc_order_by_date < getdate(nowdate()):
 			notes.append(_(
 				"The order date has already passed ({0}), so the first sticking week "
 				"{1}-W{2:02d} cannot be met from a new TC order. Buy rooted cuttings "
@@ -3449,3 +3508,40 @@ def _season_spellings(value):
 	if not y:
 		return [value]
 	return list({str(value), str(y), "{0}-{1}".format(y, y + 1)})
+
+
+def earliest_new_planting(plan, v, today=None):
+	"""The first week a planting could go in from material ordered today.
+
+	Ordered this week, a TC line reaches its first sticking week after the
+	lab and multiplication lead (the same weeks the plan's "order by" date
+	counts back), and becomes a plant the field can take at the first lift.
+	A crop bought in some other form waits its supplier's lead instead.
+	None where nothing is bought for it, or it is cut from our own pool:
+	then no order stands between today and the field."""
+	from upande_summer_flowers.summer_flowers import supply_cycles as sc
+	from upande_summer_flowers.summer_flowers.doctype.summer_flower_motherstock_batch.summer_flower_motherstock_batch import (
+		tc_order_by_date,
+	)
+
+	try:
+		if _cut_from_a_pool(v):
+			return None
+		d = sc.supply_defaults(v)
+		if not d.get("is_bought"):
+			return None
+		start = getdate(today or nowdate())
+		start = start - datetime.timedelta(days=start.weekday())
+		lead = cint(d.get("lead_weeks"))
+		if d.get("entry_stage") == "TC":
+			cycles = (cint(plan.get("tc_cycles_committed"))
+			          if cint(plan.get("tc_choice_committed"))
+			          else cint(v.get("max_multiplication_cycles")))
+			probe = start + datetime.timedelta(weeks=104)
+			by = tc_order_by_date(v, probe, cycles=cycles)
+			if by:
+				lead = max(lead, (probe - getdate(by)).days // 7)
+		return start + datetime.timedelta(weeks=lead + cint(weeks_to_a_plant(v)))
+	except Exception:
+		frappe.log_error(frappe.get_traceback(), "earliest planting")
+		return None
