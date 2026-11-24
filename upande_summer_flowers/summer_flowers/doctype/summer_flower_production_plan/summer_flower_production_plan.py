@@ -1969,6 +1969,10 @@ def supersede_siblings(plan):
 		fields=["name", "docstatus"])
 	done = []
 	for row in others:
+		# A cancel that fails part-way has already written docstatus 2 and run
+		# on_cancel; without a savepoint the caller's commit kept it, and a plan
+		# reported "left alone" was in fact cancelled as Rejected.
+		frappe.db.savepoint("supersede_sibling")
 		try:
 			if cint(row.docstatus) == 1:
 				doc = frappe.get_doc("Summer Flower Production Plan", row.name)
@@ -1983,6 +1987,7 @@ def supersede_siblings(plan):
 		except Exception as e:
 			# A plan that will not cancel -- something submitted hangs off it --
 			# is reported, not forced. The new plan still stands.
+			frappe.db.rollback(save_point="supersede_sibling")
 			done.append({"plan": row.name, "what": "left alone",
 			             "why": frappe.utils.strip_html(str(e))[:140]})
 			continue
