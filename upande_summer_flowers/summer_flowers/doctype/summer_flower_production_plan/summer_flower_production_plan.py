@@ -292,15 +292,15 @@ class SummerFlowerProductionPlan(Document):
 					cint(self.weeks_covered), self.from_year, cint(self.from_week))
 			return
 
-		start = datetime.date(year, 7, 1)
-		end = datetime.date(year + 1, 6, 30)
-		self.season = "%s-%s" % (year, str(year + 1)[2:])
+		self.season = season_label(year)
 
 		# A season runs W27 to W26, which is how the demand register numbers it and
 		self.from_year, self.from_week = year, season_first_week()
-		last_year, last_week = year + 1, season_first_week() - 1
+		# Up to the week before the next season opens. Counted as "next year,
+		# first week minus one", a season starting in week 1 asked for week 0
+		# and could not be built.
 		self.weeks_covered = weeks_between(
-			self.from_year, self.from_week, last_year, last_week) + 1
+			self.from_year, self.from_week, year + 1, self.from_week)
 
 	def set_period_end(self):
 		if not (self.from_year and self.from_week and self.weeks_covered):
@@ -1010,9 +1010,21 @@ def protocol_freshness(plan):
 # ---------------------------------------------------------------------------
 
 def season_for(date):
-	"""The season a date falls in, by its starting year. July starts the season."""
+	"""The season a date falls in, by its starting year, on the site's own first week."""
 	d = getdate(date)
-	return d.year if d.month >= 7 else d.year - 1
+	opens = season_opens(d.year)
+	return d.year if d >= opens else d.year - 1
+
+
+def season_opens(year):
+	"""The Monday the season starting in `year` opens: its first ISO week."""
+	return iso_monday(cint(year), season_first_week())
+
+
+def season_label(year):
+	"""2028 for a season that runs with the calendar year; 2028-29 for one that does not."""
+	year = cint(year)
+	return str(year) if season_first_week() == 1 else "%s-%s" % (year, str(year + 1)[2:])
 
 
 @frappe.whitelist()
@@ -1682,8 +1694,8 @@ def plan_preview(market_demand, farm=None, season_start_year=None):
 	frappe.has_permission("Summer Flower Market Demand", "read", market_demand, throw=True)
 	d = frappe.get_cached_doc("Summer Flower Market Demand", market_demand)
 	year = season_year(season_start_year) or season_for(nowdate())
-	start = datetime.date(year, 7, 1)
-	end = datetime.date(year + 1, 6, 30)
+	start = season_opens(year)
+	end = season_opens(year + 1) - datetime.timedelta(days=1)
 
 	weeks = [r for r in d.demand_weeks
 	         if r.week_start_date and start <= getdate(r.week_start_date) <= end]
@@ -1710,14 +1722,14 @@ def plan_preview(market_demand, farm=None, season_start_year=None):
 
 	if not weeks:
 		blocking.append(_(
-			"The demand register has no weeks inside season {0}-{1} (1 July {0} to 30 "
-			"June {1}). Extend its horizon, or plan a season it covers."
-		).format(year, year + 1))
+			"The demand register has no weeks inside season {0} ({1} to {2}). Extend its "
+			"horizon, or plan a season it covers."
+		).format(season_label(year), start, end))
 	elif not stems:
 		blocking.append(_(
-			"The demand register asks for no stems in season {0}-{1}. Enter the "
+			"The demand register asks for no stems in season {0}. Enter the "
 			"demand first -- a plan sized to nothing plants nothing."
-		).format(year, year + 1))
+		).format(season_label(year)))
 
 	existing = frappe.db.get_value("Summer Flower Production Plan", {
 		"market_demand": market_demand, "farm": farm,

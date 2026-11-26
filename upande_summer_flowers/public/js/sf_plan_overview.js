@@ -90,7 +90,7 @@
 				+ `${esc((d.route || []).map((r) => r.stage).join(" → ") || "the material")} is raised from the farm's own crop.</div>`;
 		}
 		const sup = d.suppliers || [];
-		let h = `<h4>How it is bought <small>${esc(d.supply_mode)}${d.supply_agreed ? " · agreed" : " · proposed"}</small></h4>`;
+		let h = `<h4>How it is bought <small>${esc(d.supply_mode)}${d.supply_agreed ? " · agreed" : d.supply_source === "saved" ? " · saved, not yet agreed" : " · proposed"}</small></h4>`;
 		h += table("<th>Supplier</th><th class='r'>Share</th><th class='r'>Delivers every</th><th class='r'>Lead time</th>",
 			sup.map((s) => `<td>${esc(s.supplier)}${s.named ? "" : ' <span class="pill warn">not named yet</span>'}</td>`
 				+ `<td class="r">${pct(s.share_pct)}</td><td class="r">${s.cycle_weeks ? s.cycle_weeks + " weeks" : "once"}</td>`

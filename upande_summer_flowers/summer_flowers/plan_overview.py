@@ -195,9 +195,15 @@ def plan_overview(plan):
 			           "week": L.get("week"), "plants": cint(L.get("plants"))}
 			          for L in (r.get("lifts") or [])],
 		})
+	# Once a supply is saved, its consignments ARE the buying: show them, not a
+	# fresh proposal worked from the plantings they produced.
+	saved = [c for c in (doc.get("plan_consignments") or []) if c.get("lands_week")]
+	if saved:
+		deliveries, halves, suppliers = _from_saved(saved, lifts, suppliers, per_unit)
 	out["suppliers"] = suppliers
 	out["halves"] = halves
 	out["deliveries"] = deliveries
+	out["supply_source"] = "saved" if saved else "proposed"
 	out["supply_agreed"] = cint(doc.get("supply_confirmed"))
 	out["second_half_revisable_until"] = None
 	if len(halves) > 1 and deliveries:
@@ -209,10 +215,12 @@ def plan_overview(plan):
 				out["second_half_revisable_until"] = _week_label(add_days(at, -7 * lead))
 	out["totals"] = {
 		"plants_to_plant": cint(prop.get("plants")),
-		"plants_bought": cint(prop.get("plants_bought")),
-		"units_to_buy": units(prop.get("plants_bought")),
+		"plants_bought": (sum(d["plants"] for d in deliveries) if saved
+		                  else cint(prop.get("plants_bought"))),
+		"units_to_buy": (sum(d["units"] for d in deliveries) if saved
+		                 else units(prop.get("plants_bought"))),
 		"deliveries": len(deliveries),
-		"past_deliveries": cint(prop.get("past_deliveries")),
+		"past_deliveries": sum(1 for d in deliveries if d.get("past")),
 	}
 
 	# ---- planting ----------------------------------------------------------
@@ -283,6 +291,66 @@ def plan_overview(plan):
 		{"label": _("Season's last harvest"), "week": cut[-1]["week"] if cut else None},
 	]
 	return out
+
+
+def _from_saved(saved, lifts, suppliers, per_unit):
+	"""Deliveries, halves and suppliers read off the saved consignments."""
+	today = getdate(nowdate())
+	waves = lifts or [{"lift_no": 1, "weeks_after": 0, "share_pct": 100.0}]
+	first_after = min(w["weeks_after"] for w in waves)
+	names = []
+	for c in saved:
+		if c.supplier and c.supplier not in names:
+			names.append(c.supplier)
+	known = {s["supplier"]: s for s in suppliers}
+	sup = [known.get(n) or {"supplier": n, "share_pct": 0, "cycle_weeks": 0,
+	                        "lead_weeks": 0, "named": True} for n in names]
+	rows = []
+	for c in sorted(saved, key=lambda x: (sc._week_monday(x.lands_week) or today, x.supplier or "")):
+		planted = sc._week_monday(c.lands_week)
+		arrives = add_days(planted, -7 * first_after) if planted else None
+		order = sc._week_monday(c.order_week) if c.order_week else None
+		plants = cint(c.plants)
+		given, parts = 0, []
+		for i, w in enumerate(waves):
+			got = plants - given if i == len(waves) - 1 else int(round(plants * w["share_pct"] / 100.0))
+			given += got
+			parts.append({"lift_no": w["lift_no"], "share_pct": w["share_pct"], "plants": got,
+			              "week": _week_label(add_days(planted, 7 * (w["weeks_after"] - first_after)))
+			              if planted else None})
+		units = cint(c.units) or int(math.ceil(plants / per_unit - 1e-9))
+		rows.append({"no": len(rows) + 1, "order_by": c.order_week, "arrives": _week_label(arrives),
+		              "first_planting": c.lands_week, "plants": plants, "units": units,
+		              "past": 1 if order and order < today else 0,
+		              "suppliers": [{"supplier": c.supplier, "plants": plants, "units": units}],
+		              "lifts": parts, "_at": arrives})
+	halves = []
+	if rows:
+		periods = sc.half_year_periods(rows[0]["_at"], rows[-1]["_at"])
+		edges = [p[0] for p in periods]
+		for n, (lo, label) in enumerate(periods):
+			hi = edges[n + 1] if n + 1 < len(edges) else None
+			mine = [r for r in rows if getdate(r["_at"]) >= getdate(lo) and (hi is None or getdate(r["_at"]) < getdate(hi))]
+			if not mine:
+				continue
+			for r in mine:
+				r["half"] = len(halves) + 1
+			per = []
+			for s in sup:
+				ds = [r for r in mine if r["suppliers"][0]["supplier"] == s["supplier"]]
+				per.append({"deliveries": len(ds),
+				            "per_delivery_units": int(round(sum(r["units"] for r in ds) / len(ds))) if ds else 0,
+				            "per_delivery_plants": int(round(sum(r["plants"] for r in ds) / len(ds))) if ds else 0})
+			units = sum(r["units"] for r in mine)
+			halves.append({"label": label, "from": _week_label(min(r["_at"] for r in mine)),
+			               "to": _week_label(max(r["_at"] for r in mine)),
+			               "plants": sum(r["plants"] for r in mine), "units": units,
+			               "deliveries": len(mine),
+			               "per_delivery_units": int(round(units / len(mine))),
+			               "agreed": 1, "per_supplier": per})
+	for r in rows:
+		r.pop("_at", None)
+	return rows, halves, sup
 
 
 def _follow_one(deliveries, lifts, survive, per_unit, curve, route, entry):
