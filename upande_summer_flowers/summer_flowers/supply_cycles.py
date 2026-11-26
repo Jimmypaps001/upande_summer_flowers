@@ -898,6 +898,13 @@ def proposal(plan_doc, version=None, shares=None, second_half=None, cycles=None)
 		# (40,000 / 6.5) = 43,078 against an order of 40,000, which is why the
 		# delivery schedule and the plan's plants to plant did not agree.
 		over = len(ds) or 1
+		# A house with no delivery in this half cannot bring its share of it,
+		# so the houses that do come share the half between them. Holding the
+		# absent house's share left that part of the half belonging to nobody.
+		coming = [h for h in range(houses) if _in_half(house_drops[h], lo, hi)]
+		total_share = sum(flt(shares[h]) for h in coming) or 0.0
+		live_share = [(flt(shares[h]) * 100.0 / total_share if h in coming and total_share else 0.0)
+		              for h in range(houses)]
 		halves.append({
 			# A plan whose plantings end before the half-year is up has an
 			# empty second half. Its window still starts at the midpoint, so
@@ -924,9 +931,9 @@ def proposal(plan_doc, version=None, shares=None, second_half=None, cycles=None)
 				{"deliveries": len(_in_half(house_drops[h], lo, hi)),
 				 "split_over": len(_in_half(house_drops[h], lo, hi)) or 1,
 				 "per_delivery": (int(math.ceil(
-					 plants * flt(shares[h]) / 100.0
+					 plants * live_share[h] / 100.0
 					 / (len(_in_half(house_drops[h], lo, hi)) or 1) - 1e-9))
-				                  if plants else 0)}
+				                  if plants and live_share[h] else 0)}
 				for h in range(houses)],
 			# Whether this half's figure was decided or worked out.
 			"agreed": 1 if (n and agreed_2nd and not once) else 0,
