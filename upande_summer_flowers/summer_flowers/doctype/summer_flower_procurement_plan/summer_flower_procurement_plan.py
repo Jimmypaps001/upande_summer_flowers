@@ -1696,8 +1696,10 @@ def build(production_plan, method=None, entry_stage=None, supplier=None,
 	"""Turn a plan's plantings into one requirement line each, and price the order."""
 	fit_to_space = cint(fit_to_space)
 	p = frappe.get_doc("Summer Flower Production Plan", production_plan)
-	# Procurement comes last, and only after the plan it buys for is approved.
-	if p.docstatus == 0:
+	# Procurement comes last, and only after the plan it buys for is approved --
+	# except as a draft saved from the plan's own Procurement Plan tab, which is
+	# submitted when the plan is.
+	if p.docstatus == 0 and not frappe.flags.get("draft_procurement"):
 		frappe.throw(
 			_("{0} has not been approved yet. Agree the materials on it, send it "
 			  "for approval, and raise the orders once it is approved -- an order "
