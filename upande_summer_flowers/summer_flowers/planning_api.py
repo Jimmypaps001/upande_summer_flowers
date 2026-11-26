@@ -4353,7 +4353,7 @@ def week_board(plan=None, variety=None, farm=None, suppliers=None):
 		for d in (prop.get("rows") or []):
 			for k, share in enumerate(d["split"]):
 				chosen = (picked[k] if k < len(picked) else None) or None
-				house = chosen or _("House {0}").format(k + 1)
+				house = chosen or _("Supplier {0}").format(k + 1)
 				if house not in named:
 					named.append(house)
 				for wk in d["covers"]:

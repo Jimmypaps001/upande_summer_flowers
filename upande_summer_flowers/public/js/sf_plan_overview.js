@@ -290,6 +290,78 @@
 			+ `</div>`;
 	}
 
+	// The filter the page is showing: one week and/or one supplier, or the
+	// whole season. Kept on the payload so a redraw after an edit keeps it.
+	function filt(d) { return d._filter || (d._filter = { week: "", supplier: "" }); }
+
+	function weekOptions(d) {
+		const set = new Set();
+		(d.deliveries || []).forEach((r) => {
+			if (r.order_by) set.add(r.order_by);
+			if (r.arrives) set.add(r.arrives);
+			(r.lifts || []).forEach((L) => L.week && set.add(L.week));
+		});
+		(d.plantings || []).forEach((p) => set.add(p.week));
+		(d.weeks || []).forEach((w) => set.add(w.week));
+		return [...set].sort();
+	}
+
+	function filters(d) {
+		const f = filt(d);
+		const sups = [...new Set((d.deliveries || []).flatMap((r) => (r.suppliers || []).map((s) => s.supplier)))];
+		return `<div class="sfo-filters" style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:14px 0 4px">`
+			+ `<b style="font-size:12px">Show</b>`
+			+ `<select class="sfo-in" data-filter="week"><option value="">The whole season</option>`
+			+ weekOptions(d).map((w) => `<option${w === f.week ? " selected" : ""}>${esc(w)}</option>`).join("")
+			+ `</select>`
+			+ (sups.length > 1 ? `<select class="sfo-in" data-filter="supplier"><option value="">Every supplier</option>`
+				+ sups.map((n) => `<option${n === f.supplier ? " selected" : ""}>${esc(n)}</option>`).join("") + `</select>` : "")
+			+ (f.week || f.supplier ? `<button class="sfo-btn" data-filter-clear>Clear</button>` : "")
+			+ `</div>`;
+	}
+
+	// Every week of the plan in one table: ordered, arriving, planted, wanted, cut.
+	function seasonTable(d) {
+		const f = filt(d);
+		const row = {};
+		const at = (w) => (row[w] = row[w] || { week: w, ordered: 0, arrives: 0, planted: 0, sup: [] , demand: null, cut: null });
+		(d.deliveries || []).forEach((r) => {
+			const who = (r.suppliers || []).map((s) => s.supplier);
+			if (f.supplier && !who.includes(f.supplier)) return;
+			if (r.order_by) { at(r.order_by).ordered += r.units; at(r.order_by).sup.push(...who); }
+			if (r.arrives) at(r.arrives).arrives += r.units;
+			(r.lifts || []).forEach((L) => { if (L.week) at(L.week).planted += L.plants || 0; });
+		});
+		(d.weeks || []).forEach((w) => { const x = at(w.week); x.demand = w.demand; x.cut = w.production; });
+		let rows = Object.values(row).sort((a, b) => (a.week < b.week ? -1 : 1));
+		if (f.week) rows = rows.filter((x) => x.week === f.week);
+		if (!rows.length) return "";
+		const unit = esc(d.buy_stage || "TC");
+		return `<h4>Week by week <small>${f.week ? esc(f.week) : "the whole season, from the first order to the last harvest"}</small></h4>`
+			+ table(`<th>Week</th><th class="r">${unit} ordered</th><th class="r">${unit} arriving</th><th class="r">Plants planted</th>`
+				+ `<th class="r">Demand</th><th class="r">Cut</th><th class="r">Difference</th>`,
+				rows.map((x) => {
+					const diff = x.demand == null ? null : (x.cut || 0) - (x.demand || 0);
+					return `<td>${esc(x.week)}</td><td class="r">${x.ordered ? num(x.ordered) : ""}</td>`
+						+ `<td class="r">${x.arrives ? num(x.arrives) : ""}</td><td class="r">${x.planted ? num(x.planted) : ""}</td>`
+						+ `<td class="r">${x.demand == null ? "" : num(x.demand)}</td><td class="r">${x.cut == null ? "" : num(x.cut)}</td>`
+						+ `<td class="r" style="color:${diff != null && diff < 0 ? "var(--bad)" : "inherit"}">${diff == null ? "" : (diff > 0 ? "+" : "") + num(diff)}</td>`;
+				}), { limit: f.week ? 0 : 20 });
+	}
+
+	// The payload as the filter leaves it: deliveries and plantings of that week / supplier.
+	function filtered(d) {
+		const f = filt(d);
+		if (!f.week && !f.supplier) return d;
+		const touches = (r) => !f.week || r.order_by === f.week || r.arrives === f.week
+			|| (r.lifts || []).some((L) => L.week === f.week);
+		const bySup = (r) => !f.supplier || (r.suppliers || []).some((s) => s.supplier === f.supplier);
+		return Object.assign({}, d, {
+			deliveries: (d.deliveries || []).filter((r) => touches(r) && bySup(r)),
+			plantings: (d.plantings || []).filter((p) => !f.week || p.week === f.week),
+		});
+	}
+
 	function render(el, d) {
 		style();
 		if (!el) return;
@@ -297,8 +369,14 @@
 			el.innerHTML = `<div class="sfo"><div class="sfo-empty">${esc((d && d.empty) || "Nothing to show yet.")}</div></div>`;
 			return;
 		}
-		el.innerHTML = `<div class="sfo">${changeBanner(d._last)}${milestones(d)}${meets(d)}${buying(d)}${deliveries(d)}${raised(d)}`
-			+ `${example(d)}${planting(d)}${harvest(d)}</div>`;
+		const v = filtered(d);
+		el.innerHTML = `<div class="sfo">${changeBanner(d._last)}${milestones(d)}${meets(d)}${filters(d)}${seasonTable(d)}`
+			+ `${buying(d)}${deliveries(v)}${planting(v)}${harvest(d)}${raised(d)}${example(d)}</div>`;
+		el.querySelectorAll("[data-filter]").forEach((s) => s.addEventListener("change", () => {
+			filt(d)[s.dataset.filter] = s.value; render(el, d);
+		}));
+		const clr = el.querySelector("[data-filter-clear]");
+		if (clr) clr.addEventListener("click", () => { d._filter = null; render(el, d); });
 		if (d._editable) wire(el, d);
 		el.querySelectorAll("[data-more]").forEach((a) => a.addEventListener("click", () => {
 			el.querySelectorAll("tr." + a.dataset.more).forEach((tr) => (tr.style.display = ""));
@@ -315,7 +393,8 @@
 			el.querySelectorAll(".sfo-in,.sfo-btn").forEach((x) => (x.disabled = true));
 			return go(ED + method, Object.assign({ plan: d.plan }, args)).then((r) => {
 				const next = Object.assign(r.overview || {}, { _editable: true, _call: go,
-					_suppliers: d._suppliers, _onChanged: d._onChanged, _last: r.before ? r : null });
+					_suppliers: d._suppliers, _onChanged: d._onChanged, _last: r.before ? r : null,
+					_filter: d._filter });
 				render(el, next);
 				if (d._onChanged) d._onChanged(r);
 			}, (e) => {

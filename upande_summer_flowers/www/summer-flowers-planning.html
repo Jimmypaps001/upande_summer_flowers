@@ -588,8 +588,7 @@
     <section class="pl-pane" data-pane="motherstock">
       <div class="pl-card">
         <div class="pl-card-head">
-          <div><h2>{{ _("The motherstock line") }}</h2>
-               <p class="pl-note">{{ _("Sized by the busiest sticking week, because cuttings cannot be banked. Type TC plants and it works out the multiplications; type multiplications and it works out the order. Only Agree this line writes anything.") }}</p></div>
+          <div><h2>{{ _("The motherstock line") }}</h2></div>
           <span class="pl-actions">
             <label class="pl-inline">{{ _("TC plants") }}
               <input type="number" id="tc-qty" min="0" step="50"></label>
@@ -648,8 +647,7 @@
            is decided before anything is ordered. Nothing on this card saves. -->
       <div class="pl-card">
         <div class="pl-card-head">
-          <div><h2>{{ _("Suppliers and their cycles") }}</h2>
-               <p class="pl-note">{{ _("A supplier hands an order over in cycles, not in one drop. What a later cycle lands is the next planting week's plants, already bought — so the week after a big order buys less. Add suppliers, set their cycles and shares, and see what the plan then has to buy. Nothing here is saved.") }}</p></div>
+          <div><h2>{{ _("Suppliers and their cycles") }}</h2></div>
           <span class="pl-actions">
             <button type="button" class="pl-btn" data-sup="add">{{ _("Add a supplier") }}</button>
             <button type="button" class="pl-btn" data-sup="run">{{ _("Recalculate") }}</button>
@@ -658,7 +656,7 @@
                     title="{{ _('Agrees the suppliers and their cycles. The plan cannot be sent for approval until this is done, because what they hand over is what it will be grown from.') }}"
             >{{ _("Confirm the supply") }}</button>
             <button type="button" class="pl-btn" data-sup="adopt"
-                    title="{{ _('Writes these houses and their cycles onto the Crop Protocol, so every later plan for this variety opens on them instead of on the two blanket figures. Only who brings it changes — no agronomy, so nothing needs re-approving.') }}"
+                    title="{{ _('Writes these suppliers and their cycles onto the Crop Protocol, so every later plan for this variety opens on them instead of on the two blanket figures. Only who brings it changes — no agronomy, so nothing needs re-approving.') }}"
             >{{ _("Make this the protocol's default") }}</button>
             <button type="button" class="pl-btn" data-sup="reset">{{ _("Start again") }}</button>
             <button type="button" class="pl-btn" data-sup="csv"
@@ -671,16 +669,15 @@
              it is the farm's decision, so the suggestion leaves the names
              blank and fills in everything else. -->
         <div class="pl-callout" style="margin-bottom:10px">
-          <b>{{ _("Let the plan propose it") }}</b>
-          <span class="pl-dim">{{ _("— what has to arrive and when, from the planting weeks and the lifts. You pick who brings it.") }}</span>
+          <b>{{ _("Propose deliveries from the demand") }}</b>
           <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-top:6px">
             <label class="pl-inline">{{ _("Buying") }}<select id="sup-mode">
                 <option value="In two halves">{{ _("In two halves") }}</option>
                 <option value="Once for the year">{{ _("Once for the year") }}</option>
               </select></label>
             <label class="pl-inline"
-                   title="{{ _('How many houses to spread it across. Each brings its share of every delivery, so a week none of them could fill alone is filled between them.') }}"
-            >{{ _("Houses") }}<input id="sup-houses" type="number" min="1" max="12"
+                   title="{{ _('How many suppliers to spread it across. Each brings its share of every delivery, so a week none of them could fill alone is filled between them.') }}"
+            >{{ _("Suppliers") }}<input id="sup-houses" type="number" min="1" max="12"
                      step="1" value="1" style="width:5em"
                      oninput="this.dataset.touched=1"></label>
             <label class="pl-inline"
@@ -710,8 +707,7 @@
            procurement tab shows now is the record of it. -->
       <div class="pl-card">
         <div class="pl-card-head">
-          <div><h2>{{ _("Procurement allocation") }}</h2>
-               <p class="pl-note">{{ _("Who sells each way in and what share of it, what they have confirmed they will send, and what that commits us to plant. Our own propagation units raise it free; an outside propagator delivers plants and charges per plant, and gets a purchase order when the procurement plan is approved.") }}</p></div>
+          <div><h2>{{ _("Procurement allocation") }}</h2></div>
         </div>
         <div id="pc-buying" class="pl-scroll"></div>
         <div id="pc-impact" class="pl-scroll"></div>
@@ -722,14 +718,15 @@
       <!-- Last, because it is the answer to everything above it: what each
            planting buys, plants and stands up once the suppliers and their
            cycles are settled. -->
-      <div class="pl-card">
+      <!-- Shown on the Plan page (Your plan) now; kept so its script has a home. -->
+      <div class="pl-card" hidden>
         <div id="tc-planting" class="pl-scroll"></div>
       </div>
 
       <!-- The season in one grid, read by colour: what is owed, what is cut,
            what goes in the ground and who brought it. No prose -- the numbers
            and the colours are the whole of it. -->
-      <div class="pl-card">
+      <div class="pl-card" hidden>
         <div class="pl-card-head"><div><h2>{{ _("The season, week by week") }}</h2></div></div>
         <div id="wb-legend" class="pl-dim" style="margin-bottom:8px"></div>
         <div id="wb-body" class="pl-scroll"></div>
@@ -4722,7 +4719,7 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
     // 16,003" and a TC order date for seed. The heading and the tiles follow
     // the route; the step table below already names what is actually bought.
     const pool = tc.propagates !== false;
-    const msHead = document.querySelector('[data-pane="plan"] .pl-card:last-of-type h2');
+    const msHead = document.querySelector('#pn-more .pl-card:last-of-type h2');
     if (msHead) {
       msHead.textContent = pool ? "Motherstock check"
         : `What the order comes to — ${tc.entry_stage || "bought material"}`;
@@ -5943,7 +5940,7 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
     const firstOpen = rows.find((x) => !x.order_passed);
     const houses = cons.houses || [];
     const who = houses.length
-      ? houses.map((h) => `${esc(h.supplier || "a house not yet named")}` +
+      ? houses.map((h) => `${esc(h.supplier || "a supplier not yet named")}` +
           ` — every ${h.cycle_weeks} wk, ${h.lead_weeks} wk notice,` +
           ` ${h.share_pct}%`).join("  ·  ")
       : "";
@@ -5997,7 +5994,7 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
     }).join("");
     return `<div class="text-muted small" style="text-transform:uppercase;` +
       `letter-spacing:.05em;margin:14px 0 4px">` +
-      `${agreed ? "The supply agreed for this plan" : "What the protocol's houses would bring"}` +
+      `${agreed ? "The supply agreed for this plan" : "What the protocol's suppliers would bring"}` +
       `</div>` + warn +
       `<p class="pl-note"><b>${num(totUnits)} ${esc(one.toLowerCase())} over ` +
       `${rows.length} consignment${rows.length === 1 ? "" : "s"}</b>, ` +
@@ -6005,11 +6002,11 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
       (who ? ` ${who}.` : "") +
       (agreed
         ? " This is what was agreed on the supply card; change it there."
-        : " Nothing is agreed yet — these are the protocol's own houses and" +
+        : " Nothing is agreed yet — these are the protocol's own suppliers and" +
           " cycles. Agree them on the supply card to make them the plan's.") +
       `</p>` +
       `<table class="pl-t"><thead><tr>` +
-      `<th class="n">#</th><th>House</th><th class="n">Cycle</th>` +
+      `<th class="n">#</th><th>Supplier</th><th class="n">Cycle</th>` +
       `<th>Ordered</th><th>Lands</th><th class="n">${esc(one)}</th>` +
       `<th>Covers to</th>` +
       (lifted ? `<th class="n">Lift</th><th class="n">Share</th><th>Hands over</th>` : "") +
@@ -6024,6 +6021,10 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
   function renderBought(m) {
     const box = $("tc-buy-plan");
     if (!box) return;
+    // The deliveries and what each plants are on the Plan page now, where they
+    // can be changed; this page no longer repeats them.
+    box.innerHTML = "";
+    return;
     const rows = (m.weeks || []).filter((w) => cintish(w.units_tc) || cintish(w.by_tc));
     // A pool crop buys its tissue culture once to raise mothers; the motherstock
     // card above says when. A weekly consignment table would state a second,
@@ -9039,13 +9040,16 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
   function renderDropSchedule() {
     const el = $("sup-deliveries");
     if (!el) return;
+    // Shown and changed on the Plan page (Your plan), not repeated here.
+    el.innerHTML = "";
+    return;
     const d = S.supStated;
     const rows = (d && d.rows) || [];
     if (!d || !d.is_bought || !rows.length) { el.innerHTML = ""; return; }
     const houses = d.houses || 1;
     const names = (S.sup || []).map((p) => p.supplier);
     const head = Array.from({ length: houses }, (_, i) =>
-      `<th class="r">${esc(names[i] || `House ${i + 1}`)}</th>`).join("");
+      `<th class="r">${esc(names[i] || `Supplier ${i + 1}`)}</th>`).join("");
     // Named by the calendar half it is -- "2026 H2" -- not counted off the
     // plan. A planner reviewing in January needs to see which January.
     const halves = (d.halves || []).map((h, i) =>
@@ -9061,7 +9065,7 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
     const steadyLine = st
       ? `<div class="pl-dim" style="margin-bottom:6px">Same quantity every cycle: `
         + (st.per_house || []).map((q, i) => q
-            ? `<b>${esc(names[i] || `House ${i + 1}`)} ${num(q)}</b> each delivery` : "")
+            ? `<b>${esc(names[i] || `Supplier ${i + 1}`)} ${num(q)}</b> each delivery` : "")
             .filter(Boolean).join(" · ")
         + ` · ${num(st.season_plants)} plants over the programme, sized so every week is `
         + `within ${Math.round((st.band || 0) * 100)}% of demand`
@@ -9103,7 +9107,7 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
           + `<td class="r">${num(r.plants)}</td>`
           + `<td class="r">${r.planting_weeks}</td>`
           + (r.split || []).map((x, i) =>
-              `<td class="r" style="color:${supColour(names[i] || `House ${i + 1}`,
+              `<td class="r" style="color:${supColour(names[i] || `Supplier ${i + 1}`,
                  names.length ? names : null)}">${num(x)}</td>`).join("")
           + `</tr>`
           + ((r.lifts || []).length
@@ -9259,16 +9263,16 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
       all.map((x) => `<option value="${esc(x)}"${x === p.supplier ? " selected" : ""}>` +
         `${label(x)}</option>`).join("") + `</select>` +
       `<label class="pl-inline" title="The share of the season promised to ` +
-      `this house.">Share %<input class="sup-share" type="number" min="0" ` +
+      `this supplier.">Share %<input class="sup-share" type="number" min="0" ` +
       `max="100" step="0.5" style="width:5.5em" value="${
         Number(p.share_pct) || 0}"></label>` +
-      `<label class="pl-inline" title="Weeks between this house's deliveries. ` +
+      `<label class="pl-inline" title="Weeks between this supplier's deliveries. ` +
       `4 means it comes every four weeks, so a 53-week plan is 13 ` +
       `consignments. Each one carries the plantings between it and the ` +
       `next.">Every (wks)<input class="sup-count" type="number" ` +
       `min="1" max="52" step="1" style="width:5em" value="${
         Number(p.cycle_count) || 4}"></label>` +
-      `<label class="pl-inline" title="Weeks of notice this house needs." ` +
+      `<label class="pl-inline" title="Weeks of notice this supplier needs." ` +
       `>Lead wks<input class="sup-lead" type="number" min="0" step="1" ` +
       `style="width:5em" value="${Number(p.lead_weeks) || 0}"></label>` +
       `<span class="pl-dim">${p.units
@@ -9467,7 +9471,7 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
           `The plan can be sent for approval. Changing anything above and ` +
           `confirming again replaces it.</div>`
         : `<div class="pl-callout is-info" style="margin-top:8px">Nothing is ` +
-          `saved yet. <b>Confirm the supply</b> when these are the houses and ` +
+          `saved yet. <b>Confirm the supply</b> when these are the suppliers and ` +
           `the cycles — the plan cannot be sent for approval until then, ` +
           `because this is what it will be grown from.</div>`);
   }
@@ -9488,12 +9492,12 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
     const houses = new Set(d.map((x) => x.supplier)).size;
     if (!byHand && houses < 2) {
       return `<p class="pl-note" style="margin-top:12px">${d.length} cycle${
-        d.length === 1 ? "" : "s"} over the plan, as listed against the house ` +
+        d.length === 1 ? "" : "s"} over the plan, as listed against the supplier ` +
         `above. Saving keeps them on the plan; Download cycles has them as a ` +
         `file.</p>`;
     }
     return `<div class="text-muted small" style="text-transform:uppercase;` +
-      `letter-spacing:.05em;margin:14px 0 4px">Every cycle, all houses</div>` +
+      `letter-spacing:.05em;margin:14px 0 4px">Every cycle, all suppliers</div>` +
       `<p class="pl-note">${d.length} cycle${d.length === 1 ? "" : "s"} ` +
       `over the plan${byHand ? `, ${byHand} added by hand` : ""}. Saving keeps ` +
       `them on the plan, where they can be downloaded again at any time.</p>` +
@@ -9545,7 +9549,7 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
       `calendar</div>` +
       `<p class="pl-note">${short.length
         ? `<b style="color:var(--critical)">${short.length} of ${rows.length} ` +
-          `plantings are cut short</b> by what these houses hand over.`
+          `plantings are cut short</b> by what these suppliers hand over.`
         : `<b>Every planting is supplied in full.</b>`} A week that is short is ` +
       `shared out across the plantings in it.</p>` +
       `<table class="pl-t"><thead><tr><th>Planting</th><th>Block</th>` +
@@ -10223,7 +10227,7 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
       buying.insertAdjacentHTML("afterbegin",
         `<p class="pl-note">The sellers and their shares are chosen once, on ` +
         `<b>Suppliers and their cycles</b> above: change them there and save, ` +
-        `and this follows. Cycles for one house and an order to another was ` +
+        `and this follows. Cycles for one supplier and an order to another was ` +
         `two answers to one question.</p>`);
     }
   }
@@ -10568,7 +10572,7 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
       if (!sel) return;
       callSupply("set_consignment_supplier",
                  { plan: S.plan, row: sel.dataset.row, supplier: sel.value })
-        .then((r) => { toast((r && r.note) || "House changed."); loadDetail(); })
+        .then((r) => { toast((r && r.note) || "Supplier changed."); loadDetail(); })
         .catch((e) => { toast(esc(e.message || String(e)), true); loadDetail(); });
     });
 
@@ -10850,7 +10854,7 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
                   renderDropSchedule();
                   renderSupPick();
                   runSupply();
-                  toast(`${r.deliveries} deliveries across ${houses} house`
+                  toast(`${r.deliveries} deliveries across ${houses} supplier`
                     + `${houses === 1 ? "" : "s"} — pick who brings them.`);
                 })
                 .catch((e) => toast(esc(e.message), true));
@@ -10864,7 +10868,7 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
               // unsaved: adopting a house the plan itself is not grown on is
               // how a protocol comes to name somebody nobody ever planned for.
               frappe.confirm(
-                __("Write these {0} house(s) and their cycles onto the "
+                __("Write these {0} supplier(s) and their cycles onto the "
                    + "protocol as its default? Save the supply first if you "
                    + "have changed it here.", [picks.length]),
                 () => call("adopt_to_protocol", { plan: S.plan })
@@ -10977,7 +10981,7 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
             const p = S.sup[+row.dataset.i];
             const j = +e.target.closest("tr").dataset.j;
             if ((p.weeks || []).length <= 1) {
-              toast("A house needs at least one delivery.", true); return;
+              toast("A supplier needs at least one delivery.", true); return;
             }
             p.weeks = (p.weeks || []).filter((w, k) => k !== j);
             p.cycles.splice(j, 1);

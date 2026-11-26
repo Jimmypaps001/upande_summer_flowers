@@ -403,7 +403,7 @@ def default_houses(defaults, phases=None):
 		# Not a Supplier link: nobody has been named, and writing "House 2"
 		# into a field that points at the Supplier master would not save.
 		"supplier": "",
-		"label": _("House {0}").format(i + 1),
+		"label": _("Supplier {0}").format(i + 1),
 		"named": False,
 		"farm": None,
 		"cycle_weeks": cycle,
@@ -1092,7 +1092,7 @@ def proposal_note(plan_doc, version=None):
 		_("{0} lift(s) per consignment").format(d["lifts"]) if d["lifts"]
 		else _("no lift profile"),
 	]
-	head = _("{0}: {1}. {2} deliveries x {3} house(s) = {4} consignments over "
+	head = _("{0}: {1}. {2} deliveries x {3} supplier(s) = {4} consignments over "
 	         "{5} planting weeks, {6} plants in all. Nobody has been named yet."
 	         ).format(d["form"], "; ".join(bits), d["deliveries"], d["houses"],
 	                  d["supplier_deliveries"], d["planting_weeks"], d["plants"])
@@ -1106,7 +1106,7 @@ def proposal_note(plan_doc, version=None):
 			# Houses on different rhythms do not share one instalment, so one
 			# figure for the delivery would be a figure nobody brings.
 			lines.append("   " + "; ".join(
-				_("house {0}: every {1} wk, {2} deliveries, {3} each").format(
+				_("supplier {0}: every {1} wk, {2} deliveries, {3} each").format(
 					i + 1, (d.get("cycles_by_house") or [])[i] if i < len(
 						d.get("cycles_by_house") or []) else "?",
 					x["deliveries"], x["per_delivery"])
@@ -2622,6 +2622,6 @@ def adopt_to_protocol(plan):
 	frappe.db.commit()
 	return {"protocol": cp, "houses": len(keep),
 	        "note": _("{0} now opens on {1}: {2}.").format(
-		        cp, _("these houses") if len(keep) > 1 else _("this house"),
+		        cp, _("these suppliers") if len(keep) > 1 else _("this supplier"),
 		        ", ".join("{0} every {1} wk".format(
 			        x["supplier"], x["cycle_weeks"] or "?") for x in keep))}

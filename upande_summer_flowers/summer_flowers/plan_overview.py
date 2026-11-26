@@ -380,6 +380,34 @@ def _from_saved(saved, lifts, suppliers, per_unit, v=None):
 			               "deliveries": len(mine),
 			               "per_delivery_units": int(round(units / len(mine))),
 			               "agreed": 1, "per_supplier": per})
+	# A half carrying only a sliver of the season is ordered with the half
+	# next to it, as the proposal does.
+	total = sum(h["units"] for h in halves) or 0
+	while len(halves) > 1 and total:
+		small = [n for n, h in enumerate(halves) if h["units"] < sc.SMALL_HALF_SHARE * total]
+		if not small:
+			break
+		n = small[0]
+		k = n + 1 if n + 1 < len(halves) else n - 1
+		lo, hi = min(n, k), max(n, k)
+		a, b = halves[lo], halves[hi]
+		mine = [r for r in rows if r.get("half") in (lo + 1, hi + 1)]
+		units = a["units"] + b["units"]
+		per = []
+		for i, s in enumerate(sup):
+			ds = [r for r in mine if r["suppliers"][0]["supplier"] == s["supplier"]]
+			per.append({"deliveries": len(ds),
+			            "per_delivery_units": int(round(sum(r["units"] for r in ds) / len(ds))) if ds else 0,
+			            "per_delivery_plants": int(round(sum(r["plants"] for r in ds) / len(ds))) if ds else 0})
+		merged = {"label": "%s + %s" % (a["label"], b["label"]), "from": a["from"], "to": b["to"],
+		          "plants": a["plants"] + b["plants"], "units": units,
+		          "deliveries": a["deliveries"] + b["deliveries"],
+		          "per_delivery_units": int(round(units / ((a["deliveries"] + b["deliveries"]) or 1))),
+		          "agreed": 1, "per_supplier": per}
+		halves[lo:hi + 1] = [merged]
+		for r in rows:
+			if r.get("half") and r["half"] > lo + 1:
+				r["half"] -= 1
 	for r in rows:
 		r.pop("_at", None)
 	return rows, halves, sup

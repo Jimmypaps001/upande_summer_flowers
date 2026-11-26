@@ -1038,12 +1038,12 @@ def check_suppliers(doc):
 		key = (r.supplier, (r.get("farm") or "").strip())
 		if key in seen:
 			frappe.throw(
-				_("{0} is listed twice{1}. One row per house: a house that comes "
-				  "on two rhythms is two arrangements, and the plan cannot tell "
+				_("{0} is listed twice{1}. One row per supplier: a supplier that "
+				  "comes on two rhythms is two arrangements, and the plan cannot tell "
 				  "which one it is buying on.").format(
 					frappe.bold(r.supplier),
 					_(" for {0}").format(r.farm) if r.get("farm") else ""),
-				title=_("The same house twice"))
+				title=_("The same supplier twice"))
 		seen[key] = r.idx
 		if cint(r.get("cycle_weeks")) < 0 or cint(r.get("cycle_weeks")) > 52:
 			frappe.throw(
