@@ -1413,6 +1413,12 @@ def _chain_after_agreement(production_plan):
 		return {"name": build(production_plan, replace=1)}
 
 	def propagation():
+		# Propagators chosen on the plan's Propagation tab already have a plan
+		# each, one per own unit, sized to its share. A plan with no unit on it
+		# here would ask for the whole season a second time.
+		if frappe.db.exists("Summer Flower Plan Raiser", {"parent": production_plan}):
+			return {"skipped": _("propagation plans are per unit, drafted when "
+			                     "the propagators were chosen")}
 		# Our own bench's instruction. Where an outside propagator raises every
 		# plant, or the material arrives ready to plant, there is nothing for a
 		# propagation plan to say and one should not exist.

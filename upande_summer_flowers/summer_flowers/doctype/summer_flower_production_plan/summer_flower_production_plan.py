@@ -146,6 +146,16 @@ class SummerFlowerProductionPlan(Document):
 				frappe.db.rollback(save_point="approve_hanging")
 				frappe.log_error(frappe.get_traceback(), "Approving %s with %s" % (name, self.name))
 				failed.append("%s (%s)" % (name, frappe.utils.strip_html(str(e))[:80]))
+		# The procurement plan was rebuilt on approval; it is given the plan's
+		# propagators again before it is submitted.
+		try:
+			from upande_summer_flowers.summer_flowers.propagation_edit import (
+				carry_to_procurement,
+			)
+
+			carry_to_procurement(self.name)
+		except Exception:
+			frappe.log_error(frappe.get_traceback(), "Propagators to procurement %s" % self.name)
 		for name in frappe.get_all("Summer Flower Procurement Plan",
 		                           filters={"production_plan": self.name, "docstatus": 0},
 		                           pluck="name"):

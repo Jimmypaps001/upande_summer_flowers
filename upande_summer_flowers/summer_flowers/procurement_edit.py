@@ -78,6 +78,10 @@ def save_draft(plan):
 			                     "lead_weeks": cint(r.lead_weeks)}
 	if picks:
 		sc._write_sellers(doc, {"suppliers": list(picks.values())})
+	# And who raises what it buys, from the plan's Propagation tab.
+	from upande_summer_flowers.summer_flowers.propagation_edit import carry_to_procurement
+
+	carry_to_procurement(doc.name)
 	out = _state(frappe.get_doc("Summer Flower Production Plan", doc.name))
 	out["saved"] = name
 	return out

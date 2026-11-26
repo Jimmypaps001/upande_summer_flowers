@@ -95,10 +95,42 @@ def set_propagators(plan, picks):
 	sc.save_raisers(doc.name, rows)
 	doc = frappe.get_doc("Summer Flower Production Plan", doc.name)
 	drafts = draft_propagation_plans(doc)
+	carry_to_procurement(doc.name)
 	doc.reload()
 	out = _state(doc)
 	out["drafts"] = drafts
 	return out
+
+
+def carry_to_procurement(plan_name):
+	"""Put the plan's propagators on its draft procurement plan.
+
+	The procurement plan will not be submitted until it says who raises what
+	it buys; the plan's Propagation tab is where that is chosen."""
+	q = frappe.db.get_value("Summer Flower Procurement Plan",
+	                        {"production_plan": plan_name, "docstatus": 0}, "name")
+	if not q:
+		return None
+	rows = frappe.get_all("Summer Flower Plan Raiser", filters={"parent": plan_name},
+	                      fields=["alloc_type", "party", "share_pct", "rate_per_plant", "raises"],
+	                      order_by="idx")
+	if not rows:
+		return None
+	proc = frappe.get_doc("Summer Flower Procurement Plan", q)
+	stage = proc.main_entry_stage() if hasattr(proc, "main_entry_stage") else None
+	proc.set("propagation_allocation", [])
+	for r in rows:
+		outside = (r.alloc_type or "").startswith("Outside")
+		proc.append("propagation_allocation", {
+			"alloc_type": "Outside Propagator" if outside else "Own Unit",
+			"raises": r.raises or stage,
+			"propagation_unit": None if outside else r.party,
+			"supplier": r.party if outside else None,
+			"share_pct": flt(r.share_pct),
+			"rate_per_plant": flt(r.rate_per_plant) if outside else 0})
+	proc.flags.ignore_permissions = True
+	proc.save()
+	return proc.name
 
 
 def draft_propagation_plans(doc):
