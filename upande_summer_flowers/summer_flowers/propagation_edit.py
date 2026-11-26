@@ -117,17 +117,21 @@ def carry_to_procurement(plan_name):
 	if not rows:
 		return None
 	proc = frappe.get_doc("Summer Flower Procurement Plan", q)
-	stage = proc.main_entry_stage() if hasattr(proc, "main_entry_stage") else None
+	# Every way the material comes in has to be raised by somebody -- a crop
+	# bought partly as TC and partly as roots is two lots to raise. The
+	# propagators chosen on the plan raise each of them at the same shares.
+	ways = [w for w in (proc.ways_in() if hasattr(proc, "ways_in") else []) if w] or [None]
 	proc.set("propagation_allocation", [])
-	for r in rows:
-		outside = (r.alloc_type or "").startswith("Outside")
-		proc.append("propagation_allocation", {
-			"alloc_type": "Outside Propagator" if outside else "Own Unit",
-			"raises": r.raises or stage,
-			"propagation_unit": None if outside else r.party,
-			"supplier": r.party if outside else None,
-			"share_pct": flt(r.share_pct),
-			"rate_per_plant": flt(r.rate_per_plant) if outside else 0})
+	for way in ways:
+		for r in rows:
+			outside = (r.alloc_type or "").startswith("Outside")
+			proc.append("propagation_allocation", {
+				"alloc_type": "Outside Propagator" if outside else "Own Unit",
+				"raises": way or r.raises,
+				"propagation_unit": None if outside else r.party,
+				"supplier": r.party if outside else None,
+				"share_pct": flt(r.share_pct),
+				"rate_per_plant": flt(r.rate_per_plant) if outside else 0})
 	proc.flags.ignore_permissions = True
 	proc.save()
 	return proc.name
