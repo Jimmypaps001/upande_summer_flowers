@@ -15,6 +15,7 @@ frappe.ui.form.on("Summer Flower Production Plan", {
 
 		if (frm.is_new()) return;
 
+		render_overview(frm);
 		render_sheet(frm);
 		draw_calendar(frm);
 		// Seven buttons across a toolbar is a list nobody reads. One dropdown,
@@ -173,17 +174,18 @@ function set_headline(frm) {
 	if (!parts.length) return;
 
 	const indicator = frm.doc.weeks_in_deficit ? "orange" : "green";
-	frm.dashboard.set_headline(parts.join(" &nbsp;·&nbsp; "), indicator);
+	frm.dashboard.set_headline(parts.join("  ·  "), indicator);
+}
 
-	if (frm.doc.weeks_in_deficit) {
-		frm.dashboard.add_comment(
-			__(
-				"Weekly variance swings hard because a whole block flushes in one week. Read the Monthly tab for the reliable picture."
-			),
-			"blue",
-			true
-		);
-	}
+// The plan at a glance: buying, raising, planting and cutting, drawn by the
+// same script the planning dashboard uses.
+function render_overview(frm) {
+	const field = frm.get_field("overview_html");
+	if (!field) return;
+	const el = field.$wrapper[0];
+	frappe.require("/assets/upande_summer_flowers/js/sf_plan_overview.js", () => {
+		window.sfPlanOverview.load(el, frm.doc.name);
+	});
 }
 
 function fmt(n) {

@@ -265,6 +265,13 @@
     <section class="pl-pane" data-pane="plan">
       <div class="pl-card">
         <div class="pl-card-head">
+          <div><h2>{{ _("At a glance") }}</h2></div>
+        </div>
+        <div id="pn-glance"></div>
+      </div>
+
+      <div class="pl-card">
+        <div class="pl-card-head">
           <div><h2>{{ _("Demand to budget") }}</h2></div>
           <span id="pn-actions" class="pl-actions"></span>
         </div>
@@ -662,6 +669,10 @@
           <b>{{ _("Let the plan propose it") }}</b>
           <span class="pl-dim">{{ _("— what has to arrive and when, from the planting weeks and the lifts. You pick who brings it.") }}</span>
           <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-top:6px">
+            <label class="pl-inline">{{ _("Buying") }}<select id="sup-mode">
+                <option value="In two halves">{{ _("In two halves") }}</option>
+                <option value="Once for the year">{{ _("Once for the year") }}</option>
+              </select></label>
             <label class="pl-inline"
                    title="{{ _('How many houses to spread it across. Each brings its share of every delivery, so a week none of them could fill alone is filled between them.') }}"
             >{{ _("Houses") }}<input id="sup-houses" type="number" min="1" max="12"
@@ -1407,8 +1418,11 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
 .xp-links{margin-top:12px;font-size:.76rem;display:flex;gap:10px;flex-wrap:wrap}
 .pl-empty{color:var(--text-muted);font-size:.82rem;padding:10px 0}
 .warn{color:var(--critical)}
+#pn-glance .sfo{--t:var(--text-primary);--t2:var(--text-secondary);--bd:var(--border);--bg2:var(--surface-2);
+  --s1:var(--series-1);--s2:var(--series-2);--ok:var(--good);--bad:var(--critical)}
 </style>
 
+<script src="/assets/upande_summer_flowers/js/sf_plan_overview.js"></script>
 <script>
 (function () {
   "use strict";
@@ -8866,12 +8880,37 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
       }
     }
     showStated();
+    wireMode();
     syncHouses();
     renderDropSchedule();
     renderSupPick();
     lockIfSubmitted();
     loadBoard();
     return runSupply();
+  }
+
+  // Bought in two halves or once for the year, saved on the plan. The card's
+  // deliveries and the At a glance tables are drawn again on the new basis.
+  function wireMode() {
+    const m = $("sup-mode");
+    if (!m) return;
+    m.value = (S.supStated || {}).supply_mode || "In two halves";
+    m.disabled = !S.plan || ((S.supSaved || {}).docstatus || 0) > 0;
+    if (m.dataset.wired) return;
+    m.dataset.wired = 1;
+    m.addEventListener("change", async () => {
+      try {
+        await call("set_supply_mode", { plan: S.plan, mode: m.value });
+        const saved = await call("saved_supply", { plan: S.plan });
+        S.supSaved = saved;
+        S.supStated = saved.defaults || null;
+        showStated();
+        renderDropSchedule();
+        await runSupply();
+        loadGlance();
+        toast(m.value === "Once for the year" ? "Bought once for the year." : "Bought in two halves.");
+      } catch (e) { toast(esc(e.message), true); }
+    });
   }
 
   // An empty row, on the protocol's own footing: how often that house comes
@@ -10211,6 +10250,7 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
       loadProcurement().catch(bad);
     }
     if (name === "plan") {
+      loadGlance();
       Promise.all([loadChain(), loadTc(), loadWhatIf()]).then(renderPlanTab).catch(bad);
     }
     if (name === "procurement") {
@@ -10222,6 +10262,17 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
     if (name === "review") {
       loadReview().then(loadPlanState).then(loadChain).catch(bad);
     }
+  }
+
+  // The plan at a glance, drawn by the same script as the plan form's first page.
+  function loadGlance() {
+    const el = $("pn-glance");
+    if (!el || !window.sfPlanOverview) return;
+    if (!S.plan) { el.innerHTML = `<p class="pl-empty">Choose a plan.</p>`; return; }
+    const go = (m, a) => new Promise((res, rej) => frappe.call({
+      method: m, args: a, callback: (r) => res(r && r.message),
+      error: (r) => rej(new Error((r && r.responseJSON && r.responseJSON.exception) || "failed")) }));
+    window.sfPlanOverview.load(el, S.plan, go);
   }
 
   function openTab() {

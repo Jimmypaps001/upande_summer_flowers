@@ -26,14 +26,16 @@
    "in_list_view": 1,
    "label": "Supplier",
    "options": "Supplier",
-   "reqd": 1
+   "reqd": 1,
+   "columns": 3
   },
   {
    "fieldname": "share_pct",
    "fieldtype": "Percent",
    "in_list_view": 1,
    "label": "Share Of The Season",
-   "read_only": 1
+   "read_only": 1,
+   "columns": 1
   },
   {
    "fieldname": "lead_weeks",
@@ -41,7 +43,6 @@
    "label": "Lead Weeks"
   },
   {
-   "description": "How often this house delivers. The consignments below are what that comes to over this plan.",
    "fieldname": "cycle_count",
    "fieldtype": "Int",
    "label": "A Delivery Every (Weeks)"
@@ -54,29 +55,32 @@
    "fieldname": "cycle_no",
    "fieldtype": "Int",
    "in_list_view": 1,
-   "label": "Cycle"
+   "label": "Cycle",
+   "columns": 1
   },
   {
    "fieldname": "weeks_after",
    "fieldtype": "Int",
    "in_list_view": 1,
-   "label": "Weeks After It Arrives"
+   "label": "Weeks After It Arrives",
+   "columns": 1
   },
   {
    "fieldname": "cycle_share_pct",
    "fieldtype": "Percent",
    "in_list_view": 1,
-   "label": "Share Of The Order"
+   "label": "Share Of The Order",
+   "columns": 1
   },
   {
-   "description": "The week this consignment lands, as 2028-W02. Kept because a delivery week can be moved by hand, and a saved supply that reopened on a fresh rhythm lost the move.",
    "fieldname": "lands_iso",
    "fieldtype": "Data",
    "label": "Lands In Week",
-   "read_only": 1
+   "read_only": 1,
+   "in_list_view": 1,
+   "columns": 2
   },
   {
-   "description": "What the house was asked for on this delivery, where a figure was agreed rather than sized from the plantings it carries. Zero means it is sized from the plan.",
    "fieldname": "units_typed",
    "fieldtype": "Int",
    "label": "Units Agreed On This Cycle"

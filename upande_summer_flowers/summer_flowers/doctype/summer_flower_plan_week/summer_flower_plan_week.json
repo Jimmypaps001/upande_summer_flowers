@@ -51,7 +51,6 @@
    "read_only": 1
   },
   {
-   "description": "This week's production from plantings that already have a block. Production beside it is the whole plan.",
    "fieldname": "placeable_production_stems",
    "fieldtype": "Int",
    "label": "Production (blocks free today)",
@@ -73,7 +72,6 @@
    "label": "Production"
   },
   {
-   "description": "Of the production this week, the part the confirmed TC order can actually supply. Equal to production until an order is confirmed.",
    "fieldname": "supplied_production_stems",
    "fieldtype": "Int",
    "label": "Production the order supplies",

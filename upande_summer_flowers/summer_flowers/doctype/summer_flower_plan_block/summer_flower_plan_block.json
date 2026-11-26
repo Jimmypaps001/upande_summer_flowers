@@ -75,14 +75,12 @@
    "read_only": 1
   },
   {
-   "description": "What goes into the ground. More than Plants, because only some of what is planted establishes -- the beds are sized for this, the harvest for Plants.",
    "fieldname": "plants_to_plant",
    "fieldtype": "Int",
    "label": "To Plant",
    "read_only": 1
   },
   {
-   "description": "The week's shortfall divided by what one plant gives in its first flush -- what the demand implies before anything is rounded. Plants is this rounded up to a whole minimum planting area, so the gap between the two is what the bed grid costs.",
    "fieldname": "plants_required",
    "fieldtype": "Int",
    "label": "Plants the flush asks for",
@@ -95,10 +93,9 @@
    "label": "Sticking Year"
   },
   {
-   "columns": 1,
    "fieldname": "sticking_week",
    "fieldtype": "Int",
-   "in_list_view": 1,
+   "in_list_view": 0,
    "label": "Stick Wk"
   },
   {
@@ -151,7 +148,6 @@
   },
   {
    "columns": 2,
-   "description": "When the crop comes out. New plantings: the planting date plus the protocol's weeks in the ground. Existing crop: what the planting calendar or crop cycle already records, so an early uprooting shows here.",
    "fieldname": "uproot_date",
    "fieldtype": "Date",
    "in_list_view": 1,
@@ -159,7 +155,6 @@
    "read_only": 1
   },
   {
-   "description": "Net bed area — the ground the crop occupies, and the only area this app carries.",
    "fieldname": "net_area_ha",
    "fieldtype": "Float",
    "label": "Net Area (ha)",
@@ -174,7 +169,6 @@
   },
   {
    "default": "0",
-   "description": "Beds required fall under the protocol's minimum planting size.",
    "fieldname": "below_minimum",
    "fieldtype": "Check",
    "label": "Below Min Block",
@@ -182,7 +176,6 @@
   },
   {
    "default": "0",
-   "description": "The planting week needed to serve this demand has already gone.",
    "fieldname": "planting_in_past",
    "fieldtype": "Check",
    "label": "Planting Week Passed",
@@ -190,7 +183,6 @@
   },
   {
    "allow_on_submit": 1,
-   "description": "Dated before the earliest week material ordered today could be planted. Kept, because the demand needs it; it needs rooted cuttings or plants.",
    "fieldname": "too_late",
    "fieldtype": "Check",
    "label": "Too Late for a New Order",
@@ -198,7 +190,6 @@
    "read_only": 1
   },
   {
-   "description": "This planting is already cutting when the plan's window opens. The stems it gives before then belong to the preceding season; the plan counts only what lands inside its own weeks.",
    "fieldname": "cuts_before_window",
    "fieldtype": "Check",
    "label": "Cuts Before Window",
@@ -212,21 +203,18 @@
   {
    "columns": 1,
    "default": "0",
-   "description": "No block is free for this planting's whole life, so its stems are not counted as production.",
    "fieldname": "not_placed",
    "fieldtype": "Check",
    "in_list_view": 1,
    "label": "No Block Free"
   },
   {
-   "description": "What this planting was sized at from the market demand, before the materials were agreed. `plants` is what is actually going to be planted; this is what was wanted. Keeping both is what lets the trimming be worked out again from the same starting point every time the plan is saved, instead of shrinking a little further on each one.",
    "fieldname": "plants_from_demand",
    "fieldtype": "Int",
    "label": "Plants the demand asked for",
    "read_only": 1
   },
   {
-   "description": "Set when the agreed order cannot stick everything this planting wanted. The shortfall is the difference against the demand figure.",
    "fieldname": "trimmed_to_materials",
    "fieldtype": "Check",
    "label": "Trimmed To The Agreed Materials",

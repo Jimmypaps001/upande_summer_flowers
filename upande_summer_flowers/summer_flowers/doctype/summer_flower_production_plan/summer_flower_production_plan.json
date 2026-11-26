@@ -10,6 +10,8 @@
  "engine": "InnoDB",
  "field_order": [
   "details_tab",
+  "overview_section",
+  "overview_html",
   "identification_section",
   "naming_series",
   "market_demand",
@@ -28,6 +30,52 @@
   "cb_protocol",
   "protocol_stale",
   "protocol_note",
+  "propagation_tab",
+  "propagation_head_section",
+  "propagation_plants",
+  "propagation_cost",
+  "cb_propagation",
+  "propagation_units",
+  "propagation_outside",
+  "propagation_rows_section",
+  "plan_raisers",
+  "plan_arrivals_section",
+  "plan_arrivals",
+  "weeks_tab",
+  "sheet_section",
+  "matrix_json",
+  "matrix_html",
+  "plan_weeks",
+  "calendar_section",
+  "calendar_html",
+  "months_tab",
+  "months_section",
+  "plan_months",
+  "supply_tab",
+  "supply_section",
+  "supply_mode",
+  "supply_confirmed",
+  "supply_confirmed_on",
+  "supply_confirmed_by",
+  "cb_supply",
+  "supply_units",
+  "supply_short_plants",
+  "supply_stranded_plants",
+  "supply_second_half_plants",
+  "supply_rows_section",
+  "plan_supply",
+  "plan_consignments_section",
+  "plan_consignments",
+  "plan_deliveries_section",
+  "plan_deliveries",
+  "supply_notes_section",
+  "supply_note",
+  "supply_proposal",
+  "supply_rhythm_note",
+  "blocks_tab",
+  "blocks_section",
+  "plan_blocks",
+  "figures_tab",
   "outcome_section",
   "total_demand_stems",
   "total_production_stems",
@@ -93,49 +141,6 @@
   "amended_from",
   "sf_pending_selling",
   "sf_pending_raising",
-  "propagation_tab",
-  "propagation_head_section",
-  "propagation_plants",
-  "propagation_cost",
-  "cb_propagation",
-  "propagation_units",
-  "propagation_outside",
-  "propagation_rows_section",
-  "plan_raisers",
-  "plan_arrivals_section",
-  "plan_arrivals",
-  "weeks_tab",
-  "sheet_section",
-  "matrix_json",
-  "matrix_html",
-  "plan_weeks",
-  "calendar_section",
-  "calendar_html",
-  "months_tab",
-  "months_section",
-  "plan_months",
-  "supply_tab",
-  "supply_section",
-  "supply_confirmed",
-  "supply_confirmed_on",
-  "supply_confirmed_by",
-  "cb_supply",
-  "supply_units",
-  "supply_short_plants",
-  "supply_stranded_plants",
-  "supply_note",
-  "supply_proposal",
-  "supply_rhythm_note",
-  "supply_second_half_plants",
-  "supply_rows_section",
-  "plan_supply",
-  "plan_consignments_section",
-  "plan_consignments",
-  "plan_deliveries_section",
-  "plan_deliveries",
-  "blocks_tab",
-  "blocks_section",
-  "plan_blocks",
   "connections_tab"
  ],
  "fields": [
@@ -145,8 +150,20 @@
    "label": "Details"
   },
   {
-   "fieldname": "identification_section",
+   "fieldname": "overview_section",
    "fieldtype": "Section Break"
+  },
+  {
+   "fieldname": "overview_html",
+   "fieldtype": "HTML",
+   "label": "Overview"
+  },
+  {
+   "fieldname": "identification_section",
+   "fieldtype": "Section Break",
+   "label": "Plan",
+   "collapsible": 1,
+   "collapsible_depends_on": "eval:doc.__islocal"
   },
   {
    "default": "SFPP-.YYYY.-.#####",
@@ -177,7 +194,6 @@
    "read_only": 1
   },
   {
-   "description": "The farm this plan is grown on. It decides which blocks are available and which protocol version applies.",
    "fieldname": "farm",
    "fieldtype": "Link",
    "in_list_view": 1,
@@ -203,7 +219,6 @@
    "options": "Currency"
   },
   {
-   "description": "The year the season starts. A season runs 1 July of this year to 30 June of the next, which is not the same span as the accounting year of the same name.",
    "fieldname": "season_start_year",
    "fieldtype": "Link",
    "label": "Season (starting year)",
@@ -211,7 +226,6 @@
    "reqd": 1
   },
   {
-   "description": "Label for the season above.",
    "fieldname": "season",
    "fieldtype": "Data",
    "label": "Season",
@@ -230,10 +244,10 @@
   {
    "fieldname": "protocol_section",
    "fieldtype": "Section Break",
-   "label": "Protocol"
+   "label": "Protocol",
+   "collapsible": 1
   },
   {
-   "description": "The protocol this plan is grown to -- the document a person edits and approves. Pick it here; the approved version in force for it is read and recorded below, and that version is what the numbers are built from, so approving a new protocol later cannot quietly rewrite a plan that was already signed off.",
    "fieldname": "crop_protocol",
    "fieldtype": "Link",
    "in_standard_filter": 1,
@@ -241,7 +255,6 @@
    "options": "Crop Protocol"
   },
   {
-   "description": "The snapshot the figures were worked out from. Set from the Crop Protocol above, and kept, so the plan can always say which version it was built on.",
    "fieldname": "protocol",
    "fieldtype": "Link",
    "label": "Built On Version",
@@ -250,7 +263,6 @@
   },
   {
    "allow_on_submit": 1,
-   "description": "Which version the numbers below were built from.",
    "fieldname": "protocol_status",
    "fieldtype": "Data",
    "label": "Protocol Status",
@@ -280,458 +292,11 @@
    "read_only": 1
   },
   {
-   "fieldname": "outcome_section",
-   "fieldtype": "Section Break",
-   "label": "Does it meet the demand?"
-  },
-  {
-   "fieldname": "total_demand_stems",
-   "fieldtype": "Int",
-   "label": "Demand (stems)",
-   "read_only": 1
-  },
-  {
-   "description": "What this plan grows: every planting it proposes, at protocol yield. Blocks are assigned later and do not change it.",
-   "fieldname": "total_production_stems",
-   "fieldtype": "Int",
-   "label": "Production (stems)",
-   "read_only": 1
-  },
-  {
-   "fieldname": "total_variance_stems",
-   "fieldtype": "Int",
-   "label": "Variance (stems)",
-   "read_only": 1
-  },
-  {
-   "fieldname": "cb_outcome",
-   "fieldtype": "Column Break"
-  },
-  {
-   "fieldname": "coverage_pct",
-   "fieldtype": "Percent",
-   "label": "Demand Coverage %",
-   "read_only": 1
-  },
-  {
-   "fieldname": "weeks_in_deficit",
-   "fieldtype": "Int",
-   "label": "Weeks In Deficit",
-   "read_only": 1
-  },
-  {
-   "fieldname": "worst_weekly_deficit",
-   "fieldtype": "Int",
-   "label": "Worst Weekly Deficit",
-   "read_only": 1
-  },
-  {
-   "fieldname": "planting_totals_section",
-   "fieldtype": "Section Break",
-   "label": "What to plant"
-  },
-  {
-   "fieldname": "new_plants_required",
-   "fieldtype": "Int",
-   "label": "New Plants Required",
-   "read_only": 1
-  },
-  {
-   "fieldname": "new_beds_required",
-   "fieldtype": "Int",
-   "label": "New Beds Required",
-   "read_only": 1
-  },
-  {
-   "description": "The plantings as the market sized them, before any order was agreed. Every figure that SIZES an order is worked out from this, so agreeing an order cannot shrink the requirement it was agreed against.",
-   "fieldname": "plants_from_demand",
-   "fieldtype": "Int",
-   "label": "Plants The Demand Asked For",
-   "read_only": 1
-  },
-  {
-   "fieldname": "cb_plant",
-   "fieldtype": "Column Break"
-  },
-  {
-   "description": "Includes plantings with no block. This is what propagation would have to raise for the plan to be met in full.",
-   "fieldname": "peak_weekly_sticking_planned",
-   "fieldtype": "Int",
-   "label": "Peak Weekly Sticking (Planned)",
-   "read_only": 1
-  },
-  {
-   "description": "The week the planned peak falls in. The placed peak has no week at all when nothing is placed, which left the TC panel naming no week.",
-   "fieldname": "peak_sticking_week_planned",
-   "fieldtype": "Data",
-   "label": "Peak Sticking Week (Planned)",
-   "read_only": 1
-  },
-  {
-   "description": "Proposals the farm has no free block for. Their stems are excluded from production, so coverage reflects what can actually be grown.",
-   "fieldname": "plantings_not_placed",
-   "fieldtype": "Int",
-   "label": "Plantings Awaiting a Block",
-   "read_only": 1
-  },
-  {
-   "description": "Stems from plantings with no block assigned yet. They are in the plan and in the TC order; they need a block before they can be planted.",
-   "fieldname": "unmet_stems",
-   "fieldtype": "Int",
-   "label": "Stems Awaiting a Block",
-   "read_only": 1
-  },
-  {
-   "fieldname": "tc_section",
-   "fieldtype": "Section Break",
-   "label": "What to order"
-  },
-  {
-   "bold": 1,
-   "description": "Sized to the planned peak sticking week: cuttings cannot be banked, so the peak sets the motherstock and the motherstock sets the order.",
-   "fieldname": "tc_plants_to_order",
-   "fieldtype": "Int",
-   "label": "TC to Order",
-   "read_only": 1
-  },
-  {
-   "description": "Lab lead time back from the first sticking week. Later than this and the first plantings cannot happen.",
-   "fieldname": "tc_order_by_date",
-   "fieldtype": "Date",
-   "label": "Order By",
-   "read_only": 1
-  },
-  {
-   "fieldname": "cb_tc",
-   "fieldtype": "Column Break"
-  },
-  {
-   "fieldname": "tc_status",
-   "fieldtype": "Small Text",
-   "label": "TC Order Note",
-   "read_only": 1
-  },
-  {
-   "fieldname": "tc_choice_section",
-   "fieldtype": "Section Break",
-   "label": "Confirmed TC Choice"
-  },
-  {
-   "default": "0",
-   "description": "Set when a TC quantity, order date or build-up has been confirmed from the dashboard. The plan then reports what that order supplies, not only what the demand asks for.",
-   "fieldname": "tc_choice_committed",
-   "fieldtype": "Check",
-   "label": "TC Choice Confirmed",
-   "read_only": 1
-  },
-  {
-   "depends_on": "tc_choice_committed",
-   "fieldname": "tc_plants_committed",
-   "fieldtype": "Int",
-   "label": "Confirmed TC Plants",
-   "read_only": 1
-  },
-  {
-   "depends_on": "tc_choice_committed",
-   "fieldname": "tc_order_date_committed",
-   "fieldtype": "Date",
-   "label": "Confirmed Order Date",
-   "read_only": 1
-  },
-  {
-   "depends_on": "tc_choice_committed",
-   "fieldname": "tc_cycles_committed",
-   "fieldtype": "Int",
-   "label": "Confirmed Build-up Cycles",
-   "read_only": 1
-  },
-  {
-   "depends_on": "eval:doc.tc_choice_committed",
-   "description": "Roots to buy alongside the tissue culture, for a crop raised both ways. One root becomes several plants, so this is the smaller number and the far earlier order — roots are a year in the making.",
-   "fieldname": "roots_committed",
-   "fieldtype": "Int",
-   "label": "Confirmed Roots",
-   "non_negative": 1
-  },
-  {
-   "description": "Who sends how much, and on what cycle. A lab does not send a year's order in one crate — it sends on its own rhythm, and the farm buys from several at once. Set from the material plan.",
-   "fieldname": "tc_supplier_allocations",
-   "fieldtype": "Small Text",
-   "label": "TC Supplier Allocations",
-   "read_only": 1
-  },
-  {
-   "fieldname": "cb_tc_choice",
-   "fieldtype": "Column Break",
-   "label": ""
-  },
-  {
-   "depends_on": "tc_choice_committed",
-   "fieldname": "supplied_production_stems",
-   "fieldtype": "Int",
-   "label": "Stems The Order Supplies",
-   "read_only": 1
-  },
-  {
-   "depends_on": "tc_choice_committed",
-   "fieldname": "supplied_coverage_pct",
-   "fieldtype": "Percent",
-   "label": "Coverage The Order Supplies",
-   "read_only": 1
-  },
-  {
-   "depends_on": "tc_choice_committed",
-   "fieldname": "tc_choice_note",
-   "fieldtype": "Small Text",
-   "label": "What The Confirmed Choice Changed",
-   "read_only": 1
-  },
-  {
-   "fieldname": "budget_link_section",
-   "fieldtype": "Section Break",
-   "label": "Budget"
-  },
-  {
-   "fieldname": "budget",
-   "fieldtype": "Link",
-   "label": "Budget",
-   "no_copy": 1,
-   "options": "Summer Flower Budget",
-   "read_only": 1
-  },
-  {
-   "description": "The variety Item's valuation rate, read from stock. Not typed.",
-   "fieldname": "price_per_stem",
-   "fieldtype": "Currency",
-   "label": "Price Per Stem (item valuation)",
-   "options": "currency",
-   "read_only": 1
-  },
-  {
-   "collapsible": 1,
-   "fieldname": "working_section",
-   "fieldtype": "Section Break",
-   "label": "Working figures"
-  },
-  {
-   "default": "156",
-   "description": "Derived from the season above.",
-   "fieldname": "weeks_covered",
-   "fieldtype": "Int",
-   "label": "Weeks Covered",
-   "read_only": 1,
-   "reqd": 0
-  },
-  {
-   "description": "Derived from the season above.",
-   "fieldname": "from_year",
-   "fieldtype": "Int",
-   "label": "From Year",
-   "read_only": 1,
-   "reqd": 0
-  },
-  {
-   "description": "Derived from the season above.",
-   "fieldname": "from_week",
-   "fieldtype": "Int",
-   "label": "From Week",
-   "read_only": 1,
-   "reqd": 0
-  },
-  {
-   "fieldname": "to_year",
-   "fieldtype": "Int",
-   "label": "To Year",
-   "read_only": 1
-  },
-  {
-   "fieldname": "to_week",
-   "fieldtype": "Int",
-   "label": "To Week",
-   "read_only": 1
-  },
-  {
-   "fieldname": "average_area_ha",
-   "fieldtype": "Float",
-   "label": "Average Area (ha)",
-   "precision": "4",
-   "read_only": 1
-  },
-  {
-   "fieldname": "stems_per_ha_year",
-   "fieldtype": "Float",
-   "label": "Stems Per Ha Year",
-   "precision": "0",
-   "read_only": 1
-  },
-  {
-   "fieldname": "cb_working",
-   "fieldtype": "Column Break"
-  },
-  {
-   "description": "How much of the plan today's free blocks could actually hold. The plan is the figure above; this is a constraint report on it.",
-   "fieldname": "placeable_production_stems",
-   "fieldtype": "Int",
-   "label": "Production With Blocks Today",
-   "read_only": 1
-  },
-  {
-   "description": "Coverage if only the plantings that already have a block happened.",
-   "fieldname": "placeable_coverage_pct",
-   "fieldtype": "Percent",
-   "label": "Coverage With Blocks Today",
-   "read_only": 1
-  },
-  {
-   "allow_on_submit": 1,
-   "description": "What the plan covers if the plantings dated before the earliest possible planting week are left out. Those plantings stay in the plan -- the demand needs them -- but they need rooted cuttings or plants, not a new TC order.",
-   "fieldname": "on_time_coverage_pct",
-   "fieldtype": "Percent",
-   "label": "On-Time Coverage %",
-   "no_copy": 1,
-   "read_only": 1
-  },
-  {
-   "allow_on_submit": 1,
-   "fieldname": "on_time_production_stems",
-   "fieldtype": "Int",
-   "label": "On-Time Production (stems)",
-   "no_copy": 1,
-   "read_only": 1
-  },
-  {
-   "allow_on_submit": 1,
-   "description": "Today plus the supplier and lab lead and the first lift: the first week material ordered now could go in the ground.",
-   "fieldname": "earliest_planting_date",
-   "fieldtype": "Date",
-   "label": "Earliest Possible Planting",
-   "no_copy": 1,
-   "read_only": 1
-  },
-  {
-   "allow_on_submit": 1,
-   "fieldname": "too_late_plantings",
-   "fieldtype": "Int",
-   "label": "Plantings Too Late for a New Order",
-   "no_copy": 1,
-   "read_only": 1
-  },
-  {
-   "allow_on_submit": 1,
-   "fieldname": "too_late_plants",
-   "fieldtype": "Int",
-   "label": "Plants Too Late for a New Order",
-   "no_copy": 1,
-   "read_only": 1
-  },
-  {
-   "description": "The tolerance this plan's planting programme was solved against: how far a week may sit either side of its demand.",
-   "fieldname": "weekly_variance_band_pct",
-   "fieldtype": "Percent",
-   "label": "Weekly Variance Band",
-   "read_only": 1
-  },
-  {
-   "description": "Weeks whose production finished further from demand than the band allows. Usually standing crop that already exceeds a week the market has cut back, or a minimum planting larger than the week it is planted for. Both this and the count beside it are meaningless on a plan built before the band existed, which is any plan whose Weekly Variance Band is blank.",
-   "fieldname": "weeks_outside_band",
-   "fieldtype": "Int",
-   "label": "Weeks Outside Band",
-   "read_only": 1
-  },
-  {
-   "description": "Largest single sticking week. This — not the annual total — sizes the motherstock.",
-   "fieldname": "peak_weekly_sticking",
-   "fieldtype": "Int",
-   "label": "Peak Weekly Sticking",
-   "read_only": 1
-  },
-  {
-   "fieldname": "peak_sticking_week",
-   "fieldtype": "Data",
-   "label": "Peak Sticking Week",
-   "read_only": 1
-  },
-  {
-   "description": "Distinct blocks the plan occupies.",
-   "fieldname": "blocks_used",
-   "fieldtype": "Int",
-   "label": "Blocks Used",
-   "read_only": 1
-  },
-  {
-   "description": "The most beds occupied at any one moment. This, not the lifetime total, is what the farm has to have room for.",
-   "fieldname": "peak_concurrent_beds",
-   "fieldtype": "Int",
-   "label": "Peak Beds Standing",
-   "read_only": 1
-  },
-  {
-   "fieldname": "peak_beds_week",
-   "fieldtype": "Data",
-   "label": "Peak Beds Week",
-   "read_only": 1
-  },
-  {
-   "fieldname": "workflow_state",
-   "fieldtype": "Link",
-   "hidden": 1,
-   "in_standard_filter": 1,
-   "label": "Workflow State",
-   "no_copy": 1,
-   "options": "Workflow State",
-   "read_only": 1
-  },
-  {
-   "allow_on_submit": 1,
-   "fieldname": "protocol_built_on",
-   "fieldtype": "Datetime",
-   "hidden": 1,
-   "label": "Protocol Read At",
-   "no_copy": 1,
-   "read_only": 1
-  },
-  {
-   "allow_on_submit": 1,
-   "description": "When this plan last read the crop already in the ground (crop cycles and committed planting calendars). Cycles changed after this make the plan stale.",
-   "fieldname": "cycles_read_on",
-   "fieldtype": "Datetime",
-   "hidden": 1,
-   "label": "Standing Crop Read At",
-   "no_copy": 1,
-   "read_only": 1
-  },
-  {
-   "fieldname": "amended_from",
-   "fieldtype": "Link",
-   "label": "Amended From",
-   "no_copy": 1,
-   "options": "Summer Flower Production Plan",
-   "print_hide": 1,
-   "read_only": 1
-  },
-  {
-   "description": "Who sells each way in, chosen on the card before the plan was saved. Applied to the procurement plan the moment one exists, then cleared.",
-   "fieldname": "sf_pending_selling",
-   "fieldtype": "Long Text",
-   "hidden": 1,
-   "label": "Sellers Chosen Before Saving",
-   "read_only": 1
-  },
-  {
-   "description": "Who raises each way in, chosen on the card before the plan was saved. Applied to the procurement plan the moment one exists, then cleared.",
-   "fieldname": "sf_pending_raising",
-   "fieldtype": "Long Text",
-   "hidden": 1,
-   "label": "Raisers Chosen Before Saving",
-   "read_only": 1
-  },
-  {
    "fieldname": "propagation_tab",
    "fieldtype": "Tab Break",
    "label": "Propagation"
   },
   {
-   "description": "Our own propagation units raise what the plan buys; an outside propagator delivers plants and charges per plant. Agreed on the planning board and kept here.",
    "fieldname": "propagation_head_section",
    "fieldtype": "Section Break",
    "label": "Who raises the plants"
@@ -775,7 +340,6 @@
    "options": "Summer Flower Plan Raiser"
   },
   {
-   "description": "Week by week, what each raiser hands to the field and what still stands once it has established.",
    "fieldname": "plan_arrivals_section",
    "fieldtype": "Section Break",
    "label": "When the plants arrive"
@@ -793,7 +357,6 @@
   },
   {
    "collapsible": 1,
-   "description": "The plan in the shape the planning workbook is read in: one row per planting, one column per week, with the summary, grade, demand and area rows underneath and the protocol's assumptions at the bottom.",
    "fieldname": "sheet_section",
    "fieldtype": "Section Break",
    "label": "Planning Sheet"
@@ -818,7 +381,6 @@
   },
   {
    "collapsible": 1,
-   "description": "Each week's variance against demand, with the plantings that produce it: sticking, planting, pinch and first harvest fall on their own days.",
    "fieldname": "calendar_section",
    "fieldtype": "Section Break",
    "label": "Production Calendar"
@@ -834,7 +396,6 @@
    "label": "Monthly"
   },
   {
-   "description": "Monthly figures are the reliable view. Weekly variance swings hard because a whole block flushes in one week.",
    "fieldname": "months_section",
    "fieldtype": "Section Break"
   },
@@ -845,7 +406,6 @@
    "options": "Summer Flower Plan Month"
   },
   {
-   "description": "The supply is agreed on the planning dashboard, Materials Planning. This tab held a second answer to the same question and is kept only so the rows it carries stay on the plan.",
    "fieldname": "supply_tab",
    "fieldtype": "Tab Break",
    "hidden": 1,
@@ -854,10 +414,17 @@
   {
    "fieldname": "supply_section",
    "fieldtype": "Section Break",
-   "label": "Who supplies it, and in how many cycles"
+   "label": "Supply"
   },
   {
-   "description": "The plan cannot be submitted until the suppliers and their cycles are agreed: this is what it will actually be grown from.",
+   "fieldname": "supply_mode",
+   "fieldtype": "Select",
+   "label": "Buying",
+   "options": "In two halves\nOnce for the year",
+   "default": "In two halves",
+   "allow_on_submit": 0
+  },
+  {
    "fieldname": "supply_confirmed",
    "fieldtype": "Check",
    "label": "Supply Agreed",
@@ -901,27 +468,6 @@
    "read_only": 1
   },
   {
-   "fieldname": "supply_note",
-   "fieldtype": "Small Text",
-   "label": "What Was Agreed",
-   "read_only": 1
-  },
-  {
-   "description": "Worked out when the plan was drawn, from the protocol's own figures: how many houses can supply this variety, how often one comes, and how a consignment is handed over in lifts. It is a proposal, not an agreement -- nobody has been named and nothing has been ordered.",
-   "fieldname": "supply_proposal",
-   "fieldtype": "Small Text",
-   "label": "What The Protocol Proposes",
-   "read_only": 1
-  },
-  {
-   "description": "Which planting weeks were open to a delivery when this plan was drawn, and on whose rhythm. The programme was solved against these weeks, so no planting here is in a week nobody could have supplied.",
-   "fieldname": "supply_rhythm_note",
-   "fieldtype": "Small Text",
-   "label": "Weeks A House Could Deliver In",
-   "read_only": 1
-  },
-  {
-   "description": "What the second half of the year is to be delivered, set at the half-year once the farm has seen how the first half went. Left at nought it is worked out from the demand in that half, which is the proposal; typed, it is the quantity and the deliveries in the second half are divided over it.",
    "fieldname": "supply_second_half_plants",
    "fieldtype": "Int",
    "label": "Second Half, Plants Agreed",
@@ -938,7 +484,6 @@
    "options": "Summer Flower Plan Supply"
   },
   {
-   "description": "Every consignment the agreed supply puts on the ground: who brings it, the week it lands, what it carries and the week it has to be ordered.",
    "fieldname": "plan_consignments_section",
    "fieldtype": "Section Break",
    "label": "Deliveries"
@@ -950,7 +495,6 @@
    "options": "Summer Flower Plan Consignment"
   },
   {
-   "description": "A delivery typed in against a week: an extra drop, or one the supplier has promised outside their cycles. The plan counts it before it buys anything for that week.",
    "fieldname": "plan_deliveries_section",
    "fieldtype": "Section Break",
    "label": "Deliveries Added By Hand"
@@ -960,6 +504,30 @@
    "fieldtype": "Table",
    "label": "Deliveries",
    "options": "Summer Flower Plan Delivery"
+  },
+  {
+   "fieldname": "supply_notes_section",
+   "fieldtype": "Section Break",
+   "label": "Notes",
+   "collapsible": 1
+  },
+  {
+   "fieldname": "supply_note",
+   "fieldtype": "Small Text",
+   "label": "What Was Agreed",
+   "read_only": 1
+  },
+  {
+   "fieldname": "supply_proposal",
+   "fieldtype": "Small Text",
+   "label": "What The Protocol Proposes",
+   "read_only": 1
+  },
+  {
+   "fieldname": "supply_rhythm_note",
+   "fieldtype": "Small Text",
+   "label": "Weeks A House Could Deliver In",
+   "read_only": 1
   },
   {
    "fieldname": "blocks_tab",
@@ -975,6 +543,435 @@
    "fieldtype": "Table",
    "label": "Plan Blocks",
    "options": "Summer Flower Plan Block"
+  },
+  {
+   "fieldname": "figures_tab",
+   "fieldtype": "Tab Break",
+   "label": "Figures"
+  },
+  {
+   "fieldname": "outcome_section",
+   "fieldtype": "Section Break",
+   "label": "Does it meet the demand?",
+   "collapsible": 1
+  },
+  {
+   "fieldname": "total_demand_stems",
+   "fieldtype": "Int",
+   "label": "Demand (stems)",
+   "read_only": 1
+  },
+  {
+   "fieldname": "total_production_stems",
+   "fieldtype": "Int",
+   "label": "Production (stems)",
+   "read_only": 1
+  },
+  {
+   "fieldname": "total_variance_stems",
+   "fieldtype": "Int",
+   "label": "Variance (stems)",
+   "read_only": 1
+  },
+  {
+   "fieldname": "cb_outcome",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "coverage_pct",
+   "fieldtype": "Percent",
+   "label": "Demand Coverage %",
+   "read_only": 1
+  },
+  {
+   "fieldname": "weeks_in_deficit",
+   "fieldtype": "Int",
+   "label": "Weeks In Deficit",
+   "read_only": 1
+  },
+  {
+   "fieldname": "worst_weekly_deficit",
+   "fieldtype": "Int",
+   "label": "Worst Weekly Deficit",
+   "read_only": 1
+  },
+  {
+   "fieldname": "planting_totals_section",
+   "fieldtype": "Section Break",
+   "label": "What to plant",
+   "collapsible": 1
+  },
+  {
+   "fieldname": "new_plants_required",
+   "fieldtype": "Int",
+   "label": "New Plants Required",
+   "read_only": 1
+  },
+  {
+   "fieldname": "new_beds_required",
+   "fieldtype": "Int",
+   "label": "New Beds Required",
+   "read_only": 1
+  },
+  {
+   "fieldname": "plants_from_demand",
+   "fieldtype": "Int",
+   "label": "Plants The Demand Asked For",
+   "read_only": 1
+  },
+  {
+   "fieldname": "cb_plant",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "peak_weekly_sticking_planned",
+   "fieldtype": "Int",
+   "label": "Peak Weekly Sticking (Planned)",
+   "read_only": 1
+  },
+  {
+   "fieldname": "peak_sticking_week_planned",
+   "fieldtype": "Data",
+   "label": "Peak Sticking Week (Planned)",
+   "read_only": 1
+  },
+  {
+   "fieldname": "plantings_not_placed",
+   "fieldtype": "Int",
+   "label": "Plantings Awaiting a Block",
+   "read_only": 1
+  },
+  {
+   "fieldname": "unmet_stems",
+   "fieldtype": "Int",
+   "label": "Stems Awaiting a Block",
+   "read_only": 1
+  },
+  {
+   "fieldname": "tc_section",
+   "fieldtype": "Section Break",
+   "label": "What to order",
+   "collapsible": 1
+  },
+  {
+   "bold": 1,
+   "fieldname": "tc_plants_to_order",
+   "fieldtype": "Int",
+   "label": "TC to Order",
+   "read_only": 1
+  },
+  {
+   "fieldname": "tc_order_by_date",
+   "fieldtype": "Date",
+   "label": "Order By",
+   "read_only": 1
+  },
+  {
+   "fieldname": "cb_tc",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "tc_status",
+   "fieldtype": "Small Text",
+   "label": "TC Order Note",
+   "read_only": 1
+  },
+  {
+   "fieldname": "tc_choice_section",
+   "fieldtype": "Section Break",
+   "label": "Confirmed TC Choice",
+   "collapsible": 1
+  },
+  {
+   "default": "0",
+   "fieldname": "tc_choice_committed",
+   "fieldtype": "Check",
+   "label": "TC Choice Confirmed",
+   "read_only": 1
+  },
+  {
+   "depends_on": "tc_choice_committed",
+   "fieldname": "tc_plants_committed",
+   "fieldtype": "Int",
+   "label": "Confirmed TC Plants",
+   "read_only": 1
+  },
+  {
+   "depends_on": "tc_choice_committed",
+   "fieldname": "tc_order_date_committed",
+   "fieldtype": "Date",
+   "label": "Confirmed Order Date",
+   "read_only": 1
+  },
+  {
+   "depends_on": "tc_choice_committed",
+   "fieldname": "tc_cycles_committed",
+   "fieldtype": "Int",
+   "label": "Confirmed Build-up Cycles",
+   "read_only": 1
+  },
+  {
+   "depends_on": "eval:doc.tc_choice_committed",
+   "fieldname": "roots_committed",
+   "fieldtype": "Int",
+   "label": "Confirmed Roots",
+   "non_negative": 1
+  },
+  {
+   "fieldname": "tc_supplier_allocations",
+   "fieldtype": "Small Text",
+   "label": "TC Supplier Allocations",
+   "read_only": 1
+  },
+  {
+   "fieldname": "cb_tc_choice",
+   "fieldtype": "Column Break",
+   "label": ""
+  },
+  {
+   "depends_on": "tc_choice_committed",
+   "fieldname": "supplied_production_stems",
+   "fieldtype": "Int",
+   "label": "Stems The Order Supplies",
+   "read_only": 1
+  },
+  {
+   "depends_on": "tc_choice_committed",
+   "fieldname": "supplied_coverage_pct",
+   "fieldtype": "Percent",
+   "label": "Coverage The Order Supplies",
+   "read_only": 1
+  },
+  {
+   "depends_on": "tc_choice_committed",
+   "fieldname": "tc_choice_note",
+   "fieldtype": "Small Text",
+   "label": "What The Confirmed Choice Changed",
+   "read_only": 1
+  },
+  {
+   "fieldname": "budget_link_section",
+   "fieldtype": "Section Break",
+   "label": "Budget",
+   "collapsible": 1
+  },
+  {
+   "fieldname": "budget",
+   "fieldtype": "Link",
+   "label": "Budget",
+   "no_copy": 1,
+   "options": "Summer Flower Budget",
+   "read_only": 1
+  },
+  {
+   "fieldname": "price_per_stem",
+   "fieldtype": "Currency",
+   "label": "Price Per Stem (item valuation)",
+   "options": "currency",
+   "read_only": 1
+  },
+  {
+   "collapsible": 1,
+   "fieldname": "working_section",
+   "fieldtype": "Section Break",
+   "label": "Working figures"
+  },
+  {
+   "default": "156",
+   "fieldname": "weeks_covered",
+   "fieldtype": "Int",
+   "label": "Weeks Covered",
+   "read_only": 1,
+   "reqd": 0
+  },
+  {
+   "fieldname": "from_year",
+   "fieldtype": "Int",
+   "label": "From Year",
+   "read_only": 1,
+   "reqd": 0
+  },
+  {
+   "fieldname": "from_week",
+   "fieldtype": "Int",
+   "label": "From Week",
+   "read_only": 1,
+   "reqd": 0
+  },
+  {
+   "fieldname": "to_year",
+   "fieldtype": "Int",
+   "label": "To Year",
+   "read_only": 1
+  },
+  {
+   "fieldname": "to_week",
+   "fieldtype": "Int",
+   "label": "To Week",
+   "read_only": 1
+  },
+  {
+   "fieldname": "average_area_ha",
+   "fieldtype": "Float",
+   "label": "Average Area (ha)",
+   "precision": "4",
+   "read_only": 1
+  },
+  {
+   "fieldname": "stems_per_ha_year",
+   "fieldtype": "Float",
+   "label": "Stems Per Ha Year",
+   "precision": "0",
+   "read_only": 1
+  },
+  {
+   "fieldname": "cb_working",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "placeable_production_stems",
+   "fieldtype": "Int",
+   "label": "Production With Blocks Today",
+   "read_only": 1
+  },
+  {
+   "fieldname": "placeable_coverage_pct",
+   "fieldtype": "Percent",
+   "label": "Coverage With Blocks Today",
+   "read_only": 1
+  },
+  {
+   "allow_on_submit": 1,
+   "fieldname": "on_time_coverage_pct",
+   "fieldtype": "Percent",
+   "label": "On-Time Coverage %",
+   "no_copy": 1,
+   "read_only": 1
+  },
+  {
+   "allow_on_submit": 1,
+   "fieldname": "on_time_production_stems",
+   "fieldtype": "Int",
+   "label": "On-Time Production (stems)",
+   "no_copy": 1,
+   "read_only": 1
+  },
+  {
+   "allow_on_submit": 1,
+   "fieldname": "earliest_planting_date",
+   "fieldtype": "Date",
+   "label": "Earliest Possible Planting",
+   "no_copy": 1,
+   "read_only": 1
+  },
+  {
+   "allow_on_submit": 1,
+   "fieldname": "too_late_plantings",
+   "fieldtype": "Int",
+   "label": "Plantings Too Late for a New Order",
+   "no_copy": 1,
+   "read_only": 1
+  },
+  {
+   "allow_on_submit": 1,
+   "fieldname": "too_late_plants",
+   "fieldtype": "Int",
+   "label": "Plants Too Late for a New Order",
+   "no_copy": 1,
+   "read_only": 1
+  },
+  {
+   "fieldname": "weekly_variance_band_pct",
+   "fieldtype": "Percent",
+   "label": "Weekly Variance Band",
+   "read_only": 1
+  },
+  {
+   "fieldname": "weeks_outside_band",
+   "fieldtype": "Int",
+   "label": "Weeks Outside Band",
+   "read_only": 1
+  },
+  {
+   "fieldname": "peak_weekly_sticking",
+   "fieldtype": "Int",
+   "label": "Peak Weekly Sticking",
+   "read_only": 1
+  },
+  {
+   "fieldname": "peak_sticking_week",
+   "fieldtype": "Data",
+   "label": "Peak Sticking Week",
+   "read_only": 1
+  },
+  {
+   "fieldname": "blocks_used",
+   "fieldtype": "Int",
+   "label": "Blocks Used",
+   "read_only": 1
+  },
+  {
+   "fieldname": "peak_concurrent_beds",
+   "fieldtype": "Int",
+   "label": "Peak Beds Standing",
+   "read_only": 1
+  },
+  {
+   "fieldname": "peak_beds_week",
+   "fieldtype": "Data",
+   "label": "Peak Beds Week",
+   "read_only": 1
+  },
+  {
+   "fieldname": "workflow_state",
+   "fieldtype": "Link",
+   "hidden": 1,
+   "in_standard_filter": 1,
+   "label": "Workflow State",
+   "no_copy": 1,
+   "options": "Workflow State",
+   "read_only": 1
+  },
+  {
+   "allow_on_submit": 1,
+   "fieldname": "protocol_built_on",
+   "fieldtype": "Datetime",
+   "hidden": 1,
+   "label": "Protocol Read At",
+   "no_copy": 1,
+   "read_only": 1
+  },
+  {
+   "allow_on_submit": 1,
+   "fieldname": "cycles_read_on",
+   "fieldtype": "Datetime",
+   "hidden": 1,
+   "label": "Standing Crop Read At",
+   "no_copy": 1,
+   "read_only": 1
+  },
+  {
+   "fieldname": "amended_from",
+   "fieldtype": "Link",
+   "label": "Amended From",
+   "no_copy": 1,
+   "options": "Summer Flower Production Plan",
+   "print_hide": 1,
+   "read_only": 1
+  },
+  {
+   "fieldname": "sf_pending_selling",
+   "fieldtype": "Long Text",
+   "hidden": 1,
+   "label": "Sellers Chosen Before Saving",
+   "read_only": 1
+  },
+  {
+   "fieldname": "sf_pending_raising",
+   "fieldtype": "Long Text",
+   "hidden": 1,
+   "label": "Raisers Chosen Before Saving",
+   "read_only": 1
   },
   {
    "fieldname": "connections_tab",

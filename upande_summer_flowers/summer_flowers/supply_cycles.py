@@ -655,159 +655,6 @@ def _lift_rows(plants, lifts, lift_total, lands):
 	        for i, x in enumerate(lifts)]
 
 
-def _steady_quantities(plan_doc, v, house_drops, shares, lifts, cycles=None,
-                       fixed=False):
-	"""The one quantity each house brings every time it comes.
-
-	A house on a cycle does not vary its consignment with our demand, and it
-	does not skip a cycle because a half happens to need nothing: once it has
-	started, it brings the same number every time until the programme ends.
-	So the question is not how to share each half's plants among its
-	deliveries, it is how big that one number has to be.
-
-	It is sized on production, not on plantings: every delivery is planted in
-	its lifts, each lift cuts along the protocol's flush curve, and the
-	number is the smallest that keeps every week of the season within the
-	plan's tolerance of its demand, after what the standing crop already
-	cuts. Houses keep their season shares, so a house on a longer cycle
-	brings proportionally more each time. Weeks no delivery in the programme
-	can reach -- they are cut before anything bought could be -- are
-	reported, not paid for.
-
-	None where the plan has nothing to size against (no demand register, no
-	flush curve); the caller then falls back to dividing the plantings."""
-	from upande_summer_flowers.summer_flowers.doctype.summer_flower_production_plan.summer_flower_production_plan import (
-		plants_standing_from,
-		production_basis,
-	)
-
-	try:
-		basis = production_basis(plan_doc)
-	except Exception:
-		frappe.log_error(frappe.get_traceback(), "steady supply basis")
-		return None
-	if not basis:
-		return None
-	grid, rates, anchor, band = (basis["grid"], basis["rates"], basis["anchor"],
-	                             basis["band"])
-	need = [max(0.0, flt(d) * (1.0 - band) - flt(st))
-	        for d, st in zip(basis["demand"], basis["standing"])]
-	if not any(need):
-		return None
-	# A delivery row is the week its first lift is planted; later lifts follow
-	# at their gap from it.
-	if lifts:
-		scale = sum(flt(x["share_pct"]) for x in lifts) or 100.0
-		first = min(cint(x["weeks_after"]) for x in lifts)
-		waves = [(cint(x["weeks_after"]) - first, flt(x["share_pct"]) / scale)
-		         for x in lifts]
-	else:
-		waves = [(0, 1.0)]
-	survive = flt(plants_standing_from(v, 100000)) / 100000.0 or 1.0
-	starts = [getdate(g[2]) for g in grid]
-
-	def _unit(drops):
-		"""Stems each season week gets from one plant to plant per delivery."""
-		out = [0.0] * len(grid)
-		for at in drops:
-			for gap, frac in waves:
-				planted = getdate(add_days(at, 7 * gap))
-				for j, wk in enumerate(starts):
-					o = (wk - planted).days // 7 - anchor
-					if 0 <= o < len(rates):
-						out[j] += frac * survive * rates[o]
-		return out
-
-	def _size(drops_by_house):
-		live = [h for h, hd in enumerate(drops_by_house) if hd and flt(shares[h]) > 0]
-		if not live:
-			return None
-		# Season share -> quantity per delivery: a house with half the season
-		# and half as many visits brings twice as much each time.
-		weight = {h: flt(shares[h]) / 100.0 / len(drops_by_house[h]) for h in live}
-		unit = {h: _unit(drops_by_house[h]) for h in live}
-		reach = [sum(weight[h] * unit[h][j] for h in live) for j in range(len(grid))]
-		ratios = [need[j] / reach[j] for j in range(len(grid))
-		          if need[j] > 0 and reach[j] > 0]
-		unreachable = [{"week": "%s-W%02d" % (grid[j][0], grid[j][1]),
-		                "stems": int(round(need[j]))}
-		               for j in range(len(grid)) if need[j] > 0 and reach[j] <= 0]
-		if not ratios:
-			return {"per_house": [0] * len(drops_by_house), "season_plants": 0,
-			        "unreachable": unreachable, "surplus_stems": 0, "band": band,
-			        "house_drops": drops_by_house}
-		season = max(ratios)
-		per_house = [0] * len(drops_by_house)
-		for h in live:
-			per_house[h] = int(math.ceil(season * weight[h] - 1e-9))
-		grown = [sum(per_house[h] * unit[h][j] for h in live)
-		         for j in range(len(grid))]
-		surplus = sum(max(0.0, g + flt(st) - flt(d))
-		              for g, st, d in zip(grown, basis["standing"], basis["demand"]))
-		return {"per_house": per_house,
-		        "season_plants": sum(per_house[h] * len(drops_by_house[h])
-		                             for h in live),
-		        "unreachable": unreachable,
-		        "surplus_stems": int(round(surplus)),
-		        "band": band,
-		        "house_drops": drops_by_house}
-
-	base = _size(house_drops)
-	if not base:
-		return None
-	base["window"] = {"start_cycles": 0, "end_trimmed": 0, "plants_saved": 0}
-	if not cycles or fixed:
-		return base
-
-	# One quantity has to carry the busiest week, so the quiet weeks are
-	# over-planted; how much depends on when the programme starts and stops.
-	# Drawn from the first planting week to the last, it began with a delivery
-	# whose flush peaked into early weeks that wanted little, and ran on with
-	# deliveries that cut mostly after the season had ended -- 30 to 46% of
-	# demand in extra stems on the plans checked. So the window is chosen:
-	# every house starts up to two cycles earlier or three later, and stops up
-	# to four deliveries sooner, and the window that buys the fewest plants
-	# without leaving a week no delivery can reach is the one proposed. The
-	# quantity stays the same every cycle and nothing is skipped in between.
-	def _window(k, t):
-		out = []
-		for h, hd in enumerate(house_drops):
-			gap = cint(cycles[h]) if h < len(cycles) else 0
-			if not hd or not gap:
-				out.append(list(hd))
-				continue
-			seq = list(hd)
-			if k < 0:
-				seq = [add_days(getdate(seq[0]), -7 * gap * n)
-				       for n in range(-k, 0, -1)] + seq
-			elif k > 0:
-				seq = seq[k:]
-			if t:
-				seq = seq[:-t] if len(seq) > t else []
-			if len(seq) < 2:
-				return None
-			out.append(seq)
-		return out
-
-	def _cost(r):
-		return (sum(u["stems"] for u in r["unreachable"]), r["season_plants"],
-		        r["surplus_stems"])
-
-	best, best_kt = base, (0, 0)
-	for k in range(-2, 4):
-		for t in range(0, 5):
-			if (k, t) == (0, 0):
-				continue
-			hd = _window(k, t)
-			r = _size(hd) if hd else None
-			if r and r["season_plants"] and _cost(r) < _cost(best):
-				best, best_kt = r, (k, t)
-	best["window"] = {"start_cycles": -best_kt[0], "end_trimmed": best_kt[1],
-	                  "plants_saved": max(0, base["season_plants"]
-	                                      - best["season_plants"])}
-	return best
-
-
 def proposal(plan_doc, version=None, shares=None, second_half=None, cycles=None):
 	"""What the protocol says this plan will have to be delivered.
 
@@ -971,25 +818,6 @@ def proposal(plan_doc, version=None, shares=None, second_half=None, cycles=None)
 	# ordered 32% less material than it had to plant.
 	house_drops = [[] if flt(shares[h]) <= 0 else hd
 	               for h, hd in enumerate(house_drops)]
-	# A house on a cycle brings the same quantity every time it comes. Pool
-	# crops are bought once to build the mother stock and have no rhythm to
-	# keep, so they are left to the plantings.
-	from upande_summer_flowers.summer_flowers.doctype.summer_flower_production_plan.summer_flower_production_plan import (
-		_cut_from_a_pool,
-	)
-	# A house whose first delivery week is on file is not moved: that week is
-	# the supplier's, not ours to choose.
-	fixed = any(h.get("first_week") for h in named)
-	steady = (None if _cut_from_a_pool(v) or not any(cyc)
-	          else _steady_quantities(plan_doc, v, house_drops, shares, lifts,
-	                                  cycles=cyc, fixed=fixed))
-	if steady and steady.get("house_drops"):
-		# The programme runs over the window chosen for it, which can open a
-		# cycle or two before the first planting week and close before the
-		# last.
-		house_drops = [[getdate(x) for x in hd] for hd in steady.pop("house_drops")]
-	elif steady:
-		steady.pop("house_drops", None)
 	lands = [set(_iso(x) for x in hd) for hd in house_drops]
 	drops = sorted({getdate(x) for hd in house_drops for x in hd})
 
@@ -1009,6 +837,13 @@ def proposal(plan_doc, version=None, shares=None, second_half=None, cycles=None)
 	                            max([getdate(last)] + drops[-1:]))
 	edges = [x[0] for x in periods]
 	names = [x[1] for x in periods]
+	# Bought in halves by default: each half is ordered on its own, so the
+	# second can be revised once the first shows whether the plan is holding.
+	# A plan bought once for the year has one period, and every delivery in it
+	# brings the same share of the year.
+	once = (plan_doc.get("supply_mode") or "") == "Once for the year"
+	if once:
+		edges, names = edges[:1], [_("Whole season")]
 	# What the farm has settled for the second half, where it has settled
 	# anything: the review at the half-year is a decision, and a decision
 	# outranks the arithmetic that stood in for it.
@@ -1051,15 +886,8 @@ def proposal(plan_doc, version=None, shares=None, second_half=None, cycles=None)
 	for i, _dt in enumerate(drops):
 		want[of_half[i]] += per_drop[i]
 		served[of_half[i]] += weeks_on[i]
-	if agreed_2nd and len(want) > 1 and not steady:
+	if agreed_2nd and len(want) > 1 and not once:
 		want[1] = agreed_2nd
-	if steady:
-		# Every delivery in a half brings its house's one quantity.
-		want = [0] * len(bounds)
-		for i, dt in enumerate(drops):
-			here_ = _iso(dt)
-			want[of_half[i]] += sum(steady["per_house"][h] for h in range(houses)
-			                        if here_ in lands[h])
 
 	halves = []
 	for n, (lo, hi) in enumerate(bounds):
@@ -1076,7 +904,8 @@ def proposal(plan_doc, version=None, shares=None, second_half=None, cycles=None)
 			# it is shown closing there too rather than at a last planting
 			# week that fell before it began.
 			"from": _iso(lo),
-			"to": _iso(hi) if hi else _iso(max(getdate(last), getdate(lo))),
+			"to": (_iso(add_days(getdate(hi), -7)) if hi
+			       else _iso(max([getdate(last), getdate(lo)] + drops[-1:]))),
 			# Which half of which financial year this is, so the card can name
 			# the period the farm reviews on instead of counting "half 1,
 			# half 2" off whichever week a plan happens to open in.
@@ -1087,22 +916,25 @@ def proposal(plan_doc, version=None, shares=None, second_half=None, cycles=None)
 			# two dates, which somebody else's consignment may be bringing.
 			"planting_weeks": served[n], "deliveries": len(ds),
 			"split_over": over,
-			"per_delivery": int(round(plants / over)) if plants else 0,
+			"per_delivery": int(math.ceil(plants / over - 1e-9)) if plants else 0,
 			# What each house brings each time it comes. Equal cycles make
 			# these add up to per_delivery; unequal ones are why the figure
 			# has to be stated per house at all.
 			"per_house": [
 				{"deliveries": len(_in_half(house_drops[h], lo, hi)),
 				 "split_over": len(_in_half(house_drops[h], lo, hi)) or 1,
-				 "per_delivery": (steady["per_house"][h] if steady else int(round(
+				 "per_delivery": (int(math.ceil(
 					 plants * flt(shares[h]) / 100.0
-					 / (len(_in_half(house_drops[h], lo, hi)) or 1)))
+					 / (len(_in_half(house_drops[h], lo, hi)) or 1) - 1e-9))
 				                  if plants else 0)}
 				for h in range(houses)],
 			# Whether this half's figure was decided or worked out.
-			"agreed": 1 if (n and agreed_2nd and not steady) else 0,
-			"steady": 1 if steady else 0,
+			"agreed": 1 if (n and agreed_2nd and not once) else 0,
 		})
+
+	# A period after the last delivery has nothing in it to order.
+	while len(halves) > 1 and not halves[-1]["deliveries"] and not halves[-1]["plants"]:
+		halves.pop()
 
 	# A house will not break an order below its minimum, so an instalment
 	# under that figure is one it cannot bring. Said here, where the figure is
@@ -1135,24 +967,12 @@ def proposal(plan_doc, version=None, shares=None, second_half=None, cycles=None)
 		# the plan bought half what it needed. The instalment is shared among
 		# the houses that land, and only those.
 		due = [h for h in range(houses) if here in lands[h]]
-		if steady:
-			split = [steady["per_house"][h] if h in due else 0
-			         for h in range(houses)]
-		elif uniform:
-			# Shared among the houses that land, in proportion to each other.
-			# _share_out reads a share as a percentage of a hundred, so handing
-			# it one house on fifty gave away half the delivery and left the
-			# rest belonging to nobody.
-			due_sh = [flt(shares[h]) for h in due]
-			scale = sum(due_sh) or 1.0
-			part = (_share_out(halves[half]["per_delivery"],
-			                   [x * 100.0 / scale for x in due_sh]) if due else [])
-			split = [0] * houses
-			for k, h in enumerate(due):
-				split[h] = part[k]
-		else:
-			split = [halves[half]["per_house"][h]["per_delivery"]
-			         if here in lands[h] else 0 for h in range(houses)]
+		# Each house brings its own share of the half, spread evenly over its
+		# own deliveries in that half: 60,000 over seven deliveries is 8,572
+		# each, and two houses on 50% bring 4,286 each, whether they land the
+		# same week or a week apart.
+		split = [halves[half]["per_house"][h]["per_delivery"] if h in due else 0
+		         for h in range(houses)]
 		plants = sum(split)
 		arrives = add_days(start, -7 * (min(cint(x["weeks_after"]) for x in lifts)
 		                                if lifts else 0))
@@ -1201,13 +1021,13 @@ def proposal(plan_doc, version=None, shares=None, second_half=None, cycles=None)
 	          # order they accept. Empty where every house can bring its share.
 	          "below_minimum": under,
 	          "uniform_cycle": uniform,
-	          # What the deliveries add up to, which with a steady quantity is
-	          # not what the plantings asked for.
+	          # What the deliveries add up to: the halves' plants, rounded up
+	          # to whole deliveries.
 	          "plants_bought": sum(r["plants"] for r in rows),
 	          # Deliveries whose order week has already passed.
 	          "past_deliveries": sum(1 for r in rows if r["past"]),
 	          "past_plants": sum(r["plants"] for r in rows if r["past"]),
-	          "steady": steady})
+	          "supply_mode": "Once for the year" if once else "In two halves"})
 	return d
 
 
@@ -1509,6 +1329,25 @@ def _normalised(picks, form, wanted=None, default_count=None):
 	return out
 
 
+def _half_instalment(prop, week_iso, house):
+	"""A house's per-delivery quantity in the half this week falls in.
+
+	For a delivery moved by hand off the card's weeks: it still brings that
+	half's instalment."""
+	at = _week_monday(week_iso)
+	if not at:
+		return None
+	halves = prop.get("halves") or []
+	for n, h in enumerate(halves):
+		lo = _week_monday(h.get("from"))
+		nxt = _week_monday(halves[n + 1].get("from")) if n + 1 < len(halves) else None
+		if lo and at >= lo and (not nxt or at < nxt):
+			rows = h.get("per_house") or []
+			if house < len(rows):
+				return cint(rows[house].get("per_delivery")) or None
+	return None
+
+
 @frappe.whitelist()
 def plan_supply(plan, picks=None, form=None):
 	"""What to order each week from each supplier, once the carry is counted."""
@@ -1644,13 +1483,10 @@ def plan_supply(plan, picks=None, form=None):
 	for r in (prop.get("rows") or []):
 		for k, q in enumerate(r.get("split") or []):
 			instalment[(r["week"], k)] = cint(q)
-	steady = prop.get("steady")
-	if steady:
-		# The card's programme window is the one saved. A house whose weeks
-		# were not stated takes the proposal's weeks outright -- which may now
-		# open before the first planting and close before the last -- so the
-		# consignments saved are the ones the card drew, each carrying the
-		# house's one quantity.
+	if prop.get("rows"):
+		# The card's delivery weeks are the ones saved. A house whose weeks
+		# were not stated takes the proposal's weeks outright, so the
+		# consignments saved are the ones the card drew.
 		weeks_sorted = sorted(wanted)
 		for idx, s_ in enumerate(chosen):
 			if s_.get("weeks"):
@@ -1714,9 +1550,8 @@ def plan_supply(plan, picks=None, form=None):
 			share_of = instalment.get((c.get("lands_iso"), idx))
 			# A house on a cycle brings its one quantity on every visit, even
 			# a week the farm moved by hand.
-			if (share_of is None and steady
-			        and idx < len(steady.get("per_house") or [])):
-				share_of = cint(steady["per_house"][idx]) or None
+			if share_of is None:
+				share_of = _half_instalment(prop, c.get("lands_iso"), idx)
 			if share_of is not None:
 				net = int(round(share_of * scale))
 			c["net_plants"] = max(0, net)
@@ -2194,6 +2029,22 @@ def clear_supply(plan):
 	return {"plan": doc.name, "confirmed": 0,
 	        "plantings": len([b for b in doc.plan_blocks
 	                          if cint(b.is_new_planting)])}
+
+
+@frappe.whitelist()
+def set_supply_mode(plan, mode):
+	"""Buy in two halves (the default) or once for the year, on this plan only."""
+	from upande_summer_flowers.summer_flowers.planning_api import _guard
+
+	_guard()
+	if mode not in ("In two halves", "Once for the year"):
+		frappe.throw(_("Choose In two halves or Once for the year."))
+	doc = frappe.get_doc("Summer Flower Production Plan", plan)
+	frappe.has_permission("Summer Flower Production Plan", "write", doc, throw=True)
+	if doc.docstatus != 0:
+		frappe.throw(_("{0} is already submitted.").format(doc.name))
+	frappe.db.set_value("Summer Flower Production Plan", doc.name, "supply_mode", mode)
+	return {"plan": doc.name, "supply_mode": mode}
 
 
 @frappe.whitelist()

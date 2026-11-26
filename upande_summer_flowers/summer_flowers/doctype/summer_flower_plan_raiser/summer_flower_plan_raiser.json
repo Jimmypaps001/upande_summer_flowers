@@ -93,7 +93,6 @@
    "options": "Purchase Order"
   },
   {
-   "description": "Weeks of notice this raiser needs before the field wants the plants.",
    "fieldname": "lead_weeks",
    "fieldtype": "Int",
    "label": "Lead Weeks"
