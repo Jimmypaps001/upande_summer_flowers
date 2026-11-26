@@ -228,11 +228,9 @@ function sheet_html(d) {
 		["Plants planted", (p) => fmt(p.plants_to_plant), true],
 		[`Standing (${est}%)`, (p) => fmt(p.plants), true],
 		["First cut", (p) => esc(p.first_cut || "")],
-		["Season opens on flush", (p) => (p.season_flush ? p.season_flush : ""), true],
 		["Uprooting week", (p) => esc(p.uproot_wk)],
 		["Block", (p) => esc(p.block)],
 		["Area planted (m²)", (p) => fmt(p.net_area_sqm), true],
-		["Cut before season", (p) => (p.before_season ? fmt(p.before_season) : ""), true],
 	]);
 	let h = `<div style="overflow-x:auto"><table class="table table-bordered table-sm"
 		style="font-size:11px;white-space:nowrap">`;
@@ -263,8 +261,7 @@ function sheet_html(d) {
 
 	const t = d.totals;
 	const tot = { "Plants planted": d.plantings.reduce((a, p) => a + (p.plants_to_plant || 0), 0),
-		[`Standing (${est}%)`]: t.plants, "Area planted (m²)": t.net_area_sqm,
-		"Cut before season": t.before_season };
+		[`Standing (${est}%)`]: t.plants, "Area planted (m²)": t.net_area_sqm };
 	h += `<tr style="font-weight:bold">` + lead.map((c, i) =>
 		`<td${c[2] ? ' class="text-right"' : ""}>${i === 0 ? "TOTAL" : (c[0] in tot ? fmt(tot[c[0]]) : "")}</td>`).join("")
 		+ `<td colspan="${cols}"></td>
