@@ -2033,9 +2033,15 @@ def supersede_siblings(plan):
 		# reported "left alone" was in fact cancelled as Rejected.
 		frappe.db.savepoint("supersede_sibling")
 		try:
+			# What hangs off the old plan goes with it, so nothing it started
+			# can hold the new plan back or be read as still in force.
+			attached = retire_attached(row.name)
 			if cint(row.docstatus) == 1:
 				doc = frappe.get_doc("Summer Flower Production Plan", row.name)
 				doc.flags.ignore_permissions = True
+				# Anything still pointing at it (a posted budget, a batch already
+				# growing) stays on the record but does not stop the cancel.
+				doc.flags.ignore_links = True
 				doc.cancel()
 				doc.db_set("status", "Replaced", update_modified=False)
 				done.append({"plan": row.name, "what": "cancelled"})
@@ -2043,6 +2049,8 @@ def supersede_siblings(plan):
 				frappe.db.set_value("Summer Flower Production Plan", row.name,
 				                    "status", "Replaced", update_modified=False)
 				done.append({"plan": row.name, "what": "replaced"})
+			if attached:
+				done[-1]["attached"] = attached
 		except Exception as e:
 			# A plan that will not cancel -- something submitted hangs off it --
 			# is reported, not forced. The new plan still stands.
@@ -2050,21 +2058,24 @@ def supersede_siblings(plan):
 			done.append({"plan": row.name, "what": "left alone",
 			             "why": frappe.utils.strip_html(str(e))[:140]})
 			continue
-		dropped = retire_draft_calendars(row.name)
+		dropped = retire_draft_calendars(row.name, approved_too=True)
 		if dropped:
 			done[-1]["calendars"] = dropped
 	# Cancelling a plan somebody had approved is not a thing to do quietly,
 	# even when it is the thing that was asked for.
 	if done and not frappe.flags.in_patch and not frappe.flags.in_test:
 		frappe.msgprint(
-			"<br>".join("%s &mdash; %s%s" % (frappe.bold(r["plan"]), r["what"],
-			                                 ": " + r["why"] if r.get("why") else "")
-			            for r in done),
+			"<br>".join("%s &mdash; %s%s%s" % (
+				frappe.bold(r["plan"]), r["what"],
+				": " + r["why"] if r.get("why") else "",
+				(" (" + ", ".join("%s %s" % (a["doctype"], a["name"]) for a in r["attached"]) + ")")
+				if r.get("attached") else "")
+				for r in done),
 			title=_("Replaced by {0}").format(plan.name), indicator="orange")
 	return done
 
 
-def retire_draft_calendars(plan):
+def retire_draft_calendars(plan, approved_too=False):
 	"""Cancel the unsigned Planting Calendar entries a retired plan left behind.
 
 	A procurement plan writes a Planting Calendar entry per cohort as soon as
@@ -2089,7 +2100,8 @@ def retire_draft_calendars(plan):
 	drafts = frappe.get_all(
 		"Planting Calendar",
 		filters={"name": ["in", list(set(names))], "docstatus": 0,
-		         "calendar_status": ["in", ("Draft", "Pending Approval")]},
+		         "calendar_status": ["in", ("Draft", "Pending Approval", "Approved")
+		                             if approved_too else ("Draft", "Pending Approval")]},
 		pluck="name")
 	for name in drafts:
 		# Both fields. The calendar takes calendar_status from workflow_state on
@@ -2101,6 +2113,55 @@ def retire_draft_calendars(plan):
 			"revision_reason": _("Cancelled with plan {0}, which was replaced.").format(plan),
 		}, update_modified=False)
 	return drafts
+
+
+def retire_attached(plan):
+	"""Withdraw the plans that hang off a production plan being replaced.
+
+	Its procurement plan is cancelled, its propagation plan rejected, and its
+	motherstock plan, season plan, draft budget and batches not yet started
+	are removed. What has already happened stays on the record: a budget
+	posted to accounts, a batch that is growing. Planted calendar entries are
+	crops in the ground and are never touched here."""
+	out = []
+
+	def note(doctype, name, what):
+		out.append({"doctype": doctype, "name": name, "what": what})
+
+	for name in frappe.get_all("Summer Flower Procurement Plan",
+	                           filters={"production_plan": plan, "docstatus": ["<", 2]},
+	                           pluck="name"):
+		d = frappe.get_doc("Summer Flower Procurement Plan", name)
+		d.flags.ignore_permissions = True
+		d.flags.ignore_links = True
+		if d.docstatus == 1:
+			d.cancel()
+		else:
+			d.db_set("status", "Cancelled", update_modified=False)
+		note(d.doctype, name, "cancelled")
+	for name in frappe.get_all("Summer Flower Propagation Plan",
+	                           filters={"production_plan": plan,
+	                                    "status": ["!=", "Rejected"]}, pluck="name"):
+		frappe.db.set_value("Summer Flower Propagation Plan", name, "status", "Rejected",
+		                    update_modified=False)
+		note("Summer Flower Propagation Plan", name, "rejected")
+	removable = [("Summer Flower Season Plan", {}),
+	             ("Summer Flower Motherstock Plan", {}),
+	             ("Summer Flower Budget", {"budget_status": ["!=", "Posted to Accounts"]}),
+	             ("Summer Flower Motherstock Batch", {"batch_status": "Planned"})]
+	for doctype, extra in removable:
+		filters = dict(extra, production_plan=plan)
+		for name in frappe.get_all(doctype, filters=filters, pluck="name"):
+			frappe.delete_doc(doctype, name, ignore_permissions=True, force=True,
+			                  ignore_on_trash=False)
+			note(doctype, name, "removed")
+	# Pointers back at the plan from what was removed would otherwise block it.
+	if frappe.db.has_column("Summer Flower Production Plan", "budget"):
+		budget = frappe.db.get_value("Summer Flower Production Plan", plan, "budget")
+		if budget and not frappe.db.exists("Summer Flower Budget", budget):
+			frappe.db.set_value("Summer Flower Production Plan", plan, "budget", None,
+			                    update_modified=False)
+	return out
 
 
 @frappe.whitelist()

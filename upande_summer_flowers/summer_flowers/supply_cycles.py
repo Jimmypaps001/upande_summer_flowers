@@ -655,6 +655,11 @@ def _lift_rows(plants, lifts, lift_total, lands):
 	        for i, x in enumerate(lifts)]
 
 
+# A half with less than this share of the season's plants is ordered with the
+# half next to it rather than on its own.
+SMALL_HALF_SHARE = 0.10
+
+
 def proposal(plan_doc, version=None, shares=None, second_half=None, cycles=None):
 	"""What the protocol says this plan will have to be delivered.
 
@@ -870,8 +875,6 @@ def proposal(plan_doc, version=None, shares=None, second_half=None, cycles=None)
 
 	# Which period each delivery lands in. The delivery date is the thing
 	# being grouped: a half is the TC the farm has to TAKE DELIVERY of in it.
-	of_half = [max(n for n, (lo, _hi) in enumerate(bounds)
-	               if getdate(dt) >= getdate(lo)) for dt in drops]
 
 	# Grouped on the delivery, not on the planting week. The two part company
 	# at every year end, because the consignment that covers January lands in
@@ -881,11 +884,35 @@ def proposal(plan_doc, version=None, shares=None, second_half=None, cycles=None)
 	# delivery is what the half is. It also retires the rule that used to
 	# hand an empty half's plants back to a full one -- a half with no
 	# delivery in it now has no plants in it, by construction.
-	want = [0] * len(bounds)
-	served = [0] * len(bounds)
-	for i, _dt in enumerate(drops):
-		want[of_half[i]] += per_drop[i]
-		served[of_half[i]] += weeks_on[i]
+	def _tally(bounds_):
+		of_ = [max(n for n, (lo, _hi) in enumerate(bounds_)
+		           if getdate(dt) >= getdate(lo)) for dt in drops]
+		want_ = [0] * len(bounds_)
+		served_ = [0] * len(bounds_)
+		for i, _dt in enumerate(drops):
+			want_[of_[i]] += per_drop[i]
+			served_[of_[i]] += weeks_on[i]
+		return of_, want_, served_
+
+	of_half, want, served = _tally(bounds)
+	# A half carrying only a sliver of the season -- one small early planting,
+	# say -- is not worth its own order: it is folded into the half next to
+	# it, which is ordered with it. Six deliveries of 129 TC for a 640-plant
+	# planting were a half of their own before this.
+	season_total = sum(want) or 0
+	while len(edges) > 1 and season_total:
+		small = [n for n, w in enumerate(want) if w < SMALL_HALF_SHARE * season_total]
+		if not small:
+			break
+		n = small[0]
+		keep = n + 1 if n + 1 < len(edges) else n - 1
+		lo_i, hi_i = min(n, keep), max(n, keep)
+		names[lo_i] = "%s + %s" % (names[lo_i], names[hi_i])
+		del edges[hi_i]
+		del names[hi_i]
+		bounds = [(e, edges[i + 1] if i + 1 < len(edges) else None)
+		          for i, e in enumerate(edges)]
+		of_half, want, served = _tally(bounds)
 	if agreed_2nd and len(want) > 1 and not once:
 		want[1] = agreed_2nd
 
