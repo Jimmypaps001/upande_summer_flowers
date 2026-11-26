@@ -392,8 +392,7 @@ def sheet_csv(plan):
 	           ("Season opens on flush", lambda p: p["season_flush"] or ""),
 	           ("Uprooting week", lambda p: p["uproot_wk"]),
 	           ("Block", lambda p: p["block"]),
-	           ("Beds", lambda p: p["beds"]),
-	           ("Net area (m2)", lambda p: p["net_area_sqm"]),
+	           ("Area planted (m2)", lambda p: p["net_area_sqm"]),
 	           ("Cut before season", lambda p: p["before_season"])])
 	head = [c[0] for c in lead]
 	weeks = [str(g["week"]) for g in d["grid"]]
@@ -410,8 +409,8 @@ def sheet_csv(plan):
 	t = d["totals"]
 	pad = lambda label: [label] + [""] * (len(head) - 1)
 	totals = {"Plants planted": sum(p["plants_to_plant"] for p in d["plantings"]),
-	          head[head.index("Plants planted") + 1]: t["plants"], "Beds": t["beds"],
-	          "Net area (m2)": t["net_area_sqm"], "Cut before season": t["before_season"]}
+	          head[head.index("Plants planted") + 1]: t["plants"],
+	          "Area planted (m2)": t["net_area_sqm"], "Cut before season": t["before_season"]}
 	out.append(["TOTAL"] + [totals.get(h, "") for h in head[1:]] + [""] * len(weeks)
 	           + [t["season"], t["after_season"], t["rejected"],
 	              round(t["season_stems_per_ha"]), t["lifetime"]])

@@ -17,6 +17,14 @@ MAX_POOLS = 4000
 MAX_CYCLES = 40
 
 
+
+def _bed_plants(v):
+	from upande_summer_flowers.summer_flowers.doctype.summer_flower_production_plan.summer_flower_production_plan import (
+		plants_per_bed_for,
+	)
+
+	return plants_per_bed_for(v) or 1
+
 def parse_ramp(profile, ramp_weeks=None):
 	"""'25,50,75,100' -> [0.25, 0.5, 0.75, 1.0]."""
 	vals = []
@@ -65,7 +73,8 @@ def params_from_version(version, overrides=None):
 		"plants_per_pot": int(v.plants_per_pot or 1),
 		"pots_per_sqm": int(v.pots_per_sqm or 1),
 		"plants_per_sqm_bench": flt(v.plants_per_sqm_bench or 0),
-		"plants_per_bed": int(v.plants_per_bed or 1),
+		# A bed's ground at the planting density, not a stored plants-per-bed.
+		"plants_per_bed": _bed_plants(v),
 		"sqm_net_per_bed": flt(v.sqm_net_per_bed or 0),
 		"total_stems_per_plant_life": flt(v.total_stems_per_plant_life or 0),
 		"ramp_profile": v.ramp_profile,

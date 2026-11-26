@@ -249,12 +249,12 @@ def plan_overview(plan):
 			continue
 		wk = _week_label(b.planting_date)
 		p = plantings.setdefault(wk, {"week": wk, "date": str(getdate(b.planting_date)),
-		                              "plants": 0, "plants_to_plant": 0, "beds": 0,
+		                              "plants": 0, "plants_to_plant": 0, "area_sqm": 0.0,
 		                              "blocks": [], "too_late": 0, "not_placed": 0,
 		                              "first_harvest": None})
 		p["plants"] += cint(b.plants)
 		p["plants_to_plant"] += cint(b.get("plants_to_plant")) or cint(b.plants)
-		p["beds"] += cint(b.beds)
+		p["area_sqm"] += flt(b.net_area_ha) * 10000.0
 		if b.block and b.block not in p["blocks"]:
 			p["blocks"].append(b.block)
 		p["too_late"] = p["too_late"] or cint(b.get("too_late"))
@@ -279,7 +279,9 @@ def plan_overview(plan):
 		"coverage_pct": round(flt(doc.coverage_pct), 1),
 		"on_time_pct": round(flt(doc.get("on_time_coverage_pct")), 1),
 		"weeks_short": cint(doc.weeks_in_deficit),
-		"plants": cint(doc.new_plants_required), "beds": cint(doc.new_beds_required),
+		"plants": cint(doc.new_plants_required),
+		"area_sqm": round(sum(flt(b.net_area_ha) for b in (doc.get("plan_blocks") or [])
+		                      if cint(b.is_new_planting)) * 10000.0, 1),
 		"earliest_planting": str(doc.get("earliest_planting_date") or "") or None,
 		"too_late_plantings": cint(doc.get("too_late_plantings")),
 		"not_placed": cint(doc.plantings_not_placed),

@@ -591,9 +591,7 @@ def _can_size_beds(v):
 			plants_per_bed_for,
 		)
 
-	return bool(cint(plants_per_bed_for(v))
-	            or (flt(v.get("plants_per_sqm_net")) and flt(v.get("min_planting_area_sqm"))
-	                and flt(v.get("sqm_net_per_bed"))))
+	return bool(flt(v.get("plants_per_sqm_net")))
 
 
 def _write_confirmed(plan, targets, v, per_bed):

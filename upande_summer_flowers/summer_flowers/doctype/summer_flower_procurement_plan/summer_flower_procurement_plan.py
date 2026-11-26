@@ -1188,12 +1188,13 @@ def write_plantings(plan, proc=None):
 			# Fewer plants is fewer beds. Standing the short delivery across the
 			from upande_summer_flowers.summer_flowers.doctype \
 				.summer_flower_production_plan.summer_flower_production_plan import (
-					plants_per_bed_for,
+					size_planting,
 				)
 
-			per_bed = cint(plants_per_bed_for(v))
-			if per_bed:
-				beds_wanted = max(1, int(math.ceil(plants_here / float(per_bed))))
+			# The ground the short delivery's planting takes: its area, in beds.
+			sized = cint(size_planting(v, plants_here)[0])
+			if sized:
+				beds_wanted = max(1, sized)
 			short_filled.append((row.planting_date, cut_by, plants_here))
 		block = row.block
 		if block and cal.get(block) and cal.free_beds(cal.get(block), start, end) >= beds_wanted:

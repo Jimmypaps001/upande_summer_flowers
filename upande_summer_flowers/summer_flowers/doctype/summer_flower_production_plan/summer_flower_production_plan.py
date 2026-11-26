@@ -720,8 +720,8 @@ class SummerFlowerProductionPlan(Document):
 		rows = sorted(
 			[b for b in self.plan_blocks if cint(b.is_new_planting)],
 			key=lambda b: (cint(b.sticking_year), cint(b.sticking_week)))
-		# The version's own density. plants_per_bed_for answers 0 on a protocol
-		per_bed = cint(v.plants_per_bed) or cint(v.min_planting_plants) or 0
+		# Whole minimum planting areas at the density.
+		per_bed = planting_unit_plants(v)
 		out, left = {}, covered
 		for b in rows:
 			want = cint(b.get("plants_from_demand")) or cint(b.plants)
@@ -773,7 +773,6 @@ class SummerFlowerProductionPlan(Document):
 		# Supplying NOTHING is not a decision to plant nothing. It is what a
 		if not any(cint(x) for x in got.values()):
 			return
-		per_bed = cint(v.plants_per_bed) or cint(v.min_planting_plants) or 0
 		for b in self.plan_blocks:
 			if not cint(b.is_new_planting):
 				continue
@@ -785,9 +784,9 @@ class SummerFlowerProductionPlan(Document):
 			b.plants = can
 			# plants_to_plant follows from it, and is worked out in one place
 			b.trimmed_to_materials = 1 if can < cint(b.plants_from_demand) else 0
-			if per_bed:
-				b.beds = int(math.ceil(can / float(per_bed))) if can else 0
-			b.net_area_ha = planting_area_ha(v, can, b.beds)
+			planted = plants_to_plant(v, can) if can else 0
+			b.beds = cint(size_planting(v, planted)[0]) if planted else 0
+			b.net_area_ha = planting_area_ha(v, planted, b.beds)
 
 	# ------------------------------------------------------------------ budget
 	def create_budget(self):
@@ -1193,11 +1192,20 @@ def planting_area_ha(v, plants=0, beds=0):
 
 
 def plants_per_bed_for(v):
-	"""How many plants a bed holds, worked out if it was not stored."""
-	stored = cint(getattr(v, "plants_per_bed", 0))
-	if stored:
-		return stored
+	"""How many plants a bed's ground holds: its area times the planting density.
+
+	Never the protocol's stored plants-per-bed figure. Plantings are sized on
+	the minimum planting area and the density alone; a bed only matters as
+	ground in a block, so its plants are whatever its area holds at that
+	density."""
 	return int(round(bed_sqm(v) * flt(getattr(v, "plants_per_sqm_net", 0))))
+
+
+def planting_unit_plants(v):
+	"""The smallest planting in plants: the minimum planting area at the density."""
+	per_sqm = flt(getattr(v, "plants_per_sqm_net", 0))
+	unit = flt(getattr(v, "min_planting_area_sqm", 0)) or 1.0
+	return int(round(unit * per_sqm)) if per_sqm else 0
 
 
 
@@ -1230,20 +1238,23 @@ def plants_standing_from(v, planted, at_least=0):
 
 
 def size_planting(v, plants_required, min_beds=1):
-	"""Turn a flush-true plant requirement into a plantable size."""
+	"""Turn a plant requirement into a plantable size: (beds, plants, m²).
+
+	Sized on the minimum planting area and the planting density only: the
+	area is the requirement rounded up to whole minimum planting areas, and
+	the plants are that area at the density. Beds are the ground that area
+	takes in a block, for placing it -- never a plant count of their own.
+	`min_beds` is no longer read; it is kept so callers need not change."""
 	per_sqm = flt(getattr(v, "plants_per_sqm_net", 0))
-	unit = flt(getattr(v, "min_planting_area_sqm", 0))
-	bed = flt(getattr(v, "sqm_net_per_bed", 0))
-	ppb = plants_per_bed_for(v)
-	if not per_sqm or not unit:
-		# No density or no stated minimum: the area arithmetic has nothing to stand
-		beds = max(cint(min_beds), int(math.ceil(plants_required / ppb))) if ppb \
-			else cint(min_beds)
-		return beds, (beds * ppb if ppb else 0), (beds * bed)
-	units = max(1, int(math.ceil((plants_required / per_sqm) / unit)))
+	unit = flt(getattr(v, "min_planting_area_sqm", 0)) or 1.0
+	bed = bed_sqm(v)
+	if not per_sqm:
+		# No density: there is no area to work out. Plant what was asked.
+		return 0, int(math.ceil(flt(plants_required))), 0.0
+	units = max(1, int(math.ceil((flt(plants_required) / per_sqm) / unit - 1e-9)))
 	area = units * unit
 	plants = int(round(area * per_sqm))
-	beds = max(cint(min_beds), int(math.ceil(area / bed))) if bed else cint(min_beds)
+	beds = int(math.ceil(area / bed - 1e-9)) if bed else 0
 	return beds, plants, area
 
 
@@ -1824,10 +1835,8 @@ def plan_preview(market_demand, farm=None, season_start_year=None):
 
 		# Several of these are not mandatory on the protocol, so they are easy to
 		assumed = []
-		if not plants_per_bed_for(v):
-			assumed.append(_("plants per bed — needs a bed area and a planting "
-			                 "density, and without it no bed or hectare figure can "
-			                 "be given at all"))
+		if not flt(v.plants_per_sqm_net):
+			assumed.append(_("planting density — without it no area can be given"))
 		if not cint(v.min_planting_beds_derived) and not flt(v.min_planting_area_sqm):
 			assumed.append(_("minimum planting area"))
 		if _cut_from_a_pool(v) and not flt(v.cuttings_per_plant_per_week):
@@ -1839,9 +1848,8 @@ def plan_preview(market_demand, farm=None, season_start_year=None):
 		if v.get("bed_area_assumed"):
 			notes.append(_(
 				"{0} has no bed area recorded, so the smallest planting it will make "
-				"({1} m²) is being read as one bed: {2} plants to a bed at {3} per m²."
-			).format(farm, flt(v.min_planting_area_sqm), cint(v.plants_per_bed),
-			         flt(v.plants_per_sqm_net)))
+				"({1} m²) is being read as one bed, planted at {2} per m²."
+			).format(farm, flt(v.min_planting_area_sqm), flt(v.plants_per_sqm_net)))
 		if assumed:
 			notes.append(_(
 				"These are not filled in on {0}, and every figure below assumes 1 "
@@ -1850,8 +1858,8 @@ def plan_preview(market_demand, farm=None, season_start_year=None):
 			).format(version, "; ".join(assumed)))
 
 		# Worked out from density and bed area when the version never stored it. If it
-		ppb = plants_per_bed_for(v)
-		min_beds = cint(v.min_planting_beds_derived) or (1 if ppb else 0)
+		ppb = flt(v.plants_per_sqm_net)
+		min_beds = 1
 		if first_flush:
 			# The busiest week decides the pool, because cuttings cannot be banked.
 			plants_required = int(math.ceil(peak_stems / first_flush))
@@ -2368,7 +2376,7 @@ def requirement_rows(plan):
 			"first_harvest_year": cint(fy), "first_harvest_week": cint(fw),
 			"uproot_date": str(at + datetime.timedelta(weeks=life_weeks)),
 			"harvest_family": None,
-			"net_area_ha": planting_area_ha(v, cint(standing), cint(beds)),
+			"net_area_ha": planting_area_ha(v, cint(to_plant), cint(beds)),
 			"lifetime_stems": int(round(
 				flt(v.total_stems_per_plant_life or 0) * cint(standing))),
 			"below_minimum": False,
@@ -3088,7 +3096,7 @@ def _populate(plan, programme=None):
 					f"new {p_year}-W{p_week:02d} ({beds} beds)"
 					+ ("" if block else " — no block yet"))
 
-		net_ha = planting_area_ha(protocol, plants, beds)
+		net_ha = planting_area_ha(protocol, planted, beds)
 		footprints.append((planting_date, uproot, net_ha))
 
 		note = (_("Needs {0} beds, more than any single block here holds ({1}); "

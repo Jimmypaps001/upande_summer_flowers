@@ -399,12 +399,16 @@ def _p_plants(p, v):
 	return {
 		"label": _("Plants required"),
 		"value": sum((b.plants or 0) for b in rows), "unit": _("plants"),
-		"formula": _("proposed plantings × plants per bed"),
+		"formula": _("area planted × planting density"),
 		"steps": [
 			_step(_("Plantings proposed"), len(rows),
 			      _("one per week that was short of demand")),
-			_step(_("Beds"), p.new_beds_required),
-			_step(_("Plants per bed"), v.plants_per_bed, _("from {0}").format(v.name)),
+			_step(_("Area planted (m²)"),
+			      round(sum(flt(b.net_area_ha) for b in rows) * 10000, 1),
+			      _("each rounded up to whole {0} m² planting areas").format(
+				      flt(v.min_planting_area_sqm) or 1)),
+			_step(_("Planting density (per m²)"), flt(v.plants_per_sqm_net),
+			      _("from {0}").format(v.name)),
 			_step(_("Total plants"), p.new_plants_required),
 			_step(_("Cuttings to stick"), v.cuttings_for_plants(p.new_plants_required or 0),
 			      _("× {0} losses, then {1}% reject").format(

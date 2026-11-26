@@ -430,6 +430,14 @@ def schedule_for(version, tc, divert_weeks, demand, first_sticking, tc_loss_pct=
 
 # ---------------------------------------------------------------------------
 
+def _planting_unit(v):
+	from upande_summer_flowers.summer_flowers.doctype.summer_flower_production_plan.summer_flower_production_plan import (
+		planting_unit_plants,
+	)
+
+	return planting_unit_plants(v) or 1
+
+
 def round_up_to_area(plants, per_area):
 	"""Up to a whole minimum planting area. Nobody buys a third of a bed."""
 	if not per_area or per_area <= 0:
@@ -453,7 +461,8 @@ def peak_sizing(plan, cycles=None, max_cycles=None):
 	regen = cint(v.weeks_on_tray) + cint(v.weeks_on_pot)
 	lead = cint(v.supplier_lead_weeks)
 	per_week = flt(v.cuttings_per_plant_per_week) or 1.0
-	per_area = cint(v.plants_per_bed) or cint(v.min_planting_area_sqm) or 1
+	# The smallest planting, in plants: the minimum planting area at the density.
+	per_area = _planting_unit(v)
 	# What a propagation order is rounded to, which is NOT the planting area.
 	order_qty = cint(v.get("min_order_qty")) or 1
 	life = cint(v.motherstock_life_weeks)
@@ -811,7 +820,7 @@ def multiplications_for_tc(plan, tc, max_search=24):
 		return None
 	tc = cint(tc)
 	per_week = flt(v.cuttings_per_plant_per_week) or 1.0
-	per_area = cint(v.plants_per_bed) or cint(v.min_planting_area_sqm) or 1
+	per_area = _planting_unit(v)
 	# What a propagation order is rounded to, which is NOT the planting area.
 	order_qty = cint(v.get("min_order_qty")) or 1
 	regen = cint(v.weeks_on_tray) + cint(v.weeks_on_pot)

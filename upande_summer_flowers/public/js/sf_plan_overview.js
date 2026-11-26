@@ -79,7 +79,7 @@
 			+ k("Covered on time", pct(f.on_time_pct), d.bought ? (f.on_time_pct >= 90 ? "ok" : "bad") : "")
 			+ k("Weeks short", num(f.weeks_short), f.weeks_short ? "bad" : "ok")
 			+ k("New plants", num(f.plants))
-			+ k("New beds", num(f.beds))
+			+ k("Area to plant (m²)", num(f.area_sqm))
 			+ (f.not_placed ? k("Plantings with no block", num(f.not_placed), "bad") : "")
 			+ `</div>`;
 	}
@@ -184,10 +184,10 @@
 		const rows = d.plantings || [];
 		if (!rows.length) return `<h4>Planting</h4><div class="sfo-empty">No plantings yet.</div>`;
 		return `<h4>Planting <small>${rows.length} weeks · ${num(rows.reduce((t, r) => t + r.plants_to_plant, 0))} plants</small></h4>`
-			+ table(`<th>Week</th><th class="r">Plants to plant</th><th class="r">Beds</th><th>Blocks</th><th>First harvest</th>`,
+			+ table(`<th>Week</th><th class="r">Plants to plant</th><th class="r">Area (m²)</th><th>Blocks</th><th>First harvest</th>`,
 				rows.map((r) => `<td>${esc(r.week)}${r.too_late ? ' <span class="pill bad">too late to order</span>' : ""}`
 					+ `${r.not_placed ? ' <span class="pill warn">no block</span>' : ""}</td>`
-					+ `<td class="r">${num(r.plants_to_plant)}</td><td class="r">${num(r.beds)}</td>`
+					+ `<td class="r">${num(r.plants_to_plant)}</td><td class="r">${num(r.area_sqm)}</td>`
 					+ `<td class="dim">${esc((r.blocks || []).join(", ") || "—")}</td><td>${esc(r.first_harvest || "—")}</td>`), { limit: 12 });
 	}
 
