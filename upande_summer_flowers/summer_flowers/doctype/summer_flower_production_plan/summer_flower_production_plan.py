@@ -119,6 +119,53 @@ class SummerFlowerProductionPlan(Document):
 		self.warn_on_space()
 		self.create_budget()
 		self.raise_what_follows()
+		self.approve_what_hangs_off()
+
+	def approve_what_hangs_off(self):
+		"""Approving the plan approves the drafts it made.
+
+		Its own units' propagation plans are approved and a draft procurement
+		plan is submitted, so one approval settles the season. What cannot go
+		through is named; the plan stays approved and that one is finished on
+		its own form."""
+		done, failed = [], []
+		frappe.flags.approving_production_plan = True
+		for name in frappe.get_all("Summer Flower Propagation Plan",
+		                           filters={"production_plan": self.name,
+		                                    "status": ["in", ("Draft", "Pending Approval")]},
+		                           pluck="name"):
+			frappe.db.savepoint("approve_hanging")
+			try:
+				d = frappe.get_doc("Summer Flower Propagation Plan", name)
+				d.flags.ignore_permissions = True
+				if d.status == "Draft":
+					d.submit_for_approval()
+				d.approve()
+				done.append(name)
+			except Exception as e:
+				frappe.db.rollback(save_point="approve_hanging")
+				frappe.log_error(frappe.get_traceback(), "Approving %s with %s" % (name, self.name))
+				failed.append("%s (%s)" % (name, frappe.utils.strip_html(str(e))[:80]))
+		for name in frappe.get_all("Summer Flower Procurement Plan",
+		                           filters={"production_plan": self.name, "docstatus": 0},
+		                           pluck="name"):
+			frappe.db.savepoint("approve_hanging")
+			try:
+				d = frappe.get_doc("Summer Flower Procurement Plan", name)
+				d.flags.ignore_permissions = True
+				d.submit()
+				done.append(name)
+			except Exception as e:
+				frappe.db.rollback(save_point="approve_hanging")
+				frappe.log_error(frappe.get_traceback(), "Submitting %s with %s" % (name, self.name))
+				failed.append("%s (%s)" % (name, frappe.utils.strip_html(str(e))[:80]))
+		frappe.flags.approving_production_plan = False
+		if done:
+			frappe.msgprint(_("Approved with this plan: {0}.").format(", ".join(done)),
+			                indicator="green", alert=True)
+		if failed:
+			frappe.msgprint(_("Not approved with the plan: {0}. Finish them on their own "
+			                  "forms.").format(", ".join(failed)), indicator="orange")
 
 	def raise_what_follows(self):
 		"""The documents an approved plan commits the farm to."""

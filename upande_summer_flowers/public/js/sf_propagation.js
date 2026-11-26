@@ -30,7 +30,7 @@
 		if (!chosen.length) h += `<div class="sfo-empty">Nobody chosen yet.</div>`;
 		else {
 			h += `<div class="sfo-scroll"><table><thead><tr><th>Propagator</th><th>Kind</th><th class="r">Share</th>`
-				+ `<th class="r">Plants</th><th class="r">Starts before planting</th><th class="r">Rate / plant</th><th class="r">Cost</th>`
+				+ `<th class="r">Plants</th><th class="r">Starts before planting</th><th class="r">Rate / plant</th><th class="r">Cost</th><th>Propagation plan</th>`
 				+ (edit ? "<th></th>" : "") + `</tr></thead><tbody>`
 				+ chosen.map((c) => `<tr data-party="${esc(c.party)}" data-kind="${c.kind}">`
 					+ `<td>${esc(c.party)}</td><td class="dim">${c.kind === "outside" ? "Outside propagator" : "Our own unit"}</td>`
@@ -38,6 +38,9 @@
 					+ `<td class="r">${num(c.plants)}</td><td class="r">${c.lead_weeks} weeks</td>`
 					+ `<td class="r">${c.kind === "outside" ? (edit ? `<input class="sfo-in num" data-rate value="${c.rate}" style="width:6em">` : c.rate) : "—"}</td>`
 					+ `<td class="r">${c.kind === "outside" ? num(c.amount) : "—"}</td>`
+					+ `<td>${c.propagation_plan
+						? `<a href="/app/summer-flower-propagation-plan/${encodeURIComponent(c.propagation_plan)}" target="_blank">${esc(c.propagation_plan)}</a> <span class="dim">${esc(c.plan_status || "")}</span>`
+						: (c.kind === "outside" ? '<span class="dim">bought on an order</span>' : "—")}</td>`
 					+ (edit ? `<td><button class="sfo-btn sfo-x" data-remove title="Remove">✕</button></td>` : "") + `</tr>`).join("")
 				+ `</tbody></table></div>`;
 			if (s.cost) h += `<div class="sfo-note">Outside propagation costs ${num(s.cost)} in all.</div>`;

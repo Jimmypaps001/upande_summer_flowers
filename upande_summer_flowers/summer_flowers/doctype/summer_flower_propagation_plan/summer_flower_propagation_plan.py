@@ -145,6 +145,14 @@ class SummerFlowerPropagationPlan(Document):
 		v = self._version
 		# One definition of "cuttings for these plants", the protocol's own, which
 		by_week = {}
+		# A unit raises its share of the plan, as allocated on the production
+		# plan's Propagation tab. Given the whole season, two units at 50/50
+		# were each asked to raise all of it.
+		share = 1.0
+		raisers = [r for r in (self._plan.get("plan_raisers") or []) if r.party]
+		if self.propagation_unit and raisers:
+			mine = [r for r in raisers if r.party == self.propagation_unit]
+			share = (flt(mine[0].share_pct) / 100.0) if mine else 0.0
 		for b in self._plan.plan_blocks:
 			if not cint(b.is_new_planting):
 				continue
@@ -152,7 +160,8 @@ class SummerFlowerPropagationPlan(Document):
 			if not (y and w):
 				continue
 			slot = by_week.setdefault((y, w), {"plants": 0, "out": set(), "no_block": 0})
-			slot["plants"] += cint(b.plants)
+			# What is stuck is what goes into the ground, not what stands after.
+			slot["plants"] += int(round((cint(b.get("plants_to_plant")) or cint(b.plants)) * share))
 			# Counted, not skipped. Skipping them was defensible on its own terms --
 			if cint(b.get("not_placed")):
 				slot["no_block"] += cint(b.plants)
@@ -983,7 +992,11 @@ class SummerFlowerPropagationPlan(Document):
 		b.first_sticking_date = first
 		b.flags.ignore_permissions = True
 		b.insert()
-		frappe.db.commit()
+		# Approved on its own, the batch is committed at once. Approved as part of
+		# approving the production plan, it is left to that transaction: a commit
+		# here would keep half an approval if a later step failed.
+		if not frappe.flags.get("approving_production_plan"):
+			frappe.db.commit()
 		self.db_set("motherstock_batches_created", frappe.db.count(
 			"Summer Flower Motherstock Batch",
 			{"production_plan": self.production_plan, "docstatus": ["<", 2]}))

@@ -43,7 +43,12 @@ def _state(doc):
 	chosen = [{"party": r.party, "kind": "outside" if (r.alloc_type or "").startswith("Outside")
 	           else "unit", "share_pct": flt(r.share_pct), "plants": cint(r.plants),
 	           "rate": flt(r.rate_per_plant), "amount": flt(r.amount),
-	           "lead_weeks": cint(r.lead_weeks)} for r in (doc.get("plan_raisers") or [])]
+	           "lead_weeks": cint(r.lead_weeks),
+	           "propagation_plan": r.get("propagation_plan"),
+	           "plan_status": (frappe.db.get_value("Summer Flower Propagation Plan",
+	                                               r.get("propagation_plan"), "status")
+	                           if r.get("propagation_plan") else None)}
+	          for r in (doc.get("plan_raisers") or [])]
 	arrivals = [{"week": a.week_iso, "party": a.party, "plants": cint(a.plants_handed),
 	             "standing": cint(a.plants_standing), "start": a.start_week}
 	            for a in (doc.get("plan_arrivals") or [])]
@@ -88,4 +93,51 @@ def set_propagators(plan, picks):
 			row["propagation_unit"] = name
 		rows.append(row)
 	sc.save_raisers(doc.name, rows)
-	return _state(frappe.get_doc("Summer Flower Production Plan", doc.name))
+	doc = frappe.get_doc("Summer Flower Production Plan", doc.name)
+	drafts = draft_propagation_plans(doc)
+	doc.reload()
+	out = _state(doc)
+	out["drafts"] = drafts
+	return out
+
+
+def draft_propagation_plans(doc):
+	"""A draft propagation plan for each of our own units chosen, kept in step.
+
+	An outside propagator gets none -- it is bought from on an order. A unit no
+	longer chosen has its untouched draft withdrawn; one that has had anything
+	raised off it stays, as the record of what was asked."""
+	from upande_summer_flowers.summer_flowers.doctype.summer_flower_propagation_plan.summer_flower_propagation_plan import (
+		build_from_plan,
+	)
+
+	if cint(doc.docstatus) != 0:
+		return {"drafted": [], "withdrawn": []}
+	# The builder reads the plan from the cache; the propagators were just saved.
+	frappe.clear_document_cache("Summer Flower Production Plan", doc.name)
+	made, wanted = [], set()
+	for r in doc.get("plan_raisers") or []:
+		if (r.alloc_type or "").startswith("Outside") or not r.party:
+			continue
+		wanted.add(r.party)
+		try:
+			res = build_from_plan(doc.name, as_dict=True, propagation_unit=r.party)
+		except Exception as e:
+			frappe.log_error(frappe.get_traceback(), "Draft propagation plan %s %s" % (doc.name, r.party))
+			made.append({"unit": r.party, "error": frappe.utils.strip_html(str(e))[:140]})
+			continue
+		frappe.db.set_value("Summer Flower Plan Raiser", r.name, "propagation_plan", res["name"],
+		                    update_modified=False)
+		made.append({"unit": r.party, "plan": res["name"], "created": res.get("created")})
+	gone = []
+	for d in frappe.get_all("Summer Flower Propagation Plan",
+	                        filters={"production_plan": doc.name, "status": "Draft"},
+	                        fields=["name", "propagation_unit", "seedling_requests_created",
+	                                "motherstock_batches_created"]):
+		if d.propagation_unit in wanted:
+			continue
+		if cint(d.seedling_requests_created) or cint(d.motherstock_batches_created):
+			continue
+		frappe.delete_doc("Summer Flower Propagation Plan", d.name, ignore_permissions=True, force=True)
+		gone.append(d.name)
+	return {"drafted": made, "withdrawn": gone}
