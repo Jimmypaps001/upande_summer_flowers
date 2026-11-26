@@ -455,5 +455,5 @@
 		});
 	}
 
-	window.sfPlanOverview = { render, load, METHOD };
+	window.sfPlanOverview = { render, load, METHOD, style };
 })();

@@ -2304,7 +2304,12 @@ def save_raisers(plan, rows):
 	if doc.docstatus == 2:
 		frappe.throw(_("{0} is cancelled.").format(doc.name))
 
-	plants_total = cint(doc.get("new_plants_required"))
+	# What a propagator hands over is what goes IN the ground, not what is
+	# left standing after establishment -- the same figure its deliveries to
+	# the farm are counted in.
+	plants_total = (sum(cint(b.get("plants_to_plant")) or cint(b.plants)
+	                    for b in (doc.get("plan_blocks") or []) if cint(b.is_new_planting))
+	                or cint(doc.get("new_plants_required")))
 	kept, plants, cost, units, outsiders = [], 0, 0.0, 0, 0
 	for r in rows:
 		party = (r.get("party") or r.get("propagation_unit") or r.get("supplier") or "")

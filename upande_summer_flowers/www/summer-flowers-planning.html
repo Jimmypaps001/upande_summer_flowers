@@ -374,6 +374,10 @@
 
     <section class="pl-pane" data-pane="propagation">
       <div class="pl-card">
+        <div class="pl-card-head"><div><h2>{{ _("Who propagates, and their deliveries to the farm") }}</h2></div></div>
+        <div id="pg-who"></div>
+      </div>
+      <div class="pl-card">
         <div class="pl-card-head">
           <div><h2>{{ _("Propagation plan") }}</h2>
                <p class="pl-note" id="pg-sub"></p></div>
@@ -1429,11 +1433,12 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
 .xp-links{margin-top:12px;font-size:.76rem;display:flex;gap:10px;flex-wrap:wrap}
 .pl-empty{color:var(--text-muted);font-size:.82rem;padding:10px 0}
 .warn{color:var(--critical)}
-#pn-glance .sfo{--t:var(--text-primary);--t2:var(--text-secondary);--bd:var(--border);--bg2:var(--surface-2);
+#pn-glance .sfo,#pg-who .sfo{--t:var(--text-primary);--t2:var(--text-secondary);--bd:var(--border);--bg2:var(--surface-2);
   --s1:var(--series-1);--s2:var(--series-2);--ok:var(--good);--bad:var(--critical)}
 </style>
 
 <script src="/assets/upande_summer_flowers/js/sf_plan_overview.js"></script>
+<script src="/assets/upande_summer_flowers/js/sf_propagation.js"></script>
 <script>
 (function () {
   "use strict";
@@ -10303,7 +10308,17 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
       loadProcurement().catch(bad);
       loadAgreed().catch(bad);
     }
-    if (name === "propagation") loadPropagation().catch(bad);
+    if (name === "propagation") {
+      loadPropagation().catch(bad);
+      const who = $("pg-who");
+      if (who && window.sfPropagation) {
+        if (!S.plan) who.innerHTML = `<p class="pl-empty">Choose a plan.</p>`;
+        else window.sfPropagation.load(who, S.plan, (m, a) => new Promise((res, rej) => frappe.call({
+          method: m, args: a, callback: (r) => res(r && r.message),
+          error: (r) => rej(new Error((r && r.responseJSON && r.responseJSON.exception) || "failed")) })),
+          { editable: true });
+      }
+    }
     if (name === "harvest") loadCycles().catch(bad);
     if (name === "review") {
       loadReview().then(loadPlanState).then(loadChain).catch(bad);

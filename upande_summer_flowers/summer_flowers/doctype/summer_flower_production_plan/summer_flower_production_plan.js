@@ -16,6 +16,7 @@ frappe.ui.form.on("Summer Flower Production Plan", {
 		if (frm.is_new()) return;
 
 		render_overview(frm);
+		render_propagation(frm);
 		render_sheet(frm);
 		draw_calendar(frm);
 		// Seven buttons across a toolbar is a list nobody reads. One dropdown,
@@ -175,6 +176,19 @@ function set_headline(frm) {
 
 	const indicator = frm.doc.weeks_in_deficit ? "orange" : "green";
 	frm.dashboard.set_headline(parts.join("  ·  "), indicator);
+}
+
+// Who propagates and their deliveries to the farm: choose who, the rest follows.
+function render_propagation(frm) {
+	const field = frm.get_field("propagation_html");
+	if (!field) return;
+	frappe.require(["/assets/upande_summer_flowers/js/sf_plan_overview.js",
+		"/assets/upande_summer_flowers/js/sf_propagation.js"], () => {
+		window.sfPropagation.load(field.$wrapper[0], frm.doc.name, null, {
+			editable: frm.doc.docstatus === 0,
+			onSaved: () => frm.reload_doc(),
+		});
+	});
 }
 
 // The plan at a glance: buying, raising, planting and cutting, drawn by the
