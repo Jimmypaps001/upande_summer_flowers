@@ -62,8 +62,19 @@ def _lifts(v, stages=None):
 	"""The lifts of one way in: the rows whose route names its stages."""
 	rows_in = list(v.get("lifts") or [])
 	if stages:
-		mine = [r for r in rows_in if r.get("route") and
-		        [x.strip() for x in str(r.route).split("\u2192")] == stages]
+		def belongs(r):
+			route = str(r.get("route") or "").strip()
+			if not route:
+				return False
+			parts = [x.strip() for x in route.split("\u2192")]
+			if parts == stages:
+				return True
+			# Lift rows are often named in words ("TC to propagation",
+			# "Bought as roots"): they belong to the way whose bought stage
+			# they name.
+			entry = (stages[0] or "").lower()
+			return bool(entry) and entry in route.lower()
+		mine = [r for r in rows_in if belongs(r)]
 		if mine:
 			rows_in = mine
 		elif any(r.get("route") for r in rows_in):
