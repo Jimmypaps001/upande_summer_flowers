@@ -270,12 +270,14 @@ function sheet_html(d) {
 	h += `<div style="overflow-x:auto"><table class="table table-bordered table-sm"
 		style="font-size:11px;white-space:nowrap">`;
 
-	h += `<thead><tr><th colspan="${head.length}"></th>`;
+	h += `<thead><tr><th colspan="${head.length + 1}"></th>`;
 	d.grid.forEach((g) => (h += `<th class="text-center">${g.year}</th>`));
-	h += `<th></th><th></th></tr><tr>`;
+	h += `<th colspan="5"></th></tr><tr>`;
 	head.forEach((c) => (h += `<th>${c}</th>`));
+	h += `<th class="text-right">CUT BEFORE<br>SEASON</th>`;
 	d.grid.forEach((g) => (h += `<th class="text-center">${g.week}</th>`));
-	h += `<th>TOTAL</th><th>STEMS/<br>HA</th><th>LIFETIME</th></tr></thead><tbody>`;
+	h += `<th>TOTAL</th><th>CUT AFTER<br>SEASON</th><th>REJECTED<br>(${d.reject_pct || 0}%)</th>`
+		+ `<th>STEMS/<br>HA</th><th>LIFETIME</th></tr></thead><tbody>`;
 
 	// A planting with no block produces nothing and has to look different from one
 	// that produces nothing because its weeks are outside the season.
@@ -288,9 +290,15 @@ function sheet_html(d) {
 			<td class="text-right">${fmt(p.net_area_sqm)}</td><td>${p.uproot_date}</td>
 			<td class="text-right">${((p.net_area_sqm || 0) / 10000).toFixed(4)}</td>
 			<td class="text-right">${fmt(p.beds)}</td>
-			<td class="text-right">${fmt(p.plants)}</td>`;
-		p.weekly.forEach((v) => (h += `<td class="text-right">${v ? fmt(v) : ""}</td>`));
+			<td class="text-right">${fmt(p.plants)}</td>
+			<td class="text-right text-muted">${p.before_season ? fmt(p.before_season) : ""}</td>`;
+		p.weekly.forEach((v, i) => {
+			const fl = (p.flushes || [])[i];
+			h += `<td class="text-right"${fl ? ` title="Flush ${fl}"` : ""}>${v ? fmt(v) : ""}</td>`;
+		});
 		h += `<td class="text-right"><b>${fmt(p.season_total)}</b></td>
+			<td class="text-right text-muted">${p.after_season ? fmt(p.after_season) : ""}</td>
+			<td class="text-right text-muted">${p.rejected ? fmt(p.rejected) : ""}</td>
 			<td class="text-right">${fmt(Math.round(p.season_stems_per_ha))}</td>
 			<td class="text-right">${fmt(p.lifetime_total)}</td></tr>`;
 	});
@@ -302,13 +310,16 @@ function sheet_html(d) {
 		<td class="text-right">${((t.net_area_sqm || 0) / 10000).toFixed(4)}</td>
 		<td class="text-right">${fmt(t.beds)}</td>
 		<td class="text-right">${fmt(t.plants)}</td>
+		<td class="text-right">${fmt(t.before_season)}</td>
 		<td colspan="${cols}"></td>
 		<td class="text-right">${fmt(t.season)}</td>
+		<td class="text-right">${fmt(t.after_season)}</td>
+		<td class="text-right">${fmt(t.rejected)}</td>
 		<td class="text-right">${fmt(Math.round(t.season_stems_per_ha))}</td>
 		<td class="text-right">${fmt(t.lifetime)}</td></tr>`;
 
 	const band = (label, values, opts = {}) => {
-		let row = `<tr${opts.style || ""}><td colspan="${head.length}">${label}</td>`;
+		let row = `<tr${opts.style || ""}><td colspan="${head.length + 1}">${label}</td>`;
 		for (let i = 0; i < cols; i++) {
 			const v = values[i];
 			const neg = opts.signed && v < 0;
@@ -316,7 +327,7 @@ function sheet_html(d) {
 				v === 0 && opts.blankZero ? "" : fmt(v)
 			}</td>`;
 		}
-		return row + `<td colspan="3"></td></tr>`;
+		return row + `<td colspan="5"></td></tr>`;
 	};
 
 	h += band(__("Weekly production"), d.weekly_production, { style: ' style="font-weight:bold"' });
@@ -324,8 +335,8 @@ function sheet_html(d) {
 	d.grades.forEach((g) => {
 		h += g.weekly.length
 			? band(`${g.grade} (${g.pct}%)`, g.weekly)
-			: `<tr><td colspan="${head.length}">${g.grade}</td>
-				<td colspan="${cols + 3}" class="text-muted">${
+			: `<tr><td colspan="${head.length + 1}">${g.grade}</td>
+				<td colspan="${cols + 5}" class="text-muted">${
 					__("No allocation % on the protocol, so this grade cannot be split out.")
 				}</td></tr>`;
 	});
