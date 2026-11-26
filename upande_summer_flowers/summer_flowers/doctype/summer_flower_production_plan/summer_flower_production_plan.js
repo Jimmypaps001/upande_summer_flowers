@@ -223,14 +223,13 @@ function sheet_html(d) {
 		["Arrived", (p) => src(p, (x) => esc(x.arrives))],
 		["Lift", (p) => src(p, (x) => x.lifts > 1 ? `${x.lift_no} of ${x.lifts} (${x.share_pct}%)` : "all")],
 		["TC lifted", (p) => src(p, (x) => fmt(x.units)), true],
-		["Planting wk", (p) => esc(p.planting_week || "")],
-		["Planting date", (p) => esc(p.planting_date)],
-	].concat(d.pinched ? [["Pinching date", (p) => esc(p.pinch_date)]] : []).concat([
+		["Planting week", (p) => esc(p.planting_wk || "")],
+	].concat(d.pinched ? [["Pinching week", (p) => esc(p.pinch_wk)]] : []).concat([
 		["Plants planted", (p) => fmt(p.plants_to_plant), true],
 		[`Standing (${est}%)`, (p) => fmt(p.plants), true],
 		["First cut", (p) => esc(p.first_cut || "")],
 		["Season opens on flush", (p) => (p.season_flush ? p.season_flush : ""), true],
-		["Uprooting", (p) => esc(p.uproot_date)],
+		["Uprooting week", (p) => esc(p.uproot_wk)],
 		["Block", (p) => esc(p.block)],
 		["Beds", (p) => fmt(p.beds), true],
 		["Net area (m²)", (p) => fmt(p.net_area_sqm), true],

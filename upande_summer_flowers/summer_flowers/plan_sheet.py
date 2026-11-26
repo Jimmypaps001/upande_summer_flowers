@@ -78,6 +78,11 @@ def build(plan):
 		monday = (getdate(row.planting_date) - datetime.timedelta(days=getdate(row.planting_date).weekday())
 		          if row.planting_date else None)
 		plantings.append({
+			# Everything on the sheet is in weeks: planting, pinching and
+			# uprooting are each shown as the ISO week they fall in.
+			"planting_wk": _iso_week(getdate(row.planting_date)) if row.planting_date else "",
+			"pinch_wk": (_iso_week(getdate(row.pinch_date)) if pinched and row.pinch_date else ""),
+			"uproot_wk": (_iso_week(getdate(extra.get("uproot"))) if extra.get("uproot") else ""),
 			"sources": sources.get(monday, []) if row.is_new_planting else [],
 			"plants_to_plant": cint(row.get("plants_to_plant")) or cint(row.plants),
 			"season_flush": next((f for f in (whole.get("flushes") or []) if f), None),
@@ -379,14 +384,13 @@ def sheet_csv(plan):
 	         ("Lift", lambda p: src(p, lambda x: "%s of %s (%s%%)" % (x["lift_no"], x["lifts"], x["share_pct"])
 	                                if x["lifts"] > 1 else "all")),
 	         ("TC lifted", lambda p: src(p, lambda x: str(x["units"]))),
-	         ("Planting wk", lambda p: p["planting_week"]),
-	         ("Planting date", lambda p: p["planting_date"])]
-	        + ([("Pinching date", lambda p: p["pinch_date"])] if d["pinched"] else [])
+	         ("Planting week", lambda p: p["planting_wk"])]
+	        + ([("Pinching week", lambda p: p["pinch_wk"])] if d["pinched"] else [])
 	        + [("Plants planted", lambda p: p["plants_to_plant"]),
 	           ("Standing (%s%%)" % d["establishment_pct"], lambda p: p["plants"]),
 	           ("First cut", lambda p: p["first_cut"]),
 	           ("Season opens on flush", lambda p: p["season_flush"] or ""),
-	           ("Uprooting", lambda p: p["uproot_date"]),
+	           ("Uprooting week", lambda p: p["uproot_wk"]),
 	           ("Block", lambda p: p["block"]),
 	           ("Beds", lambda p: p["beds"]),
 	           ("Net area (m2)", lambda p: p["net_area_sqm"]),
