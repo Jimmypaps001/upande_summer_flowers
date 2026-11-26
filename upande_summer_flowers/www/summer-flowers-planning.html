@@ -265,7 +265,8 @@
     <section class="pl-pane" data-pane="plan">
       <div class="pl-card">
         <div class="pl-card-head">
-          <div><h2>{{ _("At a glance") }}</h2></div>
+          <div><h2>{{ _("Your plan") }}</h2>
+            <p class="pl-dim" style="margin:2px 0 0">{{ _("What is bought, when it arrives, when it is planted and what it cuts against the demand. On a draft, change any delivery and the plan is worked out again.") }}</p></div>
         </div>
         <div id="pn-glance"></div>
       </div>
@@ -10272,7 +10273,7 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
     const go = (m, a) => new Promise((res, rej) => frappe.call({
       method: m, args: a, callback: (r) => res(r && r.message),
       error: (r) => rej(new Error((r && r.responseJSON && r.responseJSON.exception) || "failed")) }));
-    window.sfPlanOverview.load(el, S.plan, go);
+    window.sfPlanOverview.load(el, S.plan, go, { editable: true });
   }
 
   function openTab() {

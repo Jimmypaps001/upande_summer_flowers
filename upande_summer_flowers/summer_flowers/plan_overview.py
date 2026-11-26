@@ -274,7 +274,10 @@ def plan_overview(plan):
 	                  "demand": cint(m.demand_stems), "production": cint(m.production_stems)}
 	                 for m in sorted(doc.get("plan_months") or [],
 	                                 key=lambda r: (r.year, cint(r.month)))]
+	short_w = [w for w in weeks if w["production"] < w["demand"]]
 	out["figures"] = {
+		"stems_short": sum(w["demand"] - w["production"] for w in short_w),
+		"stems_over": sum(max(0, w["production"] - w["demand"]) for w in weeks),
 		"demand": cint(doc.total_demand_stems), "production": cint(doc.total_production_stems),
 		"coverage_pct": round(flt(doc.coverage_pct), 1),
 		"on_time_pct": round(flt(doc.get("on_time_coverage_pct")), 1),
@@ -347,7 +350,8 @@ def _from_saved(saved, lifts, suppliers, per_unit, v=None):
 			              "week": _week_label(add_days(planted, 7 * (w["weeks_after"] - first_after)))
 			              if planted else None})
 		units = cint(c.units) or int(math.ceil(plants / per_unit - 1e-9))
-		rows.append({"no": len(rows) + 1, "order_by": c.order_week, "arrives": _week_label(arrives),
+		rows.append({"no": len(rows) + 1, "row": c.name, "by_hand": cint(c.get("by_hand")),
+		             "order_by": c.order_week, "arrives": _week_label(arrives),
 		              "first_planting": c.lands_week, "plants": plants, "units": units,
 		              "past": 1 if order and order < today else 0,
 		              "suppliers": [{"supplier": c.supplier, "plants": plants, "units": units}],

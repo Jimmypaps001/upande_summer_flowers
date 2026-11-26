@@ -184,7 +184,15 @@ function render_overview(frm) {
 	if (!field) return;
 	const el = field.$wrapper[0];
 	frappe.require("/assets/upande_summer_flowers/js/sf_plan_overview.js", () => {
-		window.sfPlanOverview.load(el, frm.doc.name);
+		// A draft's deliveries are edited here; each change redraws the plan on
+		// the server, so the form is reloaded and the change shown above it.
+		const last = frm._sfo_last;
+		frm._sfo_last = null;
+		window.sfPlanOverview.load(el, frm.doc.name, null, {
+			editable: frm.doc.docstatus === 0,
+			last,
+			onChanged: (r) => { frm._sfo_last = r; frm.reload_doc(); },
+		});
 	});
 }
 

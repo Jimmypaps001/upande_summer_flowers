@@ -40,6 +40,16 @@
 .sfo .sfo-legend i{display:inline-block;width:10px;height:10px;border-radius:2px;margin:0 4px 0 10px;vertical-align:-1px}
 .sfo .sfo-note{font-size:12px;color:var(--t2);margin-top:6px}
 .sfo .sfo-empty{padding:18px;color:var(--t2)}
+.sfo input.sfo-in,.sfo select.sfo-in{height:28px;padding:0 6px;border:1px solid var(--bd);border-radius:6px;font:inherit;font-size:12.5px;background:transparent;color:inherit}
+.sfo input.sfo-in.num{width:7.5em;text-align:right}.sfo input.sfo-in.wk{width:7.5em}
+.sfo .sfo-btn{height:28px;padding:0 10px;border:1px solid var(--bd);border-radius:6px;background:transparent;color:inherit;font:inherit;font-size:12px;cursor:pointer}
+.sfo .sfo-btn.pri{background:var(--s1);border-color:var(--s1);color:#fff}
+.sfo .sfo-btn:disabled{opacity:.5;cursor:default}
+.sfo .sfo-x{color:var(--bad);border-color:transparent}
+.sfo .sfo-change{border:1px solid var(--bd);border-left:4px solid var(--s1);border-radius:8px;padding:10px 12px;margin:10px 0}
+.sfo .sfo-change b{font-weight:600}
+.sfo .sfo-change .up{color:var(--ok)} .sfo .sfo-change .down{color:var(--bad)}
+.sfo tr.sfo-busy td{opacity:.5}
 `;
 
 	function style() {
@@ -72,12 +82,13 @@
 	function meets(d) {
 		const f = d.figures || {};
 		const k = (label, val, cls) => `<div class="sfo-k ${cls || ""}"><span>${esc(label)}</span><b>${val}</b></div>`;
-		return `<h4>Does it meet the demand?</h4><div class="sfo-row">`
+		return `<h4>Against the demand</h4><div class="sfo-row">`
 			+ k("Demand (stems)", num(f.demand))
-			+ k("Production (stems)", num(f.production))
-			+ k("Coverage", pct(f.coverage_pct), f.coverage_pct >= 90 ? "ok" : "bad")
-			+ k("Covered on time", pct(f.on_time_pct), d.bought ? (f.on_time_pct >= 90 ? "ok" : "bad") : "")
-			+ k("Weeks short", num(f.weeks_short), f.weeks_short ? "bad" : "ok")
+			+ k("This plan cuts", num(f.production))
+			+ k("Cover", pct(f.coverage_pct), f.coverage_pct >= 90 ? "ok" : "bad")
+			+ k("Weeks short", num(f.weeks_short) + (f.stems_short ? ` <span class="dim" style="font-size:11px">${num(f.stems_short)} stems</span>` : ""), f.weeks_short ? "bad" : "ok")
+			+ k("Stems over demand", num(f.stems_over))
+			+ (d.bought ? k("Cut on time", pct(f.on_time_pct), f.on_time_pct >= 90 ? "ok" : "bad") : "")
 			+ k("New plants", num(f.plants))
 			+ k("Area to plant (m²)", num(f.area_sqm))
 			+ (f.not_placed ? k("Plantings with no block", num(f.not_placed), "bad") : "")
@@ -90,7 +101,13 @@
 				+ `${esc((d.route || []).map((r) => r.stage).join(" → ") || "the material")} is raised from the farm's own crop.</div>`;
 		}
 		const sup = d.suppliers || [];
-		let h = `<h4>How it is bought <small>${esc(d.supply_mode)}${d.supply_agreed ? " · agreed" : d.supply_source === "saved" ? " · saved, not yet agreed" : " · proposed"}</small></h4>`;
+		let h = "";
+		if (canEdit(d, true) && d.supply_source !== "saved" && (d.deliveries || []).length) {
+			h += `<div class="sfo-change">These deliveries are a proposal worked out from the demand. `
+				+ `<button class="sfo-btn pri" data-act="adopt">Use them as this plan's deliveries</button> `
+				+ `to change suppliers, weeks or quantities.</div>`;
+		}
+		h += `<h4>How it is bought <small>${esc(d.supply_mode)}${d.supply_agreed ? " · agreed" : d.supply_source === "saved" ? " · saved, not yet agreed" : " · proposed"}</small></h4>`;
 		h += table("<th>Supplier</th><th class='r'>Share</th><th class='r'>Delivers every</th><th class='r'>Lead time</th>",
 			sup.map((s) => `<td>${esc(s.supplier)}${s.named ? "" : ' <span class="pill warn">not named yet</span>'}</td>`
 				+ `<td class="r">${pct(s.share_pct)}</td><td class="r">${s.cycle_weeks ? s.cycle_weeks + " weeks" : "once"}</td>`
@@ -101,8 +118,11 @@
 			h += `<div style="height:10px"></div>`;
 			h += table(`<th>Period</th><th>Weeks</th><th class="r">${unit} to buy</th><th class="r">Deliveries</th>`
 				+ `<th class="r">Per delivery</th>${sup.map((s) => `<th class="r">${esc(s.supplier)}, each delivery</th>`).join("")}`,
-				halves.map((x) => `<td>${esc(x.label)}${x.agreed ? ' <span class="pill ok">agreed</span>' : ""}</td>`
-					+ `<td class="dim">${esc(x.from)} – ${esc(x.to)}</td><td class="r"><b>${num(x.units)}</b></td>`
+				halves.map((x) => `<td>${esc(x.label)}</td>`
+					+ `<td class="dim">${esc(x.from)} – ${esc(x.to)}</td><td class="r">${canEdit(d)
+						? `<input class="sfo-in num" data-half-units data-from="${esc(x.from)}" data-to="${esc(x.to)}" value="${x.units}">`
+							+ ` <button class="sfo-btn" data-act="half" data-from="${esc(x.from)}" data-to="${esc(x.to)}">Set</button>`
+						: `<b>${num(x.units)}</b>`}</td>`
 					+ `<td class="r">${x.deliveries}</td><td class="r">${num(x.per_delivery_units)}</td>`
 					+ sup.map((s, i) => {
 						const p = (x.per_supplier || [])[i] || {};
@@ -123,14 +143,36 @@
 		const lifted = rows.some((r) => (r.lifts || []).length > 1);
 		const unit = esc(d.buy_stage || "Units");
 		const past = (d.totals || {}).past_deliveries;
-		return `<h4>Deliveries <small>${rows.length}${past ? ` · <span class="pill bad">${past} should already have been ordered</span>` : ""}</small></h4>`
+		const edit = canEdit(d) && d.supply_source === "saved";
+		const names = (d._suppliers || (d.suppliers || []).map((s) => s.supplier));
+		const pick = (cur) => `<select class="sfo-in" data-f="supplier">${[cur].concat(names.filter((n) => n !== cur))
+			.map((n) => `<option${n === cur ? " selected" : ""}>${esc(n)}</option>`).join("")}</select>`;
+		let h = `<h4>Deliveries <small>${rows.length}${past ? ` · <span class="pill bad">${past} should already have been ordered</span>` : ""}</small></h4>`
 			+ table(`<th>#</th><th>Order by</th><th>Arrives</th><th>Supplier</th><th class="r">${unit}</th>`
-				+ (lifted ? "<th>Planted (lifts)</th>" : "<th>Planted</th>"),
-				rows.map((r) => `<td>${r.no}</td><td>${esc(r.order_by)}${r.past ? ' <span class="pill bad">past</span>' : ""}</td>`
-					+ `<td>${esc(r.arrives)}</td><td>${(r.suppliers || []).map((s) => esc(s.supplier)).join(", ")}</td>`
-					+ `<td class="r">${num(r.units)}</td><td>${(r.lifts || []).length
+				+ (lifted ? "<th>Planted (lifts)</th>" : "<th>Planted</th>") + (edit ? "<th></th>" : ""),
+				rows.map((r) => {
+					const who = (r.suppliers || []).map((s) => s.supplier).join(", ");
+					return `<td>${r.no}</td><td>${esc(r.order_by)}${r.past ? ' <span class="pill bad">past</span>' : ""}</td>`
+					+ (edit
+						? `<td><input class="sfo-in wk" data-f="arrives" value="${esc(r.arrives)}" data-row="${esc(r.row)}"></td>`
+							+ `<td data-row="${esc(r.row)}">${pick(who)}</td>`
+							+ `<td class="r"><input class="sfo-in num" data-f="units" value="${r.units}" data-row="${esc(r.row)}"></td>`
+						: `<td>${esc(r.arrives)}</td><td>${esc(who)}</td><td class="r">${num(r.units)}</td>`)
+					+ `<td>${(r.lifts || []).length
 						? r.lifts.map((L) => `${esc(L.week)} <span class="dim">${L.share_pct}% · ${num(L.plants)}</span>`).join("<br>")
-						: esc(r.first_planting)}</td>`), { limit: 12 });
+						: esc(r.first_planting)}</td>`
+					+ (edit ? `<td><button class="sfo-btn sfo-x" data-act="remove" data-row="${esc(r.row)}" title="Remove this delivery">✕</button></td>` : "");
+				}), { limit: edit ? 0 : 12 });
+		if (edit) {
+			h += `<div class="sfo-row" style="grid-template-columns:auto auto auto auto;justify-content:start;align-items:center;margin-top:8px;gap:6px">`
+				+ `<span class="dim">Add a delivery:</span>${pick(names[0] || "")}`
+				+ `<input class="sfo-in wk" data-new="arrives" placeholder="2028-W30">`
+				+ `<input class="sfo-in num" data-new="units" placeholder="${unit}">`
+				+ `<button class="sfo-btn pri" data-act="add">Add</button></div>`
+				+ `<div class="sfo-note">Change a supplier, an arrival week or a quantity and the plan is redrawn from the deliveries: `
+				+ `their lifts are planted and the harvest below is worked out again.</div>`;
+		}
+		return h;
 	}
 
 	function raised(d) {
@@ -223,6 +265,31 @@
 		return h;
 	}
 
+	// Draft plans whose deliveries can be changed from the page.
+	function canEdit(d, anySource) {
+		return !!(d && d._editable && d.docstatus === 0 && d.bought && !d.pooled
+			&& (anySource || d.supply_source === "saved"));
+	}
+
+	function changeBanner(r) {
+		if (!r || !r.before || !r.after) return "";
+		const b = r.before, a = r.after;
+		const line = (label, x, y, goodUp, fmtf) => {
+			fmtf = fmtf || num;
+			if (x === y) return `${label} ${fmtf(y)}`;
+			const better = goodUp ? y > x : y < x;
+			return `${label} ${fmtf(x)} → <b class="${better ? "up" : "down"}">${fmtf(y)}</b>`;
+		};
+		return `<div class="sfo-change"><b>${esc(r.done || "Changed")}</b><br>`
+			+ [line("Cover", b.coverage_pct, a.coverage_pct, true, pct),
+				line("Weeks short", b.weeks_short, a.weeks_short, false),
+				line("Stems short", b.stems_short, a.stems_short, false),
+				line("Stems over demand", b.stems_over, a.stems_over, false),
+				line("TC bought", b.units, a.units, false),
+				line("Deliveries", b.deliveries, a.deliveries, false)].join(" &nbsp;·&nbsp; ")
+			+ `</div>`;
+	}
+
 	function render(el, d) {
 		style();
 		if (!el) return;
@@ -230,20 +297,81 @@
 			el.innerHTML = `<div class="sfo"><div class="sfo-empty">${esc((d && d.empty) || "Nothing to show yet.")}</div></div>`;
 			return;
 		}
-		el.innerHTML = `<div class="sfo">${milestones(d)}${meets(d)}${buying(d)}${deliveries(d)}${raised(d)}`
+		el.innerHTML = `<div class="sfo">${changeBanner(d._last)}${milestones(d)}${meets(d)}${buying(d)}${deliveries(d)}${raised(d)}`
 			+ `${example(d)}${planting(d)}${harvest(d)}</div>`;
+		if (d._editable) wire(el, d);
 		el.querySelectorAll("[data-more]").forEach((a) => a.addEventListener("click", () => {
 			el.querySelectorAll("tr." + a.dataset.more).forEach((tr) => (tr.style.display = ""));
 			a.remove();
 		}));
 	}
 
-	function load(el, plan, call) {
+	const ED = "upande_summer_flowers.summer_flowers.delivery_edit.";
+
+	function wire(el, d) {
+		const go = d._call;
+		const run = (method, args, btn) => {
+			if (btn) btn.disabled = true;
+			el.querySelectorAll(".sfo-in,.sfo-btn").forEach((x) => (x.disabled = true));
+			return go(ED + method, Object.assign({ plan: d.plan }, args)).then((r) => {
+				const next = Object.assign(r.overview || {}, { _editable: true, _call: go,
+					_suppliers: d._suppliers, _onChanged: d._onChanged, _last: r.before ? r : null });
+				render(el, next);
+				if (d._onChanged) d._onChanged(r);
+			}, (e) => {
+				el.querySelectorAll(".sfo-in,.sfo-btn").forEach((x) => (x.disabled = false));
+				const msg = (e && e.message) || String(e || "Could not change it");
+				if (window.frappe && frappe.msgprint) frappe.msgprint(msg); else alert(msg);
+			});
+		};
+		el.querySelectorAll("[data-row][data-f]").forEach((inp) => {
+			inp.addEventListener("change", () => {
+				const args = { row: inp.dataset.row };
+				args[inp.dataset.f] = inp.value.trim();
+				run("set_delivery", args);
+			});
+		});
+		el.querySelectorAll("td[data-row] select[data-f=supplier]").forEach((sel) => {
+			sel.addEventListener("change", () => run("set_delivery", {
+				row: sel.closest("td").dataset.row, supplier: sel.value }));
+		});
+		el.querySelectorAll("[data-act]").forEach((b) => b.addEventListener("click", () => {
+			const act = b.dataset.act;
+			if (act === "adopt") return run("start_from_proposal", {}, b);
+			if (act === "remove") {
+				const ok = window.confirm ? window.confirm("Remove this delivery from the plan?") : true;
+				return ok && run("remove_delivery", { row: b.dataset.row }, b);
+			}
+			if (act === "half") {
+				const inp = el.querySelector(`[data-half-units][data-from="${b.dataset.from}"]`);
+				return run("revise_half", { first_week: b.dataset.from, last_week: b.dataset.to,
+					units: inp ? inp.value : "" }, b);
+			}
+			if (act === "add") {
+				const box = b.parentElement;
+				return run("add_delivery", {
+					supplier: (box.querySelector("select") || {}).value || "",
+					arrives: (box.querySelector("[data-new=arrives]") || {}).value || "",
+					units: (box.querySelector("[data-new=units]") || {}).value || "" }, b);
+			}
+		}));
+	}
+
+	function load(el, plan, call, opts) {
 		style();
 		if (!el || !plan) return Promise.resolve();
 		el.innerHTML = `<div class="sfo"><div class="sfo-empty">Loading…</div></div>`;
 		const go = call || ((m, a) => frappe.call({ method: m, args: a }).then((r) => r && r.message));
-		return go(METHOD, { plan }).then((d) => render(el, d), (e) => {
+		opts = opts || {};
+		const get = opts.editable
+			? Promise.all([go(METHOD, { plan }), go(ED + "suppliers", { plan }).catch(() => [])])
+			: go(METHOD, { plan }).then((d) => [d, null]);
+		return get.then(([d, names]) => {
+			if (d && opts.editable) Object.assign(d, { _editable: true, _call: go,
+				_suppliers: names || null, _onChanged: opts.onChanged || null });
+			if (d && opts.last) d._last = opts.last;
+			render(el, d);
+		}, (e) => {
 			el.innerHTML = `<div class="sfo"><div class="sfo-empty">Could not load the overview: ${esc((e && e.message) || e || "")}</div></div>`;
 		});
 	}
