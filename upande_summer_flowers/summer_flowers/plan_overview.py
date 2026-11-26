@@ -80,6 +80,25 @@ def _lifts(v, stages=None):
 	return sorted(rows, key=lambda r: r["weeks_after"])
 
 
+def waves_for(v, supplier=None):
+	"""How this supplier hands a delivery over, in lifts -- its own pattern from
+	Summer Flower Settings where it has one, else the protocol's. The same
+	source the plantings are drawn from, so every table lifts the same way."""
+	from upande_summer_flowers.summer_flowers import tc_supply as ts
+	from upande_summer_flowers.summer_flowers.doctype.summer_flower_production_plan.summer_flower_production_plan import (
+		_entry_stage_of,
+	)
+	from upande_summer_flowers.summer_flowers.route_ways import LIFT_FORM
+
+	try:
+		form = LIFT_FORM.get(_entry_stage_of(v)) or "Tissue Culture"
+		rows = ts.handover_for(form, supplier or None, 0, v) or []
+	except Exception:
+		rows = []
+	return [{"lift_no": i + 1, "weeks_after": cint(w), "share_pct": round(flt(sh) * 100, 2)}
+	        for i, (w, sh) in enumerate(rows)]
+
+
 def _picks(doc):
 	"""The suppliers the plan has chosen, with their shares and cycles."""
 	seen = {}
@@ -199,7 +218,7 @@ def plan_overview(plan):
 	# fresh proposal worked from the plantings they produced.
 	saved = [c for c in (doc.get("plan_consignments") or []) if c.get("lands_week")]
 	if saved:
-		deliveries, halves, suppliers = _from_saved(saved, lifts, suppliers, per_unit)
+		deliveries, halves, suppliers = _from_saved(saved, lifts, suppliers, per_unit, v)
 	out["suppliers"] = suppliers
 	out["halves"] = halves
 	out["deliveries"] = deliveries
@@ -268,8 +287,11 @@ def plan_overview(plan):
 
 	# ---- one delivery followed from arrival to its first cuts ---------------
 	# A crop cut from its own mother stock: the TC builds the stock, it is not planted.
+	first_sup = ((deliveries[0].get("suppliers") or [{}])[0].get("supplier")
+	             if deliveries else None)
+	ex_lifts = (waves_for(v, first_sup) if first_sup else []) or lifts
 	out["example"] = (None if pooled else
-	                  _follow_one(deliveries, lifts, survive, per_unit, curve, route, entry))
+	                  _follow_one(deliveries, ex_lifts, survive, per_unit, curve, route, entry))
 
 	# ---- the key dates ------------------------------------------------------
 	def first(seq, key):
@@ -293,11 +315,11 @@ def plan_overview(plan):
 	return out
 
 
-def _from_saved(saved, lifts, suppliers, per_unit):
+def _from_saved(saved, lifts, suppliers, per_unit, v=None):
 	"""Deliveries, halves and suppliers read off the saved consignments."""
 	today = getdate(nowdate())
-	waves = lifts or [{"lift_no": 1, "weeks_after": 0, "share_pct": 100.0}]
-	first_after = min(w["weeks_after"] for w in waves)
+	default = lifts or [{"lift_no": 1, "weeks_after": 0, "share_pct": 100.0}]
+	by_house = {}
 	names = []
 	for c in saved:
 		if c.supplier and c.supplier not in names:
@@ -307,6 +329,10 @@ def _from_saved(saved, lifts, suppliers, per_unit):
 	                        "lead_weeks": 0, "named": True} for n in names]
 	rows = []
 	for c in sorted(saved, key=lambda x: (sc._week_monday(x.lands_week) or today, x.supplier or "")):
+		if c.supplier not in by_house:
+			by_house[c.supplier] = (waves_for(v, c.supplier) if v else []) or default
+		waves = by_house[c.supplier]
+		first_after = min(w["weeks_after"] for w in waves)
 		planted = sc._week_monday(c.lands_week)
 		arrives = add_days(planted, -7 * first_after) if planted else None
 		order = sc._week_monday(c.order_week) if c.order_week else None

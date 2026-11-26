@@ -37,6 +37,7 @@ def build(plan):
 	# showed only its last flushes, and its row could not be added up to its
 	# lifetime figure from anything on the sheet.
 	from upande_summer_flowers.summer_flowers.doctype.summer_flower_production_plan.summer_flower_production_plan import (
+		establishment,
 		saleable,
 	)
 
@@ -66,13 +67,20 @@ def build(plan):
 		return {"before": int(round(before)), "after": int(round(after)),
 		        "rejected": int(round(rejected)), "flushes": cells}
 
+	sources = delivery_sources(plan, protocol)
+
 	plantings = []
 	for i, row in enumerate(plan.plan_blocks):
 		mine = stems[i]["weeks"] if i < len(stems) else {}
 		extra = stems[i] if i < len(stems) else {}
 		weekly = [cint(mine.get("%s-%s" % (y, w), 0)) for (y, w, _m) in grid]
 		whole = life(row) or {}
+		monday = (getdate(row.planting_date) - datetime.timedelta(days=getdate(row.planting_date).weekday())
+		          if row.planting_date else None)
 		plantings.append({
+			"sources": sources.get(monday, []) if row.is_new_planting else [],
+			"plants_to_plant": cint(row.get("plants_to_plant")) or cint(row.plants),
+			"season_flush": next((f for f in (whole.get("flushes") or []) if f), None),
 			"before_season": whole.get("before", 0),
 			"after_season": whole.get("after", 0),
 			"rejected": whole.get("rejected", 0),
@@ -166,6 +174,7 @@ def build(plan):
 			"rejected": sum(p["rejected"] for p in plantings),
 		},
 		"reject_pct": round((1.0 - keep) * 100, 2),
+		"establishment_pct": round(establishment(protocol) * 100, 2) if protocol else 100,
 		"weekly_production": weekly_prod,
 		"monthly_production": monthly_prod,
 		"weekly_demand": weekly_dem,
@@ -178,6 +187,71 @@ def build(plan):
 		"grade_total_pct": total_pct,
 		"assumptions": assumptions(protocol),
 	}
+
+
+def delivery_sources(plan, protocol):
+	"""{Monday of a planting week: the deliveries and lifts planted that week}.
+
+	Read off the saved consignments where there are any, else off the supply
+	the protocol proposes, so each sheet row can say which delivery it is, when
+	that was ordered and arrived, which lift, and how much material it was."""
+	from upande_summer_flowers.summer_flowers import plan_overview as po
+	from upande_summer_flowers.summer_flowers import supply_cycles as sc
+
+	if not protocol:
+		return {}
+	default = [{"lift_no": 1, "weeks_after": 0, "share_pct": 100.0}]
+	patterns = {}
+
+	def waves_of(supplier):
+		if supplier not in patterns:
+			patterns[supplier] = po.waves_for(protocol, supplier) or default
+		return patterns[supplier]
+	rows = []
+	for c in sorted(plan.get("plan_consignments") or [],
+	                key=lambda x: (sc._week_monday(x.lands_week) or datetime.date.max,
+	                               x.supplier or "")):
+		at = sc._week_monday(c.lands_week)
+		if at:
+			rows.append({"supplier": c.supplier or _("by hand"), "units": cint(c.units),
+			             "order": c.order_week or "", "planted": at})
+	if not rows:
+		try:
+			prop = sc.proposal(plan, protocol)
+		except Exception:
+			prop = {}
+		names = [r.supplier for r in (plan.get("plan_supply") or []) if r.supplier]
+		names = list(dict.fromkeys(names))
+		per_unit = 1.0
+		try:
+			from upande_summer_flowers.summer_flowers import root_line as rl
+
+			per_unit = flt(rl.plants_per_unit_at_plant(protocol)) or 1.0
+		except Exception:
+			pass
+		for r in prop.get("rows") or []:
+			at = sc._week_monday(r.get("week"))
+			for h, q in enumerate(r.get("split") or []):
+				if cint(q) and at:
+					rows.append({"supplier": names[h] if h < len(names) else _("Supplier {0}").format(h + 1),
+					             "units": int(math.ceil(cint(q) / per_unit - 1e-9)),
+					             "order": r.get("order_by") or "", "planted": at})
+	out = {}
+	for n, r in enumerate(rows, start=1):
+		waves = waves_of(r["supplier"])
+		first = min(w["weeks_after"] for w in waves)
+		arrives = r["planted"] - datetime.timedelta(weeks=first)
+		given = 0
+		for i, w in enumerate(waves):
+			units = (r["units"] - given if i == len(waves) - 1
+			         else int(round(r["units"] * w["share_pct"] / 100.0)))
+			given += units
+			week = r["planted"] + datetime.timedelta(weeks=w["weeks_after"] - first)
+			out.setdefault(week, []).append({
+				"delivery": n, "supplier": r["supplier"], "order": r["order"],
+				"arrives": _iso_week(arrives), "lift_no": w["lift_no"],
+				"lifts": len(waves), "share_pct": w["share_pct"], "units": units})
+	return out
 
 
 def shortfalls(grid, prod, dem, plantings, protocol, route):
@@ -298,32 +372,43 @@ def sheet_csv(plan):
 	"""The same sheet as CSV, so it opens in Excel next to the original."""
 	frappe.has_permission("Summer Flower Production Plan", "read", plan, throw=True)
 	d = build(plan)
-	head = (["BLOCK", "Planting wk", "Planting Date"]
-	        + (["Pinching Date"] if d["pinched"] else [])
-	        + ["First Cut", "NET AREA (m2)", "Uprooting Date", "NET AREA (Ha)",
-	           "NO OF BEDS", "NO.PLANTS"])
+	src = lambda p, f: " / ".join(f(x) for x in (p.get("sources") or []))
+	lead = ([("Delivery", lambda p: src(p, lambda x: "#%s %s" % (x["delivery"], x["supplier"]))),
+	         ("Ordered", lambda p: src(p, lambda x: x["order"])),
+	         ("Arrived", lambda p: src(p, lambda x: x["arrives"])),
+	         ("Lift", lambda p: src(p, lambda x: "%s of %s (%s%%)" % (x["lift_no"], x["lifts"], x["share_pct"])
+	                                if x["lifts"] > 1 else "all")),
+	         ("TC lifted", lambda p: src(p, lambda x: str(x["units"]))),
+	         ("Planting wk", lambda p: p["planting_week"]),
+	         ("Planting date", lambda p: p["planting_date"])]
+	        + ([("Pinching date", lambda p: p["pinch_date"])] if d["pinched"] else [])
+	        + [("Plants planted", lambda p: p["plants_to_plant"]),
+	           ("Standing (%s%%)" % d["establishment_pct"], lambda p: p["plants"]),
+	           ("First cut", lambda p: p["first_cut"]),
+	           ("Season opens on flush", lambda p: p["season_flush"] or ""),
+	           ("Uprooting", lambda p: p["uproot_date"]),
+	           ("Block", lambda p: p["block"]),
+	           ("Beds", lambda p: p["beds"]),
+	           ("Net area (m2)", lambda p: p["net_area_sqm"]),
+	           ("Cut before season", lambda p: p["before_season"])])
+	head = [c[0] for c in lead]
 	weeks = [str(g["week"]) for g in d["grid"]]
-	out = [["Year"] + [""] * len(head) + [str(g["year"]) for g in d["grid"]],
-	       ["Week starting"] + [""] * len(head) + [g["monday"] for g in d["grid"]],
-	       head + ["CUT BEFORE SEASON"] + weeks
-	       + ["TOTAL", "CUT AFTER SEASON", "REJECTED (%s%%)" % d["reject_pct"],
-	          "STEMS/HA", "LIFETIME (STEMS)"]]
+	out = [["Year"] + [""] * (len(head) - 1) + [str(g["year"]) for g in d["grid"]],
+	       ["Week starting"] + [""] * (len(head) - 1) + [g["monday"] for g in d["grid"]],
+	       head + weeks + ["SEASON TOTAL", "CUT AFTER SEASON", "REJECTED (%s%%)" % d["reject_pct"],
+	                       "STEMS/HA", "LIFETIME (STEMS)"]]
 
 	for p in d["plantings"]:
-		out.append([
-			p["block"], p["planting_week"], p["planting_date"]]
-			+ ([p["pinch_date"]] if d["pinched"] else [])
-			+ [p["first_cut"], p["net_area_sqm"], p["uproot_date"],
-			round(flt(p["net_area_sqm"]) / 10_000, 4), p["beds"], p["plants"],
-		] + [p["before_season"]] + p["weekly"] + [p["season_total"], p["after_season"],
-		                   p["rejected"], round(p["season_stems_per_ha"]),
-		                   p["lifetime_total"]])
+		out.append([c[1](p) for c in lead] + p["weekly"]
+		           + [p["season_total"], p["after_season"], p["rejected"],
+		              round(p["season_stems_per_ha"]), p["lifetime_total"]])
 
 	t = d["totals"]
-	pad = lambda label: [label] + [""] * len(head)
-	out.append(["TOTAL", "", ""] + ([""] if d["pinched"] else []) + ["", t["net_area_sqm"], "",
-	            round(flt(t["net_area_sqm"]) / 10_000, 4), t["beds"], t["plants"]]
-	           + [t["before_season"]] + [""] * len(weeks)
+	pad = lambda label: [label] + [""] * (len(head) - 1)
+	totals = {"Plants planted": sum(p["plants_to_plant"] for p in d["plantings"]),
+	          head[head.index("Plants planted") + 1]: t["plants"], "Beds": t["beds"],
+	          "Net area (m2)": t["net_area_sqm"], "Cut before season": t["before_season"]}
+	out.append(["TOTAL"] + [totals.get(h, "") for h in head[1:]] + [""] * len(weeks)
 	           + [t["season"], t["after_season"], t["rejected"],
 	              round(t["season_stems_per_ha"]), t["lifetime"]])
 	out.append([])

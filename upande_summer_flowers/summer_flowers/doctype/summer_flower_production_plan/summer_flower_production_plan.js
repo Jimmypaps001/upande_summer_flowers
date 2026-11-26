@@ -207,91 +207,51 @@ function render_sheet(frm) {
 	});
 }
 
-function demand_verdict(d) {
-	// The sheet's whole point. Read off the same weekly rows the grid shows, so
-	// the headline and the DIFFERENCE row can never disagree.
-	const weeks = d.grid.filter((g, i) => (d.weekly_demand[i] || 0) > 0);
-	if (!weeks.length) {
-		return `<div class="text-muted" style="margin-bottom:8px">${
-			__("No demand in these weeks, so there is nothing to meet.")}</div>`;
-	}
-	const gaps = d.gaps || [];
-	const dem = d.weekly_demand.reduce((a, v) => a + (v || 0), 0);
-	const missed = gaps.reduce((a, g) => a + g.short, 0);
-	const pct = dem ? Math.round(((dem - missed) / dem) * 100) : 0;
-	const ok = !gaps.length;
-	let h = `<div style="margin-bottom:10px;padding:10px 12px;border-radius:6px;border:1px solid ${
-		ok ? "#b7e4c7" : "#f5c6cb"};background:${ok ? "#f1faf4" : "#fdf3f4"}">
-		<b>${ok
-			? __("This plan meets the demand in every week.")
-			: __("Short in {0} of {1} weeks with demand — {2} stems.",
-				[gaps.length, weeks.length, fmt(missed)])}</b>
-		<span class="text-muted"> ${__("Week-by-week cover {0}%", [pct])}</span>`;
-
-	// What closing a week would have taken. The planting week is the cutting week
-	// less the protocol's planting-to-first-harvest; the order week walks the
-	// route back from there. A week already past can only be bought, not planted.
-	if (gaps.length) {
-		const worst = gaps.slice().sort((a, b) => b.short - a.short).slice(0, 5);
-		h += `<table class="table table-sm" style="font-size:11px;margin:8px 0 0;
-			background:transparent"><thead><tr>
-			<th>${__("Short week")}</th><th class="text-right">${__("Stems short")}</th>
-			<th class="text-right">${__("Plants it needed")}</th>
-			<th>${__("Planted in")}</th><th>${__("Ordered by")}</th></tr></thead><tbody>`;
-		worst.forEach((g) => {
-			h += `<tr><td>${g.week}</td>
-				<td class="text-right">${fmt(g.short)} <span class="text-muted">(${
-					g.short_pct}%)</span></td>
-				<td class="text-right">${g.plants === null ? "" : fmt(g.plants)}</td>
-				<td${g.passed ? ' class="text-muted"' : ""}>${g.plant_in}${
-					g.passed ? ` ${__("(passed)")}` : ""}</td>
-				<td class="text-muted">${g.order_by}</td></tr>`;
-		});
-		h += `</tbody></table>`;
-		if (gaps.length > worst.length) {
-			h += `<div class="text-muted" style="font-size:11px">${
-				__("The {0} worst weeks; the DIFFERENCE row below has them all.",
-					[worst.length])}</div>`;
-		}
-	}
-	return h + `</div>`;
-}
-
 function sheet_html(d) {
-	// Only a pinched crop gets a pinching column; the rest would read as a date
-	// the protocol never asked for. "First cut" is the week this row starts
-	// supplying, which is what the weeks to its right are counted from.
-	const head = ["BLOCK", "Planting wk", "Planting Date"]
-		.concat(d.pinched ? ["Pinching Date"] : [])
-		.concat(["First cut", "NET AREA (m2)", "Uprooting Date", "NET AREA (Ha)",
-			"NO OF BEDS", "NO.PLANTS"]);
+	// Each row is one planting, read the way the material moves: which delivery
+	// and lift it came from, when that was ordered and arrived, how much was
+	// planted and how much stands, then what it cuts week by week. The season's
+	// columns can open part-way through a planting's life, so the row also says
+	// which flush the season opens on and what was cut before it.
+	const esc = (v) => frappe.utils.escape_html(String(v == null ? "" : v));
+	const src = (p, f) => (p.sources || []).map(f).join("<br>");
 	const cols = d.grid.length;
-	let h = demand_verdict(d);
-	h += `<div style="overflow-x:auto"><table class="table table-bordered table-sm"
+	const est = d.establishment_pct || 100;
+	const lead = [
+		["Delivery", (p) => src(p, (x) => `#${x.delivery} ${esc(x.supplier)}`)],
+		["Ordered", (p) => src(p, (x) => esc(x.order))],
+		["Arrived", (p) => src(p, (x) => esc(x.arrives))],
+		["Lift", (p) => src(p, (x) => x.lifts > 1 ? `${x.lift_no} of ${x.lifts} (${x.share_pct}%)` : "all")],
+		["TC lifted", (p) => src(p, (x) => fmt(x.units)), true],
+		["Planting wk", (p) => esc(p.planting_week || "")],
+		["Planting date", (p) => esc(p.planting_date)],
+	].concat(d.pinched ? [["Pinching date", (p) => esc(p.pinch_date)]] : []).concat([
+		["Plants planted", (p) => fmt(p.plants_to_plant), true],
+		[`Standing (${est}%)`, (p) => fmt(p.plants), true],
+		["First cut", (p) => esc(p.first_cut || "")],
+		["Season opens on flush", (p) => (p.season_flush ? p.season_flush : ""), true],
+		["Uprooting", (p) => esc(p.uproot_date)],
+		["Block", (p) => esc(p.block)],
+		["Beds", (p) => fmt(p.beds), true],
+		["Net area (m²)", (p) => fmt(p.net_area_sqm), true],
+		["Cut before season", (p) => (p.before_season ? fmt(p.before_season) : ""), true],
+	]);
+	let h = `<div style="overflow-x:auto"><table class="table table-bordered table-sm"
 		style="font-size:11px;white-space:nowrap">`;
 
-	h += `<thead><tr><th colspan="${head.length + 1}"></th>`;
+	h += `<thead><tr><th colspan="${lead.length}"></th>`;
 	d.grid.forEach((g) => (h += `<th class="text-center">${g.year}</th>`));
 	h += `<th colspan="5"></th></tr><tr>`;
-	head.forEach((c) => (h += `<th>${c}</th>`));
-	h += `<th class="text-right">CUT BEFORE<br>SEASON</th>`;
+	lead.forEach((c) => (h += `<th${c[2] ? ' class="text-right"' : ""}>${c[0]}</th>`));
 	d.grid.forEach((g) => (h += `<th class="text-center">${g.week}</th>`));
-	h += `<th>TOTAL</th><th>CUT AFTER<br>SEASON</th><th>REJECTED<br>(${d.reject_pct || 0}%)</th>`
-		+ `<th>STEMS/<br>HA</th><th>LIFETIME</th></tr></thead><tbody>`;
+	h += `<th>Season total</th><th>Cut after<br>season</th><th>Rejected<br>(${d.reject_pct || 0}%)</th>`
+		+ `<th>Stems/<br>ha</th><th>Lifetime</th></tr></thead><tbody>`;
 
-	// A planting with no block produces nothing and has to look different from one
-	// that produces nothing because its weeks are outside the season.
 	d.plantings.forEach((p) => {
 		const style = p.not_placed ? ' style="background:#fff5f5"' :
 			(p.is_new ? "" : ' style="background:#f7f7f7"');
-		h += `<tr${style}><td>${p.block}</td><td>${p.planting_week || ""}</td>
-			<td>${p.planting_date}</td>${d.pinched ? `<td>${p.pinch_date}</td>` : ""}
-			<td class="text-muted">${p.first_cut || ""}</td>
-			<td class="text-right">${fmt(p.net_area_sqm)}</td><td>${p.uproot_date}</td>
-			<td class="text-right">${((p.net_area_sqm || 0) / 10000).toFixed(4)}</td>
-			<td class="text-right">${fmt(p.beds)}</td>
-			<td class="text-right">${fmt(p.plants)}</td>
-			<td class="text-right text-muted">${p.before_season ? fmt(p.before_season) : ""}</td>`;
+		h += `<tr${style}>` + lead.map((c) =>
+			`<td${c[2] ? ' class="text-right"' : ""}>${c[1](p)}</td>`).join("");
 		p.weekly.forEach((v, i) => {
 			const fl = (p.flushes || [])[i];
 			h += `<td class="text-right"${fl ? ` title="Flush ${fl}"` : ""}>${v ? fmt(v) : ""}</td>`;
@@ -304,14 +264,12 @@ function sheet_html(d) {
 	});
 
 	const t = d.totals;
-	h += `<tr style="font-weight:bold"><td>TOTAL</td><td></td><td></td>
-		${d.pinched ? "<td></td>" : ""}<td></td>
-		<td class="text-right">${fmt(t.net_area_sqm)}</td><td></td>
-		<td class="text-right">${((t.net_area_sqm || 0) / 10000).toFixed(4)}</td>
-		<td class="text-right">${fmt(t.beds)}</td>
-		<td class="text-right">${fmt(t.plants)}</td>
-		<td class="text-right">${fmt(t.before_season)}</td>
-		<td colspan="${cols}"></td>
+	const tot = { "Plants planted": d.plantings.reduce((a, p) => a + (p.plants_to_plant || 0), 0),
+		[`Standing (${est}%)`]: t.plants, "Beds": t.beds, "Net area (m²)": t.net_area_sqm,
+		"Cut before season": t.before_season };
+	h += `<tr style="font-weight:bold">` + lead.map((c, i) =>
+		`<td${c[2] ? ' class="text-right"' : ""}>${i === 0 ? "TOTAL" : (c[0] in tot ? fmt(tot[c[0]]) : "")}</td>`).join("")
+		+ `<td colspan="${cols}"></td>
 		<td class="text-right">${fmt(t.season)}</td>
 		<td class="text-right">${fmt(t.after_season)}</td>
 		<td class="text-right">${fmt(t.rejected)}</td>
@@ -319,7 +277,7 @@ function sheet_html(d) {
 		<td class="text-right">${fmt(t.lifetime)}</td></tr>`;
 
 	const band = (label, values, opts = {}) => {
-		let row = `<tr${opts.style || ""}><td colspan="${head.length + 1}">${label}</td>`;
+		let row = `<tr${opts.style || ""}><td colspan="${lead.length}">${label}</td>`;
 		for (let i = 0; i < cols; i++) {
 			const v = values[i];
 			const neg = opts.signed && v < 0;
@@ -335,7 +293,7 @@ function sheet_html(d) {
 	d.grades.forEach((g) => {
 		h += g.weekly.length
 			? band(`${g.grade} (${g.pct}%)`, g.weekly)
-			: `<tr><td colspan="${head.length + 1}">${g.grade}</td>
+			: `<tr><td colspan="${lead.length}">${g.grade}</td>
 				<td colspan="${cols + 5}" class="text-muted">${
 					__("No allocation % on the protocol, so this grade cannot be split out.")
 				}</td></tr>`;
