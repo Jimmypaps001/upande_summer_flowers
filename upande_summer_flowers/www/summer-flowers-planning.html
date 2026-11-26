@@ -55,19 +55,17 @@
   </div>
 
   <div id="pl-body" hidden>
+    <!-- Six steps, in the order the work happens. Each opens on its own pages
+         below it; the pages themselves are the ones the planners already use. -->
     <nav class="pl-tabs" role="tablist" aria-label="{{ _('Sections') }}">
-      <button role="tab" data-tab="overview" class="is-on" aria-selected="true">{{ _("Overview") }}</button>
-      <button role="tab" data-tab="demand" aria-selected="false">{{ _("Market Demand") }}</button>
-      <button role="tab" data-tab="protocol" aria-selected="false">{{ _("Protocol") }}</button>
-      <button role="tab" data-tab="plan" aria-selected="false">{{ _("Production Plan") }}</button>
-      <button role="tab" data-tab="planting" aria-selected="false">{{ _("Planting Plan") }}</button>
-      <button role="tab" data-tab="procurement" aria-selected="false">{{ _("Procurement") }}</button>
-      <button role="tab" data-tab="propagation" aria-selected="false">{{ _("Propagation") }}</button>
-      <button role="tab" data-tab="motherstock" aria-selected="false">{{ _("Materials Planning") }}</button>
-      <button role="tab" data-tab="blocks" aria-selected="false">{{ _("Block Forecast") }}</button>
-      <button role="tab" data-tab="calendar" aria-selected="false">{{ _("Calendar") }}</button>
-      <button role="tab" data-tab="review" aria-selected="false">{{ _("Review") }}<span id="rv-badge" class="pl-badge" hidden></span></button>
+      <button role="tab" data-group="demand" data-tab="demand" aria-selected="false">{{ _("Demand") }}</button>
+      <button role="tab" data-group="plan" data-tab="plan" class="is-on" aria-selected="true">{{ _("Plan") }}</button>
+      <button role="tab" data-group="material" data-tab="motherstock" aria-selected="false">{{ _("Material") }}</button>
+      <button role="tab" data-group="ground" data-tab="blocks" aria-selected="false">{{ _("Ground") }}</button>
+      <button role="tab" data-group="harvest" data-tab="harvest" aria-selected="false">{{ _("Harvest") }}</button>
+      <button role="tab" data-group="review" data-tab="review" aria-selected="false">{{ _("Review") }}<span id="rv-badge" class="pl-badge" hidden></span></button>
     </nav>
+    <nav class="pl-subtabs" id="pl-subtabs" aria-label="{{ _('Pages') }}"></nav>
 
     <!-- ══ OVERVIEW ══ -->
     <section class="pl-pane is-on" data-pane="overview">
@@ -271,6 +269,11 @@
         <div id="pn-glance"></div>
       </div>
 
+      <!-- The working cards behind the plan, out of the way until wanted. -->
+      <details class="pl-more" id="pn-more">
+        <summary>{{ _("More detail on this plan: budget, week by week, what-if and motherstock") }}</summary>
+
+
       <div class="pl-card">
         <div class="pl-card-head">
           <div><h2>{{ _("Demand to budget") }}</h2></div>
@@ -341,6 +344,7 @@
         <div id="pn-ms-note"></div>
         <div id="pn-steps" class="pl-scroll"></div>
       </div>
+      </details>
     </section>
 
     <!-- ══ PROCUREMENT ══ -->
@@ -899,6 +903,15 @@ body[data-path="summer-flowers-planning"] main{max-width:none;padding-left:0;pad
   color:var(--text-secondary);cursor:pointer;border-bottom:2px solid transparent;margin-bottom:-2px}
 .pl-tabs button:hover{color:var(--text-primary)}
 .pl-tabs button.is-on{color:var(--seq-400);border-bottom-color:var(--seq-400);font-weight:600}
+.pl-subtabs{display:flex;gap:6px;flex-wrap:wrap;margin:10px 0 4px}
+.pl-subtabs:empty{display:none}
+.pl-more{margin-top:14px}
+.pl-more>summary{cursor:pointer;font-weight:600;padding:10px 12px;border:1px solid var(--border);
+  border-radius:10px;background:var(--surface-1);list-style:revert}
+.pl-more[open]>summary{margin-bottom:12px}
+.pl-subtabs button{border:1px solid var(--border);background:transparent;color:var(--text-secondary);
+  border-radius:999px;padding:4px 12px;font-size:.8rem;cursor:pointer}
+.pl-subtabs button.is-on{background:var(--seq-400);border-color:var(--seq-400);color:#fff}
 .pl-pane{display:none}
 .pl-pane.is-on{display:block}
 
@@ -8533,7 +8546,21 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
   // read forwards: the plan says what to grow, the motherstock says what has to be
   // bought and when for it to be growable at all.
   const TABS = ["overview", "demand", "plan", "motherstock", "propagation", "planting",
-               "blocks", "harvest", "review", "protocol", "calendar"];
+               "blocks", "harvest", "review", "protocol", "calendar", "procurement"];
+  // The six steps and the pages under each, in plain words. A page keeps its
+  // own name in the URL (#motherstock still lands on it), only where it sits
+  // and what it is called changed.
+  const GROUPS = [
+    ["demand", [["demand", "What the market wants"], ["overview", "Demand against production"]]],
+    ["plan", [["plan", "Your plan"], ["planting", "Planting weeks"], ["protocol", "Crop protocol"]]],
+    ["material", [["motherstock", "Suppliers and deliveries"], ["procurement", "Buying"],
+                  ["propagation", "Propagation"]]],
+    ["ground", [["blocks", "Blocks"], ["calendar", "Calendar"]]],
+    ["harvest", [["harvest", "Crop on the ground"]]],
+    ["review", [["review", "Waiting on a decision"]]],
+  ];
+  const GROUP_OF = {};
+  GROUPS.forEach(([g, pages]) => pages.forEach(([p]) => (GROUP_OF[p] = g)));
 
   // Which of the scope filters each tab actually reads. One bar driving every tab
   // meant the protocol offered a production plan it cannot use and a week it does
@@ -10207,10 +10234,24 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
     if (!fromHash && location.hash.slice(1) !== name) {
       history.replaceState(null, "", "#" + name);
     }
+    S.tab = name;
+    const group = GROUP_OF[name] || "plan";
     document.querySelectorAll(".pl-tabs button").forEach((b) => {
-      const on = b.dataset.tab === name;
+      const on = b.dataset.group === group;
       b.classList.toggle("is-on", on); b.setAttribute("aria-selected", on);
+      // The step reopens on the page last used in it.
+      if (on) b.dataset.tab = name;
     });
+    const pages = (GROUPS.find(([g]) => g === group) || [null, []])[1];
+    const sub = $("pl-subtabs");
+    if (sub) {
+      sub.innerHTML = pages.length > 1
+        ? pages.map(([p, label]) => `<button type="button" data-sub="${p}"`
+            + ` class="${p === name ? "is-on" : ""}">${label}</button>`).join("")
+        : "";
+      sub.querySelectorAll("[data-sub]").forEach((b) =>
+        b.addEventListener("click", () => setTab(b.dataset.sub)));
+    }
     document.querySelectorAll(".pl-pane").forEach((p) =>
       p.classList.toggle("is-on", p.dataset.pane === name));
     applyTabFilters(name);
@@ -10276,9 +10317,16 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
     window.sfPlanOverview.load(el, S.plan, go, { editable: true });
   }
 
+  // Charts in the folded cards measure their width when drawn; drawn folded
+  // they come out at the floor width, so they are drawn again when opened.
+  document.addEventListener("toggle", (ev) => {
+    if (ev.target && ev.target.id === "pn-more" && ev.target.open && S.dv) {
+      renderDemandVsProduction(scoped().weeks, !!(S.dv && S.dv.tc_committed));
+    }
+  }, true);
+
   function openTab() {
-    const b = document.querySelector(".pl-tabs button.is-on");
-    return (b && b.dataset.tab) || "overview";
+    return S.tab || "plan";
   }
 
   function toggleGroup(pairs, key, cb) {
@@ -11203,7 +11251,7 @@ table.pl-t tr.ls-arrive td:first-child{box-shadow:inset 3px 0 0 var(--violet)}
       showChooser(!(S.variety || S.plan));
       $("asof").textContent = "As of " + frappe.datetime.get_today();
       const want = (location.hash || "").slice(1);
-      setTab(TABS.includes(want) ? want : "overview", true);
+      setTab(TABS.includes(want) ? want : "plan", true);
     }).catch((e) => {
       $("pl-loading").innerHTML = '<span class="warn">' +
         esc("Could not load: " + (e.message || e)) + "</span>";
