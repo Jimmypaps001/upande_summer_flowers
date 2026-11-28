@@ -21,7 +21,12 @@ def _plan_for(variety, farm=None):
 
 
 def _write(reference, **kw):
-	"""One actual, written once. Returns its name, or None if it was there."""
+	"""One actual, written once. Returns its name, or None if it was there.
+
+	Nothing is written for a variety with no propagation plan -- a rose raised
+	for a seedling request, say -- because there is no plan to report to."""
+	if not kw.get("propagation_plan"):
+		return None
 	if frappe.db.exists(ACTUAL, {"reference": reference, "docstatus": ["<", 2]}):
 		return None
 	doc = frappe.get_doc(dict(doctype=ACTUAL, reference=reference,
